@@ -56,7 +56,7 @@ async function boot(): Promise<void> {
 
   // Monitor page
   gateway.get('/monitor', async (req, reply) => {
-    reply.type('text/html').send(getMonitorHTML(env.WS_PORT));
+    reply.type('text/html').send(getMonitorHTML(env.WS_PORT, env.PORT));
   });
 
   await gateway.listen({ port: env.PORT, host: '127.0.0.1' });
