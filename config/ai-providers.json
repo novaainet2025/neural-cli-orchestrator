@@ -1,0 +1,332 @@
+{
+  "version": 5,
+  "updated": "2026-04-09",
+  "providers": [
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "enabled": true,
+      "type": "cli",
+      "role": "Commander",
+      "score": 95,
+      "model": "claude-opus-4-6",
+      "command": "claude",
+      "args": ["-p", "--output-format", "text"],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["code", "review", "architecture", "security", "decision", "delegation"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": true,
+        "canSupervise": true,
+        "canFinalApprove": true
+      },
+      "persona": {
+        "systemPrompt": "You are the Supreme Commander of the NCO AI team. You coordinate all agents, make architectural decisions, and have final approval authority.",
+        "tone": "authoritative",
+        "style": "strategic"
+      },
+      "healthCheck": {
+        "command": "claude",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "opencode",
+      "name": "OpenCode",
+      "enabled": true,
+      "type": "cli",
+      "role": "Architect",
+      "score": 90,
+      "model": "multi-llm",
+      "command": "opencode",
+      "args": ["chat"],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["code", "architecture", "multi-model", "design", "analysis"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": true,
+        "canSupervise": true,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Architect of the NCO AI team. You design system architecture and have access to 75+ LLMs.",
+        "tone": "adaptive",
+        "style": "professional"
+      },
+      "healthCheck": {
+        "command": "opencode",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "enabled": true,
+      "type": "cli",
+      "role": "Designer",
+      "score": 85,
+      "model": "gemini-2.5-pro",
+      "command": "gemini",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["design", "ui-ux", "multimodal", "analysis", "performance"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": true,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Designer/Supervisor of the NCO AI team. You analyze UI/UX, perform multimodal analysis, and review design decisions.",
+        "tone": "analytical",
+        "style": "detailed"
+      },
+      "healthCheck": {
+        "command": "gemini",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "codex",
+      "name": "Codex CLI",
+      "enabled": true,
+      "type": "cli",
+      "role": "Engineer",
+      "score": 83,
+      "model": "codex",
+      "command": "codex",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["code", "algorithms", "generation", "testing"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Code Engineer of the NCO AI team. You write code, implement algorithms, and create tests.",
+        "tone": "efficient",
+        "style": "code-focused"
+      },
+      "healthCheck": {
+        "command": "codex",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "aider",
+      "name": "Aider",
+      "enabled": true,
+      "type": "cli",
+      "role": "Engineer",
+      "score": 82,
+      "model": "openrouter/meta-llama/llama-4-maverick:free",
+      "command": "aider",
+      "args": ["--message"],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "free",
+      "capabilities": ["code", "refactoring", "git", "editing", "large-changes"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Git/Code Specialist of the NCO AI team. You handle large refactoring, atomic commits, and code editing.",
+        "tone": "practical",
+        "style": "git-focused"
+      },
+      "apiConfig": {
+        "primary": {
+          "provider": "openrouter",
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "apiKeyRef": "OPENROUTER_API_KEYS",
+          "model": "openrouter/meta-llama/llama-4-maverick:free"
+        },
+        "fallback": {
+          "provider": "vllm",
+          "baseUrl": "http://localhost:8000/v1",
+          "apiKeyRef": null,
+          "model": "local-model"
+        }
+      },
+      "healthCheck": {
+        "command": "aider",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "cursor-agent",
+      "name": "Cursor Agent",
+      "enabled": true,
+      "type": "cli",
+      "role": "Reviewer",
+      "score": 78,
+      "model": "cursor",
+      "command": "cursor-agent",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["review", "analysis", "ide-integration", "bug-detection"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Code Reviewer of the NCO AI team. You analyze code quality, detect bugs, and provide deep insights.",
+        "tone": "insightful",
+        "style": "comprehensive"
+      },
+      "note": "WSL binary at ~/.local/bin/cursor-agent",
+      "healthCheck": {
+        "command": "cursor-agent",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "copilot",
+      "name": "GitHub Copilot",
+      "enabled": true,
+      "type": "cli",
+      "role": "Researcher",
+      "score": 75,
+      "model": "copilot",
+      "command": "github-copilot-cli",
+      "args": [],
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": ["completion", "research", "suggestion", "documentation"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Researcher of the NCO AI team. You gather information, suggest completions, and assist with documentation.",
+        "tone": "helpful",
+        "style": "collaborative"
+      },
+      "note": "Installed via npm install -g @githubnext/github-copilot-cli",
+      "healthCheck": {
+        "command": "github-copilot-cli",
+        "args": ["--version"],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "enabled": true,
+      "type": "api",
+      "role": "Generalist",
+      "score": 75,
+      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "command": null,
+      "args": [],
+      "endpoint": "https://openrouter.ai/api/v1",
+      "apiKeyRef": "OPENROUTER_API_KEYS",
+      "keyRotation": {
+        "enabled": true,
+        "envVar": "OPENROUTER_API_KEYS",
+        "delimiter": ",",
+        "maxKeys": 20,
+        "cooldownMs": 60000
+      },
+      "freeModels": [
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "openai/gpt-oss-120b:free",
+        "google/gemma-3-27b-it:free",
+        "google/gemma-4-31b-it:free",
+        "nousresearch/hermes-3-llama-3.1-405b:free",
+        "meta-llama/llama-3.3-70b-instruct:free",
+        "qwen/qwen3-coder:free"
+      ],
+      "env": {},
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": ["code", "analysis", "general", "reasoning", "research"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a Generalist of the NCO AI team. You handle diverse tasks using free-tier models via OpenRouter. You are cost-efficient and versatile.",
+        "tone": "versatile",
+        "style": "efficient"
+      },
+      "note": "Free tier only. Uses OpenAI-compatible API via openrouter.ai",
+      "healthCheck": {
+        "type": "api",
+        "url": "https://openrouter.ai/api/v1/models",
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "vllm",
+      "name": "vLLM",
+      "enabled": true,
+      "type": "api",
+      "role": "Validator",
+      "score": 75,
+      "model": "gemma-4-26B-A4B-it-NVFP4",
+      "command": null,
+      "args": [],
+      "endpoint": "http://localhost:8000/v1",
+      "apiKeyRef": null,
+      "env": {},
+      "concurrency": 1,
+      "rateLimitRpm": 5,
+      "cost": "free",
+      "capabilities": ["validation", "testing", "local-inference", "verification"],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the local Validator of the NCO AI team. You verify results, run local validation, and confirm outputs.",
+        "tone": "secure",
+        "style": "local"
+      },
+      "note": "Gemma 4 26B NVFP4. Start: source ~/vllm-env/bin/activate && VLLM_NVFP4_GEMM_BACKEND=marlin vllm serve /mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4 --quantization modelopt --dtype auto --kv-cache-dtype fp8 --gpu-memory-utilization 0.85 --max-model-len 8192 --max-num-seqs 4 --trust-remote-code --port 8000",
+      "healthCheck": {
+        "type": "api",
+        "url": "http://localhost:8000/health",
+        "timeout": 5000
+      }
+    }
+  ]
+}

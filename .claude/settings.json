@@ -1,0 +1,48 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash .claude/hooks/nco-statusline.sh",
+    "_parent": "config/nco-global.json",
+    "_inheritedFrom": "NCO",
+    "_providers": 9,
+    "_version": "2.0"
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/user-prompt-nco-context.sh",
+            "timeout": 10,
+            "statusMessage": "Checking NCO status..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/end-of-turn-check.sh",
+            "timeout": 10,
+            "statusMessage": "Saving NCO session state..."
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "timeout": 15,
+            "statusMessage": "Initializing NCO session..."
+          }
+        ]
+      }
+    ]
+  }
+}

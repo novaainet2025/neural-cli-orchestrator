@@ -1,0 +1,9 @@
+node_modules/
+dist/
+db/*.db
+db/*.db-wal
+db/*.db-shm
+db/worker-state.json
+.env
+*.log
+.pm2/

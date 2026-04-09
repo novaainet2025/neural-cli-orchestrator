@@ -1,0 +1,16 @@
+{
+  "ports": {
+    "apiGateway": 6200,
+    "websocket": 6201,
+    "dashboard": 6260,
+    "redis": 6379,
+    "vllm": 8000
+  },
+  "paths": {
+    "backend": "/opt/neural-cli-orchestrator",
+    "dashboard": "/mnt/d/NCO-Dashboard",
+    "database": "./db/nco.db",
+    "stateFile": "./db/worker-state.json",
+    "workspace": "/mnt/d/NCO-Dashboard/.nco-workspace"
+  }
+}
