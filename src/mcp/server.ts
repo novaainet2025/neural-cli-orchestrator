@@ -107,9 +107,10 @@ async function handleTool(name: string, args: any): Promise<string> {
     case 'nco_mesh_sessions': return JSON.stringify(await ncoFetch('/api/mesh/sessions'));
     case 'nco_mesh_summary': return JSON.stringify(await ncoFetch('/api/mesh/summary'));
     case 'nco_mesh_send': {
-      const myPid = String(process.ppid || process.pid);
-      const myName = process.env.NCO_NAME || `claude-${myPid}`;
-      return JSON.stringify(await ncoPost('/api/mesh/send', { fromSessionId: myPid, fromAgent: myName, toSessionId: args.toSessionId || '*', content: args.content }));
+      // NCO_SESSION_ID is the Claude process PID (set by session-start hook via CLAUDE_ENV_FILE)
+      const mySessionId = process.env.NCO_SESSION_ID || String(process.ppid || process.pid);
+      const myName = process.env.NCO_NAME || 'claude-code';
+      return JSON.stringify(await ncoPost('/api/mesh/send', { fromSessionId: mySessionId, fromAgent: myName, toSessionId: args.toSessionId || '*', content: args.content }));
     }
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
