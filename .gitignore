@@ -7,3 +7,4 @@ db/worker-state.json
 .env
 *.log
 .pm2/
+.aider*
