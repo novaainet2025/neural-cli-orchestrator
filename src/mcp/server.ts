@@ -32,6 +32,8 @@ const TOOLS = [
   { name: 'nco_discussion', description: 'Start multi-AI discussion', params: ['prompt', 'providers', 'maxRounds'] },
   { name: 'nco_consensus', description: 'AI consensus mode with voting', params: ['prompt', 'providers'] },
   { name: 'nco_hive', description: 'Hive mode — all 9 AIs as one', params: ['prompt'] },
+  { name: 'nco_conductor', description: 'Smart auto-dispatch — analyzes complexity and picks best mode+AI', params: ['prompt'] },
+  { name: 'nco_commander', description: 'Commander 4-Layer — Management→Information→Execution→Quality hierarchy', params: ['prompt'] },
   { name: 'nco_broadcast', description: 'Broadcast message to all AIs', params: ['message'] },
   // Status (6)
   { name: 'nco_status', description: 'System health check', params: [] },
@@ -58,6 +60,10 @@ const TOOLS = [
   { name: 'nco_agent_approve', description: 'Approve agent action', params: ['sessionId'] },
   { name: 'nco_agent_reject', description: 'Reject agent action', params: ['sessionId'] },
   { name: 'nco_agent_sessions', description: 'List agent sessions', params: [] },
+  // Mesh (3)
+  { name: 'nco_mesh_sessions', description: 'List active CLI sessions in mesh', params: [] },
+  { name: 'nco_mesh_summary', description: 'Get work summary of all active CLIs', params: [] },
+  { name: 'nco_mesh_send', description: 'Send message to CLI sessions', params: ['content', 'toSessionId'] },
 ];
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -69,6 +75,8 @@ async function handleTool(name: string, args: any): Promise<string> {
     case 'nco_discussion': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, providers: args.providers, maxRounds: args.maxRounds }));
     case 'nco_consensus': return JSON.stringify(await ncoPost('/api/realtime/consensus', { prompt: args.prompt, providers: args.providers }));
     case 'nco_hive': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, mode: 'hive' }));
+    case 'nco_conductor': return JSON.stringify(await ncoPost('/api/conductor', { prompt: args.prompt }));
+    case 'nco_commander': return JSON.stringify(await ncoPost('/api/commander', { prompt: args.prompt }));
     case 'nco_broadcast': return JSON.stringify(await ncoPost('/api/chat/messages', { message: args.message, broadcast: true }));
     // Status
     case 'nco_status': return JSON.stringify(await ncoFetch('/health'));
@@ -95,6 +103,14 @@ async function handleTool(name: string, args: any): Promise<string> {
     case 'nco_agent_approve': return JSON.stringify(await ncoPost(`/api/agent/${args.sessionId}/approve`, {}));
     case 'nco_agent_reject': return JSON.stringify(await ncoPost(`/api/agent/${args.sessionId}/reject`, {}));
     case 'nco_agent_sessions': return JSON.stringify(await ncoFetch('/api/agent/sessions'));
+    // Mesh
+    case 'nco_mesh_sessions': return JSON.stringify(await ncoFetch('/api/mesh/sessions'));
+    case 'nco_mesh_summary': return JSON.stringify(await ncoFetch('/api/mesh/summary'));
+    case 'nco_mesh_send': {
+      const myPid = String(process.ppid || process.pid);
+      const myName = process.env.NCO_NAME || `claude-${myPid}`;
+      return JSON.stringify(await ncoPost('/api/mesh/send', { fromSessionId: myPid, fromAgent: myName, toSessionId: args.toSessionId || '*', content: args.content }));
+    }
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
 }

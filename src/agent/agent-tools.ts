@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { dirname } from 'path';
 import { execa } from 'execa';
 import { SandboxManager } from '../security/sandbox-manager.js';
+import { fileChangeGuard } from '../security/file-change-guard.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { createLogger } from '../utils/logger.js';
@@ -26,6 +27,23 @@ export class AgentToolExecutor {
   async execute(call: ToolCall): Promise<ToolResult> {
     if (!this.sandbox.canExecute()) {
       return { ok: false, output: '', error: 'Agent isolated by Circuit Breaker' };
+    }
+
+    // Session-based approval check for dangerous tools
+    const dangerousTools = ['writeFile', 'deleteFile', 'runCommand', 'gitCommit'];
+    if (dangerousTools.includes(call.tool) && this.taskId) {
+      try {
+        const { sessionManager } = await import('./session-manager.js');
+        const session = sessionManager.getSession(this.taskId);
+        if (session && session.status === 'running') {
+          const approved = await sessionManager.requestApproval(this.taskId, {
+            tool: call.tool, args: call.args,
+          });
+          if (!approved) {
+            return { ok: false, output: '', error: `Tool ${call.tool} rejected by user` };
+          }
+        }
+      } catch { /* session manager not available — auto-approve */ }
     }
 
     const release = await this.sandbox.acquireSlot();
@@ -105,6 +123,24 @@ export class AgentToolExecutor {
       return { ok: false, output: '', error: `File locked by ${holder}` };
     }
 
+    // FileChangeGuard — validate change ratio before writing
+    let originalContent = '';
+    try {
+      if (existsSync(path)) {
+        originalContent = await readFile(path, 'utf-8');
+      }
+    } catch { /* new file — original empty */ }
+
+    if (originalContent.length > 0) {
+      const validation = await fileChangeGuard.validateChange(
+        path, originalContent, content, this.agentId, this.taskId,
+      );
+      if (validation.action === 'blocked') {
+        return { ok: false, output: '', error: validation.reason || 'Change blocked by FileChangeGuard' };
+      }
+      // backup_then_proceed → backup already created, continue writing
+    }
+
     await sharedState.acquireLock(path, this.agentId);
     try {
       const dir = dirname(path);
@@ -131,6 +167,15 @@ export class AgentToolExecutor {
         return { ok: false, output: '', error: 'Old string not found in file' };
       }
       const updated = current.replace(oldStr, newStr);
+
+      // FileChangeGuard — validate before edit
+      const validation = await fileChangeGuard.validateChange(
+        path, current, updated, this.agentId, this.taskId,
+      );
+      if (validation.action === 'blocked') {
+        return { ok: false, output: '', error: validation.reason || 'Edit blocked by FileChangeGuard' };
+      }
+
       return this.writeFile(path, updated);
     } catch (err: any) {
       return { ok: false, output: '', error: err.message };

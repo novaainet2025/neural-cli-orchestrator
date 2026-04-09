@@ -11,10 +11,10 @@
 #   3. Gap 분석 (계획 vs 실제 완료율)
 #   4. Gap < 95% → exit 2 (자동 재수정, stderr로 에러 주입)
 #   5. Gap >= 95% → exit 0 + 다음 작업 액션 메뉴
-#      /next        — 다음 순차 작업
-#      /next-parallel — 독립 태스크 병렬 실행
+#      /nco-next       — 다음 순차 작업
+#      /nco-next-parallel — 독립 태스크 병렬 실행
 #      /nco-task    — NCO 추천 작업 위임
-#      /gap         — 수동 gap 재분석
+#      /nco-gap        — 수동 gap 재분석
 #
 # exit 0 = Claude 정상 종료
 # exit 2 = Claude 재실행 (stderr → 프롬프트 주입)
@@ -23,12 +23,39 @@
 PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/home/nova/projects/neural-cli-orchestrator}"
 cd "$PROJECT_DIR" 2>/dev/null || exit 0
 
+# ═══ Resolve NCO_SESSION_ID: env var > process tree walk ═══
+if [ -z "$NCO_SESSION_ID" ]; then
+  _CK=$$
+  for _i in 1 2 3 4 5; do
+    _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
+    [ -z "$_CK" ] && break
+    _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
+    if echo "$_CM" | grep -qE '^(claude|node)$'; then
+      NCO_SESSION_ID="$_CK"
+      break
+    fi
+  done
+  NCO_SESSION_ID="${NCO_SESSION_ID:-${PPID:-$$}}"
+fi
+
+# ═══ Resolve NCO_NAME: env var > PID-file reservation ═══
+if [ -z "$NCO_NAME" ]; then
+  for _pf in /tmp/nco-names/claude-*.pid; do
+    [ -f "$_pf" ] || continue
+    _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
+    if [ "$_rp" = "$NCO_SESSION_ID" ]; then
+      NCO_NAME=$(basename "$_pf" .pid)
+      break
+    fi
+  done
+fi
+MY_NAME="${NCO_NAME:-cli}"
+
 # ═══ 유틸 ═══
 to_int() { local v; v=$(echo "${1:-0}" | tr -dc '0-9'); echo "${v:-0}"; }
 
 # ═══ 상태 파일 경로 ═══
 NCO_SESSION_DIR="/tmp/nco-sessions"
-NCO_SESSION_ID="${PPID:-$$}"
 NCO_STATE="$NCO_SESSION_DIR/$NCO_SESSION_ID.json"
 NCO_HISTORY="$NCO_SESSION_DIR/$NCO_SESSION_ID-history.log"
 mkdir -p "$NCO_SESSION_DIR" 2>/dev/null
@@ -235,7 +262,7 @@ THRESHOLD=95
 # ── 공통 헤더 ──
 HEADER=$(cat <<HDREOF
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[NCO] ${SESSION_TITLE}
+[NCO:${MY_NAME}] ${SESSION_TITLE}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 턴 #${TURN_COUNT} | Gap ${GAP_RATE}% | ${GRADE_ICON} ${GRADE} — ${GRADE_DESC}
 HDREOF
@@ -297,15 +324,63 @@ PASSEOF
         echo "  NCO 추천: ${NCO_RECOMMEND}" >&2
     fi
 
+    # ─── Check for mesh messages (all types) ───
+    MESH_MSGS=""
+    MESH_HB_RESULT=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+      -H "Content-Type: application/json" \
+      -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"idle\"}" 2>/dev/null)
+
+    if [ -n "$MESH_HB_RESULT" ]; then
+        MESH_MSGS=$(echo "$MESH_HB_RESULT" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+msgs=d.get('messages',[])
+if msgs:
+    for m in msgs:
+        t=m.get('type','info').upper()
+        f=m.get('fromAgent','?')
+        c=m.get('content','')
+        print(f'  [{t}] {f}: {c}')
+" 2>/dev/null)
+    fi
+
     cat >&2 <<MENUEOF
 
 [액션]
-  /next           — 다음 순차 작업
-  /next-parallel  — 독립 태스크 병렬 실행
+  /nco-next          — 다음 순차 작업
+  /nco-next-parallel  — 독립 태스크 병렬 실행
   /nco-task <설명> — NCO에 작업 위임
-  /gap            — gap 재분석
+  /nco-mesh          — CLI Mesh 상태
+  /nco-gap           — gap 재분석
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MENUEOF
+
+    # Auto-reply to mesh messages (with loop prevention: max 5 consecutive)
+    if [ -n "$MESH_MSGS" ]; then
+        MESH_COUNTER_FILE="/tmp/nco-mesh-auto-${NCO_SESSION_ID}.count"
+        MESH_COUNT=$(cat "$MESH_COUNTER_FILE" 2>/dev/null || echo "0")
+        MESH_COUNT=$((MESH_COUNT + 1))
+
+        if [ "$MESH_COUNT" -le 5 ]; then
+            echo "$MESH_COUNT" > "$MESH_COUNTER_FILE"
+            echo "" >&2
+            echo "[MESH 메시지 수신 — 자동 응답 ${MESH_COUNT}/5]" >&2
+            echo "$MESH_MSGS" >&2
+            echo "" >&2
+            echo "위 메시지에 /nco-mesh send 로 답장하세요. 대화가 끝나면 '대화 종료'라고 말하세요." >&2
+            exit 2  # Force Claude to auto-respond
+        else
+            echo "" >&2
+            echo "[MESH 메시지 수신 — 자동 응답 한도 초과 (5/5)]" >&2
+            echo "$MESH_MSGS" >&2
+            echo "" >&2
+            echo "수동으로 /nco-mesh send 로 응답하거나, 한도 리셋: rm $MESH_COUNTER_FILE" >&2
+            rm -f "$MESH_COUNTER_FILE"
+        fi
+    else
+        # No messages — reset counter (conversation paused)
+        rm -f "/tmp/nco-mesh-auto-${NCO_SESSION_ID}.count" 2>/dev/null
+    fi
 
     exit 0
 
@@ -342,6 +417,32 @@ FAILEOF
 
     echo "" >&2
     echo "위 항목을 수정하여 gap ${THRESHOLD}% 이상을 달성하세요." >&2
+
+    # ─── Check for mesh messages even in fail path ───
+    MESH_HB_FAIL=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+      -H "Content-Type: application/json" \
+      -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"coding\"}" 2>/dev/null)
+
+    if [ -n "$MESH_HB_FAIL" ]; then
+        MESH_MSGS_FAIL=$(echo "$MESH_HB_FAIL" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+msgs=d.get('messages',[])
+if msgs:
+    for m in msgs:
+        t=m.get('type','info').upper()
+        f=m.get('fromAgent','?')
+        c=m.get('content','')
+        print(f'  [{t}] {f}: {c}')
+" 2>/dev/null)
+
+        if [ -n "$MESH_MSGS_FAIL" ]; then
+            echo "" >&2
+            echo "[MESH 메시지 수신]" >&2
+            echo "$MESH_MSGS_FAIL" >&2
+        fi
+    fi
+
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
 
     exit 2

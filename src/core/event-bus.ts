@@ -3,18 +3,10 @@ import { getRedis, getSubscriber, isRedisConnected } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { createEventId } from '../utils/id.js';
+import { NCOEvent, EventHandler } from './types.js';
+export type { NCOEvent, EventHandler };
 
 const log = createLogger('event-bus');
-
-// ─── Event Types ──────────────────────────────────────
-export interface NCOEvent {
-  id: string;
-  type: string;
-  timestamp: number;
-  [key: string]: unknown;
-}
-
-export type EventHandler = (event: NCOEvent) => void | Promise<void>;
 
 const CHANNEL = 'nco:events';
 const STREAM = 'nco:event-stream';
@@ -32,7 +24,7 @@ const PERSIST_TYPES = new Set([
   'system:error', 'system:rate_limit',
 ]);
 
-class EventBus {
+export class EventBus {
   private local = new EventEmitter();
   private ready = false;
   private sequence = 0;

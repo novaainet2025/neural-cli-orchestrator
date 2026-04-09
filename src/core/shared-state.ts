@@ -26,7 +26,7 @@ const AGENT_TTL = 300; // 5 min
 const ARTIFACTS_KEY = 'nco:artifacts:recent';
 const LOCK_PREFIX = 'nco:lock:file:';
 
-class SharedState {
+export class SharedState {
   // ─── Agent State ──────────────────────────────────
   async getAgentState(agentId: string): Promise<AgentState | null> {
     if (!isRedisConnected()) return null;

@@ -29,6 +29,7 @@ export class OrchestratedLoop {
   constructor(
     private provider: ProviderConfig,
     private sandbox: SandboxManager,
+    private abortSignal?: AbortSignal,
   ) {
     this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
   }
@@ -79,6 +80,12 @@ export class OrchestratedLoop {
 
     while (iterations < MAX_ITERATIONS) {
       iterations++;
+
+      // Check abort signal
+      if (this.abortSignal?.aborted) {
+        log.info({ agentId, iterations }, 'Loop aborted by signal');
+        break;
+      }
 
       if (!this.sandbox.canExecute()) {
         log.warn({ agentId, iterations }, 'Agent isolated by Circuit Breaker');

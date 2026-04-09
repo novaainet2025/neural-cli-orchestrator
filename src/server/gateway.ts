@@ -313,6 +313,261 @@ export async function createGateway() {
     return { messages: db.prepare('SELECT * FROM agent_messages ORDER BY created_at DESC LIMIT ?').all(limit) };
   });
 
+  // ═══ CLI Mesh — Inter-agent awareness ══════════════
+  app.post('/api/mesh/heartbeat', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const body = req.body as any;
+    if (!body.sessionId || !body.agentId) return { error: 'sessionId and agentId required' };
+    const result = await cliMesh.heartbeat(body);
+    return result;
+  });
+
+  app.get('/api/mesh/sessions', async () => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const sessions = await cliMesh.getActiveSessions();
+    return { sessions, count: sessions.length };
+  });
+
+  app.get('/api/mesh/summary', async () => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const summary = await cliMesh.getWorkSummary();
+    return { summary };
+  });
+
+  app.post('/api/mesh/send', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { fromSessionId, fromAgent, toSessionId, content, type } = req.body as any;
+    if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
+    const delivered = await cliMesh.sendMessage(
+      fromSessionId, fromAgent || 'unknown', toSessionId || '*', content, type || 'info',
+    );
+    return { delivered };
+  });
+
+  app.get('/api/mesh/messages/:sessionId', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { sessionId } = req.params as any;
+    return { messages: cliMesh.getMessageHistory(sessionId) };
+  });
+
+  app.post('/api/mesh/disconnect', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { sessionId } = req.body as any;
+    if (!sessionId) return { error: 'sessionId required' };
+    await cliMesh.disconnect(sessionId);
+    return { disconnected: true };
+  });
+
+  // ═══ Commander 4-Layer ═════════════════════════════
+  app.post('/api/commander', async (req) => {
+    const { commander } = await import('../core/commander.js');
+    const { prompt } = req.body as any;
+    if (!prompt) return { error: 'prompt is required' };
+    const result = await commander.executeCommand(prompt);
+    return result;
+  });
+
+  app.get('/api/commander/layers', async () => {
+    const { commander } = await import('../core/commander.js');
+    return { layers: commander.getLayers() };
+  });
+
+  // ═══ Observability + Learn ════════════════════════
+  app.get('/api/observability/leaderboard', async () => {
+    const { observability } = await import('../core/observability.js');
+    return { leaderboard: observability.getLeaderboard() };
+  });
+
+  app.get('/api/observability/agent/:id', async (req) => {
+    const { observability } = await import('../core/observability.js');
+    const { id } = req.params as any;
+    return observability.getAgentHistory(id);
+  });
+
+  app.get('/api/observability/metrics', async () => {
+    const { observability } = await import('../core/observability.js');
+    return observability.getMetrics();
+  });
+
+  app.post('/api/learn/save', async (req) => {
+    const { knowledgeBase } = await import('../core/knowledge-base.js');
+    const body = req.body as any;
+    if (!body.projectPath || !body.category || !body.content) {
+      return { error: 'projectPath, category, and content are required' };
+    }
+    const id = knowledgeBase.save(body);
+    return { id };
+  });
+
+  app.get('/api/learn/query', async (req) => {
+    const { knowledgeBase } = await import('../core/knowledge-base.js');
+    const { keywords, project } = req.query as any;
+    if (!keywords) return { error: 'keywords parameter required' };
+    return { results: knowledgeBase.query(keywords, project) };
+  });
+
+  app.get('/api/learn/context', async (req) => {
+    const { knowledgeBase } = await import('../core/knowledge-base.js');
+    const { project } = req.query as any;
+    if (!project) return { error: 'project parameter required' };
+    return { context: knowledgeBase.getContext(project) };
+  });
+
+  // ═══ Plan + Kanban ════════════════════════════════
+  app.post('/api/plan/create', async (req) => {
+    const { planManager } = await import('../core/plan-manager.js');
+    const { title, tasks, sourceDiscussionId } = req.body as any;
+    if (!title) return { error: 'title is required' };
+    const plan = await planManager.createPlan(title, tasks, sourceDiscussionId);
+    return plan;
+  });
+
+  app.get('/api/plan/:id', async (req) => {
+    const { planManager } = await import('../core/plan-manager.js');
+    const { id } = req.params as any;
+    const plan = planManager.getPlan(id);
+    if (!plan) return { error: 'Plan not found' };
+    return plan;
+  });
+
+  app.post('/api/plan/:id/sync', async (req) => {
+    const { planManager } = await import('../core/plan-manager.js');
+    const { id } = req.params as any;
+    const synced = await planManager.syncFromMarkdown(id);
+    await planManager.syncToMarkdown(id);
+    return { synced };
+  });
+
+  app.get('/api/kanban', async (req) => {
+    const { kanbanEngine } = await import('../core/kanban-engine.js');
+    const { planId } = req.query as any;
+    return kanbanEngine.getBoard(planId);
+  });
+
+  app.post('/api/kanban/move', async (req) => {
+    const { kanbanEngine } = await import('../core/kanban-engine.js');
+    const { taskId, to } = req.body as any;
+    if (!taskId || !to) return { error: 'taskId and to are required' };
+    const moved = kanbanEngine.moveTask(taskId, to);
+    return { moved };
+  });
+
+  app.post('/api/plan/execute', async (req) => {
+    const { kanbanEngine } = await import('../core/kanban-engine.js');
+    const { planId, strategy } = req.body as any;
+    if (!planId) return { error: 'planId is required' };
+    const result = await kanbanEngine.executePlan(planId, strategy || 'auto');
+    return result;
+  });
+
+  // ═══ Conductor (Smart Router Auto-Dispatch) ════════
+  app.post('/api/conductor', async (req) => {
+    const { smartRouter } = await import('../core/smart-router.js');
+    const { prompt } = req.body as any;
+    if (!prompt) return { error: 'prompt is required' };
+
+    const decision = await smartRouter.dispatch(prompt);
+
+    // Delegate to the appropriate mode endpoint handler
+    const db = getDb();
+    const taskId = (await import('../utils/id.js')).createTaskId();
+
+    // Record task
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, priority)
+      VALUES (?, ?, ?, ?, 'assigned', 5)
+    `).run(taskId, decision.mode, prompt, decision.providers[0] || null);
+
+    // Execute via discussion engine for multi-agent modes, or agent manager for single
+    if (decision.mode === 'task' && decision.providers.length === 1) {
+      const { agentManager } = await import('../agent/agent-manager.js');
+      agentManager.executeTask(decision.providers[0], prompt, { taskId }).catch(() => {});
+    } else {
+      const { discussionEngine } = await import('../core/discussion-engine.js');
+      discussionEngine.startDiscussion({
+        topic: prompt,
+        mode: decision.mode as any,
+        providers: decision.providers,
+        maxRounds: decision.mode === 'consensus' ? 5 : 3,
+      }).catch(() => {});
+    }
+
+    return {
+      taskId,
+      mode: decision.mode,
+      providers: decision.providers,
+      complexity: decision.complexity,
+      reasoning: decision.reasoning,
+      status: 'dispatched',
+    };
+  });
+
+  // ═══ Agent Sessions ════════════════════════════════
+  app.post('/api/agent/start', async (req) => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const { prompt, provider, systemPrompt, autoApprove } = req.body as any;
+    if (!prompt) return { error: 'prompt is required' };
+    const agentId = provider || 'codex';
+    const sessionId = await sessionManager.startSession(prompt, agentId, { systemPrompt, autoApprove });
+    return { sessionId, status: 'running', agentId };
+  });
+
+  app.get('/api/agent/sessions', async () => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const active = sessionManager.listSessions();
+    const history = sessionManager.getSessionsFromDb(20);
+    return { sessions: [...active, ...history.filter(h => !active.find(a => a.id === h.id))] };
+  });
+
+  app.get('/api/agent/:sessionId/status', async (req) => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const { sessionId } = req.params as any;
+    const session = sessionManager.getSession(sessionId);
+    if (!session) return { error: 'Session not found' };
+    return {
+      id: session.id, agentId: session.agentId, status: session.status,
+      iterations: session.iterations, toolCalls: session.toolCalls,
+      createdAt: session.createdAt, completedAt: session.completedAt,
+      error: session.error,
+    };
+  });
+
+  app.post('/api/agent/:sessionId/abort', async (req) => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const { sessionId } = req.params as any;
+    const aborted = await sessionManager.abortSession(sessionId);
+    return { aborted };
+  });
+
+  app.post('/api/agent/:sessionId/approve', async (req) => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const { sessionId } = req.params as any;
+    const approved = sessionManager.approveAction(sessionId);
+    return { approved };
+  });
+
+  app.post('/api/agent/:sessionId/reject', async (req) => {
+    const { sessionManager } = await import('../agent/session-manager.js');
+    const { sessionId } = req.params as any;
+    const { reason } = req.body as any;
+    const rejected = sessionManager.rejectAction(sessionId, reason);
+    return { rejected };
+  });
+
+  // ═══ Safety — FileChangeGuard + VerificationGate ═══
+  app.get('/api/safety/backups', async (req) => {
+    const { fileChangeGuard } = await import('../security/file-change-guard.js');
+    const query = req.query as any;
+    const limit = Math.min(Number(query.limit || 20), 100);
+    return { backups: fileChangeGuard.listBackups(limit) };
+  });
+
+  app.get('/api/safety/verifications/:taskId', async (req) => {
+    const { verificationGate } = await import('../security/verification-gate.js');
+    const { taskId } = req.params as any;
+    return { results: verificationGate.getResults(taskId) };
+  });
+
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);
 

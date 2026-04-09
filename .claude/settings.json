@@ -1,11 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash .claude/hooks/nco-statusline.sh",
-    "_parent": "config/nco-global.json",
-    "_inheritedFrom": "NCO",
-    "_providers": 9,
-    "_version": "2.0"
+    "command": "bash /home/nova/projects/neural-cli-orchestrator/.claude/hooks/nco-statusline.sh"
   },
   "hooks": {
     "UserPromptSubmit": [

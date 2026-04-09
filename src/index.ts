@@ -6,6 +6,7 @@ import { eventBus } from './core/event-bus.js';
 import { sharedState } from './core/shared-state.js';
 import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
+import { sessionManager } from './agent/session-manager.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
@@ -82,6 +83,7 @@ async function boot(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   log.info({ signal }, 'Shutting down...');
   wsBridge.stop();
+  sessionManager.destroy();
   agentManager.destroy();
   syncEngine.stop();
   eventBus.destroy();

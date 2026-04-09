@@ -236,17 +236,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return { workspaces: rows.map(r => r.workspace_id) };
   });
 
-  // ═══ Agent API ══════════════════════════════════════
-  app.post('/api/agent/start', async (req, reply) => {
-    const body = req.body as any;
-    const sessionId = createSessionId();
-    reply.code(202);
-    return { sessionId, status: 'thinking' };
-  });
-
-  app.get('/api/agent/sessions', async () => {
-    return { sessions: [] };
-  });
+  // ═══ Agent API — moved to gateway.ts ════════════════
 
   // ═══ Workspace ══════════════════════════════════════
   app.get('/api/workspace', async () => {
@@ -264,7 +254,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
   // ═══ Learning ═══════════════════════════════════════
   app.get('/api/learning', async () => {
-    return { data: [] };
+    try {
+      const { knowledgeBase } = await import('../../core/knowledge-base.js');
+      const entries = knowledgeBase.getContext(process.cwd(), 20);
+      return { data: entries };
+    } catch {
+      return { data: [] };
+    }
   });
 
   app.get('/api/history', async () => {

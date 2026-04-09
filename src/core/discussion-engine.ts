@@ -8,7 +8,7 @@ import { createLogger } from '../utils/logger.js';
 const log = createLogger('discussion-engine');
 
 // ─── Types ────────────────────────────────────────────
-export type DiscussionMode = 'task' | 'parallel' | 'discussion' | 'realtime' | 'consensus' | 'hive' | 'broadcast';
+export type DiscussionMode = 'task' | 'parallel' | 'discussion' | 'realtime' | 'consensus' | 'hive' | 'broadcast' | 'commander';
 
 export interface DiscussionOptions {
   topic: string;
@@ -171,6 +171,18 @@ class DiscussionEngine {
         });
         break;
       }
+    }
+
+    // ─── Hive/Commander 합성 단계: Commander가 전체 결과를 통합 ───
+    if (options.mode === 'hive' || options.mode === 'commander') {
+      try {
+        const allProposals = this.formatProposals(rounds[0]?.responses || {});
+        const synthPrompt = `You are the Commander. Synthesize these ${participants.length} AI responses into one final consolidated answer:\n\n${allProposals}\n\nProvide the single best answer.`;
+        const synthResponse = await agentManager.executeTask('claude-code', synthPrompt, {});
+        if (synthResponse.success && synthResponse.output) {
+          rounds.push({ round: rounds.length + 1, responses: { 'commander-synthesis': synthResponse.output }, consensusRate: 1 });
+        }
+      } catch { /* Commander synthesis optional */ }
     }
 
     // ─── 최종 보고서 생성 ─────────────────────────

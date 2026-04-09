@@ -300,7 +300,7 @@
       "type": "api",
       "role": "Validator",
       "score": 75,
-      "model": "gemma-4-26B-A4B-it-NVFP4",
+      "model": "/mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4",
       "command": null,
       "args": [],
       "endpoint": "http://localhost:8000/v1",

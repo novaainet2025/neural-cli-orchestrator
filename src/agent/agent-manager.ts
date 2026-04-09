@@ -1,6 +1,7 @@
 import { OrchestratedLoop } from './orchestrated-loop.js';
 import { ApiExecutor } from './api-executor.js';
 import { createSandbox, type SandboxManager } from '../security/sandbox-manager.js';
+import { verificationGate } from '../security/verification-gate.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
@@ -116,11 +117,38 @@ class AgentManager {
 
       const durationMs = Date.now() - startTime;
 
+      // Triple Verification Gate — run L1/L2/L3 checks
+      try {
+        const { stdout: diffOutput } = await (await import('execa')).execa(
+          'git', ['diff', '--name-only'], { cwd: env.PROJECT_DIR, reject: false }
+        );
+        const changedFiles = diffOutput.split('\n').filter(Boolean);
+
+        if (changedFiles.length > 0) {
+          const vResult = await verificationGate.verify(taskId, changedFiles);
+          if (!vResult.passed) {
+            log.warn({ taskId, agentId, results: vResult.results }, 'Verification gate failed');
+            await eventBus.publish({
+              type: 'task:verification_failed', taskId, agentId,
+              results: vResult.results, durationMs,
+            });
+          }
+        }
+      } catch (verifyErr: any) {
+        log.debug({ err: verifyErr.message }, 'Verification gate skipped');
+      }
+
       await eventBus.publish({
         type: 'task:completed', taskId, agentId,
         output: output.slice(0, 1000),
         iterations, toolCalls, durationMs,
       });
+
+      // Auto-extract knowledge from task result
+      try {
+        const { knowledgeBase } = await import('../core/knowledge-base.js');
+        knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
+      } catch { /* non-critical */ }
 
       return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs };
 
