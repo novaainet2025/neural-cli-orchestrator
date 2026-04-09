@@ -31,22 +31,29 @@ mkdir -p "$NCO_SESSION_DIR" 2>/dev/null
 # STEP 1: 작업 결과 수집
 # ═══════════════════════════════════════════════════════════
 
-CHANGED_COUNT=$(git diff --name-only 2>/dev/null | wc -l || echo "0")
-STAGED_COUNT=$(git diff --cached --name-only 2>/dev/null | wc -l || echo "0")
+CHANGED_COUNT=$(git diff --name-only 2>/dev/null | wc -l | tr -d '[:space:]')
+STAGED_COUNT=$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d '[:space:]')
+CHANGED_COUNT=${CHANGED_COUNT:-0}
+STAGED_COUNT=${STAGED_COUNT:-0}
 TOTAL_CHANGED=$((CHANGED_COUNT + STAGED_COUNT))
 
 # TypeScript 에러 카운트 (빠른 체크)
 TSC_ERRORS=0
 if command -v npx &>/dev/null && [ -f "tsconfig.json" ]; then
-    TSC_ERRORS=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || echo "0")
+    TSC_ERRORS=$(npx tsc --noEmit 2>&1 | grep -c "error TS" | tr -d '[:space:]' || true)
+    TSC_ERRORS=${TSC_ERRORS:-0}
 fi
 
 # ESLint 에러 (변경 파일만)
 LINT_ERRORS=0
-if command -v npx &>/dev/null && [ -f ".eslintrc*" ] || [ -f "eslint.config*" ]; then
-    CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -20)
-    if [ -n "$CHANGED_FILES" ]; then
-        LINT_ERRORS=$(echo "$CHANGED_FILES" | xargs npx eslint --no-warn 2>/dev/null | grep -c "error" || echo "0")
+CHANGED_FILES=""
+if command -v npx &>/dev/null; then
+    if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
+        CHANGED_FILES=$(git diff --name-only --diff-filter=ACMR 2>/dev/null | grep -E '\.(ts|tsx|js|jsx)$' | head -20)
+        if [ -n "$CHANGED_FILES" ]; then
+            LINT_ERRORS=$(echo "$CHANGED_FILES" | xargs npx eslint --no-warn 2>/dev/null | grep -c "error" | tr -d '[:space:]' || true)
+            LINT_ERRORS=${LINT_ERRORS:-0}
+        fi
     fi
 fi
 
@@ -86,6 +93,16 @@ done
 # STEP 3: Gap 분석
 # ═══════════════════════════════════════════════════════════
 
+# 모든 숫자 변수를 정수로 강제 변환 (개행/공백 제거)
+to_int() { echo "${1:-0}" | tr -dc '0-9'; }
+TOTAL_CHANGED=$(to_int "$TOTAL_CHANGED")
+TSC_ERRORS=$(to_int "$TSC_ERRORS")
+LINT_ERRORS=$(to_int "$LINT_ERRORS")
+TOTAL_TASKS=$(to_int "$TOTAL_TASKS")
+DONE_TASKS=$(to_int "$DONE_TASKS")
+# 빈 문자열 방지
+: "${TOTAL_CHANGED:=0}" "${TSC_ERRORS:=0}" "${LINT_ERRORS:=0}" "${TOTAL_TASKS:=0}" "${DONE_TASKS:=0}"
+
 if [ "$TOTAL_TASKS" -gt 0 ]; then
     GAP_RATE=$(( (DONE_TASKS * 100) / TOTAL_TASKS ))
 else
@@ -93,7 +110,7 @@ else
     if [ "$TOTAL_CHANGED" -gt 0 ] && [ "$TSC_ERRORS" -eq 0 ] && [ "$LINT_ERRORS" -eq 0 ]; then
         GAP_RATE=100  # 변경 있고 에러 없으면 완료로 간주
     elif [ "$TOTAL_CHANGED" -eq 0 ]; then
-        GAP_RATE=0    # 변경 없으면 작업 안 한 것
+        GAP_RATE=100  # 태스크도 없고 변경도 없으면 → 할 일 없음 = 통과
     else
         GAP_RATE=70   # 변경 있지만 에러 있으면 70%
     fi

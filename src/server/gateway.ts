@@ -24,7 +24,7 @@ export async function createGateway() {
     const agents = await sharedState.getAllAgentStates();
     const redisOk = await redisHealthCheck();
     return {
-      status: 'ok',
+      status: 'healthy',
       service: 'nco-backend',
       version: '1.0.0',
       ports: { api: env.PORT, ws: env.WS_PORT },
@@ -52,11 +52,23 @@ export async function createGateway() {
 
   // ═══ AI Providers ═════════════════════════════════
   app.get('/api/ai-providers', async () => {
-    return { providers: agentManager.listProviders() };
+    const states = await sharedState.getAllAgentStates();
+    const providers = agentManager.listProviders().map(p => ({
+      ...p,
+      status: states[p.id]?.status || 'offline',
+      ai_status: states[p.id]?.status || 'offline',
+      health: states[p.id]?.health || { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
+    }));
+    return { providers };
   });
 
   app.get('/api/ai-providers/enabled', async () => {
-    return { providers: agentManager.listProviders().filter(p => p.enabled) };
+    const states = await sharedState.getAllAgentStates();
+    const providers = agentManager.listProviders().filter(p => p.enabled).map(p => ({
+      ...p,
+      status: states[p.id]?.status || 'offline',
+    }));
+    return { providers };
   });
 
   app.get('/api/ai-providers/status', async () => {
@@ -67,15 +79,24 @@ export async function createGateway() {
   // ═══ Daemons ══════════════════════════════════════
   app.get('/api/daemons', async () => {
     const states = await sharedState.getAllAgentStates();
-    const daemons = agentManager.listProviders().map(p => ({
-      name: p.id,
-      status: states[p.id]?.status || 'offline',
-      running: states[p.id]?.status !== 'offline',
-      available: states[p.id]?.health?.circuitState === 'closed',
-      role: p.role,
-      score: p.score,
-      currentTask: states[p.id]?.currentTask || null,
-    }));
+    const daemons = agentManager.listProviders().map(p => {
+      const s = states[p.id];
+      const status = s?.status || 'offline';
+      return {
+        id: p.id,
+        name: p.id,
+        status,
+        running: status !== 'offline',
+        available: s?.health?.circuitState !== 'open',
+        ai_status: status,
+        role: p.role,
+        score: p.score,
+        enabled: p.enabled,
+        currentTask: s?.currentTask || null,
+        tasks: { active: s?.currentTask ? 1 : 0 },
+        health: s?.health || { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
+      };
+    });
     return { daemons };
   });
 
