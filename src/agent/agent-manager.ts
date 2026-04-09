@@ -127,6 +127,13 @@ class AgentManager {
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
 
+      // 상태 복구 — 실패/타임아웃 시 idle로 복원
+      await sharedState.setAgentState(agentId, {
+        status: 'idle',
+        currentTask: null,
+        currentFiles: [],
+      });
+
       await eventBus.publish({
         type: 'task:failed', taskId, agentId,
         error: err.message, durationMs,

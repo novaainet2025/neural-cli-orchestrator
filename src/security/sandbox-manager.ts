@@ -95,17 +95,20 @@ export function createSandbox(
 ): SandboxManager {
   const isCommander = role === 'Commander';
 
+  const ncoRoot = '/home/nova/projects/neural-cli-orchestrator';
   return new SandboxManager({
     agentId,
     paths: {
       allowedPaths: [
         projectDir,
+        ncoRoot,
         '/tmp',
         ...(isCommander ? ['/home'] : []),
       ],
       deniedPaths: [
         '/etc', '/var', '/usr',
         `${projectDir}/node_modules`,
+        `${ncoRoot}/node_modules`,
       ],
     },
     commands: {
