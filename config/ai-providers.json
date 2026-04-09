@@ -321,6 +321,15 @@
         "tone": "secure",
         "style": "local"
       },
+      "modelSpec": {
+        "name": "Gemma 4",
+        "developer": "Google DeepMind",
+        "parameters": "26B (Active 4B, MoE)",
+        "quantization": "NVFP4 (modelopt)",
+        "gpu": "RTX 4090 24GB",
+        "vram": "~16GB model + ~8GB KV cache",
+        "maxModelLen": 8192
+      },
       "note": "Gemma 4 26B NVFP4. Start: source ~/vllm-env/bin/activate && VLLM_NVFP4_GEMM_BACKEND=marlin vllm serve /mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4 --quantization modelopt --dtype auto --kv-cache-dtype fp8 --gpu-memory-utilization 0.85 --max-model-len 8192 --max-num-seqs 4 --trust-remote-code --port 8000",
       "healthCheck": {
         "type": "api",
