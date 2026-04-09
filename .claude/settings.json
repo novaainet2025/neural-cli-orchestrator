@@ -26,8 +26,8 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/end-of-turn-check.sh",
-            "timeout": 10,
-            "statusMessage": "Saving NCO session state..."
+            "timeout": 30,
+            "statusMessage": "Gap analysis + verification..."
           }
         ]
       }

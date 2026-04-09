@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "nco": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp/server.ts"],
+      "env": {
+        "NCO_API_URL": "http://localhost:6200",
+        "NCO_WS_URL": "ws://localhost:6201"
+      }
+    }
+  }
+}

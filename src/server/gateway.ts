@@ -10,6 +10,7 @@ import { sharedState } from '../core/shared-state.js';
 import { eventBus } from '../core/event-bus.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
+import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 
 const log = createLogger('gateway');
 
@@ -290,6 +291,9 @@ export async function createGateway() {
     const db = getDb();
     return { messages: db.prepare('SELECT * FROM agent_messages ORDER BY created_at DESC LIMIT ?').all(limit) };
   });
+
+  // ═══ Dashboard Compatibility Routes ═══════════════
+  await registerDashboardRoutes(app);
 
   return app;
 }
