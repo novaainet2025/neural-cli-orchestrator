@@ -7,7 +7,7 @@
     "vllm": 8000
   },
   "paths": {
-    "backend": "/opt/neural-cli-orchestrator",
+    "backend": "/mnt/d/neural-cli-orchestrator",
     "dashboard": "/mnt/d/NCO-Dashboard",
     "database": "./db/nco.db",
     "stateFile": "./db/worker-state.json",

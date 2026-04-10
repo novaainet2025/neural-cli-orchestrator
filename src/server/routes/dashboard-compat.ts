@@ -169,12 +169,16 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const countMap: Record<string, number> = {};
     for (const r of taskCounts) countMap[r.assigned_to] = r.c;
 
-    const daemons = agentManager.listProviders().map(p => ({
-      name: p.id, status: states[p.id]?.status || 'offline',
-      running: states[p.id]?.status !== 'offline', role: p.role,
-      tasks: countMap[p.id] || 0,
-    }));
-    return { workspaceId, daemons };
+    const daemons = agentManager.listProviders().map(p => {
+      const status = states[p.id]?.status || 'offline';
+      return {
+        id: p.id, name: p.id, status,
+        ai_status: status,
+        running: status !== 'offline', role: p.role,
+        tasks: { active: countMap[p.id] || 0 },
+      };
+    });
+    return { success: true, data: { workspaceId, daemons } };
   });
 
   app.post('/api/daemons/:name/start', async (req) => {
