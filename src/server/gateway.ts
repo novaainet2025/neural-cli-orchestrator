@@ -82,6 +82,8 @@ export async function createGateway() {
     const daemons = agentManager.listProviders().map(p => {
       const s = states[p.id];
       const status = s?.status || 'offline';
+      // Determine agent category for UI display
+      const agentType: 'cli' | 'api' = (p as any).type || 'cli';
       return {
         id: p.id,
         name: p.id,
@@ -92,6 +94,7 @@ export async function createGateway() {
         role: p.role,
         score: p.score,
         enabled: p.enabled,
+        type: agentType,
         currentTask: s?.currentTask || null,
         tasks: { active: s?.currentTask ? 1 : 0 },
         health: s?.health || { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
@@ -392,6 +395,14 @@ export async function createGateway() {
     const { cliMesh } = await import('../core/cli-mesh.js');
     const { sessionId } = req.params as any;
     return { messages: cliMesh.getMessageHistory(sessionId) };
+  });
+
+  app.post('/api/mesh/complete', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { sessionId, completedWork } = req.body as any;
+    if (!sessionId) return { error: 'sessionId required' };
+    await cliMesh.complete(sessionId, completedWork);
+    return { completed: true };
   });
 
   app.post('/api/mesh/disconnect', async (req) => {

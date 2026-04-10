@@ -63,6 +63,11 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .ag-sub{color:#484f58;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
 .ag-task{color:#1f6feb;font-size:9px;background:#0d1e3d;padding:1px 4px;border-radius:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70px}
 
+/* Agent type badges (CLI / API) */
+.ag-type{font-size:8px;padding:1px 4px;border-radius:2px;font-weight:700;flex-shrink:0;letter-spacing:.5px}
+.ag-type.cli{background:#1a1e30;color:#58a6ff88;border:1px solid #1f6feb33}
+.ag-type.api{background:#1a2010;color:#3fb95088;border:1px solid #23863633}
+
 /* Agent status pills — compact */
 .st{font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700;white-space:nowrap;flex-shrink:0;letter-spacing:.2px}
 .st.idle{background:#161b22;color:#484f58;border:1px solid #21262d}
@@ -123,8 +128,17 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .wm-solo{background:#0d2230;color:#58a6ff;border:1px solid #1f6feb66}
 .wm-mesh{background:#0d2818;color:#3fb950;border:1px solid #23863666;animation:pulse 2.5s ease-in-out infinite}
 .wm-waiting{background:#111820;color:#484f58;border:1px solid #21262d}
+.wm-idle{background:#0d1117;color:#30363d;border:1px solid #21262d}
 .wm-reviewing{background:#1e1040;color:#d2a8ff;border:1px solid #8957e566}
 .wm-blocked{background:#2a0a0a;color:#f85149;border:1px solid #f8514966}
+.wm-done{background:#0a1e10;color:#3fb950;border:1px solid #23863655;opacity:.75}
+
+/* Done / completing state */
+.mesh-node.mode-done{opacity:.65;transition:opacity 1s}
+.mesh-node.mode-done::before{background:#3fb950}
+.mesh-node.mode-done .mn-inner{filter:saturate(.5)}
+.mesh-node.fading-out{opacity:0 !important;transition:opacity 2s ease-out}
+.done-elapsed{color:#23863688;font-size:9px}
 
 .mn-row2{display:flex;align-items:center;gap:5px;margin-top:5px}
 .mn-work{color:#c9d1d9;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;line-height:1.4}
@@ -279,13 +293,16 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
   <!-- LEFT pane: CLI TERMINALS -->
   <div class="pane pane-left" id="pane-left">
     <div class="section" id="sec-mesh" style="flex:1;min-height:0">
-      <div class="ph" style="height:30px">
-        <div class="ph-title">
-          <span style="font-size:11px">⬡</span>
-          <span style="font-size:10px;font-weight:700;letter-spacing:.8px">CLI TERMINALS</span>
-          <span class="ph-cnt" id="meshNodeCount" style="background:#0d1e3d;color:#58a6ff;border:1px solid #1f6feb44">0</span>
+      <div class="ph" style="height:auto;padding:6px 10px;flex-direction:column;align-items:flex-start;gap:2px">
+        <div style="display:flex;width:100%;align-items:center">
+          <div class="ph-title">
+            <span style="font-size:11px">⬡</span>
+            <span style="font-size:10px;font-weight:700;letter-spacing:.8px">CLI TERMINALS</span>
+            <span class="ph-cnt" id="meshNodeCount" style="background:#0d1e3d;color:#58a6ff;border:1px solid #1f6feb44">0</span>
+          </div>
+          <span class="ph-toggle" style="margin-left:auto" onclick="toggleSection('sec-mesh')" title="접기/펼치기">▾</span>
         </div>
-        <span class="ph-toggle" onclick="toggleSection('sec-mesh')" title="접기/펼치기">▾</span>
+        <div style="font-size:9px;color:#1f6feb66;letter-spacing:.3px">사람이 직접 실행한 외부 CLI 세션</div>
       </div>
       <div class="section-body" id="meshNodeList"><div class="mesh-empty">활성 세션 없음<br><span style="font-size:9px">/nco-mesh ping 으로 등록</span></div></div>
     </div>
@@ -311,12 +328,15 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 
     <!-- Agents section (collapsible, top of right pane) -->
     <div class="section" id="sec-agents" style="flex-shrink:0;max-height:45%">
-      <div class="ph" style="height:26px">
-        <div class="ph-title">
-          <span style="color:#484f58;font-size:9px;letter-spacing:1.5px;font-weight:700">SERVER AGENTS</span>
-          <span class="ph-cnt" id="agCnt" style="background:#161b22;color:#484f58">9</span>
+      <div class="ph" style="height:auto;padding:6px 10px;flex-direction:column;align-items:flex-start;gap:2px">
+        <div style="display:flex;width:100%;align-items:center">
+          <div class="ph-title">
+            <span style="color:#484f58;font-size:9px;letter-spacing:1.5px;font-weight:700">BACKEND AGENTS</span>
+            <span class="ph-cnt" id="agCnt" style="background:#161b22;color:#484f58">9</span>
+          </div>
+          <span class="ph-toggle" style="margin-left:auto" onclick="toggleSection('sec-agents')" title="접기/펼치기">▾</span>
         </div>
-        <span class="ph-toggle" onclick="toggleSection('sec-agents')" title="접기/펼치기">▾</span>
+        <div style="font-size:9px;color:#30363d;letter-spacing:.3px">NCO가 관리하는 백엔드 에이전트</div>
       </div>
       <div class="section-body" id="agentList"></div>
     </div>
@@ -591,14 +611,35 @@ const WM_LABEL={
   solo:      '단독작업',
   mesh:      'Mesh 협업',
   waiting:   '대기',
+  idle:      '유휴',
   reviewing: '코드리뷰',
   blocked:   '블로킹',
+  done:      '✓ 완료',
   autonomous:'자율작업',
 };
 const WM_CSS={
-  solo:'wm-solo', mesh:'wm-mesh', waiting:'wm-waiting',
-  reviewing:'wm-reviewing', blocked:'wm-blocked', autonomous:'wm-solo',
+  solo:'wm-solo', mesh:'wm-mesh', waiting:'wm-waiting', idle:'wm-idle',
+  reviewing:'wm-reviewing', blocked:'wm-blocked', done:'wm-done', autonomous:'wm-solo',
 };
+
+// Track done-session fade-out timers
+const doneTimers = {};
+function scheduleDoneFadeOut(sessionId, completedAt){
+  if(doneTimers[sessionId]) return;
+  const elapsed = completedAt ? Date.now()-new Date(completedAt).getTime() : 0;
+  const remaining = Math.max(0, 30000 - elapsed); // 30s display window
+  doneTimers[sessionId] = setTimeout(()=>{
+    const node = document.getElementById('mn-'+sessionId);
+    if(node){ node.classList.add('fading-out'); }
+    setTimeout(()=>{
+      delete meshSessions[sessionId];
+      delete doneTimers[sessionId];
+      renderMeshNodes();
+      updateCounts();
+      if(activeTab==='mesh') renderTab();
+    }, 2000);
+  }, remaining);
+}
 
 // ── Conflict helpers ──────────────────────────────────
 function conflictBadgeHtml(conflicts){
@@ -641,31 +682,46 @@ function renderMeshNodes(flashId){
     list.innerHTML='<div class="mesh-empty">활성 세션 없음<br><span style="font-size:9px">/nco-mesh ping 으로 등록</span></div>';
     return;
   }
-  list.innerHTML=sessions.map(s=>{
+  // Separate active vs done sessions
+  const activeSessions=sessions.filter(s=>resolveWorkMode(s)!=='done');
+  const doneSessions=sessions.filter(s=>resolveWorkMode(s)==='done');
+
+  // Schedule fade-outs for done sessions
+  doneSessions.forEach(s=>scheduleDoneFadeOut(s.sessionId, s.completedAt));
+
+  const renderSession=(s)=>{
     const h=meshHealth(s.lastHeartbeat);
     const wm=resolveWorkMode(s);
+    const isDone=wm==='done';
     const files=(s.currentFiles||[]);
     const fname=files.length?files[0].split('/').pop()+(files.length>1?' +<span style="color:#1f6feb88">'+( files.length-1)+'</span>':''):'';
     const collab=(s.collaborators||[]);
-    const conflicts=(s.activeConflicts||[]);
+    const conflicts=isDone?[]:(s.activeConflicts||[]);
+    const workText=isDone?(s.completedWork||'작업 완료'):s.currentWork;
+
+    // Done state: show elapsed since completion
+    const doneElapsed=isDone&&s.completedAt
+      ?'<span class="done-elapsed">'+timeAgo(s.completedAt)+' 완료 · 곧 제거됨</span>'
+      :'';
+
     return '<div class="mesh-node mode-'+wm+'" id="mn-'+s.sessionId+'">'+
       '<div class="mn-inner">'+
         '<div class="mn-row1">'+
-          hDot(h)+
-          '<span class="mn-agent" style="color:'+agentColor(s.agentId)+'">'+escHtml(s.agentId)+'</span>'+
-          '<span class="wm-badge '+(WM_CSS[wm]||'wm-waiting')+'">'+(WM_LABEL[wm]||wm)+'</span>'+
-          conflictBadgeHtml(conflicts)+
+          (isDone?'<span style="color:#3fb950;font-size:9px">✓</span>':hDot(h))+
+          '<span class="mn-agent" style="color:'+(isDone?'#3fb95088':agentColor(s.agentId))+'">'+escHtml(s.agentId)+'</span>'+
+          '<span class="wm-badge '+(WM_CSS[wm]||'wm-idle')+'">'+(WM_LABEL[wm]||wm)+'</span>'+
+          (isDone?doneElapsed:conflictBadgeHtml(conflicts))+
           '<span class="mn-pid">'+s.pid+'</span>'+
         '</div>'+
-        (s.currentWork
+        (workText
           ?'<div class="mn-row2">'+
-              '<span class="mn-work">'+escHtml(s.currentWork.slice(0,52))+'</span>'+
-              (collab.length?'<span class="mn-collab">⬡'+collab.length+'</span>':'')+
+              '<span class="mn-work" style="'+(isDone?'text-decoration:line-through;opacity:.5':'')+'">'+escHtml(workText.slice(0,52))+'</span>'+
+              (!isDone&&collab.length?'<span class="mn-collab">⬡'+collab.length+'</span>':'')+
             '</div>':
-          (collab.length?'<div class="mn-row2"><span class="mn-collab">⬡ '+escHtml(collab.slice(0,2).join(', '))+(collab.length>2?' +더보기':'')+'</span></div>':'')
+          (!isDone&&collab.length?'<div class="mn-row2"><span class="mn-collab">⬡ '+escHtml(collab.slice(0,2).join(', '))+(collab.length>2?' +더보기':'')+'</span></div>':'')
         )+
-        conflictRowsHtml(conflicts)+
-        (fname?'<div class="mn-file"><span style="color:#21262d">▸</span> <span class="mn-file-name">'+fname+'</span></div>':'')+
+        (!isDone?conflictRowsHtml(conflicts):'')+
+        (!isDone&&fname?'<div class="mn-file"><span style="color:#21262d">▸</span> <span class="mn-file-name">'+fname+'</span></div>':'')+
         '<div class="mn-meta">'+
           '<span class="mn-meta-branch">⎇ '+escHtml(s.branch||'main')+'</span>'+
           (s.taskId?'<span class="mn-meta-task">'+s.taskId.slice(0,10)+'</span>':'')+
@@ -673,7 +729,13 @@ function renderMeshNodes(flashId){
         '</div>'+
       '</div>'+
     '</div>';
-  }).join('');
+  };
+
+  list.innerHTML=activeSessions.map(renderSession).join('')+
+    (doneSessions.length
+      ?'<div style="margin:6px 6px 2px;font-size:9px;color:#23863655;letter-spacing:1px;text-transform:uppercase">최근 완료</div>'+
+        doneSessions.map(renderSession).join('')
+      :'');
   if(flashId){
     const node=document.getElementById('mn-'+flashId);
     if(node){node.classList.add('new-flash');setTimeout(()=>node.classList.remove('new-flash'),800);}
@@ -692,12 +754,14 @@ function renderAgents(){
   list.innerHTML=sorted.map(a=>{
     const st=a.status||'offline';
     const shortEvent=a.lastEvent?(a.lastEvent.replace('action:','').replace('task:','').replace('agent:','').replace('discussion:','').replace('system:','')):'';
+    const agType=a.type||'cli'; // 'cli' = NCO-loop driven, 'api' = API call only
     return '<div class="ag" id="ag-'+a.id+'">'+
       '<div class="ag-left">'+
         '<span class="ag-icon" style="background:'+dotColor(st)+'"></span>'+
         '<span class="ag-name" style="color:'+agentColor(a.id)+'">'+a.id+'</span>'+
-        (shortEvent?'<span class="ag-sub">'+escHtml(shortEvent.slice(0,18))+'</span>':'')+
-        (a.currentTask?'<span class="ag-task">'+escHtml(a.currentTask.slice(0,14))+'</span>':'')+
+        '<span class="ag-type '+agType+'">'+agType.toUpperCase()+'</span>'+
+        (shortEvent?'<span class="ag-sub">'+escHtml(shortEvent.slice(0,16))+'</span>':'')+
+        (a.currentTask?'<span class="ag-task">'+escHtml(a.currentTask.slice(0,12))+'</span>':'')+
       '</div>'+
       '<span class="st '+st+'">'+st+'</span>'+
     '</div>';
@@ -921,7 +985,7 @@ async function init(){
   try{
     const d=await(await fetch(API+'/api/daemons')).json();
     (d.daemons||[]).forEach(a=>{
-      agents[a.id]={id:a.id,status:a.status,role:a.role,score:a.score,currentTask:a.currentTask,health:a.health};
+      agents[a.id]={id:a.id,status:a.status,role:a.role,score:a.score,type:a.type||'cli',currentTask:a.currentTask,health:a.health};
     });
     const sel=el('sendTarget');
     (d.daemons||[]).forEach(a=>{
