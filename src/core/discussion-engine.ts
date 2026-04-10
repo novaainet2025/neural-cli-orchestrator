@@ -99,6 +99,11 @@ class DiscussionEngine {
 
   // ═══ 라운드 기반 토론 (mode: discussion, consensus, hive) ═══
   async startDiscussion(options: DiscussionOptions): Promise<DiscussionReport> {
+    // Hive mode has a distinct execution path — skip round-based discussion
+    if (options.mode === 'hive') {
+      return this.executeHive(options);
+    }
+
     const sessionId = options.sessionId || createSessionId();
     const startTime = Date.now();
     const maxRounds = options.maxRounds || 3;
@@ -174,18 +179,18 @@ class DiscussionEngine {
       }
     }
 
-    // ─── Hive/Commander 합성 단계: Commander가 전체 결과를 통합 ───
-    if (options.mode === 'hive' || options.mode === 'commander') {
+    // ─── Commander 합성 단계 (commander 모드만) ───
+    if (options.mode === 'commander') {
       try {
         const allProposals = this.formatProposals(rounds[0]?.responses || {});
         const synthPrompt = `You are the Commander. Synthesize these ${participants.length} AI responses into one final consolidated answer:\n\n${allProposals}\n\nProvide the single best answer.`;
         const synthResponse = await agentManager.executeTask('claude-code', synthPrompt, {
-          signal: AbortSignal.timeout(90_000), // hard 90s cap on synthesis
+          signal: AbortSignal.timeout(90_000),
         });
         if (synthResponse.success && synthResponse.output) {
           rounds.push({ round: rounds.length + 1, responses: { 'commander-synthesis': synthResponse.output }, consensusRate: 1 });
         }
-      } catch { /* Commander synthesis optional */ }
+      } catch { /* synthesis optional */ }
     }
 
     // ─── 최종 보고서 생성 ─────────────────────────
@@ -202,6 +207,116 @@ class DiscussionEngine {
     });
 
     log.info({ sessionId, consensusRate, rounds: rounds.length, durationMs: Date.now() - startTime }, 'Discussion completed');
+
+    return report;
+  }
+
+  // ═══ Hive 모드 (모든 AI 동시 → Commander 통합) ═══
+  //
+  // Discussion과의 차이:
+  //   Discussion: 순차 라운드 토론 (AI가 서로 의견 보고 반박)
+  //   Hive:       모든 AI가 동시에 독립 응답 (병렬) → 결과를 claude-code가 통합
+  //
+  // 결과: 속도가 빠르고 다양한 관점이 나오지만, 교차 검증은 없음
+  private async executeHive(options: DiscussionOptions): Promise<DiscussionReport> {
+    const sessionId = options.sessionId || createSessionId();
+    const startTime = Date.now();
+    const participants = options.providers || this.selectParticipants('hive');
+    const db = getDb();
+
+    db.prepare(`
+      INSERT INTO discussions (id, topic, mode, status, participants_json, initiator, max_rounds)
+      VALUES (?, ?, 'hive', 'active', ?, ?, 1)
+    `).run(sessionId, options.topic, JSON.stringify(participants), options.initiator || 'system');
+
+    await eventBus.publish({
+      type: 'discussion:started', sessionId,
+      topic: options.topic, mode: 'hive', participants,
+    });
+
+    log.info({ sessionId, participants, topic: options.topic.slice(0, 80) }, 'Hive started');
+
+    // ─── Phase 1: 모든 AI 동시 병렬 실행 ─────────────
+    await eventBus.publish({ type: 'discussion:round_started', sessionId, round: 1, totalRounds: 2 });
+
+    const parallelResults = await Promise.allSettled(
+      participants.map(async (pid) => {
+        await eventBus.publish({ type: 'discussion:provider_started', sessionId, agentId: pid, round: 1 });
+        const result = await agentManager.executeTask(pid, options.topic, {
+          systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
+          signal: AbortSignal.timeout(120_000),
+        });
+        db.prepare(`
+          INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+          VALUES (?, ?, ?, 1, 'hive_response', ?)
+        `).run(createMessageId(), sessionId, pid, result.output);
+        await eventBus.publish({
+          type: 'discussion:provider_completed', sessionId, agentId: pid, round: 1,
+          content: result.output.slice(0, 500),
+        });
+        return { pid, output: result.output, success: result.success };
+      })
+    );
+
+    const responses: Record<string, string> = {};
+    for (const r of parallelResults) {
+      if (r.status === 'fulfilled' && r.value.success) {
+        responses[r.value.pid] = r.value.output;
+      }
+    }
+
+    await eventBus.publish({ type: 'discussion:round_completed', sessionId, round: 1, consensusRate: 0, responseCount: Object.keys(responses).length });
+
+    // ─── Phase 2: Commander(claude-code)가 전체 응답 통합 ─
+    await eventBus.publish({ type: 'discussion:round_started', sessionId, round: 2, totalRounds: 2 });
+
+    let synthesis = '';
+    const allProposals = this.formatProposals(responses);
+    const synthPrompt = [
+      `You are the Commander synthesizing a Hive intelligence session.`,
+      `${Object.keys(responses).length} AIs responded independently to: "${options.topic}"`,
+      ``,
+      `Their responses:`,
+      allProposals,
+      ``,
+      `Synthesize the best elements from all responses into one definitive, comprehensive answer.`,
+      `Cite which AI contributed each key insight.`,
+    ].join('\n');
+
+    try {
+      const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
+        signal: AbortSignal.timeout(90_000),
+      });
+      synthesis = synthResult.output;
+      db.prepare(`
+        INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+        VALUES (?, ?, 'claude-code', 2, 'hive_synthesis', ?)
+      `).run(createMessageId(), sessionId, synthesis);
+    } catch (err: any) {
+      // If synthesis fails, use the best individual response
+      synthesis = responses[participants[0]] || 'Hive synthesis unavailable';
+      log.warn({ sessionId, err: err.message }, 'Commander synthesis failed — using best individual response');
+    }
+
+    await eventBus.publish({ type: 'discussion:round_completed', sessionId, round: 2, consensusRate: 1 });
+
+    const rounds: DiscussionRoundResult[] = [
+      { round: 1, responses, consensusRate: 0 },
+      { round: 2, responses: { 'commander-synthesis': synthesis }, consensusRate: 1 },
+    ];
+
+    // ─── 최종 보고서 ─────────────────────────────────
+    const report = this.generateReport(sessionId, options, participants, rounds, 1, startTime);
+    report.adoptedProposal = synthesis; // override with actual synthesis
+
+    db.prepare(`
+      UPDATE discussions SET status='completed', consensus_rate=1, result_json=?, report=?, ended_at=datetime('now')
+      WHERE id=?
+    `).run(JSON.stringify(report), synthesis, sessionId);
+
+    await eventBus.publish({ type: 'discussion:completed', sessionId, report });
+
+    log.info({ sessionId, participants: participants.length, durationMs: Date.now() - startTime }, 'Hive completed');
 
     return report;
   }
