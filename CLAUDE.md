@@ -84,3 +84,37 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 - TypeScript with `strict: true`, ES2022 target, NodeNext module resolution (ESM)
 - Node.js >= 22 required
 - Documentation is in Korean
+
+---
+
+## Commander 오케스트레이션 — NCO 전용 규칙
+
+### 이 프로젝트에서 자동 실행 조건
+
+| 작업 유형 | 자동 호출 패턴 |
+|----------|--------------|
+| 새 API 엔드포인트 추가 | opencode(설계) → codex(구현) → cursor-agent(리뷰) → vllm(검증) |
+| 새 에이전트 타입 추가 | opencode(아키텍처) + gemini(인터페이스 설계) 병렬 → aider(파일 편집) |
+| 보안 수정 | cursor-agent(감사) + vllm(검증) 병렬 |
+| 성능 최적화 | copilot(벤치마크 리서치) → codex(구현) → vllm(검증) |
+| 테스트 커버리지 확대 | codex(테스트 생성) + vllm(엣지케이스) 병렬 |
+| 모니터 UI 변경 | gemini(디자인 제안) → 나(구현) |
+| 전체 리팩토링 | `nco_commander` 단일 호출 |
+
+### Supervisor 루프 — 이 프로젝트 기준
+
+```
+성공 기준:
+  - npx tsc --noEmit 오류 0개
+  - 기존 /api/* 엔드포인트 응답 유지
+  - WebSocket 브리지 (:6201) 정상
+  - Redis/SQLite 데이터 무결성
+```
+
+### 에이전트 결과 통합 시 체크리스트
+
+- [ ] TypeScript 타입 오류 없음
+- [ ] 기존 gateway.ts 라우트와 충돌 없음
+- [ ] 이벤트 버스 타입 일치 (src/core/types.ts)
+- [ ] 새 마이그레이션 파일 필요 여부 확인 (db/migrations/)
+- [ ] monitor.ts UI 업데이트 필요 여부 확인

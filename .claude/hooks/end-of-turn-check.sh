@@ -100,15 +100,43 @@ DELETIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= deletion)' || echo "0")
 ADDITIONS=$(to_int "$ADDITIONS")
 DELETIONS=$(to_int "$DELETIONS")
 
-# TypeScript 에러
+# TypeScript 에러 — lock으로 중복 실행 방지
 TSC_ERRORS=0
 TSC_ERROR_LINES=""
+TSC_LOCK="/tmp/nco-tsc.lock"
+TSC_CACHE="/tmp/nco-tsc-cache.txt"
+_tsc_run=0
+
 if command -v npx &>/dev/null && [ -f "tsconfig.json" ]; then
-    TSC_OUTPUT=$(npx tsc --noEmit 2>&1)
-    TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -c "error TS" | tr -d '[:space:]' || true)
-    TSC_ERRORS=$(to_int "$TSC_ERRORS")
-    if [ "$TSC_ERRORS" -gt 0 ]; then
-        TSC_ERROR_LINES=$(echo "$TSC_OUTPUT" | grep "error TS" | head -10)
+    # 이미 tsc가 돌고 있으면 캐시 결과 사용 (누적 방지)
+    if [ -f "$TSC_LOCK" ]; then
+        _LOCK_PID=$(cat "$TSC_LOCK" 2>/dev/null)
+        if kill -0 "$_LOCK_PID" 2>/dev/null; then
+            # 살아있는 tsc → 캐시된 결과 사용
+            if [ -f "$TSC_CACHE" ]; then
+                TSC_OUTPUT=$(cat "$TSC_CACHE")
+                TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -c "error TS" 2>/dev/null || echo 0)
+                TSC_ERRORS=$(to_int "$TSC_ERRORS")
+            fi
+        else
+            # 죽은 lock → 삭제 후 실행
+            rm -f "$TSC_LOCK"
+            _tsc_run=1
+        fi
+    else
+        _tsc_run=1
+    fi
+
+    if [ "$_tsc_run" = "1" ]; then
+        echo $$ > "$TSC_LOCK"
+        TSC_OUTPUT=$(npx tsc --noEmit 2>&1)
+        echo "$TSC_OUTPUT" > "$TSC_CACHE"
+        rm -f "$TSC_LOCK"
+        TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -c "error TS" | tr -d '[:space:]' || true)
+        TSC_ERRORS=$(to_int "$TSC_ERRORS")
+        if [ "$TSC_ERRORS" -gt 0 ]; then
+            TSC_ERROR_LINES=$(echo "$TSC_OUTPUT" | grep "error TS" | head -10)
+        fi
     fi
 fi
 

@@ -57,6 +57,7 @@ class AgentManager {
   async executeTask(agentId: string, prompt: string, options?: {
     taskId?: string;
     systemPrompt?: string;
+    signal?: AbortSignal;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
@@ -80,11 +81,18 @@ class AgentManager {
         case 'A': {
           // Type A: Claude Code native — delegate to subprocess, monitor only
           const { execa } = await import('execa');
+          // Build a merged abort signal: caller's signal OR a hard wall-clock timeout
+          const timeoutMs = sandbox.getTimeout();
+          const wallClock = AbortSignal.timeout(timeoutMs);
+          const signal = options?.signal
+            ? AbortSignal.any([options.signal, wallClock])
+            : wallClock;
           const result = await execa(provider.command!, [
             '-p', prompt,
             '--output-format', 'text',
           ], {
-            timeout: sandbox.getTimeout(),
+            signal,
+            forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
             env: { ...process.env, ...provider.env },
             reject: false,
           });
@@ -96,7 +104,12 @@ class AgentManager {
 
         case 'B': {
           // Type B: NCO orchestrated loop
-          const loop = new OrchestratedLoop(provider, sandbox);
+          const timeoutMs = sandbox.getTimeout();
+          const wallClock = AbortSignal.timeout(timeoutMs);
+          const signal = options?.signal
+            ? AbortSignal.any([options.signal, wallClock])
+            : wallClock;
+          const loop = new OrchestratedLoop(provider, sandbox, signal);
           const result = await loop.run(taskId, prompt, options?.systemPrompt);
           output = result.output;
           iterations = result.iterations;
