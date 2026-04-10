@@ -143,9 +143,10 @@ class WebSocketBridge {
         const matches = (taskId && client.subscriptions.has(taskId)) ||
                         (discussionKey && client.subscriptions.has(discussionKey));
 
-        // Also always send system events and agent status
+        // Also always send system events, agent status, and mesh events
         const isGlobal = event.type.startsWith('system:') ||
                          event.type.startsWith('agent:') ||
+                         event.type.startsWith('mesh:') ||
                          event.type === 'message:broadcast';
 
         if (!matches && !isGlobal) continue;

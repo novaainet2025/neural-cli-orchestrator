@@ -42,6 +42,30 @@ const MESH_TTL = 300; // 5min — sessions expire if no heartbeat
 /** High-level work mode — shown prominently in the monitor UI */
 export type WorkMode = 'solo' | 'mesh' | 'waiting' | 'blocked' | 'reviewing';
 
+/** Structured conflict report between two sessions */
+export interface ConflictReport {
+  /** What kind of conflict */
+  type: 'file' | 'task' | 'branch';
+  /** Impact level */
+  severity: 'high' | 'medium' | 'low';
+  /** Session this conflicts with */
+  withSession: string;
+  withAgent: string;
+  /** Human-readable description */
+  detail: string;
+  /** Files involved (for file-type conflicts) */
+  affectedFiles?: string[];
+}
+
+/** Result of a pre-work conflict check */
+export interface WorkCheckResult {
+  /** True if no high-severity conflicts found */
+  safe: boolean;
+  conflictReports: ConflictReport[];
+  /** Actionable suggestions */
+  recommendations: string[];
+}
+
 export interface MeshSession {
   sessionId: string;
   agentId: string;
@@ -60,6 +84,8 @@ export interface MeshSession {
   startedAt: string;
   lastHeartbeat: string;
   messageQueue: MeshMessage[];
+  /** Active conflicts detected at last heartbeat */
+  activeConflicts?: ConflictReport[];
 }
 
 export interface MeshMessage {
@@ -71,6 +97,38 @@ export interface MeshMessage {
   type: 'info' | 'warning' | 'request' | 'conflict';
   createdAt: string;
   read: boolean;
+}
+
+// ─── Overlap helpers ────────────────────────────────────────
+
+/**
+ * Jaccard similarity between two task descriptions (keyword-level).
+ * Returns 0..1. Handles Korean/English mixed text.
+ */
+function taskOverlapScore(a: string, b: string): number {
+  const tokenize = (s: string) =>
+    s.toLowerCase()
+      .split(/[\s\W]+/)
+      .filter(w => w.length > 2)
+      .reduce((acc, w) => { acc.add(w); return acc; }, new Set<string>());
+
+  const wa = tokenize(a);
+  const wb = tokenize(b);
+  if (wa.size === 0 && wb.size === 0) return 0;
+
+  let intersection = 0;
+  for (const w of wa) if (wb.has(w)) intersection++;
+  const union = new Set([...wa, ...wb]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Check if two file lists share a common directory (same module area).
+ */
+function sharedDirectory(files1: string[], files2: string[]): string[] {
+  const dirs1 = files1.map(f => f.split('/').slice(0, -1).join('/'));
+  const dirs2 = new Set(files2.map(f => f.split('/').slice(0, -1).join('/')));
+  return [...new Set(dirs1.filter(d => d && dirs2.has(d)))];
 }
 
 class CliMesh {
@@ -88,7 +146,7 @@ class CliMesh {
     branch?: string;
     taskId?: string;
     collaborators?: string[];
-  }): Promise<{ conflicts: string[]; messages: MeshMessage[] }> {
+  }): Promise<{ conflicts: string[]; conflictReports: ConflictReport[]; messages: MeshMessage[] }> {
     const now = new Date().toISOString();
 
     // Infer workMode if not provided
@@ -143,13 +201,23 @@ class CliMesh {
     // Persist to SQLite for history
     this.persistSession(meshSession);
 
-    // Check for file conflicts (non-fatal — don't break heartbeat on error)
-    let conflicts: string[] = [];
+    // Full conflict check (non-fatal — don't break heartbeat on error)
+    let conflictReports: ConflictReport[] = [];
     try {
-      conflicts = await this.detectConflicts(session.sessionId, session.currentFiles || []);
+      conflictReports = await this.detectAllConflicts(
+        session.sessionId,
+        session.agentId,
+        session.currentWork || '',
+        session.currentFiles || [],
+        session.branch || 'unknown',
+      );
     } catch (err) {
       log.warn({ err, sessionId: session.sessionId }, 'Conflict detection failed, continuing');
     }
+    const conflicts = conflictReports.map(r => r.detail);
+
+    // Store conflicts back in session
+    meshSession.activeConflicts = conflictReports;
 
     // Publish presence event
     await eventBus.publish({
@@ -161,11 +229,12 @@ class CliMesh {
     });
 
     // Emit conflict warnings
-    if (conflicts.length > 0) {
+    if (conflictReports.length > 0) {
       await eventBus.publish({
         type: 'mesh:conflict',
         sessionId: session.sessionId,
         conflicts,
+        conflictReports,
       });
     }
 
@@ -179,7 +248,7 @@ class CliMesh {
       }
     }
 
-    return { conflicts, messages };
+    return { conflicts, conflictReports, messages };
   }
 
   /**
@@ -293,26 +362,125 @@ class CliMesh {
   }
 
   /**
-   * Detect file conflicts — which other sessions are editing the same files?
+   * Comprehensive conflict detection:
+   *   1. File conflicts — exact same file being edited
+   *   2. Task overlap — similar work description (Jaccard keyword similarity)
+   *   3. Branch + directory proximity — same branch, same module area
    */
-  async detectConflicts(mySessionId: string, myFiles: string[]): Promise<string[]> {
-    if (myFiles.length === 0) return [];
-
+  async detectAllConflicts(
+    mySessionId: string,
+    myAgentId: string,
+    myWork: string,
+    myFiles: string[],
+    myBranch: string,
+  ): Promise<ConflictReport[]> {
     const sessions = await this.getActiveSessions();
-    const conflicts: string[] = [];
+    const reports: ConflictReport[] = [];
 
     for (const other of sessions) {
       if (other.sessionId === mySessionId) continue;
 
-      const overlapping = myFiles.filter(f => other.currentFiles.includes(f));
-      if (overlapping.length > 0) {
-        conflicts.push(
-          `${other.agentId} (${other.sessionId.slice(0, 8)}) is also editing: ${overlapping.join(', ')}`
-        );
+      // 1. Exact file conflicts (high severity)
+      const exactFiles = myFiles.filter(f => other.currentFiles.includes(f));
+      if (exactFiles.length > 0) {
+        reports.push({
+          type: 'file',
+          severity: 'high',
+          withSession: other.sessionId,
+          withAgent: other.agentId,
+          detail: `${other.agentId}이(가) 같은 파일 편집 중: ${exactFiles.map(f => f.split('/').pop()).join(', ')}`,
+          affectedFiles: exactFiles,
+        });
+      }
+
+      // 2. Task overlap — keyword Jaccard similarity
+      if (myWork && other.currentWork) {
+        const score = taskOverlapScore(myWork, other.currentWork);
+        if (score >= 0.55) {
+          reports.push({
+            type: 'task',
+            severity: score >= 0.75 ? 'high' : 'medium',
+            withSession: other.sessionId,
+            withAgent: other.agentId,
+            detail: `${other.agentId}와(과) 유사한 작업 중복 가능성 (${Math.round(score * 100)}% 유사): "${other.currentWork.slice(0, 40)}"`,
+          });
+        }
+      }
+
+      // 3. Same branch + shared directory (medium severity, only if files present)
+      if (
+        myFiles.length > 0 &&
+        other.currentFiles.length > 0 &&
+        myBranch !== 'unknown' &&
+        myBranch === other.branch &&
+        exactFiles.length === 0  // already reported above
+      ) {
+        const sharedDirs = sharedDirectory(myFiles, other.currentFiles);
+        if (sharedDirs.length > 0) {
+          reports.push({
+            type: 'branch',
+            severity: 'low',
+            withSession: other.sessionId,
+            withAgent: other.agentId,
+            detail: `${other.agentId}와(과) 같은 브랜치(${myBranch}) + 같은 모듈 영역: ${sharedDirs.map(d => d.split('/').pop()).join(', ')}`,
+            affectedFiles: sharedDirs,
+          });
+        }
       }
     }
 
-    return conflicts;
+    // Sort by severity
+    const order = { high: 0, medium: 1, low: 2 };
+    return reports.sort((a, b) => order[a.severity] - order[b.severity]);
+  }
+
+  /**
+   * Pre-work conflict check — call BEFORE starting work to get full analysis.
+   * Does NOT register the session, just checks against current state.
+   */
+  async checkWorkConflicts(
+    mySessionId: string,
+    myAgentId: string,
+    plannedWork: string,
+    plannedFiles: string[],
+    branch: string,
+  ): Promise<WorkCheckResult> {
+    const reports = await this.detectAllConflicts(
+      mySessionId, myAgentId, plannedWork, plannedFiles, branch,
+    );
+
+    const hasHigh = reports.some(r => r.severity === 'high');
+    const recommendations: string[] = [];
+
+    const fileConflicts = reports.filter(r => r.type === 'file');
+    const taskConflicts = reports.filter(r => r.type === 'task');
+    const branchConflicts = reports.filter(r => r.type === 'branch');
+
+    if (fileConflicts.length > 0) {
+      recommendations.push(
+        `파일 충돌: ${fileConflicts.map(r => r.withAgent).join(', ')}와(과) 작업 조율 필요. /nco-mesh send @${fileConflicts[0].withAgent} "파일 작업 순서 조율 요청"`,
+      );
+    }
+    if (taskConflicts.length > 0) {
+      recommendations.push(
+        `작업 중복: ${taskConflicts.map(r => r.withAgent).join(', ')}와(과) 역할 분담 확인. 동일 작업을 나눠서 처리하거나 한 세션이 위임하세요.`,
+      );
+    }
+    if (branchConflicts.length > 0) {
+      recommendations.push(
+        `브랜치 근접: 같은 모듈 영역 수정 시 병합 충돌 가능. 작업 완료 후 pull --rebase 권장.`,
+      );
+    }
+    if (reports.length === 0) {
+      recommendations.push('충돌 없음 — 안전하게 작업을 시작할 수 있습니다.');
+    }
+
+    log.info(
+      { sessionId: mySessionId, safe: !hasHigh, conflictCount: reports.length },
+      'Work conflict check',
+    );
+
+    return { safe: !hasHigh, conflictReports: reports, recommendations };
   }
 
   /**
@@ -351,13 +519,14 @@ class CliMesh {
       const db = getDb();
       db.prepare(`
         INSERT OR REPLACE INTO mesh_sessions
-          (session_id, agent_id, pid, status, current_work, current_files_json, branch, started_at, last_heartbeat)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (session_id, agent_id, pid, status, current_work, current_files_json, branch, started_at, last_heartbeat, active_conflicts_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         session.sessionId, session.agentId, session.pid,
         session.status, session.currentWork,
         JSON.stringify(session.currentFiles),
         session.branch, session.startedAt, session.lastHeartbeat,
+        JSON.stringify(session.activeConflicts || []),
       );
     } catch { /* non-critical */ }
   }
@@ -389,6 +558,7 @@ class CliMesh {
           startedAt: r.started_at,
           lastHeartbeat: r.last_heartbeat,
           workMode: (r.work_mode ?? 'autonomous') as any,
+          activeConflicts: JSON.parse(r.active_conflicts_json || '[]'),
           messageQueue: [],
         });
       }
