@@ -319,6 +319,38 @@ export async function createGateway() {
     const body = req.body as any;
     if (!body.sessionId || !body.agentId) return { error: 'sessionId and agentId required' };
     const result = await cliMesh.heartbeat(body);
+    // Broadcast full session update (including conflicts) to dashboard
+    await eventBus.publish({
+      type: 'mesh:session_update',
+      session: {
+        sessionId: body.sessionId,
+        agentId: body.agentId,
+        pid: body.pid,
+        status: body.status,
+        workMode: body.workMode,
+        currentWork: body.currentWork,
+        currentFiles: body.currentFiles || [],
+        branch: body.branch,
+        taskId: body.taskId,
+        collaborators: body.collaborators || [],
+        lastHeartbeat: new Date().toISOString(),
+        activeConflicts: result.conflictReports,
+      },
+    } as any);
+    return result;
+  });
+
+  // Pre-work conflict check — call before starting a task
+  app.post('/api/mesh/check', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { sessionId, agentId, plannedWork, plannedFiles, branch } = req.body as any;
+    if (!sessionId || !agentId) return { error: 'sessionId and agentId required' };
+    const result = await cliMesh.checkWorkConflicts(
+      sessionId, agentId,
+      plannedWork || '',
+      plannedFiles || [],
+      branch || 'unknown',
+    );
     return result;
   });
 
@@ -341,6 +373,18 @@ export async function createGateway() {
     const delivered = await cliMesh.sendMessage(
       fromSessionId, fromAgent || 'unknown', toSessionId || '*', content, type || 'info',
     );
+    // Broadcast new mesh message to dashboard
+    await eventBus.publish({
+      type: 'mesh:message',
+      message: {
+        from: fromSessionId,
+        fromAgent: fromAgent || 'unknown',
+        to: toSessionId || '*',
+        content,
+        messageType: type || 'info',
+        createdAt: new Date().toISOString(),
+      },
+    } as any);
     return { delivered };
   });
 
@@ -355,6 +399,11 @@ export async function createGateway() {
     const { sessionId } = req.body as any;
     if (!sessionId) return { error: 'sessionId required' };
     await cliMesh.disconnect(sessionId);
+    // Broadcast disconnect event to dashboard
+    await eventBus.publish({
+      type: 'mesh:session_disconnected',
+      sessionId,
+    } as any);
     return { disconnected: true };
   });
 
