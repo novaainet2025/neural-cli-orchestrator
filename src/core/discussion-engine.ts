@@ -18,6 +18,7 @@ export interface DiscussionOptions {
   consensusThreshold?: number;
   workspaceId?: string;
   initiator?: string;
+  sessionId?: string; // caller can inject a pre-created sessionId
 }
 
 export interface DiscussionRoundResult {
@@ -98,7 +99,7 @@ class DiscussionEngine {
 
   // ═══ 라운드 기반 토론 (mode: discussion, consensus, hive) ═══
   async startDiscussion(options: DiscussionOptions): Promise<DiscussionReport> {
-    const sessionId = createSessionId();
+    const sessionId = options.sessionId || createSessionId();
     const startTime = Date.now();
     const maxRounds = options.maxRounds || 3;
     const threshold = options.consensusThreshold || 0.8;
@@ -178,7 +179,9 @@ class DiscussionEngine {
       try {
         const allProposals = this.formatProposals(rounds[0]?.responses || {});
         const synthPrompt = `You are the Commander. Synthesize these ${participants.length} AI responses into one final consolidated answer:\n\n${allProposals}\n\nProvide the single best answer.`;
-        const synthResponse = await agentManager.executeTask('claude-code', synthPrompt, {});
+        const synthResponse = await agentManager.executeTask('claude-code', synthPrompt, {
+          signal: AbortSignal.timeout(90_000), // hard 90s cap on synthesis
+        });
         if (synthResponse.success && synthResponse.output) {
           rounds.push({ round: rounds.length + 1, responses: { 'commander-synthesis': synthResponse.output }, consensusRate: 1 });
         }

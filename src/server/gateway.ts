@@ -10,6 +10,8 @@ import { sharedState } from '../core/shared-state.js';
 import { eventBus } from '../core/event-bus.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
+import { taskQueue } from '../core/task-queue.js';
+import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 
 const log = createLogger('gateway');
@@ -118,8 +120,16 @@ export async function createGateway() {
 
     await eventBus.publish({ type: 'task:created', taskId, agentId, prompt: input.prompt });
 
-    // Execute async (don't block response)
-    agentManager.executeTask(agentId, input.prompt, { taskId, systemPrompt: input.systemPrompt })
+    // Inject workspace conversation history into systemPrompt so the agent
+    // has context from previous turns in the same workspace session.
+    const systemPromptWithContext = injectContext(
+      input.systemPrompt,
+      input.workspaceId || 'default',
+      taskId,
+    );
+
+    // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext })
       .then(result => {
         db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
           .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
@@ -130,7 +140,7 @@ export async function createGateway() {
       });
 
     reply.code(202);
-    return { taskId, status: 'assigned', agentId };
+    return { taskId, status: 'queued', agentId };
   });
 
   app.post('/api/tasks', async (req, reply) => {
@@ -173,9 +183,13 @@ export async function createGateway() {
   app.delete('/api/tasks/:id', async (req, reply) => {
     const { id } = req.params as any;
     const db = getDb();
+
+    // Abort via taskQueue (works for both BullMQ queued and semaphore active tasks)
+    const killed = await taskQueue.abort(id);
+
     db.prepare("UPDATE tasks SET status='cancelled', updated_at=datetime('now') WHERE id=?").run(id);
     await eventBus.publish({ type: 'task:cancelled', taskId: id });
-    return { ok: true };
+    return { ok: true, killed };
   });
 
   // ═══ Chat ═════════════════════════════════════════
@@ -204,16 +218,28 @@ export async function createGateway() {
     const input = CreateDiscussionInput.parse(req.body);
     reply.code(202);
 
+    // Pre-create sessionId and inject it — both client and DB use the same ID
     const sessionId = createSessionId();
+    const db = getDb();
 
-    // Async — don't block
     discussionEngine.startDiscussion({
       topic: input.prompt,
       mode: input.mode as any,
       providers: input.providers,
       maxRounds: input.maxRounds,
       consensusThreshold: input.consensusThreshold,
-    }).catch(err => log.error({ err: err.message }, 'Discussion failed'));
+      sessionId,
+    })
+      .then(report => {
+        // Save summary to tasks table so nco_list_tasks / nco_get_task can find it
+        const taskId = createTaskId();
+        db.prepare(`
+          INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+          VALUES (?, ?, ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
+        `).run(taskId, input.mode, input.prompt, report.adoptedProposal);
+        log.info({ sessionId, taskId, consensusRate: report.finalConsensusRate }, 'Discussion saved');
+      })
+      .catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
 
     return { sessionId, status: 'started', mode: input.mode };
   });
@@ -223,7 +249,18 @@ export async function createGateway() {
     const providers = body.providers || agentManager.listEnabledIds().slice(0, 3);
     reply.code(202);
 
+    const db = getDb();
     discussionEngine.executeParallel(body.prompt, providers)
+      .then(responses => {
+        // Save each parallel result as a completed task
+        for (const [agentId, output] of Object.entries(responses)) {
+          const taskId = createTaskId();
+          db.prepare(`
+            INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+            VALUES (?, 'parallel', ?, ?, 'completed', ?, datetime('now'), datetime('now'))
+          `).run(taskId, body.prompt, agentId, output as string);
+        }
+      })
       .catch(err => log.error({ err: err.message }, 'Parallel failed'));
 
     return { status: 'started', providers };
@@ -233,14 +270,26 @@ export async function createGateway() {
     const input = CreateDiscussionInput.parse(req.body);
     reply.code(202);
 
+    const sessionId = createSessionId();
+    const db = getDb();
+
     discussionEngine.startDiscussion({
       topic: input.prompt,
       mode: 'consensus',
       providers: input.providers,
       consensusThreshold: input.consensusThreshold,
-    }).catch(err => log.error({ err: err.message }, 'Consensus failed'));
+      sessionId,
+    })
+      .then(report => {
+        const taskId = createTaskId();
+        db.prepare(`
+          INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+          VALUES (?, 'consensus', ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
+        `).run(taskId, input.prompt, report.adoptedProposal);
+      })
+      .catch(err => log.error({ err: err.message, sessionId }, 'Consensus failed'));
 
-    return { status: 'started', mode: 'consensus' };
+    return { sessionId, status: 'started', mode: 'consensus' };
   });
 
   app.post('/api/discussion/create', async (req, reply) => {
@@ -287,8 +336,10 @@ export async function createGateway() {
   });
 
   // ═══ Queue Metrics ════════════════════════════════
-  app.get('/api/queue/metrics', async () => {
-    return { message: 'BullMQ metrics — Phase 5' };
+  app.get('/api/queue/metrics', async (req) => {
+    const { agentId } = req.query as any;
+    const metrics = await taskQueue.getMetrics(agentId);
+    return { metrics };
   });
 
   // ═══ Metrics ══════════════════════════════════════
@@ -424,12 +475,26 @@ export async function createGateway() {
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
     const allProviders = providers || agentManager.listEnabledIds();
     reply.code(202);
+
+    const sessionId = createSessionId();
+    const db = getDb();
+
     discussionEngine.startDiscussion({
       topic: prompt,
       mode: 'hive',
       providers: allProviders,
-    }).catch(err => log.error({ err: err.message }, 'Hive failed'));
-    return { status: 'started', mode: 'hive', providers: allProviders };
+      sessionId,
+    })
+      .then(report => {
+        const taskId = createTaskId();
+        db.prepare(`
+          INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+          VALUES (?, 'hive', ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
+        `).run(taskId, prompt, report.adoptedProposal);
+      })
+      .catch(err => log.error({ err: err.message, sessionId }, 'Hive failed'));
+
+    return { sessionId, status: 'started', mode: 'hive', providers: allProviders };
   });
 
   // ═══ Broadcast (All Agents) ════════════════════════
@@ -563,18 +628,35 @@ export async function createGateway() {
       VALUES (?, ?, ?, ?, 'assigned', 5)
     `).run(taskId, decision.mode, prompt, decision.providers[0] || null);
 
-    // Execute via discussion engine for multi-agent modes, or agent manager for single
+    // Execute via discussion engine for multi-agent modes, or taskQueue for single
+    const sessionId = createSessionId();
     if (decision.mode === 'task' && decision.providers.length === 1) {
-      const { agentManager } = await import('../agent/agent-manager.js');
-      agentManager.executeTask(decision.providers[0], prompt, { taskId }).catch(() => {});
+      taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
+        .then(result => {
+          db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+            .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+        })
+        .catch(err => {
+          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
+            .run(err.message, taskId);
+        });
     } else {
-      const { discussionEngine } = await import('../core/discussion-engine.js');
-      discussionEngine.startDiscussion({
+      const { discussionEngine: de } = await import('../core/discussion-engine.js');
+      de.startDiscussion({
         topic: prompt,
         mode: decision.mode as any,
         providers: decision.providers,
         maxRounds: decision.mode === 'consensus' ? 5 : 3,
-      }).catch(() => {});
+        sessionId,
+      })
+        .then(report => {
+          db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+            .run(report.adoptedProposal, taskId);
+        })
+        .catch(err => {
+          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
+            .run(err.message, taskId);
+        });
     }
 
     return {

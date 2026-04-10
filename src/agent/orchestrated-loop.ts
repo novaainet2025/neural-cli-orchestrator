@@ -188,7 +188,8 @@ export class OrchestratedLoop {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
       const result = await execa(command, finalArgs, {
         ...(useStdin ? { input: combined } : { stdin: 'ignore' }),
-        timeout: this.sandbox.getTimeout(),
+        ...(this.abortSignal ? { signal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
+        forceKillAfterDelay: 3000,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
         reject: false,

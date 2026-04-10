@@ -182,6 +182,7 @@ class AgentSessionManager {
       const result = await agentManager.executeTask(session.agentId, session.prompt, {
         taskId: session.id,
         systemPrompt: options?.systemPrompt,
+        signal: session.abortController?.signal,
       });
 
       session.output = result.output;

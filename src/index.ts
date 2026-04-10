@@ -7,6 +7,8 @@ import { sharedState } from './core/shared-state.js';
 import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
 import { sessionManager } from './agent/session-manager.js';
+import { taskQueue } from './core/task-queue.js';
+import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
@@ -51,6 +53,18 @@ async function boot(): Promise<void> {
   log.info('Initializing Agent Manager...');
   await agentManager.init();
 
+  // 7b. Task Queue (BullMQ per-agent, falls back to semaphore if Redis offline)
+  log.info('Initializing Task Queue...');
+  taskQueue.setExecutor(async (task, signal) => {
+    const result = await agentManager.executeTask(task.agentId, task.prompt, {
+      taskId: task.taskId,
+      systemPrompt: task.systemPrompt,
+      signal,
+    });
+    return { success: result.success, output: result.output, error: result.error };
+  });
+  await taskQueue.init(loadEnabledProviders());
+
   // 8. Fastify Gateway (HTTP :6200)
   log.info('Starting API Gateway...');
   const gateway = await createGateway();
@@ -85,6 +99,7 @@ async function shutdown(signal: string): Promise<void> {
   wsBridge.stop();
   sessionManager.destroy();
   agentManager.destroy();
+  await taskQueue.close();
   syncEngine.stop();
   eventBus.destroy();
   await closeRedis();
