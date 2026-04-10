@@ -187,7 +187,7 @@ export class OrchestratedLoop {
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
       const result = await execa(command, finalArgs, {
-        ...(useStdin ? { input: combined } : {}),
+        ...(useStdin ? { input: combined } : { stdin: 'ignore' }),
         timeout: this.sandbox.getTimeout(),
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
@@ -204,12 +204,14 @@ export class OrchestratedLoop {
   private buildArgs(baseArgs: string[], prompt: string): string[] {
     switch (this.provider.id) {
       case 'codex':
-        // codex exec <prompt> — non-interactive subcommand, no stdin
-        return ['exec', prompt];
+        // codex exec <prompt> — non-interactive; skip git trust check outside workdir
+        return ['exec', '--skip-git-repo-check', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
       case 'aider':
-        return [...baseArgs, prompt, '--yes', '--no-auto-commits'];
+        // aider requires model + openrouter API key via env
+        return [...baseArgs, prompt, '--yes', '--no-auto-commits',
+          '--model', 'openrouter/meta-llama/llama-4-maverick:free'];
       case 'opencode':
         // opencode run <message> — non-interactive; 'chat' opens TUI
         return ['run', prompt];
