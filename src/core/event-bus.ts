@@ -28,6 +28,8 @@ export class EventBus {
   private local = new EventEmitter();
   private ready = false;
   private sequence = 0;
+  // Track locally-emitted event IDs to prevent Redis echo causing double-emit
+  private localEmittedIds = new Set<string>();
 
   async init(): Promise<void> {
     if (this.ready) return;
@@ -39,6 +41,8 @@ export class EventBus {
       sub.on('message', (_channel: string, message: string) => {
         try {
           const event = JSON.parse(message) as NCOEvent;
+          // Skip re-emit if this event was already emitted locally in publish()
+          if (this.localEmittedIds.has(event.id)) return;
           this.local.emit(event.type, event);
           this.local.emit('*', event);
         } catch (err) {
@@ -64,7 +68,9 @@ export class EventBus {
 
     this.sequence++;
 
-    // 1. Local emit (always works)
+    // 1. Local emit (always works) — track ID to suppress Redis echo
+    this.localEmittedIds.add(enriched.id);
+    setTimeout(() => this.localEmittedIds.delete(enriched.id), 10000);
     this.local.emit(enriched.type, enriched);
     this.local.emit('*', enriched);
 
