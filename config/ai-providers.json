@@ -43,7 +43,7 @@
       "score": 90,
       "model": "multi-llm",
       "command": "opencode",
-      "args": ["chat"],
+      "args": ["run"],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,

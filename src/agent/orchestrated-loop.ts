@@ -11,6 +11,15 @@ const log = createLogger('orchestrated-loop');
 
 const MAX_ITERATIONS = 15;
 
+// Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
+// eslint-disable-next-line no-control-regex
+function stripAnsi(str: string): string {
+  return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').trim();
+}
+
+// Providers that handle prompt as CLI args — do NOT send via stdin
+const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot']);
+
 interface LoopResult {
   output: string;
   iterations: number;
@@ -176,15 +185,16 @@ export class OrchestratedLoop {
     const finalArgs = this.buildArgs(args, combined);
 
     try {
+      const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
       const result = await execa(command, finalArgs, {
-        input: combined,
+        ...(useStdin ? { input: combined } : {}),
         timeout: this.sandbox.getTimeout(),
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, ...this.provider.env },
+        env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
         reject: false,
       });
 
-      return result.stdout || result.stderr || '';
+      return stripAnsi(result.stdout || result.stderr || '');
     } catch (err: any) {
       log.error({ agentId: this.provider.id, err: err.message }, 'CLI call failed');
       throw err;
@@ -192,20 +202,23 @@ export class OrchestratedLoop {
   }
 
   private buildArgs(baseArgs: string[], prompt: string): string[] {
-    // Provider-specific argument building
     switch (this.provider.id) {
       case 'codex':
-        return [...baseArgs, prompt];
+        // codex exec <prompt> — non-interactive subcommand, no stdin
+        return ['exec', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
       case 'aider':
         return [...baseArgs, prompt, '--yes', '--no-auto-commits'];
       case 'opencode':
-        return [...baseArgs, prompt];
+        // opencode run <message> — non-interactive; 'chat' opens TUI
+        return ['run', prompt];
       case 'cursor-agent':
-        return [...baseArgs, prompt];
+        // --print: non-interactive output, --trust: skip workspace trust prompt
+        return ['--print', '--trust', '--output-format', 'text', prompt];
       case 'copilot':
-        return [...baseArgs, prompt];
+        // what-the-shell accepts arbitrary natural language query
+        return ['what-the-shell', prompt];
       default:
         return [...baseArgs, prompt];
     }
