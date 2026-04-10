@@ -40,7 +40,7 @@ const MESH_TTL = 300; // 5min — sessions expire if no heartbeat
  */
 
 /** High-level work mode — shown prominently in the monitor UI */
-export type WorkMode = 'solo' | 'mesh' | 'waiting' | 'blocked' | 'reviewing';
+export type WorkMode = 'solo' | 'mesh' | 'waiting' | 'blocked' | 'reviewing' | 'done' | 'idle';
 
 /** Structured conflict report between two sessions */
 export interface ConflictReport {
@@ -70,11 +70,13 @@ export interface MeshSession {
   sessionId: string;
   agentId: string;
   pid: number;
-  status: 'idle' | 'thinking' | 'coding' | 'reviewing' | 'discussing';
+  status: 'idle' | 'thinking' | 'coding' | 'reviewing' | 'discussing' | 'done';
   /** High-level work mode for monitor display */
   workMode: WorkMode;
   /** Free-text description of current task */
   currentWork: string;
+  /** Work description that was completed (for done state display) */
+  completedWork?: string;
   currentFiles: string[];
   branch: string;
   /** Optional: task ID this session is working on */
@@ -83,6 +85,8 @@ export interface MeshSession {
   collaborators?: string[];
   startedAt: string;
   lastHeartbeat: string;
+  /** When work was completed */
+  completedAt?: string;
   messageQueue: MeshMessage[];
   /** Active conflicts detected at last heartbeat */
   activeConflicts?: ConflictReport[];
@@ -152,20 +156,22 @@ class CliMesh {
     // Infer workMode if not provided
     const inferredMode = (): WorkMode => {
       const st = session.status || 'idle';
+      if (st === 'done') return 'done';
       if (session.collaborators && session.collaborators.length > 0) return 'mesh';
       if (st === 'discussing') return 'mesh';
       if (st === 'reviewing') return 'reviewing';
-      if (st === 'idle' && !session.currentWork) return 'waiting';
+      if (st === 'idle' && !session.currentWork) return 'idle';
       if (['coding', 'thinking'].includes(st)) return 'solo';
       return 'waiting';
     };
 
+    const resolvedWorkMode = session.workMode ?? inferredMode();
     const meshSession: MeshSession = {
       sessionId: session.sessionId,
       agentId: session.agentId,
       pid: session.pid,
       status: (session.status as any) || 'idle',
-      workMode: session.workMode ?? inferredMode(),
+      workMode: resolvedWorkMode,
       currentWork: session.currentWork || '',
       currentFiles: session.currentFiles || [],
       branch: session.branch || 'unknown',
@@ -181,15 +187,40 @@ class CliMesh {
       const redis = await getRedis();
       const key = `${MESH_PREFIX}${session.sessionId}`;
 
-      // Preserve existing startedAt and messageQueue
+      // Preserve existing startedAt, messageQueue, and detect done transition
       const existing = await redis.get(key);
       if (existing) {
-        const prev = JSON.parse(existing);
+        const prev: MeshSession = JSON.parse(existing);
         meshSession.startedAt = prev.startedAt;
         meshSession.messageQueue = prev.messageQueue || [];
+
+        // Auto-detect work completion: had work before, now idle with no work
+        if (
+          prev.currentWork &&
+          !session.currentWork &&
+          (session.status === 'idle' || !session.status) &&
+          resolvedWorkMode !== 'done'
+        ) {
+          meshSession.workMode = 'done';
+          meshSession.status = 'done';
+          meshSession.completedWork = prev.currentWork;
+          meshSession.completedAt = now;
+          // Done sessions expire faster (60s display window)
+          await redis.set(key, JSON.stringify(meshSession), 'EX', 60);
+          this.persistSession(meshSession);
+          await eventBus.publish({ type: 'mesh:heartbeat', sessionId: session.sessionId, agentId: session.agentId, status: 'done', currentWork: '' });
+          return { conflicts: [], conflictReports: [], messages: meshSession.messageQueue };
+        }
+
+        // Explicit done state
+        if (resolvedWorkMode === 'done' && !meshSession.completedAt) {
+          meshSession.completedWork = prev.currentWork || session.currentWork || '';
+          meshSession.completedAt = now;
+        }
       }
 
-      await redis.set(key, JSON.stringify(meshSession), 'EX', MESH_TTL);
+      const ttl = resolvedWorkMode === 'done' ? 60 : MESH_TTL;
+      await redis.set(key, JSON.stringify(meshSession), 'EX', ttl);
 
       // Also store agentId alias pointing to the canonical sessionId
       // This allows sendMessage("claude-2") to resolve to the real key
