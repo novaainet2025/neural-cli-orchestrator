@@ -358,6 +358,31 @@ export async function createGateway() {
     return { disconnected: true };
   });
 
+  // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
+  app.post('/api/hive', async (req, reply) => {
+    const { prompt, providers } = req.body as any;
+    if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
+    const allProviders = providers || agentManager.listEnabledIds();
+    reply.code(202);
+    discussionEngine.startDiscussion({
+      topic: prompt,
+      mode: 'hive',
+      providers: allProviders,
+    }).catch(err => log.error({ err: err.message }, 'Hive failed'));
+    return { status: 'started', mode: 'hive', providers: allProviders };
+  });
+
+  // ═══ Broadcast (All Agents) ════════════════════════
+  app.post('/api/broadcast', async (req, reply) => {
+    const { message, providers } = req.body as any;
+    if (!message) { reply.code(400); return { error: 'message is required' }; }
+    const allProviders = providers || agentManager.listEnabledIds();
+    reply.code(202);
+    discussionEngine.executeBroadcast(message, allProviders)
+      .catch(err => log.error({ err: err.message }, 'Broadcast failed'));
+    return { status: 'started', mode: 'broadcast', providers: allProviders };
+  });
+
   // ═══ Commander 4-Layer ═════════════════════════════
   app.post('/api/commander', async (req) => {
     const { commander } = await import('../core/commander.js');
