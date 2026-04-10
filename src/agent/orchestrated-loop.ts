@@ -217,8 +217,8 @@ export class OrchestratedLoop {
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];
       case 'copilot':
-        // what-the-shell accepts arbitrary natural language query
-        return ['what-the-shell', prompt];
+        // copilot CLI v1.0.22: non-interactive mode via --prompt flag
+        return ['--prompt', prompt];
       default:
         return [...baseArgs, prompt];
     }

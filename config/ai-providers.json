@@ -216,9 +216,9 @@
       "type": "cli",
       "role": "Researcher",
       "score": 75,
-      "model": "copilot",
-      "command": "github-copilot-cli",
-      "args": [],
+      "model": "claude-haiku-4.5",
+      "command": "copilot",
+      "args": ["--prompt"],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
@@ -235,9 +235,9 @@
         "tone": "helpful",
         "style": "collaborative"
       },
-      "note": "Installed via npm install -g @githubnext/github-copilot-cli",
+      "note": "GitHub Copilot CLI v1.0.22. Uses claude-haiku-4.5 via Copilot API.",
       "healthCheck": {
-        "command": "github-copilot-cli",
+        "command": "copilot",
         "args": ["--version"],
         "timeout": 5000
       }
