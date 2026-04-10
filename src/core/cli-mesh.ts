@@ -515,6 +515,33 @@ class CliMesh {
   }
 
   /**
+   * Mark a session as "work completed" — transitions to done state.
+   * The session stays visible for 60s then expires automatically.
+   */
+  async complete(sessionId: string, completedWork?: string): Promise<void> {
+    const now = new Date().toISOString();
+    if (isRedisConnected()) {
+      const redis = await getRedis();
+      const key = `${MESH_PREFIX}${sessionId}`;
+      const raw = await redis.get(key);
+      if (raw) {
+        const session: MeshSession = JSON.parse(raw);
+        session.workMode = 'done';
+        session.status = 'done';
+        session.completedWork = completedWork || session.currentWork;
+        session.completedAt = now;
+        session.currentWork = '';
+        session.currentFiles = [];
+        session.activeConflicts = [];
+        await redis.set(key, JSON.stringify(session), 'EX', 60);
+      }
+    }
+    await eventBus.publish({ type: 'mesh:session_update', session: { sessionId, workMode: 'done', completedAt: now } } as any);
+    await eventBus.publish({ type: 'mesh:complete', sessionId, completedWork: completedWork || '' });
+    log.info({ sessionId, completedWork }, 'Session marked as done');
+  }
+
+  /**
    * Remove a session from the mesh (disconnect).
    */
   async disconnect(sessionId: string): Promise<void> {
