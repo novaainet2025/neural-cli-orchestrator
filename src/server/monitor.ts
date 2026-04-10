@@ -49,8 +49,9 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .section.collapsed .ph-toggle{transform:rotate(-90deg)}
 .section-body{overflow-y:auto;flex:1}
 
-/* ── Left: SERVER AGENTS ─────────────────────────────── */
+/* ── Right top: SERVER AGENTS ────────────────────────── */
 /* Agents = NCO가 직접 오케스트레이션하는 서버 프로세스 */
+#sec-agents{background:#0d1117;border-bottom:2px solid #21262d}
 #sec-agents .ph{background:#0d1117;border-bottom:1px solid #21262d}
 #sec-agents .ph .ph-title{color:#6e7681}
 .ag{padding:5px 10px;border-bottom:1px solid #0f1117;display:flex;justify-content:space-between;align-items:center;transition:background .25s;cursor:default}
@@ -75,25 +76,20 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 .st.working,.st.thinking,.st.coding,.st.discussing{animation:pulse 1.8s ease-in-out infinite}
 
-/* ── DIVIDER between agents and mesh ─────────────────── */
-.section-divider{
-  height:3px;
-  background:linear-gradient(90deg,#1f6feb44 0%,#1f6feb88 40%,#1f6feb44 100%);
+/* ── Divider between agents section and tabs in right pane ── */
+.agents-tab-divider{
+  height:2px;
+  background:#161b22;
   flex-shrink:0;
-  position:relative;
-}
-.section-divider::after{
-  content:'CLI TERMINALS';
-  position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  font-size:8px;letter-spacing:1.5px;color:#1f6feb88;font-weight:700;
 }
 
-/* ── Left: CLI MESH (TERMINALS) ──────────────────────── */
+/* ── Left pane: CLI TERMINALS (full pane) ────────────── */
 /* CLI Mesh = 외부에서 직접 실행 중인 CLI 터미널 세션 */
-#sec-mesh{background:#060c18}
+.pane-left{background:#060c18}
+#sec-mesh{background:transparent;flex:1}
 #sec-mesh .ph{background:#08112088;border-bottom:2px solid #1f6feb33}
 #sec-mesh .ph .ph-title{color:#58a6ff;font-size:10px;font-weight:700}
-#sec-mesh .section-body{background:#060c18}
+#sec-mesh .section-body{background:transparent}
 
 /* Mesh node = terminal card */
 .mesh-node{
@@ -280,26 +276,9 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 <!-- ── Body ── -->
 <div class="body" id="body">
 
-  <!-- LEFT pane -->
+  <!-- LEFT pane: CLI TERMINALS -->
   <div class="pane pane-left" id="pane-left">
-
-    <!-- Agents section -->
-    <div class="section" id="sec-agents" style="flex:1;min-height:80px">
-      <div class="ph" style="height:26px">
-        <div class="ph-title">
-          <span style="color:#484f58;font-size:9px;letter-spacing:1.5px;font-weight:700">SERVER AGENTS</span>
-          <span class="ph-cnt" id="agCnt" style="background:#161b22;color:#484f58">9</span>
-        </div>
-        <span class="ph-toggle" onclick="toggleSection('sec-agents')" title="접기/펼치기">▾</span>
-      </div>
-      <div class="section-body" id="agentList"></div>
-    </div>
-
-    <!-- Divider -->
-    <div class="section-divider"></div>
-
-    <!-- CLI Mesh section -->
-    <div class="section" id="sec-mesh" style="flex:0 0 auto;min-height:90px">
+    <div class="section" id="sec-mesh" style="flex:1;min-height:0">
       <div class="ph" style="height:30px">
         <div class="ph-title">
           <span style="font-size:11px">⬡</span>
@@ -310,13 +289,12 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
       </div>
       <div class="section-body" id="meshNodeList"><div class="mesh-empty">활성 세션 없음<br><span style="font-size:9px">/nco-mesh ping 으로 등록</span></div></div>
     </div>
-
   </div>
 
   <!-- Resizer L -->
   <div class="resizer" id="resizer-l" title="드래그하여 크기 조절"></div>
 
-  <!-- CENTER pane -->
+  <!-- CENTER pane: Event Stream -->
   <div class="pane pane-center">
     <div class="ph">
       <div class="ph-title"><span>Event Stream</span></div>
@@ -328,8 +306,25 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
   <!-- Resizer R -->
   <div class="resizer" id="resizer-r" title="드래그하여 크기 조절"></div>
 
-  <!-- RIGHT pane -->
+  <!-- RIGHT pane: Server Agents + Tabs -->
   <div class="pane pane-right" id="pane-right">
+
+    <!-- Agents section (collapsible, top of right pane) -->
+    <div class="section" id="sec-agents" style="flex-shrink:0;max-height:45%">
+      <div class="ph" style="height:26px">
+        <div class="ph-title">
+          <span style="color:#484f58;font-size:9px;letter-spacing:1.5px;font-weight:700">SERVER AGENTS</span>
+          <span class="ph-cnt" id="agCnt" style="background:#161b22;color:#484f58">9</span>
+        </div>
+        <span class="ph-toggle" onclick="toggleSection('sec-agents')" title="접기/펼치기">▾</span>
+      </div>
+      <div class="section-body" id="agentList"></div>
+    </div>
+
+    <!-- Divider between agents and tabs -->
+    <div class="agents-tab-divider"></div>
+
+    <!-- Tab bar -->
     <div class="tab-bar" id="tabBar">
       <div class="tab active" data-tab="mesh" onclick="switchTab('mesh')">⬡ Mesh</div>
       <div class="tab" data-tab="messages" onclick="switchTab('messages')">Messages</div>
