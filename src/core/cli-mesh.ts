@@ -39,17 +39,27 @@ const MESH_TTL = 300; // 5min — sessions expire if no heartbeat
  *   - Coordinate work
  */
 
+/** High-level work mode — shown prominently in the monitor UI */
+export type WorkMode = 'solo' | 'mesh' | 'waiting' | 'blocked' | 'reviewing';
+
 export interface MeshSession {
   sessionId: string;
   agentId: string;
   pid: number;
   status: 'idle' | 'thinking' | 'coding' | 'reviewing' | 'discussing';
-  currentWork: string;            // What am I doing? (free text)
-  currentFiles: string[];         // Files I'm touching
+  /** High-level work mode for monitor display */
+  workMode: WorkMode;
+  /** Free-text description of current task */
+  currentWork: string;
+  currentFiles: string[];
   branch: string;
+  /** Optional: task ID this session is working on */
+  taskId?: string;
+  /** Optional: session IDs of collaborating CLIs (for mesh mode) */
+  collaborators?: string[];
   startedAt: string;
   lastHeartbeat: string;
-  messageQueue: MeshMessage[];    // Pending messages for this session
+  messageQueue: MeshMessage[];
 }
 
 export interface MeshMessage {
@@ -72,22 +82,37 @@ class CliMesh {
     agentId: string;
     pid: number;
     status?: string;
+    workMode?: WorkMode;
     currentWork?: string;
     currentFiles?: string[];
     branch?: string;
+    taskId?: string;
+    collaborators?: string[];
   }): Promise<{ conflicts: string[]; messages: MeshMessage[] }> {
     const now = new Date().toISOString();
 
-    // Use sessionId as the canonical key (typically the Claude process PID).
-    // Store agentId-based alias so sendMessage("claude-2") also works.
+    // Infer workMode if not provided
+    const inferredMode = (): WorkMode => {
+      const st = session.status || 'idle';
+      if (session.collaborators && session.collaborators.length > 0) return 'mesh';
+      if (st === 'discussing') return 'mesh';
+      if (st === 'reviewing') return 'reviewing';
+      if (st === 'idle' && !session.currentWork) return 'waiting';
+      if (['coding', 'thinking'].includes(st)) return 'solo';
+      return 'waiting';
+    };
+
     const meshSession: MeshSession = {
       sessionId: session.sessionId,
       agentId: session.agentId,
       pid: session.pid,
       status: (session.status as any) || 'idle',
+      workMode: session.workMode ?? inferredMode(),
       currentWork: session.currentWork || '',
       currentFiles: session.currentFiles || [],
       branch: session.branch || 'unknown',
+      taskId: session.taskId,
+      collaborators: session.collaborators || [],
       startedAt: now,
       lastHeartbeat: now,
       messageQueue: [],
@@ -363,6 +388,7 @@ class CliMesh {
           branch: r.branch,
           startedAt: r.started_at,
           lastHeartbeat: r.last_heartbeat,
+          workMode: (r.work_mode ?? 'autonomous') as any,
           messageQueue: [],
         });
       }

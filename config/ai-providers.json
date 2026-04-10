@@ -140,7 +140,9 @@
       "model": "openrouter/meta-llama/llama-4-maverick:free",
       "command": "aider",
       "args": ["--message"],
-      "env": {},
+      "env": {
+        "OPENROUTER_API_KEY": "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"
+      },
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "free",
