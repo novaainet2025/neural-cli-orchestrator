@@ -7,7 +7,7 @@ import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { sharedState } from '../core/shared-state.js';
-import { eventBus } from '../core/event-bus.js';
+import { eventBus, type NCOEvent } from '../core/event-bus.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { taskQueue } from '../core/task-queue.js';
@@ -50,6 +50,15 @@ export async function createGateway() {
       storage: { kind: 'sqlite', path: env.DATABASE_PATH },
       timestamp: new Date().toISOString(),
     };
+  });
+
+  // ═══ SSE Event Stream ═════════════════════════════════
+  app.get('/api/events/stream', async (request, reply) => {
+    reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    const handler = (event: NCOEvent) => { reply.raw.write(`data: ${JSON.stringify(event)}\n\n`); };
+    eventBus.on('*', handler);
+    request.raw.on('close', () => { eventBus.off('*', handler); });
+    await new Promise(() => {}); // keep alive
   });
 
   // ═══ AI Providers ═════════════════════════════════
@@ -467,6 +476,28 @@ export async function createGateway() {
       sessionId,
     } as any);
     return { disconnected: true };
+  });
+
+  // Broadcast a message from one CLI session to all active sessions
+  app.post('/api/mesh/broadcast', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const { fromSessionId, fromAgent, content, type } = req.body as any;
+    if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
+    const delivered = await cliMesh.sendMessage(
+      fromSessionId, fromAgent || 'unknown', '*', content, type || 'info',
+    );
+    await eventBus.publish({
+      type: 'mesh:message',
+      message: {
+        from: fromSessionId,
+        fromAgent: fromAgent || 'unknown',
+        to: '*',
+        content,
+        messageType: type || 'info',
+        createdAt: new Date().toISOString(),
+      },
+    } as any);
+    return { delivered };
   });
 
   // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
