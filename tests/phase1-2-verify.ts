@@ -239,6 +239,10 @@ async function main() {
     await new Promise(r => setTimeout(r, 100));
     cb.canExecute();
     cb.recordSuccess();
+    assert(cb.getState() === 'half-open', 'Needs 3 consecutive successes');
+    cb.recordSuccess();
+    assert(cb.getState() === 'half-open', 'Needs 3 consecutive successes');
+    cb.recordSuccess();
     assert(cb.getState() === 'closed', 'Should recover to closed');
   });
 

@@ -1,30 +1,30 @@
-vLLM 로컬 서버를 관리합니다 (시작/중지/상태/테스트/설정 등).
+# vLLM 로컬 서버를 관리합니다 (시작/중지/상태/테스트/설정 등).
 
-사용법:
-  /nco-vllm                          — 현재 상태 확인 (기본)
-  /nco-vllm status                   — 상세 상태 + VRAM 사용량
-  /nco-vllm start                    — vLLM 서버 시작
-  /nco-vllm stop                     — vLLM 서버 중지 (VRAM 해제)
-  /nco-vllm restart                  — 재시작
-  /nco-vllm ensure                   — 실행 중이면 유지, 아니면 자동 시작
-  /nco-vllm logs [줄수]              — 서버 로그 출력 (기본 50줄)
-  /nco-vllm models                   — 로드된 모델 목록
-  /nco-vllm test                     — 추론 동작 테스트
-  /nco-vllm chat <프롬프트>          — 직접 채팅 (단발성 추론)
-  /nco-vllm config                   — 현재 vLLM 설정 출력
-  /nco-vllm metrics                  — 성능 지표 (처리량, 지연 등)
-  /nco-vllm proxy start [분]         — 자동 관리 프록시 시작 (기본 5분 미사용 시 종료)
-  /nco-vllm proxy stop               — 프록시 종료
-  /nco-vllm proxy status             — 프록시 실행 여부 확인
-  /nco-vllm set-idle <분>            — 자동 종료 대기 시간 변경
-  /nco-vllm enable                   — NCO 프로바이더 활성화
-  /nco-vllm disable                  — NCO 프로바이더 비활성화
+# 사용법:
+#   /nco-vllm                          — 현재 상태 확인 (기본)
+#   /nco-vllm status                   — 상세 상태 + VRAM 사용량
+#   /nco-vllm start                    — vLLM 서버 시작
+#   /nco-vllm stop                     — vLLM 서버 중지 (VRAM 해제)
+#   /nco-vllm restart                  — 재시작
+#   /nco-vllm ensure                   — 실행 중이면 유지, 아니면 자동 시작
+#   /nco-vllm logs [줄수]              — 서버 로그 출력 (기본 50줄)
+#   /nco-vllm models                   — 로드된 모델 목록
+#   /nco-vllm test                     — 추론 동작 테스트
+#   /nco-vllm chat <프롬프트>          — 직접 채팅 (단발성 추론)
+#   /nco-vllm config                   — 현재 vLLM 설정 출력
+#   /nco-vllm metrics                  — 성능 지표 (처리량, 지연 등)
+#   /nco-vllm proxy start [분]         — 자동 관리 프록시 시작 (기본 5분 미사용 시 종료)
+#   /nco-vllm proxy stop               — 프록시 종료
+#   /nco-vllm proxy status             — 프록시 실행 여부 확인
+#   /nco-vllm set-idle <분>            — 자동 종료 대기 시간 변경
+#   /nco-vllm enable                   — NCO 프로바이더 활성화
+#   /nco-vllm disable                  — NCO 프로바이더 비활성화
 
-예:
-  /nco-vllm start
-  /nco-vllm chat "한국어로 안녕하세요를 영어로 번역해줘"
-  /nco-vllm logs 100
-  /nco-vllm proxy start 10
+# 예:
+#   /nco-vllm start
+#   /nco-vllm chat "한국어로 안녕하세요를 영어로 번역해줘"
+#   /nco-vllm logs 100
+#   /nco-vllm proxy start 10
 
 CTL="/home/nova/projects/neural-cli-orchestrator/cli-installs/vllm-ctl.sh"
 PROXY_CTL="/home/nova/projects/neural-cli-orchestrator/cli-installs/vllm-proxy.sh"

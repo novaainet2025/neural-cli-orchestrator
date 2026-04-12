@@ -1,6 +1,11 @@
 import OpenAI from 'openai';
+import type {
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from 'openai/resources/chat/completions';
 import { AgentToolExecutor } from './agent-tools.js';
 import { parseToolCalls, extractThinking } from './tool-parser.js';
+import { buildApiAgentSystemPrompt, getNcoOpenAiTools } from './nco-orchestration-prompt.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
@@ -18,12 +23,42 @@ interface ApiResult {
   model: string;
 }
 
+function jsonArgsToStringRecord(raw: string): Record<string, string> {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw || '{}');
+  } catch {
+    return {};
+  }
+  if (!obj || typeof obj !== 'object') return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (v === null || v === undefined) continue;
+    out[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  }
+  return out;
+}
+
+function isLikelyToolsUnsupportedError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+  const status =
+    err && typeof err === 'object' && 'status' in err
+      ? Number((err as { status?: number }).status)
+      : NaN;
+  if (status === 422) return true;
+  return (
+    (lower.includes('tools') && (lower.includes('not supported') || lower.includes('unknown'))) ||
+    lower.includes('tool_choice') ||
+    (lower.includes('function') && lower.includes('not support'))
+  );
+}
+
 /**
  * Type C Executor: API-based agents (vLLM, OpenRouter, Gemini API).
- * Uses OpenAI-compatible API with streaming + key rotation.
+ * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
  */
 export class ApiExecutor {
-  private toolExecutor: AgentToolExecutor;
   private keys: string[] = [];
   private keyIndex = 0;
   private cooldowns: Map<number, number> = new Map();
@@ -32,9 +67,6 @@ export class ApiExecutor {
     private provider: ProviderConfig,
     private sandbox: SandboxManager,
   ) {
-    this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
-
-    // Load API keys with rotation
     if (provider.keyRotation?.enabled && provider.keyRotation.envVar) {
       this.keys = getApiKeys(provider.keyRotation.envVar, provider.keyRotation.delimiter);
       log.info({ provider: provider.id, keyCount: this.keys.length }, 'API keys loaded');
@@ -49,93 +81,140 @@ export class ApiExecutor {
     let iterations = 0;
     let totalToolCalls = 0;
 
+    const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId);
+
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
 
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      {
-        role: 'system',
-        content: systemPrompt || this.provider.persona.systemPrompt,
-      },
+    const systemContent = await this.buildSystemPrompt(systemPrompt);
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemContent },
       { role: 'user', content: prompt },
     ];
 
+    const tools = getNcoOpenAiTools();
     let finalOutput = '';
+    let useNativeTools = true;
 
-    while (iterations < MAX_ITERATIONS) {
-      iterations++;
+    try {
+      while (iterations < MAX_ITERATIONS) {
+        iterations++;
 
-      if (!this.sandbox.canExecute()) break;
+        if (!this.sandbox.canExecute()) break;
 
-      const client = this.createClient();
-      const model = this.provider.model || 'default';
+        const client = this.createClient();
+        const model = this.provider.model || 'default';
 
-      try {
-        const response = await client.chat.completions.create({
-          model,
-          messages,
-          max_tokens: 4096,
-          stream: true,
-        });
+        try {
+          const createParams: ChatCompletionCreateParamsNonStreaming = {
+            model,
+            messages,
+            max_tokens: 4096,
+            stream: false,
+          };
+          if (useNativeTools) {
+            createParams.tools = tools;
+            createParams.tool_choice = 'auto';
+          }
 
-        let fullResponse = '';
-        for await (const chunk of response) {
-          const token = chunk.choices[0]?.delta?.content || '';
-          fullResponse += token;
+          const response = await client.chat.completions.create(createParams);
+
+          this.sandbox.recordSuccess();
+
+          const msg = response.choices[0]?.message;
+          if (!msg) break;
+
+          const textContent = typeof msg.content === 'string' ? msg.content : '';
 
           await eventBus.publish({
             type: 'task:chunk', taskId, agentId,
-            chunk: token, iteration: iterations,
+            chunk: textContent,
+            iteration: iterations,
           });
-        }
 
-        this.sandbox.recordSuccess();
+          if (useNativeTools && msg.tool_calls?.length) {
+            messages.push({
+              role: 'assistant',
+              content: msg.content ?? null,
+              tool_calls: msg.tool_calls,
+            });
 
-        // Check for tool calls
-        const toolCalls = parseToolCalls(fullResponse);
+            for (const tc of msg.tool_calls) {
+              if (tc.type !== 'function') continue;
+              totalToolCalls++;
+              const args = jsonArgsToStringRecord(tc.function.arguments ?? '');
+              const result = await toolExecutor.execute({
+                tool: tc.function.name,
+                args,
+              });
+              const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`;
+              messages.push({
+                role: 'tool',
+                tool_call_id: tc.id,
+                content: summary,
+              });
+            }
+            continue;
+          }
 
-        if (toolCalls.length === 0) {
-          finalOutput = extractThinking(fullResponse);
+          const fromText = parseToolCalls(textContent);
+          if (fromText.length > 0) {
+            messages.push({ role: 'assistant', content: textContent });
+            const results: string[] = [];
+            for (const call of fromText) {
+              totalToolCalls++;
+              const result = await toolExecutor.execute(call);
+              results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`);
+            }
+            messages.push({
+              role: 'user',
+              content: `Tool results:\n${results.join('\n')}\n\nContinue.`,
+            });
+            continue;
+          }
+
+          finalOutput = extractThinking(textContent);
           break;
+        } catch (err: unknown) {
+          const status = err && typeof err === 'object' && 'status' in err
+            ? (err as { status?: number }).status
+            : undefined;
+          if (status === 429 && this.keys.length > 1) {
+            this.cooldowns.set(this.keyIndex, Date.now() + (this.provider.keyRotation?.cooldownMs || 60000));
+            this.keyIndex = (this.keyIndex + 1) % this.keys.length;
+            log.warn({ agentId, keyIndex: this.keyIndex }, 'Rate limited, rotating key');
+            iterations--;
+            continue;
+          }
+
+          if (useNativeTools && isLikelyToolsUnsupportedError(err)) {
+            log.warn(
+              { agentId, err: err instanceof Error ? err.message : String(err) },
+              'Disabling native tools; using XML tool protocol only',
+            );
+            useNativeTools = false;
+            iterations--;
+            continue;
+          }
+
+          const message = err instanceof Error ? err.message : String(err);
+          this.sandbox.recordFailure(message);
+
+          if (this.provider.apiConfig?.fallback) {
+            log.info({ agentId, fallback: this.provider.apiConfig.fallback.provider }, 'Falling back');
+            await eventBus.publish({
+              type: 'system:fallback',
+              from: agentId,
+              to: this.provider.apiConfig.fallback.provider,
+              reason: message,
+            });
+          }
+
+          throw err;
         }
-
-        // Execute tools
-        const results: string[] = [];
-        for (const call of toolCalls) {
-          totalToolCalls++;
-          const result = await this.toolExecutor.execute(call);
-          results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`);
-        }
-
-        messages.push({ role: 'assistant', content: fullResponse });
-        messages.push({ role: 'user', content: `Tool results:\n${results.join('\n')}\n\nContinue.` });
-
-      } catch (err: any) {
-        // Rate limit → rotate key
-        if (err.status === 429 && this.keys.length > 1) {
-          this.cooldowns.set(this.keyIndex, Date.now() + (this.provider.keyRotation?.cooldownMs || 60000));
-          this.keyIndex = (this.keyIndex + 1) % this.keys.length;
-          log.warn({ agentId, keyIndex: this.keyIndex }, 'Rate limited, rotating key');
-          continue; // retry with next key
-        }
-
-        this.sandbox.recordFailure(err.message);
-
-        // Fallback to secondary provider
-        if (this.provider.apiConfig?.fallback) {
-          log.info({ agentId, fallback: this.provider.apiConfig.fallback.provider }, 'Falling back');
-          await eventBus.publish({
-            type: 'system:fallback',
-            from: agentId,
-            to: this.provider.apiConfig.fallback.provider,
-            reason: err.message,
-          });
-        }
-
-        throw err;
       }
+    } finally {
+      await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
     }
-
-    await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
 
     return {
       output: finalOutput,
@@ -143,6 +222,20 @@ export class ApiExecutor {
       toolCalls: totalToolCalls,
       model: this.provider.model || 'unknown',
     };
+  }
+
+  private async buildSystemPrompt(override?: string): Promise<string> {
+    const base = override || this.provider.persona.systemPrompt;
+    const teamState = await this.buildTeamContext();
+    return buildApiAgentSystemPrompt(base, teamState);
+  }
+
+  private async buildTeamContext(): Promise<string> {
+    const states = await sharedState.getAllAgentStates();
+    const lines = Object.values(states).map(s =>
+      `- ${s.id}: ${s.status}${s.currentTask ? ` (working on: ${s.currentTask})` : ''}`,
+    );
+    return lines.join('\n') || 'No agents online';
   }
 
   private createClient(): OpenAI {
@@ -168,7 +261,6 @@ export class ApiExecutor {
       }
     }
 
-    // All keys on cooldown — use the one that expires soonest
     let earliest = Infinity;
     let bestIdx = 0;
     for (const [idx, cd] of this.cooldowns) {

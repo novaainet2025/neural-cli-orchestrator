@@ -11,7 +11,7 @@
       "score": 95,
       "model": "claude-opus-4-6",
       "command": "claude",
-      "args": ["-p", "--output-format", "text"],
+      "args": ["--dangerously-skip-permissions"],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
@@ -139,7 +139,7 @@
       "score": 82,
       "model": "openrouter/meta-llama/llama-4-maverick:free",
       "command": "aider",
-      "args": ["--message"],
+      "args": ["--yes", "--no-auto-commits", "--model", "openrouter/meta-llama/llama-4-maverick:free"],
       "env": {
         "OPENROUTER_API_KEY": "***REDACTED-OPENROUTER-KEY***"
       },
@@ -319,9 +319,9 @@
         "canFinalApprove": false
       },
       "persona": {
-        "systemPrompt": "You are the local Validator of the NCO AI team. You verify results, run local validation, and confirm outputs.",
+        "systemPrompt": "You are the local Quality Assurance & Validation Specialist of the NCO AI team. You use systematic thinking and tool-based verification to ensure all changes meet the highest standards. You always plan your validation steps in <thinking> blocks.",
         "tone": "secure",
-        "style": "local"
+        "style": "rigorous"
       },
       "modelSpec": {
         "name": "Gemma 4",

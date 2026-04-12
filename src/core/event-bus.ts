@@ -50,8 +50,37 @@ export class EventBus {
         }
       });
 
+      try {
+        const db = getDb();
+        db.prepare(`CREATE TABLE IF NOT EXISTS event_queue (id TEXT PRIMARY KEY, channel TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()))`).run();
+      } catch { }
+
+      // Consumer Group for multi-instance support
+      try {
+        const redisForGroup = await getRedis();
+        await redisForGroup.xgroup('CREATE', STREAM, 'nco-consumers', '0', 'MKSTREAM');
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!msg.includes('BUSYGROUP')) log.warn({ err: msg }, 'Consumer group setup skipped');
+      }
+
       this.ready = true;
       log.info('Event Bus initialized (Redis Pub/Sub + Streams)');
+
+      setInterval(async () => {
+        if (!isRedisConnected()) return;
+        try {
+          const db = getDb();
+          const pending = db.prepare(`SELECT * FROM event_queue ORDER BY created_at LIMIT 50`).all() as any[];
+          if (pending.length === 0) return;
+          const redis = await getRedis();
+          await redis.ping();
+          for (const row of pending) {
+            await redis.publish(row.channel, row.payload);
+            db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
+          }
+        } catch { }
+      }, 5000);
     } catch (err) {
       log.warn({ err }, 'Redis unavailable, Event Bus in local-only mode');
       this.ready = true; // local-only fallback
@@ -70,7 +99,7 @@ export class EventBus {
 
     // 1. Local emit (always works) — track ID to suppress Redis echo
     this.localEmittedIds.add(enriched.id);
-    setTimeout(() => this.localEmittedIds.delete(enriched.id), 10000);
+    setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
     this.local.emit(enriched.type, enriched);
     this.local.emit('*', enriched);
 
@@ -91,6 +120,10 @@ export class EventBus {
         );
       } catch (err) {
         log.error({ err, type: enriched.type }, 'Redis publish failed');
+        try {
+          const db = getDb();
+          db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, JSON.stringify(enriched));
+        } catch { }
       }
     }
 

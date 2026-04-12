@@ -44,6 +44,8 @@ export interface DiscussionReport {
 // ─── Discussion Engine ────────────────────────────────
 class DiscussionEngine {
 
+  private trustScores = new Map<string, number>();
+
   // ═══ 단일 작업 위임 (mode: task) ═══
   async executeTask(agentId: string, prompt: string, options?: { systemPrompt?: string }): Promise<string> {
     const result = await agentManager.executeTask(agentId, prompt, options);
@@ -111,6 +113,11 @@ class DiscussionEngine {
     const participants = options.providers || this.selectParticipants(options.mode);
     const initiator = options.initiator || 'claude-code';
 
+    // Initialize trust scores to 1.0 for each agent
+    for (const pid of participants) {
+      this.trustScores.set(pid, 1.0);
+    }
+
     // Save session to DB
     const db = getDb();
     db.prepare(`
@@ -152,7 +159,7 @@ class DiscussionEngine {
       // Build evaluation prompt with all previous proposals
       const allProposals = this.formatProposals(proposals);
       const evalPrompt = round === 2
-        ? `다른 AI들의 제안을 평가하세요:\n\n${allProposals}\n\n각 제안의 장점/단점을 분석하고 1-10점으로 평가하세요. 가장 좋은 제안을 선택하고 이유를 설명하세요.`
+        ? `다른 AI들의 제안을 평가하세요:\n\n${allProposals}\n\n각 제안의 장점/단점을 분석하고 1-10점으로 평가하세요. 가장 좋은 제안을 선택하고 이유를 설명하세요.\n\nIMPORTANT: 평가 끝에 반드시 JSON 블록을 포함하세요:\n\`\`\`json\n{"scores": {"agentId": 점수}, "winner": "agentId", "reason": "이유"}\n\`\`\``
         : `이전 평가를 기반으로 쟁점에 대해 집중 토론하세요:\n\n${allProposals}\n\n합의에 도달할 수 있도록 타협안을 제시하세요.`;
 
       const evaluations = await this.collectResponses(sessionId, round, 'evaluation', participants, evalPrompt);
@@ -160,6 +167,9 @@ class DiscussionEngine {
       // Calculate consensus
       const scores = this.extractScores(evaluations, participants);
       consensusRate = this.calculateConsensus(scores, participants);
+
+      // Update trust scores based on consensus alignment
+      this.updateTrustScores(scores, participants);
 
       rounds.push({ round, responses: evaluations, evaluations: scores, consensusRate });
       this.saveRound(sessionId, round, 'evaluation', evaluations, scores, consensusRate);
@@ -392,6 +402,7 @@ class DiscussionEngine {
 
         const result = await agentManager.executeTask(pid, prompt, {
           systemPrompt: `You are participating in a team discussion (round ${round}). Session: ${sessionId}`,
+          signal: AbortSignal.timeout(30_000),
         });
 
         const db = getDb();
@@ -414,7 +425,14 @@ class DiscussionEngine {
       if (r.status === 'fulfilled') {
         responses[r.value.pid] = r.value.output;
       } else {
-        log.warn({ reason: r.reason }, 'Agent failed in discussion');
+        const err = r.reason;
+        const ex = err instanceof Error ? err : null;
+        const isTimeout =
+          ex?.name === 'TimeoutError' || ex?.name === 'AbortError';
+        log.warn(
+          { reason: ex?.message ?? String(err), timeout: isTimeout },
+          'Agent failed in discussion',
+        );
       }
     }
     return responses;
@@ -492,6 +510,16 @@ class DiscussionEngine {
 
     for (const [evaluator, text] of Object.entries(evaluations)) {
       scores[evaluator] = {};
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) || text.match(/(\{[\s\S]*?"scores"[\s\S]*?\})/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[1]);
+          if (parsed.scores && typeof parsed.scores === "object") {
+            for (const t of participants) { if (t === evaluator) continue; const s = parsed.scores[t]; if (typeof s === "number") scores[evaluator][t] = Math.min(10, Math.max(1, s)); }
+            continue;
+          }
+        } catch { }
+      }
       for (const target of participants) {
         if (target === evaluator) continue;
         // Simple score extraction: look for "N/10" or "N점" patterns
@@ -515,49 +543,89 @@ class DiscussionEngine {
   ): number {
     if (participants.length < 2) return 1.0;
 
-    // Get agent weights from config
-    const weights: Record<string, number> = {};
-    for (const pid of participants) {
-      const provider = agentManager.getProvider(pid);
-      weights[pid] = provider?.score || 50;
+    // Calculate weighted average scores using trust scores
+    const weightedScores: Record<string, number> = {};
+    let totalWeight = 0;
+    let totalWeightedScore = 0;
+
+    for (const evaluator of participants) {
+      const trust = this.trustScores.get(evaluator) ?? 1.0;
+      totalWeight += trust;
+
+      const evalScores = scores[evaluator] || {};
+      for (const [target, score] of Object.entries(evalScores)) {
+        const weightedScore = score * trust;
+        weightedScores[target] = (weightedScores[target] || 0) + weightedScore;
+      }
     }
 
-    // Calculate weighted average agreement
-    // Agreement = how much evaluators agree on which proposal is best
-    let totalWeightedAgreement = 0;
-    let totalWeight = 0;
+    // Calculate mean weighted score for each target
+    const meanScores: Record<string, number> = {};
+    for (const [target, total] of Object.entries(weightedScores)) {
+      meanScores[target] = totalWeight > 0 ? total / totalWeight : 0;
+    }
 
-    // Find the top-rated proposal for each evaluator
-    const topChoices: Record<string, string> = {};
-    for (const [evaluator, evalScores] of Object.entries(scores)) {
-      let maxScore = 0;
-      let topChoice = '';
-      for (const [target, score] of Object.entries(evalScores)) {
-        if (score > maxScore) {
-          maxScore = score;
-          topChoice = target;
+    // Find the top-rated proposal
+    let maxScore = 0;
+    let topChoice = '';
+    for (const [target, score] of Object.entries(meanScores)) {
+      if (score > maxScore) {
+        maxScore = score;
+        topChoice = target;
+      }
+    }
+
+    // Calculate agreement with top choice
+    let agreementCount = 0;
+    for (const evalScores of Object.values(scores)) {
+      const topScore = Object.entries(evalScores).sort((a, b) => b[1] - a[1])[0]?.[1] || 0;
+      if (Math.abs(topScore - maxScore) <= 1) {
+        agreementCount++;
+      }
+    }
+
+    return participants.length > 0 ? agreementCount / participants.length : 0;
+  }
+
+  // ─── Internal: Update trust scores based on consensus ─
+  private updateTrustScores(
+    scores: Record<string, Record<string, number>>,
+    participants: string[]
+  ): void {
+    if (participants.length < 2) return;
+
+    // Calculate mean score for each agent
+    const meanScores: Record<string, number> = {};
+    for (const pid of participants) {
+      let sum = 0;
+      let count = 0;
+      for (const [evaluator, evalScores] of Object.entries(scores)) {
+        if (evaluator === pid) continue;
+        const score = evalScores[pid];
+        if (typeof score === 'number') {
+          sum += score;
+          count++;
         }
       }
-      topChoices[evaluator] = topChoice;
+      meanScores[pid] = count > 0 ? sum / count : 5;
     }
 
-    // Count agreement with majority
-    const choiceCounts: Record<string, number> = {};
-    for (const choice of Object.values(topChoices)) {
-      choiceCounts[choice] = (choiceCounts[choice] || 0) + 1;
-    }
+    // Calculate overall mean
+    const overallMean = Object.values(meanScores).reduce((a, b) => a + b, 0) / (Object.keys(meanScores).length || 1);
 
-    const majority = Object.entries(choiceCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    // Update each agent's trust based on alignment with mean
+    for (const pid of participants) {
+      const currentTrust = this.trustScores.get(pid) ?? 1.0;
+      const score = meanScores[pid] ?? 5;
 
-    for (const [evaluator, choice] of Object.entries(topChoices)) {
-      const weight = weights[evaluator] || 50;
-      totalWeight += weight;
-      if (choice === majority) {
-        totalWeightedAgreement += weight;
+      if (Math.abs(score - overallMean) <= 1) {
+        // Within 1 point of mean - increase trust
+        this.trustScores.set(pid, Math.min(2.0, currentTrust + 0.05));
+      } else {
+        // Outside mean - decrease trust
+        this.trustScores.set(pid, Math.max(0.1, currentTrust - 0.05));
       }
     }
-
-    return totalWeight > 0 ? totalWeightedAgreement / totalWeight : 0;
   }
 
   // ─── Internal: Generate report ──────────────────────

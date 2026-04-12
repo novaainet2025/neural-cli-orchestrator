@@ -64,6 +64,11 @@ const TOOLS = [
   { name: 'nco_mesh_sessions', description: 'List active CLI sessions in mesh', params: [] },
   { name: 'nco_mesh_summary', description: 'Get work summary of all active CLIs', params: [] },
   { name: 'nco_mesh_send', description: 'Send message to CLI sessions', params: ['content', 'toSessionId'] },
+  // Natural Language (1)
+  { name: 'nco_natural', description: 'Parse natural language to intent and execute appropriate tool', params: ['query', 'context'] },
+  // Invocations (2)
+  { name: 'nco_my_invocations', description: '내가 호출한 에이전트들의 현재 상태 조회', params: [] },
+  { name: 'nco_invocations', description: '전체 에이전트 호출 현황 조회', params: ['limit'] },
 ];
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -106,11 +111,21 @@ async function handleTool(name: string, args: any): Promise<string> {
     // Mesh
     case 'nco_mesh_sessions': return JSON.stringify(await ncoFetch('/api/mesh/sessions'));
     case 'nco_mesh_summary': return JSON.stringify(await ncoFetch('/api/mesh/summary'));
-    case 'nco_mesh_send': {
-      // NCO_SESSION_ID is the Claude process PID (set by session-start hook via CLAUDE_ENV_FILE)
+case 'nco_mesh_send': {
       const mySessionId = process.env.NCO_SESSION_ID || String(process.ppid || process.pid);
       const myName = process.env.NCO_NAME || 'claude-code';
       return JSON.stringify(await ncoPost('/api/mesh/send', { fromSessionId: mySessionId, fromAgent: myName, toSessionId: args.toSessionId || '*', content: args.content }));
+    }
+    // Natural Language
+    case 'nco_natural': return JSON.stringify(await ncoPost('/api/nlp/intent', { query: args.query, context: args.context }));
+    // Invocations
+    case 'nco_my_invocations': {
+      const sessionId = process.env.NCO_SESSION_ID || String(process.ppid || process.pid);
+      return JSON.stringify(await ncoFetch(`/api/invocations/session/${encodeURIComponent(sessionId)}`));
+    }
+    case 'nco_invocations': {
+      const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : '';
+      return JSON.stringify(await ncoFetch(`/api/invocations/overview${limit}`));
     }
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });
   }

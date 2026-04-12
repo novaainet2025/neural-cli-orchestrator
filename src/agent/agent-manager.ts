@@ -36,8 +36,10 @@ interface TaskResult {
 
 class AgentManager {
   private sandboxes = new Map<string, SandboxManager>();
+  private latencyHistory = new Map<string, number[]>();
   private providers = new Map<string, ProviderConfig>();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
+  private circuitSuccessCounts = new Map<string, number>();
 
   async init(): Promise<void> {
     const providers = loadEnabledProviders();
@@ -87,11 +89,14 @@ class AgentManager {
           const signal = options?.signal
             ? AbortSignal.any([options.signal, wallClock])
             : wallClock;
+          // provider.args: extra Claude CLI flags (e.g. --dangerously-skip-permissions) so
+          // headless NCO runs can use tools without an interactive permission prompt.
           const result = await execa(provider.command!, [
+            ...(provider.args ?? []),
             '-p', prompt,
             '--output-format', 'text',
           ], {
-            signal,
+            cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
             env: { ...process.env, ...provider.env },
             reject: false,
@@ -129,6 +134,7 @@ class AgentManager {
       }
 
       const durationMs = Date.now() - startTime;
+      this.recordLatency(agentId, durationMs);
 
       // Triple Verification Gate — run L1/L2/L3 checks
       try {
@@ -163,6 +169,8 @@ class AgentManager {
         knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
       } catch { /* non-critical */ }
 
+      this.circuitSuccessCounts.set(agentId, (this.circuitSuccessCounts.get(agentId) ?? 0) + 1);
+
       return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs };
 
     } catch (err: any) {
@@ -180,11 +188,29 @@ class AgentManager {
         error: err.message, durationMs,
       });
 
+      this.circuitSuccessCounts.set(agentId, 0);
+      this.recordLatency(agentId, durationMs);
+
       return {
         taskId, agentId, output: '', iterations: 0, toolCalls: 0,
         success: false, error: err.message, durationMs,
       };
     }
+  }
+
+  // ─── Latency tracking ───────────────────────────────
+  private recordLatency(agentId: string, ms: number): void {
+    const hist = this.latencyHistory.get(agentId) ?? [];
+    hist.push(ms);
+    if (hist.length > 100) hist.shift();
+    this.latencyHistory.set(agentId, hist);
+  }
+
+  getP95Latency(agentId: string): number {
+    const hist = this.latencyHistory.get(agentId);
+    if (!hist || hist.length === 0) return 30_000;
+    const sorted = [...hist].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1];
   }
 
   // ─── Health Monitor ─────────────────────────────────
