@@ -86,7 +86,13 @@ export class AgentToolExecutor {
       case 'listFiles': return this.listFiles(call.args.path || call.args.dir);
       case 'runCommand': return this.runCommand(call.args.command || call.args.cmd);
       case 'runTest': return this.runCommand(`npm test -- ${call.args.path || ''}`);
-      case 'searchCode': return this.runCommand(`grep -rn "${call.args.query}" --include="*.ts" --include="*.js" .`);
+      case 'searchCode': {
+        const query = call.args.query;
+        const path = call.args.path || '.';
+        // If query contains spaces and isn't quoted, it might be "query path"
+        // But for simplicity, we rely on the parser to split them if possible.
+        return this.runCommand(`grep -rnE "${query.replace(/"/g, '\\"')}" ${path}`);
+      }
       case 'searchFiles': return this.runCommand(`find . -name "${call.args.pattern}" -not -path "*/node_modules/*"`);
       case 'gitDiff': return this.runCommand('git diff');
       case 'gitStatus': return this.runCommand('git status --short');

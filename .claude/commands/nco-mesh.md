@@ -1,19 +1,55 @@
-CLI Mesh — 열린 CLI 세션 간 실시간 상태 공유 및 통신 시스템입니다.
+# CLI Mesh — 열린 CLI 세션 간 실시간 상태 공유 및 통신 시스템입니다.
 
-사용법:
-  /nco-mesh                    — 활성 세션 목록 + 작업 요약
-  /nco-mesh done               — 현재 작업 완료 표시 (모니터에 완료로 표시됨)
-  /nco-mesh done <설명>        — 완료된 작업 설명 포함
-  /nco-mesh check <작업설명>   — 작업 시작 전 충돌/중복 검사 (필수 권장)
-  /nco-mesh check <작업설명> <파일1> [파일2…] — 파일 포함 충돌 검사
-  /nco-mesh send <메시지>      — 모든 활성 세션에 메시지 브로드캐스트
-  /nco-mesh send @<sessionId> <메시지> — 특정 세션에 다이렉트 메시지
-  /nco-mesh messages           — 내 메시지 기록 조회
-  /nco-mesh ping               — heartbeat 전송 (현재 상태 등록)
+# 사용법:
+#   /nco-mesh                    — 활성 세션 목록 + 작업 요약
+#   /nco-mesh done               — 현재 작업 완료 표시 (모니터에 완료로 표시됨)
+#   /nco-mesh done <설명>        — 완료된 작업 설명 포함
+#   /nco-mesh check <작업설명>   — 작업 시작 전 충돌/중복 검사 (필수 권장)
+#   /nco-mesh check <작업설명> <파일1> [파일2…] — 파일 포함 충돌 검사
+#   /nco-mesh send <메시지>      — 모든 활성 세션에 메시지 브로드캐스트
+#   /nco-mesh send @<sessionId> <메시지> — 특정 세션에 다이렉트 메시지
+#   /nco-mesh messages           — 내 메시지 기록 조회
+#   /nco-mesh ping               — heartbeat 전송 (현재 상태 등록)
 
-$ARGUMENTS 파싱:
+# $ARGUMENTS 파싱:
 
 ACTION=$(echo "$ARGUMENTS" | cut -d' ' -f1)
+
+# ── 세션 ID / 이름 결정 (등록된 값과 일치시킴) ──────────────────────
+_CK=$$
+for _i in 1 2 3 4 5; do
+  _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
+  [ -z "$_CK" ] && break
+  _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
+  if echo "$_CM" | grep -qE '^(claude|node)$'; then
+    MY_SESSION_ID="$_CK"
+    break
+  fi
+done
+MY_SESSION_ID="${MY_SESSION_ID:-${NCO_SESSION_ID:-${PPID:-$$}}}"
+
+# 이름 결정: NCO_NAME 환경변수를 pid 파일로 교차 검증, 불일치 시 pid 파일 우선
+MY_NAME=""
+if [ -n "$NCO_NAME" ]; then
+  # env var의 pid 파일이 존재하고 내 SESSION_ID와 일치하는지 검증
+  _env_pf="/tmp/nco-names/${NCO_NAME}.pid"
+  if [ -f "$_env_pf" ]; then
+    _env_pid=$(cat "$_env_pf" 2>/dev/null | tr -d '[:space:]')
+    [ "$_env_pid" = "$MY_SESSION_ID" ] && MY_NAME="$NCO_NAME"
+  fi
+fi
+# env var가 없거나 검증 실패 시 pid 파일에서 직접 조회
+if [ -z "$MY_NAME" ]; then
+  for _pf in /tmp/nco-names/claude-*.pid; do
+    [ -f "$_pf" ] || continue
+    _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
+    if [ "$_rp" = "$MY_SESSION_ID" ]; then
+      MY_NAME=$(basename "$_pf" .pid)
+      break
+    fi
+  done
+fi
+MY_NAME="${MY_NAME:-claude-code}"
 
 # ── heartbeat 헬퍼 함수 ──────────────────────────────
 send_heartbeat() {
@@ -25,9 +61,9 @@ send_heartbeat() {
   curl -s -X POST http://localhost:6200/api/mesh/heartbeat \
     -H "Content-Type: application/json" \
     -d "{
-      \"sessionId\": \"${PPID}\",
-      \"agentId\": \"claude-code\",
-      \"pid\": ${PPID},
+      \"sessionId\": \"${MY_SESSION_ID}\",
+      \"agentId\": \"${MY_NAME}\",
+      \"pid\": ${MY_SESSION_ID},
       \"workMode\": \"${WORK_MODE}\",
       \"status\": \"${STATUS}\",
       \"currentWork\": ${WORK_DESC},
@@ -46,14 +82,14 @@ case "$ACTION" in
 import sys,json
 d=json.load(sys.stdin)
 for s in d.get('sessions',[]):
-    if str(s.get('pid',''))==str($$) or str(s.get('sessionId',''))==str(${PPID}):
+    if str(s.get('pid',''))==str('${MY_SESSION_ID}') or str(s.get('sessionId',''))==str('${MY_SESSION_ID}'):
         print(s.get('currentWork','작업 완료'))
         break
 " 2>/dev/null || echo "작업 완료")
     fi
     curl -s -X POST http://localhost:6200/api/mesh/complete \
       -H "Content-Type: application/json" \
-      -d "{\"sessionId\":\"${PPID}\",\"completedWork\":\"$COMPLETED_WORK\"}" | \
+      -d "{\"sessionId\":\"${MY_SESSION_ID}\",\"completedWork\":\"$COMPLETED_WORK\"}" | \
       python3 -c "import sys,json; d=json.load(sys.stdin); print('✓ 완료 표시됨:', '$COMPLETED_WORK' if d.get('completed') else '실패')"
     ;;
 
@@ -71,7 +107,7 @@ for s in d.get('sessions',[]):
     echo ""
     curl -s -X POST http://localhost:6200/api/mesh/check \
       -H "Content-Type: application/json" \
-      -d "{\"sessionId\":\"${PPID}\",\"agentId\":\"claude-code\",\"plannedWork\":\"$REST\",\"plannedFiles\":$FILES_JSON,\"branch\":\"$BRANCH\"}" | \
+      -d "{\"sessionId\":\"${MY_SESSION_ID}\",\"agentId\":\"${MY_NAME}\",\"plannedWork\":\"$REST\",\"plannedFiles\":$FILES_JSON,\"branch\":\"$BRANCH\"}" | \
     python3 -c "
 import sys, json
 d = json.load(sys.stdin)
@@ -107,11 +143,11 @@ for rec in recs:
     fi
     curl -s -X POST http://localhost:6200/api/mesh/send \
       -H "Content-Type: application/json" \
-      -d "{\"fromSessionId\":\"${PPID}\",\"fromAgent\":\"claude-code\",\"toSessionId\":\"$TO\",\"content\":\"$MSG\"}" | python3 -m json.tool
+      -d "{\"fromSessionId\":\"${MY_SESSION_ID}\",\"fromAgent\":\"${MY_NAME}\",\"toSessionId\":\"$TO\",\"content\":\"$MSG\"}" | python3 -m json.tool
     ;;
 
   messages)
-    curl -s "http://localhost:6200/api/mesh/messages/${PPID}" | python3 -m json.tool
+    curl -s "http://localhost:6200/api/mesh/messages/${MY_SESSION_ID}" | python3 -m json.tool
     ;;
 
   ping)
@@ -125,7 +161,7 @@ for rec in recs:
       ST="coding"
     fi
     send_heartbeat "$WM" "$ST" "\"Claude Code 작업 중\"" "[]" | python3 -m json.tool
-    echo "heartbeat 전송 완료 (workMode: $WM)"
+    echo "heartbeat 전송 완료 (workMode: $WM, name: $MY_NAME, sessionId: $MY_SESSION_ID)"
     ;;
 
   *)

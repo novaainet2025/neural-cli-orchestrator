@@ -21,6 +21,7 @@ export class CircuitBreaker {
   private failures = 0;
   private lastFailureAt = 0;
   private halfOpenAttempts = 0;
+  private consecutiveSuccesses = 0;
   private config: CircuitBreakerConfig;
   private agentId: string;
 
@@ -39,6 +40,7 @@ export class CircuitBreaker {
         if (elapsed >= this.config.resetTimeoutMs) {
           this.state = 'half-open';
           this.halfOpenAttempts = 0;
+          this.consecutiveSuccesses = 0;
           log.info({ agentId: this.agentId }, 'Circuit half-open (retry allowed)');
           return true;
         }
@@ -52,19 +54,30 @@ export class CircuitBreaker {
 
   recordSuccess(): void {
     if (this.state === 'half-open') {
-      log.info({ agentId: this.agentId }, 'Circuit closed (recovered)');
+      this.consecutiveSuccesses++;
+      if (this.consecutiveSuccesses >= 3) {
+        log.info({ agentId: this.agentId }, 'Circuit closed (recovered)');
+        this.state = 'closed';
+        this.failures = 0;
+        this.halfOpenAttempts = 0;
+        this.consecutiveSuccesses = 0;
+      }
+      return;
     }
     this.state = 'closed';
     this.failures = 0;
     this.halfOpenAttempts = 0;
+    this.consecutiveSuccesses = 0;
   }
 
   recordFailure(error?: string): void {
+    this.consecutiveSuccesses = 0;
     this.failures++;
     this.lastFailureAt = Date.now();
 
     if (this.state === 'half-open') {
       this.halfOpenAttempts++;
+      this.consecutiveSuccesses = 0;
       if (this.halfOpenAttempts >= this.config.halfOpenMaxAttempts) {
         this.state = 'open';
         log.warn({ agentId: this.agentId, failures: this.failures, error }, 'Circuit re-opened');
@@ -86,6 +99,7 @@ export class CircuitBreaker {
     this.state = 'closed';
     this.failures = 0;
     this.halfOpenAttempts = 0;
+    this.consecutiveSuccesses = 0;
   }
 
   toJSON() {

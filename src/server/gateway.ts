@@ -10,9 +10,11 @@ import { sharedState } from '../core/shared-state.js';
 import { eventBus, type NCOEvent } from '../core/event-bus.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
+import { parseIntent } from '../utils/intent-parser.js';
 import { taskQueue } from '../core/task-queue.js';
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
+import { invocationTracker } from '../core/invocation-tracker.js';
 
 const log = createLogger('gateway');
 
@@ -120,6 +122,13 @@ export async function createGateway() {
     const taskId = createTaskId();
     const agentId = input.ai || 'claude-code';
 
+    // Extract caller context for invocation tracking
+    const body = req.body as any;
+    const callerSessionId = body.callerSessionId
+      || (req.headers['x-nco-session-id'] as string)
+      || 'unknown';
+    const callerAgentId = body.callerAgentId || 'unknown';
+
     // Save to DB
     const db = getDb();
     db.prepare(`
@@ -128,6 +137,16 @@ export async function createGateway() {
     `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority);
 
     await eventBus.publish({ type: 'task:created', taskId, agentId, prompt: input.prompt });
+
+    // Record invocation
+    const invocationId = await invocationTracker.recordInvocation(
+      callerSessionId,
+      callerAgentId,
+      agentId,
+      input.prompt,
+      input.mode || 'task',
+      taskId,
+    );
 
     // Inject workspace conversation history into systemPrompt so the agent
     // has context from previous turns in the same workspace session.
@@ -138,7 +157,7 @@ export async function createGateway() {
     );
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
       .then(result => {
         db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
           .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
@@ -149,7 +168,7 @@ export async function createGateway() {
       });
 
     reply.code(202);
-    return { taskId, status: 'queued', agentId };
+    return { taskId, status: 'queued', agentId, invocationId };
   });
 
   app.post('/api/tasks', async (req, reply) => {
@@ -220,6 +239,14 @@ export async function createGateway() {
   app.get('/api/chat/ais', async () => {
     const providers = agentManager.listProviders().filter(p => p.enabled);
     return { ais: providers.map(p => ({ id: p.id, name: p.name, role: p.role, score: p.score })) };
+  });
+
+  // ═══ Natural Language Intent Parser ═════════════════════
+  app.post('/api/nlp/intent', async (req, reply) => {
+    const { parseIntent } = await import('../utils/intent-parser.js');
+    const body = req.body as any;
+    const result = parseIntent(body.query);
+    return { intent: result };
   });
 
   // ═══ Discussions / Realtime ═══════════════════════
@@ -764,6 +791,37 @@ export async function createGateway() {
     const { verificationGate } = await import('../security/verification-gate.js');
     const { taskId } = req.params as any;
     return { results: verificationGate.getResults(taskId) };
+  });
+
+  // ═══ Invocations ══════════════════════════════════
+  app.get('/api/invocations', async (req) => {
+    const query = req.query as any;
+    const limit = Math.min(Number(query.limit || 20), 200);
+    const offset = Number(query.offset || 0);
+    return { invocations: invocationTracker.listInvocations(limit, offset) };
+  });
+
+  app.get('/api/invocations/overview', async () => {
+    return invocationTracker.getOverview();
+  });
+
+  app.get('/api/invocations/session/:sessionId', async (req) => {
+    const { sessionId } = req.params as any;
+    return { invocations: invocationTracker.getActiveInvocations(sessionId) };
+  });
+
+  app.get('/api/invocations/agent/:agentId', async (req) => {
+    const { agentId } = req.params as any;
+    const query = req.query as any;
+    const limit = Math.min(Number(query.limit || 20), 200);
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT * FROM agent_invocations
+      WHERE target_agent_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(agentId, limit);
+    return { invocations: rows };
   });
 
   // ═══ Dashboard Compatibility Routes ═══════════════

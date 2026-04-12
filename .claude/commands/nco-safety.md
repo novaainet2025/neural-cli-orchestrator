@@ -1,4 +1,4 @@
-파일 백업 목록과 검증 게이트 결과를 조회합니다.
+# 파일 백업 목록과 검증 게이트 결과를 조회합니다.
 
 echo "=== File Backups ==="
 curl -s http://localhost:6200/api/safety/backups | python3 -m json.tool

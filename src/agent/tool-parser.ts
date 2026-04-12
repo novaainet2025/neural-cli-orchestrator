@@ -17,6 +17,22 @@ const ARG_REGEX = /<arg\s+name="([^"]+)">([\s\S]*?)<\/arg>/g;
 const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*```/g;
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
 
+// 4. Fallback: Natural language commands (Claude Code style — English & Korean)
+const NL_PATTERNS = [
+  { regex: /^\s*(?:read(?:\s+file)?|cat|파일\s+읽기|내용\s+확인)\s+([^\s\n]+)\s*$/im, tool: 'readFile', args: ['path'] },
+  { regex: /^\s*(?:ls|list(?:\s+files)?|dir|파일\s+목록|경로\s+읽기)\s+([^\s\n]+)?\s*$/im, tool: 'listFiles', args: ['path'] },
+  { 
+    regex: /^\s*(?:grep|search|find|코드\s+검색|찾기)\s+(?:["']([^"'\n]+)["']|([^\s\n]+))(?:\s+([^\s\n]+))?\s*$/im, 
+    tool: 'searchCode', 
+    args: ['query', 'query', 'path'] 
+  },
+  { regex: /^\s*(?:bash|run|exec|runCommand|명령\s+실행|실행)\s+(.+)\s*$/im, tool: 'runCommand', args: ['command'] },
+  { regex: /^\s*(?:test|runTest|테스트\s+실행|검증)\s+([^\s\n]+)?\s*$/im, tool: 'runTest', args: ['path'] },
+  { regex: /^\s*git\s+status\s*$/im, tool: 'gitStatus', args: [] },
+  { regex: /^\s*git\s+diff\s*$/im, tool: 'gitDiff', args: [] },
+  { regex: /^\s*(?:delete|remove|rm|파일\s+삭제|제거)\s+([^\s\n]+)\s*$/im, tool: 'deleteFile', args: ['path'] },
+];
+
 export function parseToolCalls(text: string): ToolCall[] {
   const calls: ToolCall[] = [];
 
@@ -74,21 +90,65 @@ export function parseToolCalls(text: string): ToolCall[] {
     calls.push({ tool, args });
   }
 
+  if (calls.length > 0) return calls;
+
+  // 4. Fallback: Natural language commands (Claude Code style)
+  const lines = text.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    for (const p of NL_PATTERNS) {
+      const nlMatch = trimmed.match(p.regex);
+      if (nlMatch) {
+        const args: Record<string, string> = {};
+        p.args.forEach((argName, idx) => {
+          if (nlMatch[idx + 1]) {
+            args[argName] = nlMatch[idx + 1].replace(/^["']|["']$/g, '');
+          }
+        });
+        calls.push({ tool: p.tool, args });
+      }
+    }
+  }
+
   return calls;
 }
 
 // Check if text contains any tool calls
 export function hasToolCalls(text: string): boolean {
-  return NCO_TOOL_REGEX.test(text) ||
-         JSON_TOOL_REGEX.test(text) ||
-         BRACKET_REGEX.test(text);
+  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text)) return true;
+  
+  // Also check NL patterns
+  const lines = text.split('\n');
+  for (const line of lines) {
+    for (const p of NL_PATTERNS) {
+      if (p.regex.test(line.trim())) return true;
+    }
+  }
+  return false;
 }
 
 // Extract non-tool text (the AI's "thinking" / reasoning)
 export function extractThinking(text: string): string {
-  return text
+  let output = text
     .replace(new RegExp(NCO_TOOL_REGEX.source, 'g'), '')
     .replace(new RegExp(JSON_TOOL_REGEX.source, 'g'), '')
-    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '')
+    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '');
+    
+  // Also strip NL pattern lines
+  const lines = output.split('\n');
+  const filtered = lines.filter(line => {
+    const trimmed = line.trim();
+    if (!trimmed) return true;
+    for (const p of NL_PATTERNS) {
+      if (p.regex.test(trimmed)) return false;
+    }
+    return true;
+  });
+
+  return filtered.join('\n')
+    .replace(/<thinking>([\s\S]*?)<\/thinking>/g, '$1')
+    .replace(/<thought>([\s\S]*?)<\/thought>/g, '$1')
     .trim();
 }

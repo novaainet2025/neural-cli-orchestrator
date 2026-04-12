@@ -1,15 +1,19 @@
 import { execa } from 'execa';
-import { AgentToolExecutor, type ToolResult } from './agent-tools.js';
-import { parseToolCalls, extractThinking, hasToolCalls } from './tool-parser.js';
+import { AgentToolExecutor } from './agent-tools.js';
+import { parseToolCalls, extractThinking } from './tool-parser.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
+import { buildOrchestrationSystemPrompt } from './nco-orchestration-prompt.js';
 
 const log = createLogger('orchestrated-loop');
 
 const MAX_ITERATIONS = 15;
+
+/** Keep initial user message + up to this many assistant/user exchanges (each adds 2 entries). */
+const MAX_HISTORY_TURNS = 20;
 
 // Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
@@ -56,38 +60,16 @@ export class OrchestratedLoop {
       currentTask: taskId,
     });
 
-    // Build initial system context
     const teamState = await this.buildTeamContext();
-    const fullSystem = [
+    const fullSystem = buildOrchestrationSystemPrompt(
       systemPrompt || this.provider.persona.systemPrompt,
-      '',
-      '## Current Team State',
       teamState,
-      '',
-      '## Available Tools',
-      'Use XML tags to call tools:',
-      '<nco-tool name="readFile"><arg name="path">/path/to/file</arg></nco-tool>',
-      '<nco-tool name="writeFile"><arg name="path">/path</arg><arg name="content">...</arg></nco-tool>',
-      '<nco-tool name="createFile"><arg name="path">/path</arg><arg name="content">...</arg></nco-tool>',
-      '<nco-tool name="editFile"><arg name="path">/path</arg><arg name="old">old text</arg><arg name="new">new text</arg></nco-tool>',
-      '<nco-tool name="deleteFile"><arg name="path">/path</arg></nco-tool>',
-      '<nco-tool name="listFiles"><arg name="path">/dir</arg></nco-tool>',
-      '<nco-tool name="runCommand"><arg name="command">cmd here</arg></nco-tool>',
-      '<nco-tool name="runTest"><arg name="path">test/path</arg></nco-tool>',
-      '<nco-tool name="searchCode"><arg name="query">search term</arg></nco-tool>',
-      '<nco-tool name="sendMessage"><arg name="to">agent-id</arg><arg name="content">message</arg></nco-tool>',
-      '<nco-tool name="broadcast"><arg name="content">message to all</arg></nco-tool>',
-      '',
-      '## Rules',
-      '- Read files before modifying them',
-      '- Run tests after changes',
-      '- Report important decisions to Commander (claude-code)',
-      '- When done, respond WITHOUT any tool calls',
-    ].join('\n');
+    );
 
     history.push({ role: 'user', content: prompt });
 
-    while (iterations < MAX_ITERATIONS) {
+    try {
+      while (iterations < MAX_ITERATIONS) {
       iterations++;
 
       // Check abort signal
@@ -122,6 +104,7 @@ export class OrchestratedLoop {
       if (toolCalls.length === 0) {
         // No tool calls = AI is done
         history.push({ role: 'assistant', content: aiResponse });
+        this.trimConversationHistory(history);
         log.info({ agentId, iterations, totalToolCalls }, 'Loop completed (no more tools)');
         break;
       }
@@ -143,28 +126,29 @@ export class OrchestratedLoop {
       // Add AI response + tool results to history
       history.push({ role: 'assistant', content: aiResponse });
       history.push({ role: 'user', content: `Tool results:\n${results.join('\n')}\n\nContinue your work.` });
+      this.trimConversationHistory(history);
 
       await eventBus.publish({
         type: 'task:progress', taskId, agentId,
         progress: Math.min(iterations / MAX_ITERATIONS, 0.95),
         detail: `Iteration ${iterations}: ${toolCalls.length} tools executed`,
       });
+      }
+
+      const finalOutput = history
+        .filter(h => h.role === 'assistant')
+        .map(h => extractThinking(h.content))
+        .filter(Boolean)
+        .join('\n\n');
+
+      return { output: finalOutput, iterations, toolCalls: totalToolCalls, artifacts };
+    } finally {
+      await sharedState.setAgentState(agentId, {
+        status: 'idle',
+        currentTask: null,
+        currentFiles: [],
+      });
     }
-
-    // Final state
-    await sharedState.setAgentState(agentId, {
-      status: 'idle',
-      currentTask: null,
-      currentFiles: [],
-    });
-
-    const finalOutput = history
-      .filter(h => h.role === 'assistant')
-      .map(h => extractThinking(h.content))
-      .filter(Boolean)
-      .join('\n\n');
-
-    return { output: finalOutput, iterations, toolCalls: totalToolCalls, artifacts };
   }
 
   private async callCLI(system: string, history: Array<{ role: string; content: string }>): Promise<string> {
@@ -188,7 +172,7 @@ export class OrchestratedLoop {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
       const result = await execa(command, finalArgs, {
         ...(useStdin ? { input: combined } : { stdin: 'ignore' }),
-        ...(this.abortSignal ? { signal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
+        ...(this.abortSignal ? { cancelSignal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
         forceKillAfterDelay: 3000,
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
@@ -210,9 +194,8 @@ export class OrchestratedLoop {
       case 'gemini':
         return [...baseArgs, prompt];
       case 'aider':
-        // aider requires model + openrouter API key via env
-        return [...baseArgs, prompt, '--yes', '--no-auto-commits',
-          '--model', 'openrouter/meta-llama/llama-4-maverick:free'];
+        // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
+        return ['--message', prompt, ...baseArgs];
       case 'opencode':
         // opencode run <message> — non-interactive; 'chat' opens TUI
         return ['run', prompt];
@@ -224,6 +207,14 @@ export class OrchestratedLoop {
         return ['--prompt', prompt];
       default:
         return [...baseArgs, prompt];
+    }
+  }
+
+  /** Preserve first user message; drop oldest assistant/user pairs beyond MAX_HISTORY_TURNS. */
+  private trimConversationHistory(history: Array<{ role: string; content: string }>): void {
+    const maxLen = 1 + MAX_HISTORY_TURNS * 2;
+    while (history.length > maxLen && history.length >= 3) {
+      history.splice(1, 2);
     }
   }
 

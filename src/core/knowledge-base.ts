@@ -82,6 +82,70 @@ class KnowledgeBase {
   }
 
   /**
+   * Lexical similarity search without embeddings: token overlap via Jaccard coefficient
+   * (lightweight stand-in for TF–IDF cosine on bag-of-words).
+   */
+  findSimilar(query: string, limit = 5): KnowledgeEntry[] {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
+    const qSet = this.tokenWordSet(query);
+    const scored: { row: Record<string, unknown>; sim: number }[] = [];
+    for (const row of rows) {
+      const content = typeof row.content === 'string' ? row.content : '';
+      scored.push({ row, sim: this.jaccardSimilarity(qSet, this.tokenWordSet(content)) });
+    }
+    scored.sort((a, b) => b.sim - a.sim);
+    return scored.slice(0, limit).map(s => this.rowToEntry(s.row));
+  }
+
+  inferCategory(content: string): string {
+    const lower = content.toLowerCase();
+    if (/\berror\b|\bfix\b|\bbug\b/i.test(lower)) return 'bug_pattern';
+    if (/\bdesign\b|\bstructure\b|\bpattern\b/i.test(lower)) return 'architecture';
+    if (/\bdecided\b|\bchose\b|\breason\b/i.test(lower)) return 'decision';
+    return 'convention';
+  }
+
+  updateConfidence(id: string, delta: number): void {
+    const db = getDb();
+    db.prepare(
+      'UPDATE knowledge_base SET confidence = MIN(1.0, MAX(0.0, confidence + ?)) WHERE id = ?',
+    ).run(delta, id);
+  }
+
+  private rowToEntry(row: Record<string, unknown>): KnowledgeEntry {
+    return {
+      id: typeof row.id === 'string' ? row.id : undefined,
+      projectPath: String(row.project_path ?? ''),
+      category: row.category as KnowledgeEntry['category'],
+      content: String(row.content ?? ''),
+      sourceTaskId: typeof row.source_task_id === 'string' ? row.source_task_id : undefined,
+      sourceDiscussionId:
+        typeof row.source_discussion_id === 'string' ? row.source_discussion_id : undefined,
+      confidence: typeof row.confidence === 'number' ? row.confidence : undefined,
+    };
+  }
+
+  private tokenWordSet(text: string): Set<string> {
+    const words = text
+      .toLowerCase()
+      .split(/[^a-z0-9가-힣]+/)
+      .filter(w => w.length > 0);
+    return new Set(words);
+  }
+
+  private jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+    if (a.size === 0 && b.size === 0) return 1;
+    if (a.size === 0 || b.size === 0) return 0;
+    let inter = 0;
+    for (const w of a) {
+      if (b.has(w)) inter++;
+    }
+    const union = a.size + b.size - inter;
+    return union === 0 ? 0 : inter / union;
+  }
+
+  /**
    * Auto-extract knowledge from a task result.
    * Looks for patterns like decisions, conventions, bug fixes.
    */

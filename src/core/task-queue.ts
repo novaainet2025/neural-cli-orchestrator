@@ -13,6 +13,7 @@ import { isRedisConnected, getRedis } from '../storage/redis.js';
 import { loadEnabledProviders, type ProviderConfig } from '../utils/config.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
+import { invocationTracker } from './invocation-tracker.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -40,6 +41,11 @@ export interface QueuedTask {
   agentId: string;
   prompt: string;
   systemPrompt?: string;
+  priority?: number;
+  metadata?: {
+    invocationId?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface QueueMetrics {
@@ -118,6 +124,22 @@ class TaskQueueManager {
     if (this.initialized) return;
     this.initialized = true;
 
+    setInterval(async () => {
+      for (const [, entry] of this.agents) {
+        if (entry.mode !== "bullmq" || !entry.queue) continue;
+        try {
+          const waiting = await entry.queue.getWaiting();
+          for (const job of waiting) {
+            const waitMs = Date.now() - job.timestamp;
+            if (waitMs > 300_000) {
+              const cur = job.opts.priority ?? 5;
+              await job.changePriority({ priority: Math.max(0, cur - 1) });
+            }
+          }
+        } catch { }
+      }
+    }, 60_000);
+
     const redisAvailable = isRedisConnected();
 
     for (const p of providers) {
@@ -175,9 +197,30 @@ class TaskQueueManager {
     entry.activeControllers.set(task.taskId, controller);
     entry.active++;
 
+    const invocationId = task.metadata?.invocationId as string | undefined;
+    if (invocationId) {
+      invocationTracker.startInvocation(invocationId);
+    }
+
     try {
       const result = await this.executor(task, controller.signal);
+      if (invocationId) {
+        const summary = (result.output || '').slice(0, 500);
+        invocationTracker.completeInvocation(
+          invocationId,
+          result.success ? 'completed' : 'failed',
+          result.success ? summary : undefined,
+          result.success ? undefined : (result.error || result.output),
+        );
+        await invocationTracker.notifyCompletion(invocationId);
+      }
       return result;
+    } catch (err: any) {
+      if (invocationId) {
+        invocationTracker.completeInvocation(invocationId, 'failed', undefined, err.message);
+        await invocationTracker.notifyCompletion(invocationId);
+      }
+      throw err;
     } finally {
       entry.activeControllers.delete(task.taskId);
       entry.active = Math.max(0, entry.active - 1);
@@ -306,6 +349,8 @@ class TaskQueueManager {
       jobId: task.taskId,
       removeOnComplete: 100,
       removeOnFail: 50,
+      priority: task.priority ?? 5,
+      attempts: 3,
     });
     entry.waiting++;
 
@@ -338,12 +383,31 @@ class TaskQueueManager {
     entry.activeControllers.set(task.taskId, controller);
     entry.active++;
 
+    const invocationId = task.metadata?.invocationId as string | undefined;
+    if (invocationId) {
+      invocationTracker.startInvocation(invocationId);
+    }
+
     try {
       const result = await this.executor(task, controller.signal);
       entry.completed++;
+      if (invocationId) {
+        const summary = (result.output || '').slice(0, 500);
+        invocationTracker.completeInvocation(
+          invocationId,
+          result.success ? 'completed' : 'failed',
+          result.success ? summary : undefined,
+          result.success ? undefined : (result.error || result.output),
+        );
+        await invocationTracker.notifyCompletion(invocationId);
+      }
       return result;
     } catch (err: any) {
       entry.failed++;
+      if (invocationId) {
+        invocationTracker.completeInvocation(invocationId, 'failed', undefined, err.message);
+        await invocationTracker.notifyCompletion(invocationId);
+      }
       return { success: false, output: '', error: err.message };
     } finally {
       entry.activeControllers.delete(task.taskId);

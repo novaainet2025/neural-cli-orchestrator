@@ -1,6 +1,8 @@
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, relative } from 'path';
+import chokidar from 'chokidar';
+import Handlebars from 'handlebars';
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { env } from '../utils/config.js';
@@ -186,6 +188,70 @@ class PlanManager {
     const fullPath = resolve(env.ROOT, plan.markdownPath);
     await writeFile(fullPath, lines.join('\n'), 'utf-8');
     log.info({ planId }, 'Synced to markdown');
+  }
+
+  /**
+   * Render a Handlebars template with context.
+   */
+  renderTemplate(templateStr: string, context: Record<string, unknown>): string {
+    const tmpl = Handlebars.compile(templateStr);
+    return tmpl(context);
+  }
+
+  /**
+   * Export a plan as a Handlebars-rendered markdown string.
+   */
+  exportPlanAsMarkdown(plan: Plan): string {
+    const db = getDb();
+    const tasks = db.prepare(
+      'SELECT * FROM kanban_tasks WHERE plan_id = ? ORDER BY order_index'
+    ).all(plan.id) as any[];
+
+    const templateStr = `# {{title}}
+
+{{#each tasks}}
+- [{{#if done}}x{{else}} {{/if}}] {{title}}{{#if assignedTo}} ({{assignedTo}}){{/if}}
+{{/each}}
+`;
+    return this.renderTemplate(templateStr, {
+      title: plan.title,
+      tasks: tasks.map(t => ({
+        title: t.title,
+        done: t.column_status === 'done',
+        assignedTo: t.assigned_to,
+      })),
+    });
+  }
+
+  /**
+   * Watch markdown under `dir` and sync DB kanban when files change on disk (P4-9c).
+   */
+  watchPlans(dir: string): ReturnType<typeof chokidar.watch> {
+    return chokidar.watch(`${dir}/**/*.md`)
+      .on('change', (filePath: string) => {
+        void this.loadFromFile(filePath).catch((err: unknown) => {
+          log.error({ err, filePath }, 'Plan watch loadFromFile failed');
+        });
+      })
+      .on('add', (filePath: string) => {
+        void this.loadFromFile(filePath).catch((err: unknown) => {
+          log.error({ err, filePath }, 'Plan watch loadFromFile failed');
+        });
+      });
+  }
+
+  /**
+   * Reload a plan from disk when its markdown file changes; no-op if path is not a known plan.
+   */
+  private async loadFromFile(filePath: string): Promise<void> {
+    const normalized = resolve(filePath);
+    const relFromRoot = relative(env.ROOT, normalized).replace(/\\/g, '/');
+    const db = getDb();
+    const row = db.prepare('SELECT id FROM plans WHERE markdown_path = ?').get(relFromRoot) as
+      | { id: string }
+      | undefined;
+    if (!row) return;
+    await this.syncFromMarkdown(row.id);
   }
 
   /**

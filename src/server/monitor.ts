@@ -202,10 +202,46 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .e-type.action{color:#3fb950}.e-type.task{color:#58a6ff}.e-type.discussion{color:#a5b4fc}
 .e-type.message{color:#d29922}.e-type.system{color:#f85149}.e-type.agent{color:#d2a8ff}
 .e-type.mesh{color:#79c0ff}
+.ev{cursor:pointer}
+.ev.focused{background:#0d1e3d!important}
+
+/* ── Event filter bar ────────────────────────────────── */
+.evt-filters{display:flex;gap:3px;align-items:center;flex-wrap:wrap}
+.ef-btn{padding:2px 7px;border-radius:3px;font-size:9px;cursor:pointer;background:transparent;border:1px solid #21262d;color:#484f58;font-family:inherit;transition:all .15s;letter-spacing:.3px}
+.ef-btn:hover{border-color:#388bfd44;color:#79c0ff}
+.ef-btn.active{background:#0d1e3d;border-color:#1f6feb;color:#58a6ff}
+.focus-badge{padding:2px 8px;border-radius:3px;font-size:9px;background:#1a1040;color:#a5b4fc;border:1px solid #5865f244;cursor:pointer;display:flex;align-items:center;gap:4px}
+.focus-badge:hover{border-color:#5865f288}
+.ph-filters{padding:4px 10px 5px;display:flex;gap:5px;align-items:center;border-bottom:1px solid #0f1117;flex-wrap:wrap;flex-shrink:0;background:#0d1117}
+
+/* ── Modal overlay ───────────────────────────────────── */
+.modal-overlay{position:fixed;inset:0;background:#00000099;z-index:200;display:flex;align-items:center;justify-content:center;animation:fadeIn .15s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal-box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:16px 18px;max-width:620px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 32px #000a}
+.modal-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.modal-title{font-size:12px;font-weight:700;color:#c9d1d9;flex:1;line-height:1.4}
+.modal-close{cursor:pointer;color:#484f58;font-size:18px;line-height:1;padding:0 2px;flex-shrink:0;transition:color .15s}
+.modal-close:hover{color:#f85149}
+.modal-meta{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.modal-body{color:#8b949e;font-size:11px;line-height:1.7;white-space:pre-wrap;word-break:break-word;user-select:text;background:#0d1117;padding:8px 10px;border-radius:4px;border:1px solid #21262d}
+.modal-stream{color:#3fb950;font-size:10px;line-height:1.6;white-space:pre-wrap;word-break:break-word;user-select:text;background:#0d1e10;padding:6px 10px;border-radius:4px;border:1px solid #23863622;margin-top:6px}
+
+/* ── Sessions tab enhancements ───────────────────────── */
+.sc-stats{display:flex;gap:4px;margin-left:auto;flex-shrink:0}
+.sc-stat{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;cursor:default}
+.sc-stat.run{background:#0d1e3d;color:#58a6ff;border:1px solid #1f6feb44}
+.sc-stat.done{background:#0d2818;color:#3fb950;border:1px solid #23863644}
+.sc-stat.fail{background:#3d1111;color:#f85149;border:1px solid #f8514944}
+.task-timeline{display:flex;align-items:center;gap:2px;padding:3px 0;overflow:hidden}
+.tl-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;cursor:pointer;transition:transform .15s;border:1px solid transparent}
+.tl-dot:hover{transform:scale(1.4)}
+.tl-line{flex:1;height:1px;background:#1a2540;min-width:6px;max-width:18px}
+.st-stream{color:#3fb950;font-size:9px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text;opacity:.8}
+.st-task{cursor:pointer}
 
 /* ── Right: Tab panel ────────────────────────────────── */
 .tab-bar{display:flex;border-bottom:1px solid #21262d;flex-shrink:0;background:#0d1117;overflow-x:auto}
-.tab{padding:6px 12px;color:#8b949e;cursor:pointer;font-size:10px;text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s}
+.tab{padding:5px 7px;color:#8b949e;cursor:pointer;font-size:9px;text-transform:uppercase;letter-spacing:.2px;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s}
 .tab:hover{color:#c9d1d9}
 .tab.active{color:#58a6ff;border-bottom-color:#388bfd;background:#0d1e3d20}
 .tab-content{flex:1;overflow-y:auto;padding:8px}
@@ -251,6 +287,20 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .task-item .tid{color:#484f58;font-size:10px}
 .task-item .tb{color:#8b949e;font-size:11px;margin-top:3px;user-select:text}
 
+/* ── Sessions tab ────────────────────────────────────── */
+.sc-card{background:#0a1020;border:1px solid #1a2540;border-radius:6px;margin-bottom:6px;overflow:hidden}
+.sc-hdr{display:flex;align-items:center;gap:6px;padding:6px 8px;background:#0f1828;border-bottom:1px solid #1a2540;flex-wrap:wrap}
+.sc-tasks{padding:4px 6px}
+.sc-empty{padding:8px;color:#30363d;font-size:10px;text-align:center;font-style:italic}
+.st-task{padding:5px 6px;border-bottom:1px solid #0d1520;border-radius:3px;margin-bottom:2px;background:#0d1828;transition:background .2s}
+.st-task:last-child{border-bottom:none;margin-bottom:0}
+.st-task:hover{background:#111f35}
+.st-task-hdr{display:flex;align-items:center;gap:5px;font-size:11px}
+.st-task-prompt{color:#8b949e;font-size:10px;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
+.st-progress-outer{height:3px;background:#21262d;border-radius:2px;margin-top:4px;overflow:hidden}
+.st-progress-inner{height:100%;background:#388bfd;border-radius:2px;transition:width .5s}
+.sc-unattr-hdr{margin:8px 0 4px;font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #21262d;padding-bottom:4px;display:flex;justify-content:space-between}
+
 /* Empty states */
 .empty{padding:24px;color:#484f58;text-align:center;font-size:11px}
 
@@ -284,6 +334,12 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
     <div class="hdr-sep"></div>
     <div id="meshCount" class="badge mesh">mesh 0</div>
     <div id="onlineCount" class="badge ok">0/9</div>
+    <div class="hdr-sep"></div>
+    <div id="sysHealth" style="display:flex;align-items:center;gap:6px;font-size:9px;color:#484f58">
+      <span id="redisStatus" title="Redis">⬡ –</span>
+      <span id="uptime" title="Uptime">↑ –</span>
+      <span id="queueDepth" title="Task Queue" style="display:none">Q:<span id="qDepthVal">0</span></span>
+    </div>
   </div>
 </div>
 
@@ -317,7 +373,33 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
       <div class="ph-title"><span>Event Stream</span></div>
       <span id="evtCount" style="color:#484f58;font-size:10px">0 events</span>
     </div>
+    <div class="ph-filters" id="evtFilterBar">
+      <div class="evt-filters">
+        <button class="ef-btn active" data-ef="all" onclick="setEvtFilter('all')">All</button>
+        <button class="ef-btn" data-ef="task" onclick="setEvtFilter('task')">Task</button>
+        <button class="ef-btn" data-ef="mesh" onclick="setEvtFilter('mesh')">Mesh</button>
+        <button class="ef-btn" data-ef="system" onclick="setEvtFilter('system')">System</button>
+        <button class="ef-btn" data-ef="action" onclick="setEvtFilter('action')">Action</button>
+        <button class="ef-btn" data-ef="discussion" onclick="setEvtFilter('discussion')">Discussion</button>
+      </div>
+      <span id="focusBadge" style="display:none" class="focus-badge" onclick="clearFocus()">
+        <span id="focusBadgeText"></span><span>✕</span>
+      </span>
+    </div>
     <div class="evt-list" id="eventList"></div>
+  </div>
+
+  <!-- Task detail modal -->
+  <div id="taskModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+    <div class="modal-box">
+      <div class="modal-hdr">
+        <div class="modal-title" id="modalTitle">Task Detail</div>
+        <span class="modal-close" onclick="closeModal()">✕</span>
+      </div>
+      <div class="modal-meta" id="modalMeta"></div>
+      <div class="modal-body" id="modalBody"></div>
+      <div class="modal-stream" id="modalStream" style="display:none"></div>
+    </div>
   </div>
 
   <!-- Resizer R -->
@@ -347,6 +429,7 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
     <!-- Tab bar -->
     <div class="tab-bar" id="tabBar">
       <div class="tab active" data-tab="mesh" onclick="switchTab('mesh')">⬡ Mesh</div>
+      <div class="tab" data-tab="sessions" onclick="switchTab('sessions')">Sessions</div>
       <div class="tab" data-tab="messages" onclick="switchTab('messages')">Messages</div>
       <div class="tab" data-tab="discussions" onclick="switchTab('discussions')">Discussions</div>
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
@@ -371,13 +454,71 @@ const API='http://localhost:${apiPort}';
 const WS_URL='ws://localhost:${wsPort}';
 let ws;
 let agents={};
-let events=[];
+/** Fixed-size ring (500): logical index 0 = newest (same as former array after unshift). */
+const EVENT_RING_CAP=500;
+const events=(function(){
+  const buf=new Array(EVENT_RING_CAP);
+  let start=0,size=0;
+  return{
+    unshift(el){
+      start=(start-1+EVENT_RING_CAP)%EVENT_RING_CAP;
+      buf[start]=el;
+      if(size<EVENT_RING_CAP)size++;
+    },
+    push(el){
+      if(size<EVENT_RING_CAP){
+        buf[(start+size)%EVENT_RING_CAP]=el;
+        size++;
+      }else{
+        buf[(start+size-1+EVENT_RING_CAP)%EVENT_RING_CAP]=el;
+      }
+    },
+    get length(){return size;},
+    filter(fn){
+      const r=[];
+      for(let i=0;i<size;i++){
+        const e=buf[(start+i)%EVENT_RING_CAP];
+        if(fn(e))r.push(e);
+      }
+      return r;
+    }
+  };
+})();
 let messages=[];
 let discussions=[];
 let tasks=[];
+let allTasks=[];
 let meshSessions={};
 let meshMessages=[];
+let evtFilter=localStorage.getItem('nco-evt-filter')||'all';
+let focusAgent=null;
+let _evtDomCount=0;
+let _evtFilterKey='';
 let activeTab='mesh';
+
+const UI_FLUSH_MS=16;
+let _uiTimer=null;
+let _uiFull=false,_uiMesh=false,_uiEvents=false,_uiTabMesh=false,_uiCounts=false;
+let _uiMeshFlash=null;
+function scheduleMonitorUi(p){
+  if(p.full)_uiFull=true;
+  if(p.mesh){_uiMesh=true;if(p.flashId)_uiMeshFlash=p.flashId;}
+  if(p.events)_uiEvents=true;
+  if(p.tabMesh)_uiTabMesh=true;
+  if(p.counts)_uiCounts=true;
+  if(_uiTimer!=null)return;
+  _uiTimer=setTimeout(function(){
+    _uiTimer=null;
+    const flash=_uiMeshFlash;_uiMeshFlash=null;
+    if(_uiMesh){renderMeshNodes(flash);updateCounts();_uiMesh=false;_uiCounts=false;}
+    else if(_uiCounts){updateCounts();_uiCounts=false;}
+    if(_uiFull){render();_uiFull=false;_uiEvents=false;_uiTabMesh=false;}
+    else{
+      if(_uiTabMesh&&activeTab==='mesh'){renderTab();_uiTabMesh=false;}
+      if(_uiEvents){renderEvents();_uiEvents=false;}
+    }
+  },UI_FLUSH_MS);
+}
 
 // ── Resizable panels ──────────────────────────────────
 (function initResize(){
@@ -485,41 +626,34 @@ function handleEvent(evt){
 
   if(evt.type==='mesh:session_update'){
     const s=evt.session;
+    let flashId=null;
+    let didMesh=false;
     if(s?.sessionId){
+      didMesh=true;
       const isNew=!meshSessions[s.sessionId];
       meshSessions[s.sessionId]={...s,_updatedAt:Date.now()};
-      renderMeshNodes(isNew?s.sessionId:null);
+      if(isNew)flashId=s.sessionId;
     }
-    updateCounts();
-    if(activeTab==='mesh')renderTab();
     events.unshift({...evt,agentId:evt.session?.agentId||'mesh',_isMesh:true});
-    if(events.length>500)events.length=500;
-    renderEvents();
+    scheduleMonitorUi({mesh:didMesh,flashId:flashId,tabMesh:activeTab==='mesh',events:true,counts:true});
     return;
   }
   if(evt.type==='mesh:session_disconnected'){
     delete meshSessions[evt.sessionId];
-    renderMeshNodes();
-    updateCounts();
-    if(activeTab==='mesh')renderTab();
     events.unshift({...evt,agentId:'mesh',_isMesh:true});
-    if(events.length>500)events.length=500;
-    renderEvents();
+    scheduleMonitorUi({mesh:true,tabMesh:activeTab==='mesh',events:true,counts:true});
     return;
   }
   if(evt.type==='mesh:message'){
     const m=evt.message;
     if(m){ meshMessages.unshift(m); if(meshMessages.length>200)meshMessages.length=200; }
     events.unshift({...evt,agentId:m?.fromAgent||'mesh',_isMesh:true});
-    if(events.length>500)events.length=500;
-    renderEvents();
-    if(activeTab==='mesh')renderTab();
     flashTab('mesh');
+    scheduleMonitorUi({tabMesh:activeTab==='mesh',events:true});
     return;
   }
 
   events.unshift(evt);
-  if(events.length>500)events.length=500;
 
   const aid=evt.agentId||evt.from;
   if(aid&&aid!=='system'&&aid!=='user'){
@@ -563,11 +697,19 @@ function handleEvent(evt){
   if(evt.type==='task:created'||evt.type==='task:started'){
     tasks.unshift({id:evt.taskId,agent:evt.agentId,status:'running',time:evt.timestamp});
     if(tasks.length>50)tasks.length=50;
+    // Refresh full task list shortly after creation so sessions tab has prompt/workspace data
+    setTimeout(pollTasks, 500);
   }
-  if(evt.type==='task:completed'){const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='completed';t.output=(evt.output||'').slice(0,300);}}
-  if(evt.type==='task:failed'){const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='failed';t.error=evt.error;}}
+  if(evt.type==='task:completed'){
+    const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='completed';t.output=(evt.output||'').slice(0,300);}
+    const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='completed';
+  }
+  if(evt.type==='task:failed'){
+    const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='failed';t.error=evt.error;}
+    const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='failed';
+  }
 
-  render();
+  scheduleMonitorUi({full:true});
 }
 
 // ── Tab flash ─────────────────────────────────────────
@@ -774,26 +916,82 @@ function renderAgents(){
   });
 }
 
+// ── Event type category ───────────────────────────────
+function getTypeCategory(e){
+  if(e._isMesh)return 'mesh';
+  if(e.type.startsWith('action:'))return 'action';
+  if(e.type.startsWith('task:'))return 'task';
+  if(e.type.startsWith('discussion:'))return 'discussion';
+  if(e.type.startsWith('message:'))return 'message';
+  if(e.type.startsWith('system:'))return 'system';
+  return 'agent';
+}
+function getFilteredEvents(){
+  return events.filter(e=>{
+    if(focusAgent&&(e.agentId||e.from)!==focusAgent)return false;
+    if(evtFilter==='all')return true;
+    return getTypeCategory(e)===evtFilter;
+  });
+}
+function setEvtFilter(f){
+  evtFilter=f;
+  localStorage.setItem('nco-evt-filter',f);
+  document.querySelectorAll('.ef-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.ef===f);
+  });
+  _evtDomCount=0;_evtFilterKey='';
+  renderEvents(true);
+}
+function setFocusAgent(aid){
+  focusAgent=aid;
+  const badge=el('focusBadge');
+  if(aid){badge.style.display='flex';el('focusBadgeText').textContent='⬡ '+aid;}
+  else{badge.style.display='none';}
+  _evtDomCount=0;_evtFilterKey='';
+  renderEvents(true);
+}
+function clearFocus(){setFocusAgent(null);}
+
 // ── Render: Events (center) ───────────────────────────
-function renderEvents(){
+function makeEventRow(e,isFirst){
+  const div=document.createElement('div');
+  const agent=e.agentId||e.from||'';
+  const tc=getTypeCategory(e);
+  div.className='ev'+(isFirst?' new':'');
+  const t=new Date(e.timestamp||Date.now()).toLocaleTimeString('ko',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const detail=e.content||e.chunk||e.path||e.output||e.error||e.topic||
+    (e.session?e.session.agentId+' '+e.session.status:'')||
+    (e.message?e.message.fromAgent+'→'+e.message.to:'')||'';
+  div.innerHTML='<span class="e-time">'+t+'</span>'+
+    '<span class="e-agent" style="color:'+(e._isMesh?'#79c0ff':agentColor(agent))+'">'+escHtml(agent)+'</span>'+
+    '<span class="e-type '+tc+'">'+escHtml(e.type)+'</span>'+
+    '<span class="e-msg">'+escHtml(String(detail).slice(0,120))+'</span>';
+  if(agent){
+    div.title='클릭: '+agent+' 포커스';
+    div.addEventListener('click',()=>setFocusAgent(focusAgent===agent?null:agent));
+    if(focusAgent===agent)div.classList.add('focused');
+  }
+  return div;
+}
+function renderEvents(rebuild){
+  const filtered=getFilteredEvents();
   const list=el('eventList');
-  list.innerHTML=events.slice(0,300).map((e,i)=>{
-    const t=new Date(e.timestamp||Date.now()).toLocaleTimeString('ko',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
-    const agent=e.agentId||e.from||'';
-    const detail=e.content||e.chunk||e.path||e.output||e.error||e.topic||
-      (e.session?e.session.agentId+' '+e.session.status:'')||
-      (e.message?e.message.fromAgent+'→'+e.message.to:'')||'';
-    const tc=e._isMesh?'mesh':e.type.startsWith('action:')?'action':e.type.startsWith('task:')?'task':
-      e.type.startsWith('discussion:')?'discussion':e.type.startsWith('message:')?'message':
-      e.type.startsWith('system:')?'system':'agent';
-    return '<div class="ev'+(i===0?' new':'')+'">'+
-      '<span class="e-time">'+t+'</span>'+
-      '<span class="e-agent" style="color:'+( e._isMesh?'#79c0ff':agentColor(agent))+'">'+escHtml(agent)+'</span>'+
-      '<span class="e-type '+tc+'">'+escHtml(e.type)+'</span>'+
-      '<span class="e-msg">'+escHtml(String(detail).slice(0,120))+'</span>'+
-    '</div>';
-  }).join('');
-  el('evtCount').textContent=events.length+' events';
+  const fkey=evtFilter+'|'+(focusAgent||'');
+  if(rebuild||fkey!==_evtFilterKey){
+    list.innerHTML='';_evtDomCount=0;_evtFilterKey=fkey;
+  }
+  const show=filtered.slice(0,100);
+  const newCount=show.length;
+  if(newCount>_evtDomCount){
+    const newEvts=show.slice(0,newCount-_evtDomCount);
+    const frag=document.createDocumentFragment();
+    newEvts.forEach((e,i)=>frag.appendChild(makeEventRow(e,i===0&&_evtDomCount===0)));
+    list.prepend(frag);
+    while(list.children.length>100)list.removeChild(list.lastChild);
+  }
+  _evtDomCount=Math.min(newCount,100);
+  const suffix=filtered.length<events.length?' ('+filtered.length+' shown)':'';
+  el('evtCount').textContent=events.length+' events'+suffix;
 }
 
 // ── Render: Tabs (right) ──────────────────────────────
@@ -903,9 +1101,131 @@ function renderTab(){
           (d.participants||[]).join(', ')+'</div></div>').join('')
       : '<div class="empty">No discussions yet</div>';
 
+  }else if(activeTab==='sessions'){
+    const sessions=Object.values(meshSessions);
+    // Index allTasks for fast lookup
+    const taskById={};
+    const tasksByWorkspace={};
+    const tasksByAgent={};
+    allTasks.forEach(t=>{
+      taskById[t.id]=t;
+      const wid=t.workspace_id;
+      if(wid&&wid!=='default'){
+        if(!tasksByWorkspace[wid])tasksByWorkspace[wid]=[];
+        tasksByWorkspace[wid].push(t);
+      }
+      // Fallback: index by assigned_to agent name
+      const ag=t.assigned_to||t.spawned_by_cli;
+      if(ag){
+        if(!tasksByAgent[ag])tasksByAgent[ag]=[];
+        tasksByAgent[ag].push(t);
+      }
+    });
+
+    const statusColor=(s)=>({running:'#58a6ff',streaming:'#a5b4fc',completed:'#3fb950',
+      failed:'#f85149',cancelled:'#484f58',pending:'#d29922',assigned:'#79c0ff',reviewing:'#d2a8ff'}[s]||'#8b949e');
+
+    const renderSessionTask=(t)=>{
+      const sc=statusColor(t.status);
+      const progress=Math.min(100,Math.max(0,t.progress||0));
+      const showBar=['running','streaming'].includes(t.status)&&progress>0;
+      const streamPrev=t.response&&['running','streaming'].includes(t.status)?t.response.slice(-100):'';
+      return '<div class="st-task" data-tid="'+escHtml(t.id||'')+'" onclick="showTaskModal(this.dataset.tid)">'+
+        '<div class="st-task-hdr">'+
+          '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+sc+'22;color:'+sc+';border:1px solid '+sc+'44;font-weight:700">'+escHtml(t.status||'?')+'</span>'+
+          '<span style="color:'+agentColor(t.assigned_to||'')+'">'+escHtml(t.assigned_to||'unassigned')+'</span>'+
+          (t.mode&&t.mode!=='task'?'<span style="color:#484f58;font-size:9px;background:#161b22;padding:1px 4px;border-radius:2px">'+escHtml(t.mode)+'</span>':'')+
+          '<span style="color:#30363d;font-size:10px;margin-left:auto;font-variant-numeric:tabular-nums">'+escHtml((t.id||'').slice(0,10))+'</span>'+
+        '</div>'+
+        '<div class="st-task-prompt" title="'+escHtml(t.prompt||'')+'">'+escHtml((t.prompt||'').slice(0,90))+'</div>'+
+        (streamPrev?'<div class="st-stream">↳ '+escHtml(streamPrev)+'</div>':'')+
+        (showBar?'<div class="st-progress-outer"><div class="st-progress-inner" style="width:'+progress+'%"></div></div>':'')+
+        '<div style="font-size:9px;color:#30363d;margin-top:3px">'+
+          (t.created_at?timeAgo(t.created_at):'')+
+          (progress>0&&!showBar?'<span style="margin-left:6px;color:#484f58">'+progress.toFixed(0)+'%</span>':'')+
+        '</div>'+
+      '</div>';
+    };
+
+    const attributedIds=new Set();
+    let html='';
+
+    if(!sessions.length){
+      html='<div class="empty">활성 CLI 세션 없음<br><span style="font-size:10px;margin-top:4px;display:block">/nco-mesh ping 으로 세션을 등록하세요</span></div>';
+    }else{
+      sessions.forEach(s=>{
+        const wm=resolveWorkMode(s);
+        const h=meshHealth(s.lastHeartbeat);
+        // Collect tasks for this session
+        const taskMap=new Map();
+        if(s.taskId&&taskById[s.taskId]) taskMap.set(s.taskId,taskById[s.taskId]);
+        (tasksByWorkspace[s.sessionId]||[]).forEach(t=>taskMap.set(t.id,t));
+        // Fallback: match tasks assigned to this session's agent
+        (tasksByAgent[s.agentId]||[]).forEach(t=>taskMap.set(t.id,t));
+        const sessionTasks=Array.from(taskMap.values())
+          .sort((a,b)=>new Date(b.created_at||0).getTime()-new Date(a.created_at||0).getTime());
+        sessionTasks.forEach(t=>attributedIds.add(t.id));
+        const stats={run:0,done:0,fail:0};
+        sessionTasks.forEach(t=>{
+          if(['running','streaming','assigned','pending'].includes(t.status))stats.run++;
+          else if(t.status==='completed')stats.done++;
+          else if(t.status==='failed')stats.fail++;
+        });
+        const timeline=sessionTasks.slice(0,8).map((t,i)=>{
+          const tc=statusColor(t.status);
+          const icon=t.status==='completed'?'●':t.status==='failed'?'✗':['running','streaming'].includes(t.status)?'▶':'○';
+          return (i>0?'<span class="tl-line"></span>':'')+
+            '<span class="tl-dot" style="background:'+tc+';border-color:'+tc+'44" title="'+escHtml((t.prompt||'').slice(0,50))+'" data-tid="'+escHtml(t.id||'')+'" onclick="event.stopPropagation();showTaskModal(this.dataset.tid)">'+icon+'</span>';
+        }).join('');
+        html+='<div class="sc-card">'+
+          '<div class="sc-hdr">'+
+            hDot(h)+
+            '<span style="color:'+agentColor(s.agentId)+';font-weight:700;font-size:12px">'+escHtml(s.agentId)+'</span>'+
+            '<span class="wm-badge '+(WM_CSS[wm]||'wm-idle')+'" style="font-size:9px;padding:1px 6px">'+(WM_LABEL[wm]||wm)+'</span>'+
+            '<span style="color:#30363d;font-size:10px">PID '+s.pid+'</span>'+
+            '<div class="sc-stats">'+
+              (stats.run?'<span class="sc-stat run">▶ '+stats.run+'</span>':'')+
+              (stats.done?'<span class="sc-stat done">✓ '+stats.done+'</span>':'')+
+              (stats.fail?'<span class="sc-stat fail">✗ '+stats.fail+'</span>':'')+
+            '</div>'+
+            '<span style="color:#484f58;font-size:9px">⎇ '+escHtml(s.branch||'main')+'</span>'+
+          '</div>'+
+          (timeline?'<div class="task-timeline" style="padding:4px 8px;border-bottom:1px solid #0f1a2a">'+timeline+'</div>':'')+
+          (s.currentWork?'<div style="font-size:10px;color:#8b949e;padding:3px 10px;border-bottom:1px solid #0f1a2a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml(s.currentWork.slice(0,70))+'</div>':'')+
+          '<div class="sc-tasks">'+
+            (sessionTasks.length?sessionTasks.map(renderSessionTask).join(''):'<div class="sc-empty">연결된 작업 없음</div>')+
+          '</div>'+
+        '</div>';
+      });
+    }
+
+    // Unattributed tasks
+    const unattr=allTasks.filter(t=>!attributedIds.has(t.id));
+    if(unattr.length){
+      html+='<div class="sc-unattr-hdr"><span>미연결 작업</span><span>'+unattr.length+'</span></div>'+
+        unattr.slice(0,20).map(renderSessionTask).join('');
+    }
+
+    if(!html)html='<div class="empty">세션 또는 작업 없음</div>';
+    content.innerHTML=html;
+
   }else if(activeTab==='tasks'){
-    content.innerHTML=tasks.length
-      ? tasks.map(t=>'<div class="task-item"><div class="th2"><span class="ta" style="color:'+agentColor(t.agent||'')+'">'+escHtml(t.agent||'?')+'</span><span class="tid">'+( t.id||'').slice(0,16)+'</span><span class="st '+(t.status||'')+'" style="font-size:10px;padding:1px 6px">'+(t.status||'?')+'</span></div>'+(t.output||t.error?'<div class="tb">'+escHtml((t.output||t.error||'').slice(0,300))+'</div>':'')+'</div>').join('')
+    const sc2=(s)=>({running:'#58a6ff',streaming:'#a5b4fc',completed:'#3fb950',failed:'#f85149',pending:'#d29922',assigned:'#79c0ff',cancelled:'#484f58'})[s]||'#8b949e';
+    content.innerHTML=allTasks.length
+      ? allTasks.map(t=>{
+          const c=sc2(t.status);
+          const prog=t.progress||0;
+          const isActive=['running','streaming','assigned'].includes(t.status);
+          return '<div class="task-item" data-tid="'+escHtml(t.id||'')+'" onclick="showTaskModal(this.dataset.tid)" style="cursor:pointer">'+
+            '<div class="th2">'+
+              '<span class="ta" style="color:'+agentColor(t.assigned_to||t.agent||'')+'">'+escHtml(t.assigned_to||t.agent||'?')+'</span>'+
+              '<span style="flex:1;font-size:10px;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escHtml((t.prompt||'').slice(0,50))+'</span>'+
+              '<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:'+c+'22;color:'+c+';border:1px solid '+c+'44;white-space:nowrap">'+escHtml(t.status||'?')+'</span>'+
+            '</div>'+
+            (isActive&&prog>0?'<div class="st-progress-outer"><div class="st-progress-inner" style="width:'+prog+'%"></div></div>':'')+
+            (t.response?'<div class="tb">'+escHtml((t.response||'').slice(-150))+'</div>':'')+
+          '</div>';
+        }).join('')
       : '<div class="empty">No tasks yet</div>';
   }
 }
@@ -921,10 +1241,6 @@ function switchTab(tab){
 }
 
 function updateCounts(){
-  const online=Object.values(agents).filter(a=>a.status&&a.status!=='offline').length;
-  const total=Object.keys(agents).length||9;
-  el('onlineCount').textContent=online+'/'+total;
-  el('onlineCount').className='badge '+(online>0?'ok':'err');
   const mc=Object.keys(meshSessions).length;
   el('meshCount').textContent='mesh '+mc;
   el('meshCount').className='badge '+(mc>0?'mesh':'err');
@@ -951,6 +1267,26 @@ function sendMesh(){
   }).then(r=>r.json()).then(d=>{ input.value=''; if(activeTab==='mesh')pollMesh(); });
 }
 
+// ── Task modal ────────────────────────────────────────
+function showTaskModal(taskId){
+  const t=allTasks.find(x=>x.id===taskId);
+  if(!t)return;
+  const sc=({running:'#58a6ff',streaming:'#a5b4fc',completed:'#3fb950',failed:'#f85149',pending:'#d29922'})[t.status]||'#8b949e';
+  el('modalTitle').textContent=(t.prompt||'(no prompt)').slice(0,80);
+  el('modalMeta').innerHTML=
+    '<span style="font-size:9px;padding:1px 6px;border-radius:3px;background:'+sc+'22;color:'+sc+';border:1px solid '+sc+'44">'+escHtml(t.status)+'</span>'+
+    '<span style="color:'+agentColor(t.assigned_to||'')+'">'+escHtml(t.assigned_to||'unassigned')+'</span>'+
+    (t.mode&&t.mode!=='task'?'<span style="color:#484f58;font-size:10px">'+escHtml(t.mode)+'</span>':'')+
+    '<span style="color:#30363d;font-size:10px">'+escHtml((t.id||'').slice(0,16))+'</span>'+
+    (t.created_at?'<span style="color:#30363d;font-size:10px">'+timeAgo(t.created_at)+'</span>':'');
+  el('modalBody').textContent=t.prompt||'(no prompt)';
+  const stream=t.response||t.error||'';
+  if(stream){el('modalStream').style.display='block';el('modalStream').textContent=stream.slice(-500);}
+  else{el('modalStream').style.display='none';}
+  el('taskModal').style.display='flex';
+}
+function closeModal(){el('taskModal').style.display='none';}
+
 // ── Helpers ───────────────────────────────────────────
 function agentColor(id){
   const c={'claude-code':'#58a6ff','claude-3':'#79c0ff','claude-4':'#79c0ff','claude-5':'#79c0ff',
@@ -961,6 +1297,20 @@ function agentColor(id){
 }
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function el(id){return document.getElementById(id);}
+
+// ── Tasks polling ─────────────────────────────────────
+async function pollTasks(){
+  try{
+    const d=await(await fetch(API+'/api/tasks?limit=80')).json();
+    allTasks=(d.tasks||[]);
+    // Sync running/completed status into in-memory tasks list
+    allTasks.forEach(t=>{
+      const existing=tasks.find(x=>x.id===t.id);
+      if(existing){ existing.status=t.status; if(t.response)existing.output=t.response.slice(0,300); }
+    });
+    if(activeTab==='sessions')renderTab();
+  }catch{}
+}
 
 // ── Mesh polling ──────────────────────────────────────
 async function pollMesh(){
@@ -978,9 +1328,13 @@ async function pollMesh(){
 
 // ── Init ──────────────────────────────────────────────
 async function init(){
-  // Restore tab
+  // Restore tab + filter
   const savedTab=localStorage.getItem('nco-active-tab');
   if(savedTab) switchTab(savedTab);
+  // Apply saved event filter button state
+  document.querySelectorAll('.ef-btn').forEach(b=>{
+    b.classList.toggle('active',b.dataset.ef===evtFilter);
+  });
 
   try{
     const d=await(await fetch(API+'/api/daemons')).json();
@@ -1009,21 +1363,34 @@ async function init(){
   }catch{}
 
   await pollMesh();
+  await pollTasks();
   render();
   connect();
 
-  setInterval(async()=>{
-    try{ await fetch(API+'/health'); el('apiDot').className='dot on'; el('apiText').textContent='API healthy'; }
+  async function checkHealth(){
+    try{
+      const h=await(await fetch(API+'/health')).json();
+      el('apiDot').className='dot on'; el('apiText').textContent='API healthy';
+      const redis=h.runtime&&h.runtime.redis;
+      el('redisStatus').textContent=(redis?'⬡ redis':'⬡ no-redis');
+      el('redisStatus').style.color=(redis?'#3fb950':'#f85149');
+      const up=h.runtime&&h.runtime.uptime;
+      if(up!=null){const m=Math.floor(up/60);el('uptime').textContent='↑ '+(m<60?m+'m':Math.floor(m/60)+'h '+m%60+'m');el('uptime').style.color='#484f58';}
+      const online=h.runtime&&h.runtime.agentsOnline||0;
+      el('onlineCount').textContent=online+'/'+(h.providerCount||9);
+      el('onlineCount').className='badge '+(online>0?'ok':'err');
+    }
     catch{ el('apiDot').className='dot off'; el('apiText').textContent='API offline'; }
-  },10000);
+  }
+  setInterval(checkHealth,10000);
 
   setInterval(pollMesh,15000);
+  setInterval(pollTasks,10000);
 
   // Heartbeat refresh counter
-  setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh')renderTab(); }, 10000);
+  setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions')renderTab(); }, 10000);
 
-  try{ await fetch(API+'/health'); el('apiDot').className='dot on'; el('apiText').textContent='API healthy'; }
-  catch{ el('apiDot').className='dot off'; el('apiText').textContent='API offline'; }
+  await checkHealth();
 }
 
 init();

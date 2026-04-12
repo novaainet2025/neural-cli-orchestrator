@@ -22,8 +22,21 @@ async function boot(): Promise<void> {
 
   // 1. SQLite + Migrations
   log.info('Initializing database...');
-  getDb();
+  const db = getDb();
   runMigrations();
+
+  // 1b. Startup recovery: mark tasks stuck in "assigned" as failed
+  //     These are tasks that were in-flight when the server was killed/restarted.
+  const zombieResult = db.prepare(`
+    UPDATE tasks
+    SET status = 'failed',
+        error  = 'timed_out: server restarted while task was in-flight',
+        updated_at = datetime('now')
+    WHERE status = 'assigned'
+  `).run();
+  if (zombieResult.changes > 0) {
+    log.warn({ count: zombieResult.changes }, 'Startup recovery: marked in-flight tasks as failed');
+  }
 
   // 2. Redis
   log.info('Connecting to Redis...');

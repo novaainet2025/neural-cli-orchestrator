@@ -85,6 +85,13 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 - Node.js >= 22 required
 - Documentation is in Korean
 
+### Claude Code in this repo: slash commands & tools
+
+- **Slash commands**: Files under `.claude/commands/*.md` become `/nco-*` commands (e.g. `/nco-commander`, `/nco-start`, `/nco-mesh`). They work whenever this project is opened in Claude Code; no extra enable flag is required beyond a normal session.
+- **Hooks** (`.claude/settings.json`): `UserPromptSubmit`, `Stop`, `SessionStart` inject NCO context and checks. Ensure NCO is reachable at `:6200` for full behavior; otherwise hooks still exit successfully with an offline hint.
+- **Natural language → tools**: Do **not** wait for the user to type slash commands. If they ask in plain language to read a file, search code, run a command or tests, edit something, or call an API—use the corresponding tools immediately. For orchestration (`/nco-commander`, parallel agents, mesh), interpret intent and run the matching `curl` or workflow from `.claude/commands/` without asking them to rephrase as a slash command.
+- **Programmatic intent** (optional): `POST /api/nlp/intent` with `{ "query": "..." }` returns a suggested tool and args for automation clients.
+
 ---
 
 ## Commander 오케스트레이션 — NCO 전용 규칙
