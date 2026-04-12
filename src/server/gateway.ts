@@ -16,6 +16,7 @@ import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
+import { collaborationEngine } from '../core/collaboration-engine.js';
 
 const log = createLogger('gateway');
 
@@ -612,8 +613,77 @@ export async function createGateway() {
       meshSessions,
       invocations,
       delegations: { pending: pendingDelegations, inProgress: inProgressDelegations },
+      collaborations: { open: collaborationEngine.getOpen(), count: collaborationEngine.getOpen().length },
       agentStats,
     };
+  });
+
+  // ═══ Group Intelligence: Collaboration (Phase 3) ════════════════════
+  app.post('/api/collab/create', async (req) => {
+    const { creatorSessionId, creatorAgentId, title, description, type, inviteSessionIds, minParticipants, maxParticipants, resultMethod } = req.body as any;
+    if (!creatorSessionId || !title) return { error: 'creatorSessionId and title are required' };
+    const id = await collaborationEngine.create({
+      creatorSessionId, creatorAgentId: creatorAgentId || 'unknown',
+      title, description, type, inviteSessionIds, minParticipants, maxParticipants, resultMethod,
+    });
+    return { id, status: 'created' };
+  });
+
+  app.post('/api/collab/:id/join', async (req) => {
+    const { id } = req.params as any;
+    const { sessionId, agentId } = req.body as any;
+    if (!sessionId) return { error: 'sessionId is required' };
+    await collaborationEngine.join(id, sessionId, agentId || 'unknown');
+    return { id, sessionId, joined: true };
+  });
+
+  app.post('/api/collab/:id/contribute', async (req) => {
+    const { id } = req.params as any;
+    const { sessionId, agentId, content, contentType } = req.body as any;
+    if (!sessionId || !content) return { error: 'sessionId and content are required' };
+    const contributionId = await collaborationEngine.contribute({
+      collaborationId: id, sessionId, agentId: agentId || 'unknown', content, contentType,
+    });
+    return { contributionId };
+  });
+
+  app.post('/api/collab/:id/vote', async (req) => {
+    const { id } = req.params as any;
+    const { contributionId, voterSessionId, vote } = req.body as any;
+    if (!contributionId || !voterSessionId || ![-1, 1].includes(vote)) {
+      return { error: 'contributionId, voterSessionId, vote(1|-1) are required' };
+    }
+    await collaborationEngine.vote(contributionId, voterSessionId, vote);
+    return { ok: true };
+  });
+
+  app.post('/api/collab/:id/voting', async (req) => {
+    const { id } = req.params as any;
+    await collaborationEngine.startVoting(id);
+    return { id, status: 'voting' };
+  });
+
+  app.post('/api/collab/:id/close', async (req) => {
+    const { id } = req.params as any;
+    const { result } = req.body as any;
+    const collab = await collaborationEngine.close(id, result);
+    return { id, status: 'closed', result: collab.result };
+  });
+
+  app.get('/api/collab', async (req) => {
+    const limit = Number((req.query as any).limit) || 50;
+    return { collaborations: collaborationEngine.getAll(limit) };
+  });
+
+  app.get('/api/collab/open', async () => {
+    return { collaborations: collaborationEngine.getOpen() };
+  });
+
+  app.get('/api/collab/:id', async (req) => {
+    const { id } = req.params as any;
+    const collab = collaborationEngine.get(id);
+    if (!collab) return { error: 'not found' };
+    return { collab, contributions: collaborationEngine.getContributions(id) };
   });
 
   // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
