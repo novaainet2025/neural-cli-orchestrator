@@ -686,6 +686,207 @@ export async function createGateway() {
     return { collab, contributions: collaborationEngine.getContributions(id) };
   });
 
+  // ═══ Mesh Flow Timeline (monitoring) ════════════════════════════════
+  app.get('/api/mesh/flow', async (req) => {
+    const limit = Math.min(Number((req.query as any).limit) || 40, 100);
+    const db = getDb();
+
+    // 1. Raw mesh messages (session↔session 직접 메시지)
+    let meshMessages: any[] = [];
+    try {
+      meshMessages = db.prepare(`
+        SELECT
+          created_at as ts,
+          'mesh_msg'  as event_type,
+          from_session,
+          from_agent,
+          to_session,
+          NULL        as to_agent,
+          type        as msg_type,
+          content,
+          id
+        FROM mesh_messages
+        ORDER BY created_at DESC LIMIT ?
+      `).all(limit);
+    } catch { /* mesh_messages may not exist yet */ }
+
+    // 2. Delegation events (각 상태 변경을 이벤트로)
+    let delegationEvents: any[] = [];
+    try {
+      // created → DELEGATION_REQUEST  /  accepted/rejected → DELEGATION_RESPONSE  /  completed → DELEGATION_COMPLETE
+      const delegRows = db.prepare(`
+        SELECT
+          created_at, accepted_at, completed_at,
+          id, from_session_id, from_agent_id, to_session_id, to_agent_id,
+          title, acceptance_status, work_status, progress_pct, result
+        FROM delegations
+        ORDER BY created_at DESC LIMIT ?
+      `).all(limit) as any[];
+
+      for (const d of delegRows) {
+        delegationEvents.push({
+          ts: d.created_at,
+          event_type: 'delegation_request',
+          from_session: d.from_session_id,
+          from_agent: d.from_agent_id,
+          to_session: d.to_session_id,
+          to_agent: d.to_agent_id,
+          msg_type: 'DELEGATION_REQUEST',
+          content: d.title,
+          id: d.id + '_req',
+        });
+        if (d.accepted_at) {
+          delegationEvents.push({
+            ts: d.accepted_at,
+            event_type: 'delegation_response',
+            from_session: d.to_session_id,
+            from_agent: d.to_agent_id,
+            to_session: d.from_session_id,
+            to_agent: d.from_agent_id,
+            msg_type: d.acceptance_status === 'accepted' ? 'DELEGATION_ACCEPTED' : 'DELEGATION_REJECTED',
+            content: d.title,
+            id: d.id + '_resp',
+          });
+        }
+        if (d.completed_at) {
+          delegationEvents.push({
+            ts: d.completed_at,
+            event_type: 'delegation_complete',
+            from_session: d.to_session_id,
+            from_agent: d.to_agent_id,
+            to_session: d.from_session_id,
+            to_agent: d.from_agent_id,
+            msg_type: 'DELEGATION_COMPLETE',
+            content: d.result || d.title,
+            id: d.id + '_done',
+          });
+        }
+      }
+    } catch { /* delegations may not exist yet */ }
+
+    // 3. Invocation events
+    let invocationEvents: any[] = [];
+    try {
+      const invRows = db.prepare(`
+        SELECT
+          created_at, completed_at,
+          id, caller_session_id, caller_agent_id, target_agent_id,
+          status, prompt
+        FROM agent_invocations
+        ORDER BY created_at DESC LIMIT ?
+      `).all(limit) as any[];
+
+      for (const inv of invRows) {
+        invocationEvents.push({
+          ts: inv.created_at,
+          event_type: 'invocation_start',
+          from_session: inv.caller_session_id || 'system',
+          from_agent: inv.caller_agent_id || 'system',
+          to_session: inv.target_agent_id,
+          to_agent: inv.target_agent_id,
+          msg_type: 'INVOCATION_START',
+          content: (inv.prompt || '').substring(0, 120),
+          id: inv.id + '_start',
+        });
+        if (inv.completed_at) {
+          invocationEvents.push({
+            ts: inv.completed_at,
+            event_type: 'invocation_complete',
+            from_session: inv.target_agent_id,
+            from_agent: inv.target_agent_id,
+            to_session: inv.caller_session_id || 'system',
+            to_agent: inv.caller_agent_id || 'system',
+            msg_type: inv.status === 'completed' ? 'INVOCATION_COMPLETE' : 'INVOCATION_FAILED',
+            content: inv.status,
+            id: inv.id + '_done',
+          });
+        }
+      }
+    } catch { /* agent_invocations may not exist yet */ }
+
+    // 4. Collaboration events
+    let collabEvents: any[] = [];
+    try {
+      const collabRows = db.prepare(`
+        SELECT
+          c.created_at, c.closed_at,
+          c.id, c.creator_session_id, c.creator_agent_id,
+          c.title, c.type, c.status, c.result,
+          ct.created_at as contrib_ts,
+          ct.session_id as contrib_session,
+          ct.agent_id   as contrib_agent,
+          ct.content    as contrib_content,
+          ct.score      as contrib_score,
+          ct.id         as contrib_id
+        FROM collaborations c
+        LEFT JOIN collab_contributions ct ON ct.collaboration_id = c.id
+        ORDER BY c.created_at DESC LIMIT ?
+      `).all(limit) as any[];
+
+      const seenCollabs = new Set<string>();
+      for (const row of collabRows) {
+        if (!seenCollabs.has(row.id)) {
+          seenCollabs.add(row.id);
+          collabEvents.push({
+            ts: row.created_at,
+            event_type: 'collab_created',
+            from_session: row.creator_session_id,
+            from_agent: row.creator_agent_id,
+            to_session: '*',
+            to_agent: null,
+            msg_type: 'COLLAB_CREATE',
+            content: `[${row.type}] ${row.title}`,
+            id: row.id + '_create',
+          });
+          if (row.closed_at) {
+            collabEvents.push({
+              ts: row.closed_at,
+              event_type: 'collab_closed',
+              from_session: row.creator_session_id,
+              from_agent: row.creator_agent_id,
+              to_session: '*',
+              to_agent: null,
+              msg_type: 'COLLAB_CLOSED',
+              content: row.result || row.title,
+              id: row.id + '_close',
+            });
+          }
+        }
+        if (row.contrib_id) {
+          collabEvents.push({
+            ts: row.contrib_ts,
+            event_type: 'collab_contribution',
+            from_session: row.contrib_session,
+            from_agent: row.contrib_agent,
+            to_session: row.id,
+            to_agent: null,
+            msg_type: 'COLLAB_CONTRIBUTION',
+            content: (row.contrib_content || '').substring(0, 80),
+            id: row.contrib_id,
+          });
+        }
+      }
+    } catch { /* collaborations may not exist yet */ }
+
+    // Merge all events, sort by ts DESC, take top limit
+    const all = [...meshMessages, ...delegationEvents, ...invocationEvents, ...collabEvents];
+    all.sort((a, b) => {
+      const ta = a.ts ? new Date(a.ts).getTime() : 0;
+      const tb = b.ts ? new Date(b.ts).getTime() : 0;
+      return tb - ta;
+    });
+
+    return {
+      events: all.slice(0, limit),
+      counts: {
+        meshMessages: meshMessages.length,
+        delegationEvents: delegationEvents.length,
+        invocationEvents: invocationEvents.length,
+        collabEvents: collabEvents.length,
+      },
+    };
+  });
+
   // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
   app.post('/api/hive', async (req, reply) => {
     const { prompt, providers } = req.body as any;
