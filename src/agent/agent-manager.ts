@@ -169,7 +169,18 @@ class AgentManager {
         knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
       } catch { /* non-critical */ }
 
-      this.circuitSuccessCounts.set(agentId, (this.circuitSuccessCounts.get(agentId) ?? 0) + 1);
+      const newCount = (this.circuitSuccessCounts.get(agentId) ?? 0) + 1;
+      this.circuitSuccessCounts.set(agentId, newCount);
+
+      // half-open → closed: propagate success to CircuitBreaker
+      const cb = sandbox.circuitBreaker;
+      if (cb.getState() === 'half-open') {
+        cb.recordSuccess();
+        if (newCount >= 3 && cb.getState() === 'closed') {
+          log.info('Circuit closed: %s (3 consecutive successes)', agentId);
+          this.circuitSuccessCounts.set(agentId, 0);
+        }
+      }
 
       return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs };
 

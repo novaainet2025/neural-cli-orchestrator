@@ -162,6 +162,63 @@ export class EventBus {
     });
   }
 
+  // ─── Consumer Group (XREADGROUP) ────────────────────
+  /**
+   * Process pending messages from the Redis consumer group.
+   * GROUP = 'nco-consumers', CONSUMER_ID = `nco-${process.pid}`
+   * Uses XREADGROUP to claim pending messages and XACK after processing.
+   * Runs alongside replaySince() — duplicate prevention via localEmittedIds.
+   */
+  async startConsumerGroup(): Promise<void> {
+    if (!isRedisConnected()) return;
+
+    const GROUP = 'nco-consumers';
+    const CONSUMER_ID = `nco-${process.pid}`;
+
+    const processPending = async () => {
+      if (!isRedisConnected()) return;
+      try {
+        const redis = await getRedis();
+        // Read up to 100 pending messages assigned to this consumer
+        const results = await redis.xreadgroup(
+          'GROUP', GROUP, CONSUMER_ID,
+          'COUNT', '100',
+          'STREAMS', STREAM, '>',
+        ) as Array<[string, Array<[string, string[]]>]> | null;
+
+        if (!results) return;
+
+        for (const [, entries] of results) {
+          for (const [msgId, fields] of entries) {
+            try {
+              const dataIdx = fields.indexOf('data');
+              if (dataIdx >= 0) {
+                const event = JSON.parse(fields[dataIdx + 1]) as NCOEvent;
+                // Emit only if not already emitted locally
+                if (!this.localEmittedIds.has(event.id)) {
+                  this.local.emit(event.type, event);
+                  this.local.emit('*', event);
+                }
+              }
+              // Acknowledge the message regardless
+              await redis.xack(STREAM, GROUP, msgId);
+            } catch (err) {
+              log.error({ err, msgId }, 'Consumer group message processing failed');
+            }
+          }
+        }
+      } catch (err) {
+        log.warn({ err }, 'XREADGROUP consume cycle failed');
+      }
+    };
+
+    // Run once immediately, then every 5 seconds
+    await processPending();
+    setInterval(processPending, 5_000);
+
+    log.info({ group: GROUP, consumer: CONSUMER_ID }, 'Consumer group started');
+  }
+
   // ─── Replay (for reconnection) ─────────────────────
   async replaySince(lastEventId: string): Promise<NCOEvent[]> {
     if (!isRedisConnected()) return [];

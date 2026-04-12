@@ -12,6 +12,7 @@ import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
+import { getTopologyHTML } from './server/topology.js';
 
 const log = createLogger('main');
 
@@ -85,6 +86,11 @@ async function boot(): Promise<void> {
   // Monitor page
   gateway.get('/monitor', async (req, reply) => {
     reply.type('text/html').send(getMonitorHTML(env.WS_PORT, env.PORT));
+  });
+
+  // Topology page
+  gateway.get('/topology', async (req, reply) => {
+    reply.type('text/html').send(getTopologyHTML(env.WS_PORT, env.PORT));
   });
 
   await gateway.listen({ port: env.PORT, host: '127.0.0.1' });

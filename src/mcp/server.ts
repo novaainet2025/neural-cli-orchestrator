@@ -75,7 +75,11 @@ const TOOLS = [
 async function handleTool(name: string, args: any): Promise<string> {
   switch (name) {
     // Collaboration
-    case 'nco_task': return JSON.stringify(await ncoPost('/api/task', { ai: args.ai, prompt: args.prompt }));
+    case 'nco_task': {
+      const _sid = process.env.NCO_SESSION_ID || String(process.ppid || process.pid);
+      const _aid = process.env.NCO_NAME || 'claude-code';
+      return JSON.stringify(await ncoPost('/api/task', { ai: args.ai, prompt: args.prompt, callerSessionId: _sid, callerAgentId: _aid }));
+    }
     case 'nco_parallel': return JSON.stringify(await ncoPost('/api/realtime/parallel', { prompt: args.prompt, providers: args.providers }));
     case 'nco_discussion': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, providers: args.providers, maxRounds: args.maxRounds }));
     case 'nco_consensus': return JSON.stringify(await ncoPost('/api/realtime/consensus', { prompt: args.prompt, providers: args.providers }));

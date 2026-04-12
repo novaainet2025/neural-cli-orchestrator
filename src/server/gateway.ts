@@ -130,13 +130,17 @@ export async function createGateway() {
       || (req.headers['x-nco-session-id'] as string)
       || 'unknown';
     const callerAgentId = body.callerAgentId || 'unknown';
+    // CLI session that spawned this task — used by topology to draw CLI→Agent edges
+    const spawnedByCli = callerAgentId !== 'unknown' ? callerAgentId
+      : callerSessionId !== 'unknown' ? callerSessionId
+      : null;
 
     // Save to DB
     const db = getDb();
     db.prepare(`
-      INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority)
-      VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?)
-    `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority);
+      INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli)
+      VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
+    `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli);
 
     await eventBus.publish({ type: 'task:created', taskId, agentId, prompt: input.prompt });
 
@@ -365,6 +369,53 @@ export async function createGateway() {
     const { id } = req.params as any;
     const db = getDb();
     return { messages: db.prepare('SELECT * FROM discussion_messages WHERE discussion_id=? ORDER BY created_at').all(id) };
+  });
+
+  app.get('/api/discussions/:id/export', async (req, reply) => {
+    const { id } = req.params as any;
+    const { format = 'json' } = req.query as any;
+    const db = getDb();
+    const disc = db.prepare('SELECT * FROM discussions WHERE id=?').get(id) as any;
+    if (!disc) { reply.code(404); return { error: 'Not found' }; }
+
+    const messages = db.prepare(
+      'SELECT * FROM discussion_messages WHERE discussion_id=? ORDER BY created_at'
+    ).all(id) as any[];
+
+    if (format === 'markdown') {
+      const participants = JSON.parse(disc.participants_json || '[]');
+      const lines: string[] = [
+        `# Discussion Export: ${disc.topic}`,
+        ``,
+        `- **ID**: ${disc.id}`,
+        `- **Mode**: ${disc.mode}`,
+        `- **Status**: ${disc.status}`,
+        `- **Participants**: ${participants.join(', ')}`,
+        `- **Consensus Rate**: ${((disc.consensus_rate || 0) * 100).toFixed(1)}%`,
+        `- **Created**: ${disc.created_at}`,
+        ``,
+        `## Messages`,
+        ``,
+      ];
+      for (const msg of messages) {
+        lines.push(`### Round ${msg.round ?? 'N/A'} — ${msg.agent_id} (${msg.message_type})`);
+        lines.push(``);
+        lines.push(msg.content || '');
+        lines.push(``);
+        lines.push(`---`);
+        lines.push(``);
+      }
+      if (disc.report) {
+        lines.push(`## Final Report`);
+        lines.push(``);
+        lines.push(disc.report);
+      }
+      reply.header('Content-Type', 'text/markdown; charset=utf-8');
+      reply.header('Content-Disposition', `attachment; filename="discussion-${id}.md"`);
+      return reply.send(lines.join('\n'));
+    }
+
+    return { discussion: disc, messages };
   });
 
   // ═══ Rate Limits ══════════════════════════════════

@@ -14,12 +14,14 @@ export const BridgeClientSubscribeSchema = z.object({
   type: z.literal('subscribe'),
   taskId: z.string().optional(),
   sessionId: z.string().optional(),
+  agentId: z.string().optional(),
 });
 
 export const BridgeClientUnsubscribeSchema = z.object({
   type: z.literal('unsubscribe'),
   taskId: z.string().optional(),
   sessionId: z.string().optional(),
+  agentId: z.string().optional(),
 });
 
 export const BridgeClientPingSchema = z.object({
@@ -66,6 +68,7 @@ export const BridgeServerSubscribedSchema = z.object({
   type: z.literal('subscribed'),
   taskId: z.string().optional(),
   sessionId: z.string().optional(),
+  agentId: z.string().optional(),
   timestamp: z.string(),
 });
 
