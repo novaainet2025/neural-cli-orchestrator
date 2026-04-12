@@ -15,6 +15,7 @@ import { taskQueue } from '../core/task-queue.js';
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
+import { delegationManager } from '../core/delegation-manager.js';
 
 const log = createLogger('gateway');
 
@@ -525,6 +526,94 @@ export async function createGateway() {
       },
     } as any);
     return { delivered };
+  });
+
+  // ═══ Mesh Delegations ═════════════════════════════════
+  app.post('/api/mesh/delegate', async (req, reply) => {
+    const { fromSessionId, fromAgentId, toSessionId, title, description, expiresInMs } = req.body as any;
+    if (!fromSessionId || !toSessionId || !title) {
+      reply.code(400);
+      return { error: 'fromSessionId, toSessionId, and title are required' };
+    }
+    const delegationId = await delegationManager.delegate(
+      fromSessionId, fromAgentId || 'unknown', toSessionId, title, description, expiresInMs,
+    );
+    return { delegationId, status: 'sent' };
+  });
+
+  app.post('/api/mesh/delegations/:id/respond', async (req, reply) => {
+    const { id } = req.params as any;
+    const { accept, reason } = req.body as any;
+    if (accept === undefined) { reply.code(400); return { error: 'accept is required' }; }
+    await delegationManager.respond(id, Boolean(accept), reason);
+    return { ok: true };
+  });
+
+  app.post('/api/mesh/delegations/:id/progress', async (req, reply) => {
+    const { id } = req.params as any;
+    const { pct, note } = req.body as any;
+    if (pct === undefined) { reply.code(400); return { error: 'pct is required' }; }
+    await delegationManager.updateProgress(id, Number(pct), note);
+    return { ok: true };
+  });
+
+  app.post('/api/mesh/delegations/:id/complete', async (req) => {
+    const { id } = req.params as any;
+    const { result } = req.body as any;
+    await delegationManager.complete(id, result);
+    return { ok: true };
+  });
+
+  app.post('/api/mesh/delegations/:id/cancel', async (req) => {
+    const { id } = req.params as any;
+    const { reason } = req.body as any;
+    await delegationManager.cancel(id, reason);
+    return { ok: true };
+  });
+
+  app.get('/api/mesh/delegations', async (req) => {
+    const query = req.query as any;
+    const limit = Math.min(Number(query.limit || 50), 200);
+    return { delegations: delegationManager.getAll(limit) };
+  });
+
+  app.get('/api/mesh/delegations/session/:sessionId', async (req) => {
+    const { sessionId } = req.params as any;
+    return {
+      incoming: delegationManager.getIncoming(sessionId),
+      outgoing: delegationManager.getOutgoing(sessionId),
+    };
+  });
+
+  // ═══ Monitor Overview ══════════════════════════════════
+  app.get('/api/monitor/overview', async () => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const meshSessions = await cliMesh.getActiveSessions();
+    const invocations = invocationTracker.getOverview();
+    const allDelegations = delegationManager.getAll(200);
+    const pendingDelegations = allDelegations.filter(d => d.acceptanceStatus === 'pending');
+    const inProgressDelegations = allDelegations.filter(d => d.workStatus === 'in_progress');
+
+    // Per-agent invocation stats from DB
+    const db = getDb();
+    const agentStats = db.prepare(`
+      SELECT target_agent_id AS agentId,
+             COUNT(*) AS total,
+             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+             SUM(CASE WHEN status = 'failed'    THEN 1 ELSE 0 END) AS failed,
+             SUM(CASE WHEN status IN ('pending','running') THEN 1 ELSE 0 END) AS active,
+             ROUND(AVG(CASE WHEN duration_ms IS NOT NULL THEN duration_ms END), 0) AS avgDurationMs
+      FROM agent_invocations
+      GROUP BY target_agent_id
+      ORDER BY total DESC
+    `).all();
+
+    return {
+      meshSessions,
+      invocations,
+      delegations: { pending: pendingDelegations, inProgress: inProgressDelegations },
+      agentStats,
+    };
   });
 
   // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
