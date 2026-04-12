@@ -873,6 +873,33 @@ export async function createGateway() {
       }
     } catch { /* collaborations may not exist yet */ }
 
+    // sessionMap: sessionId → agentId
+    // 1) 활성 세션 (in-memory)
+    // 2) mesh_messages 이력에서 from_session→from_agent 역추적 (오래된 세션 포함)
+    let sessionMap: Record<string, string> = {};
+    try {
+      const { cliMesh } = await import('../core/cli-mesh.js');
+      const sessions = await cliMesh.getActiveSessions();
+      for (const s of sessions) {
+        if (s.sessionId && s.agentId) sessionMap[s.sessionId] = s.agentId;
+      }
+    } catch { /* non-fatal */ }
+    try {
+      // mesh_messages에서 (from_session, from_agent) 쌍으로 보완
+      const histRows = db.prepare(`
+        SELECT DISTINCT from_session, from_agent
+        FROM mesh_messages
+        WHERE from_agent IS NOT NULL AND from_agent != ''
+          AND from_session IS NOT NULL AND from_session != ''
+        LIMIT 200
+      `).all() as any[];
+      for (const r of histRows) {
+        if (!sessionMap[r.from_session]) {
+          sessionMap[r.from_session] = r.from_agent;
+        }
+      }
+    } catch { /* non-fatal */ }
+
     // Merge all events, sort by ts DESC, take top limit
     const all = [...meshMessages, ...delegationEvents, ...invocationEvents, ...collabEvents];
     all.sort((a, b) => {
@@ -883,6 +910,7 @@ export async function createGateway() {
 
     return {
       events: all.slice(0, limit),
+      sessionMap,
       counts: {
         meshMessages: meshMessages.length,
         delegationEvents: delegationEvents.length,
