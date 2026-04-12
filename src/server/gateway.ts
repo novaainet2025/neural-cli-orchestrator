@@ -694,6 +694,8 @@ export async function createGateway() {
     // 1. Raw mesh messages (session↔session 직접 메시지)
     let meshMessages: any[] = [];
     try {
+      // 프로토콜 내부 메시지(DELEGATION_*/COLLAB_*/INVOCATION_* prefix)는 제외
+      // — 이미 typed 이벤트로 별도 표시되므로 중복 방지
       meshMessages = db.prepare(`
         SELECT
           created_at as ts,
@@ -706,6 +708,9 @@ export async function createGateway() {
           content,
           id
         FROM mesh_messages
+        WHERE content NOT LIKE 'DELEGATION_%'
+          AND content NOT LIKE 'COLLAB_%'
+          AND content NOT LIKE 'INVOCATION_%'
         ORDER BY created_at DESC LIMIT ?
       `).all(limit);
     } catch { /* mesh_messages may not exist yet */ }
