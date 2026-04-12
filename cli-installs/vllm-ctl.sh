@@ -39,7 +39,7 @@ _start_qwen35() {
     --model "$MODEL_QWEN35_PATH" \
     --dtype auto \
     --gpu-memory-utilization 0.90 \
-    --max-model-len 32768 \
+    --max-model-len 24000 \
     --max-num-seqs 4 \
     --trust-remote-code \
     --enforce-eager \
