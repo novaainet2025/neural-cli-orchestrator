@@ -65,8 +65,8 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 
 /* Agent type badges (CLI / API) */
 .ag-type{font-size:8px;padding:1px 4px;border-radius:2px;font-weight:700;flex-shrink:0;letter-spacing:.5px}
-.ag-type.cli{background:#1a1e30;color:#58a6ff88;border:1px solid #1f6feb33}
-.ag-type.api{background:#1a2010;color:#3fb95088;border:1px solid #23863633}
+.ag-type.cli{background:#1a1e30;color:#58a6ff;border:1px solid #1f6feb55}
+.ag-type.api{background:#1a2010;color:#3fb950;border:1px solid #23863655}
 
 /* Agent status pills — compact */
 .st{font-size:9px;padding:1px 6px;border-radius:3px;font-weight:700;white-space:nowrap;flex-shrink:0;letter-spacing:.2px}
@@ -143,12 +143,21 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .mn-row2{display:flex;align-items:center;gap:5px;margin-top:5px}
 .mn-work{color:#c9d1d9;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;line-height:1.4}
 .mn-collab{color:#3fb950;font-size:9px;background:#0d1e10;padding:1px 5px;border-radius:3px;white-space:nowrap;flex-shrink:0;border:1px solid #23863633}
-.mn-file{color:#30363d;font-size:10px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px}
+
+/* H3: Progressive disclosure — hide details by default, reveal on hover */
+.mn-file{color:#30363d;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:3px;
+  max-height:0;opacity:0;transition:max-height .22s ease,opacity .18s,margin-top .18s;margin-top:0}
 .mn-file-name{color:#484f58}
-.mn-meta{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:9px;color:#21262d;padding-top:4px;border-top:1px solid #0f1a2a}
-.mn-meta-branch{color:#30363d}
-.mn-meta-time{color:#21262d;margin-left:auto}
-.mn-meta-task{color:#1f6feb88;background:#0d1e3d;padding:1px 4px;border-radius:2px}
+.mn-meta{display:flex;align-items:center;gap:6px;font-size:9px;color:#484f58;padding-top:4px;border-top:1px solid #0f1a2a;
+  max-height:0;opacity:0;transition:max-height .22s ease,opacity .18s,margin-top .18s;margin-top:0;overflow:hidden}
+/* Expand on hover */
+.mesh-node:hover .mn-file{max-height:38px;opacity:1;margin-top:4px}
+.mesh-node:hover .mn-meta{max-height:38px;opacity:1;margin-top:4px}
+/* Blocked nodes: always show conflicts expanded */
+.mesh-node.mode-blocked .mn-conflicts{max-height:none;opacity:1}
+.mn-meta-branch{color:#6e7681}
+.mn-meta-time{color:#484f58;margin-left:auto}
+.mn-meta-task{color:#58a6ff;background:#0d1e3d;padding:1px 4px;border-radius:2px}
 
 /* Conflict indicators on mesh node cards */
 .mn-conflicts{margin-top:5px;display:flex;flex-direction:column;gap:2px}
@@ -245,6 +254,22 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .tab:hover{color:#c9d1d9}
 .tab.active{color:#58a6ff;border-bottom-color:#388bfd;background:#0d1e3d20}
 .tab-content{flex:1;overflow-y:auto;padding:8px}
+
+/* Overview tab */
+.ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-bottom:12px}
+.ov-kpi{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:10px 8px;text-align:center}
+.ov-kpi-val{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2}
+.ov-kpi-label{font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+.ov-kpi-sub{font-size:9px;color:#484f58;margin-top:2px}
+.ov-section{margin-top:8px}
+.ov-section-hdr{font-size:10px;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #21262d}
+.ov-feed{max-height:200px;overflow-y:auto}
+.ov-feed-item{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #161b22;font-size:10px}
+.ov-feed-icon{color:#484f58;font-size:11px}
+.ov-feed-type{color:#58a6ff;font-weight:600;min-width:70px}
+.ov-feed-time{color:#484f58;font-size:9px;margin-left:auto;font-variant-numeric:tabular-nums}
+.ov-feed-msg{color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+.ov-empty{color:#30363d;font-size:10px;text-align:center;padding:12px}
 
 /* Messages tab */
 .msg-item{padding:5px 0;border-bottom:1px solid #161b22}
@@ -359,7 +384,6 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .graph-svg-wrap{flex:1;overflow:hidden;background:#05080e;position:relative}
 .graph-node text{pointer-events:none}
 .graph-node:hover>circle:first-of-type{filter:brightness(1.4)}
-.graph-legend{position:absolute;bottom:5px;right:8px;font-size:8px;color:#21262d;display:flex;gap:8px;pointer-events:none}
 /* Graph detail panel (overlays graph) */
 .graph-detail{position:absolute;top:4px;right:6px;width:190px;background:#0a0e14ee;border:1px solid #30363d;border-radius:6px;padding:9px 10px;z-index:10;backdrop-filter:blur(6px);max-height:calc(100% - 10px);overflow-y:auto;box-shadow:0 4px 20px #00000066}
 .gd-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
@@ -389,23 +413,13 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .topo-tooltip .tt-row{display:flex;gap:6px;color:#8b949e;margin-bottom:2px}
 .topo-tooltip .tt-key{min-width:48px;flex-shrink:0}
 .topo-tooltip .tt-val{color:#c9d1d9;word-break:break-all}
-/* legend */
-.topo-leg{
-  position:absolute;bottom:8px;left:8px;
-  background:#0d1117cc;border:1px solid #1a2535;border-radius:5px;
-  padding:6px 10px;font-size:8px;pointer-events:none;
-}
-.topo-leg-row{display:flex;align-items:center;gap:5px;color:#8b949e;margin-bottom:2px}
-.topo-leg-row:last-child{margin:0}
-.tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.tl-line{width:18px;height:0;flex-shrink:0}
 /* event strip */
-.evt-strip{height:24px;flex-shrink:0;border-top:1px solid #1a2535;background:#05080e;display:flex;align-items:center;padding:0 8px;gap:6px;overflow:hidden;font-size:9px}
-.es-sep{color:#1a2535;flex-shrink:0}
-.es-item{display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;flex-shrink:0;max-width:240px}
+.evt-strip{height:24px;flex-shrink:0;border-top:1px solid #1a2535;background:#05080e;display:flex;align-items:center;padding:0 8px;gap:6px;overflow:hidden;font-size:10px}
+.es-sep{color:#21262d;flex-shrink:0}
+.es-item{display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;flex-shrink:0;max-width:240px;background:#0a1020;padding:1px 5px;border-radius:3px}
 .es-from{font-weight:700}
 .es-arr{color:#484f58}
-.es-body{color:#30363d;overflow:hidden;text-overflow:ellipsis}
+.es-body{color:#484f58;overflow:hidden;text-overflow:ellipsis}
 .sl-log-panel{display:none;flex-direction:column;max-height:35%;flex-shrink:0;border-top:2px solid #1a2535;overflow:hidden}
 .sl-log-panel.open{display:flex}
 
@@ -420,10 +434,103 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 .mesh-send-btn{background:#1f6feb22;color:#58a6ff;border:1px solid #1f6feb;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:10px;font-family:inherit;transition:background .15s;white-space:nowrap}
 .mesh-send-btn:hover{background:#1f6feb44}
 
+/* ── Swimlane Timeline (Flow tab) ───────────────────── */
+.sw-wrap{padding:6px 8px 5px;border-bottom:2px solid #21262d;background:#060a12}
+.sw-wrap.sw-empty{color:#1f6feb44;font-size:11px;text-align:center;padding:14px;font-style:italic}
+.sw-title{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;display:flex;justify-content:space-between}
+.sw-chart{display:flex;align-items:stretch;overflow:hidden;border:1px solid #1a2535;border-radius:4px;background:#080c14}
+.sw-labels{display:flex;flex-direction:column;flex-shrink:0;width:70px;background:#080c14;border-right:1px solid #1a2535}
+.sw-label-hdr{height:18px;flex-shrink:0;border-bottom:1px solid #1a2535}
+.sw-label{display:flex;align-items:center;padding:0 5px;font-size:9px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid #0f1520;flex-shrink:0;cursor:default}
+.sw-label:last-child{border-bottom:none}
+.sw-svg-wrap{flex:1;overflow:hidden;min-width:0}
+.sw-svg-wrap svg{display:block}
+.sw-legend{display:flex;gap:8px;flex-wrap:wrap;padding:5px 2px 2px;font-size:9px}
+.sw-leg-item{display:flex;align-items:center;gap:3px;color:#6e7681}
+.sw-leg-sq{width:8px;height:8px;border-radius:1px;flex-shrink:0;opacity:0.85}
+.sw-leg-lbl{letter-spacing:.2px}
+
+/* ── F2: Session Comparison ─────────────────────────── */
+.cmp-bar{display:flex;align-items:center;gap:6px;padding:5px 8px;border-bottom:1px solid #21262d;background:#0d1117;flex-shrink:0}
+.cmp-btn{background:#1f6feb;color:#fff;border:none;border-radius:3px;font-size:10px;padding:3px 10px;cursor:pointer;transition:background .15s}
+.cmp-btn:hover{background:#388bfd}
+.cmp-btn:disabled{opacity:.35;cursor:default}
+.cmp-reset{background:transparent;color:#484f58;border:1px solid #30363d;border-radius:3px;font-size:10px;padding:2px 8px;cursor:pointer}
+.cmp-reset:hover{color:#8b949e}
+.cmp-sel-count{font-size:10px;color:#8b949e}
+.cmp-container{display:flex;gap:0;flex:1;min-height:0;overflow:hidden}
+.cmp-panel{flex:1;overflow-y:auto;border-right:1px solid #21262d;padding:10px}
+.cmp-panel:last-child{border-right:none}
+.cmp-ph{font-size:9px;font-weight:700;color:#484f58;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.cmp-meta{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px}
+.cmp-badge{font-size:10px;padding:2px 7px;border-radius:3px;font-weight:600}
+.cmp-badge.ok{background:#23863622;color:#3fb950;border:1px solid #23863644}
+.cmp-badge.warn{background:#d2992222;color:#d29922;border:1px solid #d2992244}
+.cmp-badge.info{background:#1f6feb22;color:#58a6ff;border:1px solid #1f6feb44}
+.cmp-diff{background:#ff7b0022;color:#ff7b00;border:1px solid #ff7b0044;font-size:10px;padding:2px 7px;border-radius:3px}
+.cmp-topic{font-size:12px;font-weight:700;color:#e6edf3;margin-bottom:8px;line-height:1.4;border-left:2px solid #1f6feb;padding-left:8px}
+.cmp-msgs{border-top:1px solid #21262d;padding-top:8px}
+.cmp-msg{padding:5px 0;border-bottom:1px solid #0d1117;font-size:10px}
+.cmp-msg-hdr{display:flex;gap:6px;align-items:baseline;margin-bottom:2px}
+.cmp-msg-who{font-weight:700;font-size:10px}
+.cmp-msg-time{font-size:9px;color:#30363d;font-family:monospace}
+.cmp-msg-body{color:#8b949e;line-height:1.5}
+.disc-item{cursor:pointer;transition:background .1s}
+.disc-item.sel-1{border-left:2px solid #1f6feb;background:#1f6feb0a}
+.disc-item.sel-2{border-left:2px solid #3fb950;background:#3fb9500a}
+.disc-chk{width:14px;height:14px;cursor:pointer;accent-color:#1f6feb;flex-shrink:0;margin-right:4px}
+/* ── OVERVIEW Tab ─────────────────────────────────── */
+.ov-layout{display:grid;grid-template-columns:200px 1fr 220px;gap:8px;padding:8px;height:100%;box-sizing:border-box;min-height:0}
+.ov-panel{background:#0d1117;border:1px solid #21262d;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.ov-ph{font-size:9px;font-weight:700;color:#484f58;letter-spacing:1px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #21262d;flex-shrink:0}
+/* Agent Grid */
+.ag-card{padding:6px 8px;border-bottom:1px solid #161b22;transition:background .15s}
+.ag-card:hover{background:#161b22}
+.ag-card.st-working{border-left:2px solid #58a6ff}
+.ag-card.st-queued{border-left:2px solid #d29922}
+.ag-card.st-zombie{border-left:2px solid #f85149;background:#1a0808}
+.ag-card.st-error{border-left:2px solid #f85149}
+.ag-card.st-idle{border-left:2px solid #21262d}
+.ag-name{font-size:10px;font-weight:700;margin-bottom:3px}
+.ag-bar-wrap{height:4px;background:#1a2535;border-radius:2px;margin-bottom:3px}
+.ag-bar-fill{height:4px;border-radius:2px;transition:width .4s}
+.ag-meta{display:flex;gap:6px;font-size:9px;color:#484f58}
+.ag-meta b{font-size:9px}
+/* Task Bar */
+.tb-wrap{padding:5px 8px;display:flex;align-items:center;gap:8px;font-size:9px;border-top:1px solid #21262d;flex-shrink:0}
+.tb-seg{display:flex;align-items:center;gap:3px}
+.tb-sq{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.tb-rate{margin-left:auto;color:#3fb950;font-weight:700;font-size:10px}
+/* Live Feed */
+.lf-list{overflow-y:auto;flex:1;min-height:0}
+.lf-item{display:flex;align-items:baseline;gap:5px;padding:3px 8px;border-bottom:1px solid #0d1117;font-size:10px;line-height:1.4}
+.lf-item:hover{background:#161b22}
+.lf-time{color:#30363d;font-size:9px;font-family:monospace;flex-shrink:0}
+.lf-icon{flex-shrink:0;width:12px;text-align:center}
+.lf-agent{font-size:9px;font-weight:700;flex-shrink:0;max-width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lf-text{color:#8b949e;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lf-ok .lf-icon{color:#3fb950}.lf-ok .lf-agent{color:#3fb950}
+.lf-err .lf-icon{color:#f85149}.lf-err .lf-agent{color:#f85149}
+.lf-run .lf-icon{color:#58a6ff}.lf-run .lf-agent{color:#58a6ff}
+.lf-warn .lf-icon{color:#d29922}.lf-warn .lf-agent{color:#d29922}
+.lf-dim .lf-icon{color:#484f58}.lf-dim .lf-agent{color:#484f58}
+/* Comm graph (center panel) */
+.ov-graph{flex:1;overflow:hidden;min-height:0;position:relative}
+.ov-bottom{flex-shrink:0}
+/* Anomaly Alerts */
+.alert-panel{position:fixed;top:44px;right:8px;z-index:200;display:flex;flex-direction:column;gap:4px;pointer-events:none;max-width:260px}
+.alert-card{pointer-events:all;display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:6px;font-size:11px;line-height:1.4;cursor:pointer;transition:opacity .2s;border:1px solid}
+.alert-card.critical{background:#1a0a0a;border-color:#f8514966;color:#ffa8a8}
+.alert-card.warning{background:#1a140a;border-color:#d2992266;color:#ffd08a}
+.alert-card:hover{opacity:.75}
+.alert-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:3px}
+.alert-dot.critical{background:#f85149;box-shadow:0 0 4px #f85149}
+.alert-dot.warning{background:#d29922;box-shadow:0 0 4px #d29922}
+@media(prefers-reduced-motion:reduce){.alert-dot{box-shadow:none}}
 /* Scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:#0d1117}
-::-webkit-scrollbar-thumb{background:#30363d;border-radius:3px}
+::-webkit-scrollbar-thumb{background:#484f58;border-radius:3px}
 ::-webkit-scrollbar-thumb:hover{background:#484f58}
 </style>
 </head>
@@ -450,6 +557,7 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
   </div>
 </div>
 
+<div id="alert-panel" class="alert-panel"></div>
 <!-- ── Body ── -->
 <div class="body" id="body">
 
@@ -507,13 +615,22 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
     </div>
 
     <!-- ── Topology View ── -->
-    <div class="ph" style="flex-shrink:0">
-      <div class="ph-title">
+    <div class="ph" style="flex-shrink:0;flex-wrap:wrap;gap:4px">
+      <div class="ph-title" style="flex-shrink:0">
         <span style="font-size:11px;color:#7c3aed">◈</span>
         <span style="font-weight:700;color:#8b949e;letter-spacing:.5px">TOPOLOGY</span>
         <span id="topoNodeCount" style="font-size:9px;color:#7c3aed;background:#1a0a2e;padding:1px 5px;border-radius:3px;border:1px solid #7c3aed44">0 nodes</span>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <!-- Inline legend (replaces floating panel) -->
+      <div style="display:flex;gap:8px;align-items:center;font-size:8px;color:#484f58;flex:1;flex-wrap:wrap">
+        <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#7c3aed;flex-shrink:0"></span>NCO</span>
+        <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#1f6feb;flex-shrink:0"></span>CLI</span>
+        <span style="display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:50%;background:#3fb950;flex-shrink:0"></span>Agent</span>
+        <span style="display:flex;align-items:center;gap:3px"><span style="width:18px;border-top:2px dashed #e3b341;flex-shrink:0"></span>위임</span>
+        <span style="display:flex;align-items:center;gap:3px"><span style="width:18px;border-top:1.5px solid #1f6feb88;flex-shrink:0"></span>Mesh</span>
+        <span style="display:flex;align-items:center;gap:3px;color:#58a6ff">◉ pulse</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
         <span id="nowTime" style="color:#388bfd;font-size:10px;font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:.5px">--:--:--</span>
         <span id="topoEdgeCount" style="color:#484f58;font-size:10px">0 links</span>
         <button class="ef-btn" id="slLogBtn" onclick="toggleEventLog()" title="이벤트 로그 토글">Log ▾</button>
@@ -540,16 +657,6 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
           <g id="topoNodeLayer"></g>
         </svg>
         <div class="topo-tooltip" id="topoTooltip"></div>
-        <div class="topo-leg">
-          <div class="topo-leg-row"><span class="tl-dot" style="background:#7c3aed"></span>NCO Router</div>
-          <div class="topo-leg-row"><span class="tl-dot" style="background:#1f6feb"></span>CLI Session</div>
-          <div class="topo-leg-row"><span class="tl-dot" style="background:#3fb950"></span>Agent</div>
-          <div class="topo-leg-row"><span class="tl-line" style="border-top:1px dashed #1f3a5f"></span>Heartbeat ↑</div>
-          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px solid #e3b34133"></span>① Route path</div>
-          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px dashed #e3b341"></span>② CLI→Agent</div>
-          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px solid #1f6feb88"></span>Mesh msg</div>
-          <div class="topo-leg-row" style="color:#58a6ff"><span style="font-size:8px;margin-right:4px">◉</span>③ Live pulse</div>
-        </div>
       </div>
       <div class="evt-strip" id="evtStrip">
         <span style="color:#21262d">이벤트 없음</span>
@@ -613,7 +720,8 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 
     <!-- Tab bar -->
     <div class="tab-bar" id="tabBar">
-      <div class="tab active" data-tab="mesh" onclick="switchTab('mesh')">⬡ Mesh</div>
+      <div class="tab active" data-tab="overview" onclick="switchTab('overview')">◈ Overview</div>
+      <div class="tab" data-tab="mesh" onclick="switchTab('mesh')">⬡ Mesh</div>
       <div class="tab" data-tab="sessions" onclick="switchTab('sessions')">Sessions</div>
       <div class="tab" data-tab="messages" onclick="switchTab('messages')">Messages</div>
       <div class="tab" data-tab="discussions" onclick="switchTab('discussions')">Discussions</div>
@@ -675,6 +783,17 @@ let discussions=[];
 let tasks=[];
 let allTasks=[];
 let meshSessions={};
+// Swimlane window state (persists between renders, changed by setSwWindow())
+let _swWindow=300000; // default 5 min
+// F2: Session Comparison state
+let _selSessions=[];    // max 2 selected sessionIds for comparison
+let _compView=false;    // true = show comparison layout
+let _compData=null;     // {s1:{meta,msgs[]}, s2:{meta,msgs[]}}
+// Live Feed — recent significant events for OVERVIEW tab (max 40)
+const LIVE_FEED=[];
+// Anomaly Detection state
+let ANOMALY_ALERTS=[];
+const _dismissedAlerts=new Set();
 let meshMessages=[];
 // Swimlane state
 const LANE_EVENTS={}; // agentId → [{start,end,type,label}]
@@ -691,7 +810,7 @@ let evtFilter=localStorage.getItem('nco-evt-filter')||'all';
 let focusAgent=null;
 let _evtDomCount=0;
 let _evtFilterKey='';
-let activeTab='mesh';
+let activeTab='overview';
 
 const UI_FLUSH_MS=16;
 let _uiTimer=null;
@@ -814,7 +933,13 @@ function connect(){
   ws.onopen=()=>{ el('wsDot').className='dot on'; el('wsText').textContent='WS connected'; };
   ws.onclose=()=>{ el('wsDot').className='dot off'; el('wsText').textContent='WS disconnected'; setTimeout(connect,3000); };
   ws.onerror=()=>{};
-  ws.onmessage=e=>{ try{handleEvent(JSON.parse(e.data));}catch{} };
+  ws.onmessage=e=>{ try{handleEvent(JSON.parse(e.data));}catch(err){console.warn('[NCO Monitor] WS parse error',err);} };
+}
+
+// ── Live Feed helper ─────────────────────────────────
+function pushFeed(icon,agent,text,cls){
+  LIVE_FEED.unshift({t:Date.now(),icon,agent:agent||'',text,cls:cls||''});
+  if(LIVE_FEED.length>40)LIVE_FEED.length=40;
 }
 
 // ── Event Handler ─────────────────────────────────────
@@ -829,14 +954,27 @@ function handleEvent(evt){
       didMesh=true;
       const isNew=!meshSessions[s.sessionId];
       meshSessions[s.sessionId]={...s,_updatedAt:Date.now()};
-      if(isNew)flashId=s.sessionId;
+      if(isNew){
+        flashId=s.sessionId;
+        pushFeed('⬡',s.agentId||s.sessionId,'mesh 연결','lf-run');
+      }
+      // Check for file conflicts with other sessions
+      if((s.currentFiles||[]).length>0){
+        Object.values(meshSessions).forEach(other=>{
+          if(other.sessionId===s.sessionId)return;
+          const shared=(s.currentFiles||[]).filter(f=>(other.currentFiles||[]).includes(f));
+          if(shared.length)pushFeed('⚡',s.agentId||'','파일 충돌: '+shared.map(f=>f.split('/').pop()).slice(0,2).join(', '),'lf-warn');
+        });
+      }
     }
     events.unshift({...evt,agentId:evt.session?.agentId||'mesh',_isMesh:true});
     scheduleMonitorUi({mesh:didMesh,flashId:flashId,tabMesh:activeTab==='mesh',events:true,counts:true});
     return;
   }
   if(evt.type==='mesh:session_disconnected'){
+    const _dAgent=meshSessions[evt.sessionId]?.agentId||evt.sessionId;
     delete meshSessions[evt.sessionId];
+    pushFeed('⬡',_dAgent,'mesh 연결 해제','lf-dim');
     events.unshift({...evt,agentId:'mesh',_isMesh:true});
     scheduleMonitorUi({mesh:true,tabMesh:activeTab==='mesh',events:true,counts:true});
     return;
@@ -922,17 +1060,20 @@ function handleEvent(evt){
       const srcSess=Object.values(meshSessions).find(s=>s.sessionId===evt.sessionId||String(s.pid)===String(evt.pid));
       if(srcSess)addCliTaskLink(srcSess.agentId,evt.agentId,evt.taskId,evt.prompt||'',evt.status||'running');
     }
+    pushFeed('→',evt.agentId,'태스크 시작'+(evt.prompt?' — '+evt.prompt.slice(0,30):''),'lf-run');
     setTimeout(pollTasks, 500);
   }
   if(evt.type==='task:completed'){
     const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='completed';t.output=(evt.output||'').slice(0,300);}
     const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='completed';
     Object.values(CLI_TASK_LINKS).forEach(l=>{const tk=l.tasks.find(t=>t.id===evt.taskId);if(tk)tk.status='completed';});
+    pushFeed('✓',evt.agentId,'완료','lf-ok');
   }
   if(evt.type==='task:failed'){
     const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='failed';t.error=evt.error;}
     const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='failed';
     Object.values(CLI_TASK_LINKS).forEach(l=>{const tk=l.tasks.find(t=>t.id===evt.taskId);if(tk)tk.status='failed';});
+    pushFeed('✗',evt.agentId,'실패'+(evt.error?' — '+String(evt.error).slice(0,30):''),'lf-err');
   }
 
   scheduleMonitorUi({full:true});
@@ -1007,6 +1148,8 @@ const AGENT_COLORS_MAP={
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
 
 // ── Render topology ───────────────────────────────────
+let _prevTopoHash='', _prevTopoW=0, _prevTopoH=0;
+let _lastCliNodes=[], _lastAgNodes=[], _lastActiveTasks=[];
 function renderTopology(){
   const svg=document.getElementById('topoSvg');
   const area=document.getElementById('topoSvgArea');
@@ -1020,18 +1163,34 @@ function renderTopology(){
   const H=area.offsetHeight||300;
   svg.setAttribute('viewBox','0 0 '+W+' '+H);
 
+  // State-hash guard: skip full SVG rebuild when nothing structural changed (~80% of ticks)
+  const _activeTasks=allTasks.filter(t=>t.status==='running'||t.status==='active'||t.status==='queued');
+  const _topoHash=Object.keys(meshSessions).join(',')+
+    '|'+Object.keys(agents).join(',')+
+    '|'+Object.keys(CLI_TASK_LINKS).join(',')+
+    '|'+Object.keys(COMM_MATRIX).join(',')+
+    '|'+_activeTasks.map(t=>t.id+':'+t.status).join(',')+
+    '|'+(_topoSelected||'');
+  const _sizeChanged=(W!==_prevTopoW||H!==_prevTopoH);
+  if(_topoHash===_prevTopoHash && !_sizeChanged){
+    // Tooltip still works using cached node positions from last full render
+    renderTopoTooltip(_lastCliNodes,_lastAgNodes,_lastActiveTasks);
+    return;
+  }
+  _prevTopoHash=_topoHash; _prevTopoW=W; _prevTopoH=H;
+
   // ── Compute node positions (3-layer hierarchy) ──
   const PAD=24;
   const sessions=Object.values(meshSessions);
   const agentNames=Object.keys(agents).filter(Boolean);
-  const activeTasks=allTasks.filter(t=>t.status==='running'||t.status==='active'||t.status==='queued');
+  const activeTasks=_activeTasks; // reuse from hash-guard computation above
 
   // CLI→Agent delegation edges are tracked in the global CLI_TASK_LINKS (populated by handleEvent + pollTasks)
 
-  // Layer Y positions
-  const Y0=PAD+28;           // NCO Hub
-  const Y1=H/2-10;           // CLI Sessions
-  const Y2=H-PAD-28;         // Agents
+  // Layer Y positions — extra margin for agent metric bar
+  const Y0=PAD+24;           // NCO Hub (top)
+  const Y1=H*0.42;           // CLI Sessions (upper-mid, 42% from top)
+  const Y2=H-PAD-44;         // Agents (bottom — 44px margin for stats bar)
 
   // NCO node
   const ncoX=W/2, ncoY=Y0;
@@ -1050,6 +1209,9 @@ function renderTopology(){
     const x=PAD+agSpacing*0.5+agSpacing*i;
     return {id:'agent::'+name, name, x:Math.min(x,W-PAD), y:Y2};
   });
+
+  // Cache node arrays for hash-guard early-return tooltip path
+  _lastCliNodes=cliNodes; _lastAgNodes=agNodes; _lastActiveTasks=activeTasks;
 
   // ── Build SVG ──
   let edgesHtml='';
@@ -1152,20 +1314,33 @@ function renderTopology(){
     const midX=(cliN.x+agN.x)/2;
     const midY=((cliN.y+19)+(agN.y-15))/2;
     const topTask=link.tasks[0];
-    // ② File flow badge: show prompt snippet + file count from CLI session
+    // ② File flow badge: prompt + file count + file type color dots (B)
     if(topTask){
       const snippet=escHtml((topTask.prompt||'').slice(0,12));
       const statusIcon=topTask.status==='running'||topTask.status==='assigned'?'\u25B6':topTask.status==='completed'?'\u2713':'\u2717';
       const cliSess=cliN.session;
-      const fileCount=(cliSess.currentFiles||[]).length;
-      const fileLabel=fileCount>0?' \u00b7 '+fileCount+'\u25a4':'';
+      const files=cliSess.currentFiles||[];
+      const fileCount=files.length;
+      // B: Show up to 3 file-type colored dots on the edge badge
+      let fileDots='';
+      files.slice(0,4).forEach((f,fi)=>{
+        const fc=fileTypeColor(f);
+        fileDots+='<circle cx="'+(midX-14+fi*8)+'" cy="'+(midY+12)+'" r="2.5" fill="'+fc+'" opacity="0.9" title="'+escHtml(f)+'"/>';
+      });
+      if(files.length>4)fileDots+='<text x="'+(midX+22)+'" y="'+(midY+15)+'" font-size="5" fill="#484f58">+'+( files.length-4)+'</text>';
+      const badgeH=fileCount>0?22:15;
       edgesHtml+=
-        '<rect x="'+(midX-34)+'" y="'+(midY-10)+'" width="68" height="18" rx="3"'+
+        '<rect x="'+(midX-34)+'" y="'+(midY-10)+'" width="68" height="'+badgeH+'" rx="3"'+
         ' fill="#080c12" stroke="'+color+'" stroke-width="0.7" opacity="0.95"/>'+
         '<text x="'+midX+'" y="'+(midY-1)+'" text-anchor="middle" font-size="6.5" fill="'+color+'">'+
         statusIcon+' '+snippet+(topTask.prompt&&topTask.prompt.length>12?'\u2026':'')+'</text>'+
-        '<text x="'+midX+'" y="'+(midY+7)+'" text-anchor="middle" font-size="6" fill="#58a6ff" opacity="0.9">'+
-        escHtml(link.cli)+' \u2192 '+escHtml(link.agent)+fileLabel+'</text>';
+        (fileCount>0?
+          '<text x="'+(midX-30)+'" y="'+(midY+7)+'" font-size="5.5" fill="#58a6ff">'+(fileCount)+'\u25a4</text>'+
+          fileDots
+        :
+          '<text x="'+midX+'" y="'+(midY+7)+'" text-anchor="middle" font-size="5.5" fill="#484f58">'+
+          escHtml(link.cli)+'\u2192'+escHtml(link.agent)+'</text>'
+        );
     }
     if(running){
       const pkey='clt::'+link.cli+'::'+link.agent;
@@ -1328,6 +1503,26 @@ function renderTopology(){
       '</g>';
   });
 
+  // Evict stale TOPO_PARTICLES (memory leak fix — keys were never deleted)
+  { const _tpNow=Date.now();
+    Object.keys(TOPO_PARTICLES).forEach(k=>{
+      if(k.startsWith('task::')){
+        const agName=k.slice(6);
+        if(!activeTasks.some(t=>(t.provider===agName||t.agent===agName)&&(t.status==='running'||t.status==='active')))
+          delete TOPO_PARTICLES[k];
+      } else if(k.startsWith('clt::')){
+        const parts=k.split('::'); // ['clt', cliId, agentName]
+        const linkKey=(parts[1]||'')+'::'+( parts[2]||'');
+        if(!CLI_TASK_LINKS[linkKey]||_tpNow-CLI_TASK_LINKS[linkKey].lastTime>300000)
+          delete TOPO_PARTICLES[k];
+      } else if(k.startsWith('mesh::')){
+        const cmKey=k.slice(6); // 'from::to'
+        if(!COMM_MATRIX[cmKey]||_tpNow-COMM_MATRIX[cmKey].lastTime>30000)
+          delete TOPO_PARTICLES[k];
+      }
+    });
+  }
+
   // Update DOM
   document.getElementById('topoEdgeLayer').innerHTML=edgesHtml;
   document.getElementById('topoParticleLayer').innerHTML=particlesHtml;
@@ -1424,9 +1619,14 @@ function renderTopoTooltip(cliNodes,agNodes,activeTasks){
       const myTasks=activeTasks.filter(t=>t.provider===agNode.name||t.agent===agNode.name);
       const incomingLinks=Object.values(CLI_TASK_LINKS).filter(l=>l.agent===agNode.name&&Date.now()-l.lastTime<300000);
       const activeIncoming=incomingLinks.filter(l=>l.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued'));
+      const st=AGENT_STATS[agNode.name];
+      const sr=st&&st.total>0?Math.round(st.completed/st.total*100):null;
       html='<div class="tt-title" style="color:'+topoAgentColor(agNode.name)+'">'+escHtml(agNode.name)+'</div>'+
         '<div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" style="color:'+(myTasks.length>0?'#3fb950':activeIncoming.length>0?'#e3b341':'#484f58')+'">'+
           (myTasks.length>0?myTasks.length+' active':activeIncoming.length>0?'queued':'idle')+'</span></div>'+
+        (st?'<div class="tt-row"><span class="tt-key">Tasks</span><span class="tt-val">'+st.total+' total</span></div>'+
+          '<div class="tt-row"><span class="tt-key">Success</span><span class="tt-val" style="color:'+(sr>75?'#3fb950':sr>50?'#d29922':'#f85149')+'">'+sr+'%</span></div>'+
+          (st.failed>0?'<div class="tt-row"><span class="tt-key">Failed</span><span class="tt-val" style="color:#f85149">'+st.failed+'</span></div>':''):'')+
         (incomingLinks.length>0
           ?'<div class="tt-sep" style="margin:4px 0;border-top:1px solid #30363d"></div>'+
             '<div class="tt-row"><span class="tt-key" style="color:#e3b341">FROM CLI ('+activeIncoming.length+' active)</span></div>'+
@@ -1577,7 +1777,7 @@ function renderMeshNodes(flashId){
     const wm=resolveWorkMode(s);
     const isDone=wm==='done';
     const files=(s.currentFiles||[]);
-    const fname=files.length?files[0].split('/').pop()+(files.length>1?' +<span style="color:#1f6feb88">'+( files.length-1)+'</span>':''):'';
+    const fname=files.length?escHtml(files[0].split('/').pop()||'')+(files.length>1?' +<span style="color:#1f6feb88">'+( files.length-1)+'</span>':''):'';
     const collab=(s.collaborators||[]);
     const conflicts=isDone?[]:(s.activeConflicts||[]);
     const workText=isDone?(s.completedWork||'작업 완료'):s.currentWork;
@@ -1838,11 +2038,38 @@ function renderTab(){
       : '<div class="empty">No messages yet</div>';
 
   }else if(activeTab==='discussions'){
-    content.innerHTML=discussions.length
-      ? discussions.map(d=>'<div class="disc-item"><div class="dt">'+d.mode+': '+escHtml((d.topic||'').slice(0,70))+'</div><div class="dm">'+
-          (d.sessionId||'').slice(0,16)+' · '+d.status+' · consensus '+(d.consensusRate*100||0).toFixed(0)+'% · round '+(d.currentRound||0)+'<br>'+
-          (d.participants||[]).join(', ')+'</div></div>').join('')
-      : '<div class="empty">No discussions yet</div>';
+    if(_compView&&_compData){
+      content.style.display='flex';content.style.flexDirection='column';
+      content.innerHTML=compareHtml();
+    } else {
+      content.style.display='';
+      const selBar='<div class="cmp-bar">'+
+        '<span class="cmp-sel-count">'+(_selSessions.length===0?'세션을 선택해 비교':_selSessions.length+'/2 선택됨')+'</span>'+
+        '<button class="cmp-btn" onclick="fetchAndCompare()" '+ (_selSessions.length!==2?'disabled':'')+'>나란히 비교</button>'+
+        (_selSessions.length>0?'<button class="cmp-reset" onclick="_selSessions=[];renderTab()">선택 해제</button>':'')+
+      '</div>';
+      content.innerHTML=selBar+(discussions.length
+        ? discussions.map(d=>{
+            const selIdx=_selSessions.indexOf(d.sessionId);
+            const selCls=selIdx===0?' sel-1':selIdx===1?' sel-2':'';
+            const cr=Math.round((d.consensusRate||0)*100);
+            const crCls=cr>=70?'ok':cr>=40?'warn':'info';
+            return '<div class="disc-item'+selCls+'" style="display:flex;align-items:flex-start;gap:6px;padding:8px">'+
+              '<input type="checkbox" class="disc-chk" '+(selIdx>=0?'checked':'')+
+                ' onchange="toggleSessionSel(\\''+escHtml(d.sessionId||'')+'\\')">'+
+              '<div style="flex:1;min-width:0">'+
+                '<div class="dt">'+escHtml(d.mode||'')+': '+escHtml((d.topic||'').slice(0,70))+'</div>'+
+                '<div class="dm" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">'+
+                  '<span class="cmp-badge info">'+escHtml(d.status||'')+'</span>'+
+                  '<span class="cmp-badge '+crCls+'">합의 '+cr+'%</span>'+
+                  '<span class="cmp-badge info">R'+( d.currentRound||0)+'</span>'+
+                  (d.participants||[]).map(p=>'<span class="cmp-badge info" style="font-size:9px">'+escHtml(p)+'</span>').join('')+
+                '</div>'+
+              '</div>'+
+            '</div>';
+          }).join('')
+        : '<div class="empty">No discussions yet</div>');
+    }
 
   }else if(activeTab==='sessions'){
     const sessions=Object.values(meshSessions);
@@ -1973,6 +2200,8 @@ function renderTab(){
 
   }else if(activeTab==='flow'){
     content.innerHTML=renderFlowTab();
+  }else if(activeTab==='overview'){
+    content.innerHTML=renderOverviewTab();
   }
 }
 
@@ -2278,6 +2507,284 @@ function renderGraphDetail(){
       :'');
 }
 
+// ── H4: Agent Swimlane Timeline ──────────────────────
+function setSwWindow(ms){_swWindow=ms;renderTab();}
+
+// ── Overview Tab ───────────────────────────────────────
+function renderOverviewTab(){
+  const now=Date.now();
+
+  // ── 1. Agent Grid (left panel) ──────────────────────
+  const agentIds=new Set([...Object.keys(agents),...Object.keys(AGENT_STATS)]);
+  let agGridHtml='';
+  agentIds.forEach(id=>{
+    const ag=agents[id]||{};
+    const st=AGENT_STATS[id]||{total:0,completed:0,failed:0,running:0};
+    const meshSess=Object.values(meshSessions).find(s=>s.agentId===id);
+    const isZombie=meshSess&&meshSess.lastHeartbeat&&now-Number(meshSess.lastHeartbeat)>120000;
+    const hasAnomaly=ANOMALY_ALERTS.some(a=>a.agentId===id&&a.sev==='critical');
+    const successRate=st.total>0?Math.round(st.completed/st.total*100):null;
+    const barColor=successRate===null?'#484f58':successRate>=80?'#3fb950':successRate>=50?'#d29922':'#f85149';
+    let stClass='st-idle';
+    if(isZombie)stClass='st-zombie';
+    else if(ag.status==='working'||st.running>0)stClass='st-working';
+    else if(ag.status==='error')stClass='st-error';
+    const queuedCnt=allTasks.filter(t=>(t.assigned_to===id||t.provider===id)&&t.status==='queued').length;
+    if(queuedCnt>0&&stClass==='st-idle')stClass='st-queued';
+    const color=topoAgentColor(id)||agentColor(id)||'#8b949e';
+    const stateLabel=isZombie?'💀 zombie':st.running>0?'● working':queuedCnt>0?'◆ Q:'+queuedCnt:'○ idle';
+    const stateColor=isZombie?'#f85149':st.running>0?'#58a6ff':queuedCnt>0?'#d29922':'#30363d';
+    agGridHtml+='<div class="ag-card '+stClass+'">'+
+      '<div class="ag-name" style="color:'+color+'">'+escHtml(id)+(hasAnomaly?' <span style="color:#f85149">⚠</span>':'')+'</div>'+
+      (successRate!==null?'<div class="ag-bar-wrap"><div class="ag-bar-fill" style="width:'+successRate+'%;background:'+barColor+'"></div></div>':'<div style="height:4px;margin-bottom:3px"></div>')+
+      '<div class="ag-meta"><span style="color:'+stateColor+'">'+stateLabel+'</span>'+(successRate!==null?'<span style="margin-left:auto;color:'+barColor+';font-weight:700">'+successRate+'%</span>':'')+'</div>'+
+      '<div class="ag-meta"><span title="완료">✓'+st.completed+'</span><span title="실패" style="color:#f8514988">✗'+st.failed+'</span><span title="전체">∑'+st.total+'</span></div>'+
+    '</div>';
+  });
+  if(!agGridHtml)agGridHtml='<div style="padding:12px;font-size:10px;color:#484f58;text-align:center">에이전트 없음</div>';
+
+  // ── 2. Comm Flow Graph (center, SVG) ─────────────────
+  const VW=600,VH=200;
+  const cliSessions=Object.values(meshSessions);
+  const aiIds=[...agentIds].filter(id=>!cliSessions.find(s=>s.agentId===id));
+  function nodeY(i,total,vh){return 24+i*(vh-48)/Math.max(total-1,1);}
+  let gSvg='';
+  const cliNodes=cliSessions.slice(0,7).map((s,i)=>({
+    id:s.agentId||s.sessionId,x:55,y:nodeY(i,Math.min(cliSessions.length,7),VH),
+    color:topoAgentColor(s.agentId)||agentColor(s.agentId)||'#58a6ff'
+  }));
+  const aiNodes=aiIds.slice(0,9).map((id,i)=>({
+    id,x:VW-55,y:nodeY(i,Math.min(aiIds.length,9),VH),
+    color:topoAgentColor(id)||agentColor(id)||'#8b949e'
+  }));
+  // Edges
+  Object.values(CLI_TASK_LINKS).forEach(link=>{
+    if(now-link.lastTime>30000&&!link.tasks.some(t=>t.status==='running'||t.status==='assigned'))return;
+    const src=cliNodes.find(n=>n.id===link.cli)||aiNodes.find(n=>n.id===link.cli);
+    const dst=aiNodes.find(n=>n.id===link.agent)||cliNodes.find(n=>n.id===link.agent);
+    if(!src||!dst)return;
+    const running=link.tasks.some(t=>t.status==='running'||t.status==='assigned');
+    const failed=link.tasks.some(t=>t.status==='failed');
+    const queued=link.tasks.some(t=>t.status==='queued');
+    const ec=running?'#3fb950':failed?'#f85149':queued?'#d29922':'#484f58';
+    const mx=(src.x+dst.x)/2;
+    const cy=Math.min(src.y,dst.y)-16;
+    gSvg+='<path d="M'+src.x+' '+src.y+' Q'+mx+' '+cy+' '+dst.x+' '+dst.y+'" fill="none" stroke="'+ec+'" stroke-width="'+(running?2:1)+'" opacity="0.65"'+(queued?' stroke-dasharray="4 3"':failed?' stroke-dasharray="2 3"':'')+'/>';
+    if(running)gSvg+='<circle r="3" fill="'+ec+'" opacity="0.8"><animateMotion dur="1.4s" repeatCount="indefinite" path="M'+src.x+' '+src.y+' Q'+mx+' '+cy+' '+dst.x+' '+dst.y+'"/></circle>';
+  });
+  // File Conflict edges — orange arcs between CLI nodes sharing files
+  for(let i=0;i<cliSessions.length;i++){
+    for(let j=i+1;j<cliSessions.length;j++){
+      const fa=cliSessions[i].currentFiles||[];
+      const fb=cliSessions[j].currentFiles||[];
+      const shared=fa.filter(f=>fb.includes(f));
+      if(!shared.length)continue;
+      const na=cliNodes.find(n=>n.id===(cliSessions[i].agentId||cliSessions[i].sessionId));
+      const nb=cliNodes.find(n=>n.id===(cliSessions[j].agentId||cliSessions[j].sessionId));
+      if(!na||!nb)continue;
+      const tip='파일 충돌: '+shared.map(f=>f.split('/').pop()).slice(0,3).join(', ')+(shared.length>3?' +더보기':'');
+      gSvg+='<path d="M'+na.x+' '+na.y+' Q'+(VW/2)+' '+(Math.min(na.y,nb.y)-30)+' '+nb.x+' '+nb.y+'" fill="none" stroke="#ff7b00" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.85"><title>'+escHtml(tip)+'</title></path>';
+      gSvg+='<text x="'+Math.round((na.x+nb.x)/2)+'" y="'+(Math.min(na.y,nb.y)-18)+'" font-size="8" font-family="monospace" fill="#ff7b00" text-anchor="middle" opacity="0.9">⚡'+shared.length+'</text>';
+    }
+  }
+  // Nodes
+  [...cliNodes,...aiNodes].forEach(n=>{
+    const isW=(AGENT_STATS[n.id]?.running||0)>0;
+    const isZ=cliSessions.find(s=>s.agentId===n.id&&s.lastHeartbeat&&now-Number(s.lastHeartbeat)>120000);
+    const bc=isZ?'#f85149':isW?n.color:'#21262d';
+    if(isW)gSvg+='<circle cx="'+n.x+'" cy="'+n.y+'" r="11" fill="'+n.color+'" opacity="0.07"><animate attributeName="r" values="9;13;9" dur="2s" repeatCount="indefinite"/></circle>';
+    gSvg+='<circle cx="'+n.x+'" cy="'+n.y+'" r="8" fill="#0d1117" stroke="'+bc+'" stroke-width="1.5"/>'+
+      '<text x="'+n.x+'" y="'+(n.y+3)+'" font-size="6" font-family="monospace" fill="'+n.color+'" text-anchor="middle">'+escHtml(n.id.slice(0,4))+'</text>'+
+      '<text x="'+n.x+'" y="'+(n.y+14)+'" font-size="6.5" font-family="monospace" fill="#484f58" text-anchor="middle">'+escHtml(n.id.length>9?n.id.slice(0,8)+'\u2026':n.id)+'</text>';
+  });
+  if(cliNodes.length)gSvg+='<text x="55" y="12" font-size="7" font-family="monospace" fill="#484f58" text-anchor="middle">CLI</text>';
+  if(aiNodes.length)gSvg+='<text x="'+(VW-55)+'" y="12" font-size="7" font-family="monospace" fill="#484f58" text-anchor="middle">AI</text>';
+  const graphSvg='<svg viewBox="0 0 '+VW+' '+VH+'" style="width:100%;height:'+VH+'px;display:block">'+gSvg+'</svg>';
+
+  // ── 3. Task Summary Bar ─────────────────────────────
+  const qC=allTasks.filter(t=>t.status==='queued').length;
+  const rC=allTasks.filter(t=>t.status==='running'||t.status==='assigned').length;
+  const dC=allTasks.filter(t=>t.status==='completed').length;
+  const fC=allTasks.filter(t=>t.status==='failed').length;
+  const tot=qC+rC+dC+fC;
+  const rate=tot>0?Math.round(dC/tot*100):0;
+  const tbHtml='<div class="tb-wrap">'+
+    '<div class="tb-seg"><div class="tb-sq" style="background:#d29922"></div><span style="color:#d29922">Q:'+qC+'</span></div>'+
+    '<div class="tb-seg"><div class="tb-sq" style="background:#58a6ff"></div><span style="color:#58a6ff">R:'+rC+'</span></div>'+
+    '<div class="tb-seg"><div class="tb-sq" style="background:#238636"></div><span style="color:#3fb950">✓'+dC+'</span></div>'+
+    '<div class="tb-seg"><div class="tb-sq" style="background:#f85149"></div><span style="color:#f85149">✗'+fC+'</span></div>'+
+    '<div class="tb-rate">'+rate+'%</div>'+
+  '</div>';
+
+  // ── 4. Live Feed (right panel) ──────────────────────
+  function fmtTs2(t){const d=new Date(t);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');}
+  const feedItems=(LIVE_FEED.length?LIVE_FEED:[{t:now,icon:'·',agent:'',text:'이벤트 대기 중...',cls:'lf-dim'}]).slice(0,30);
+  const lfHtml=feedItems.map(f=>
+    '<div class="lf-item '+(f.cls||'')+'">'+
+    '<span class="lf-time">'+fmtTs2(f.t)+'</span>'+
+    '<span class="lf-icon">'+escHtml(f.icon)+'</span>'+
+    (f.agent?'<span class="lf-agent" title="'+escHtml(f.agent)+'">'+escHtml(f.agent.length>10?f.agent.slice(0,9)+'\u2026':f.agent)+'</span>':'')+
+    '<span class="lf-text">'+escHtml(f.text)+'</span>'+
+    '</div>').join('');
+
+  const anomalyBanner=ANOMALY_ALERTS.length
+    ?'<div style="padding:4px 8px;background:#1a0808;border-bottom:1px solid #f8514933;font-size:9px;color:#f85149;flex-shrink:0">⚠ 이상 '+ANOMALY_ALERTS.length+'건</div>'
+    :'';
+
+  // ── Compose ─────────────────────────────────────────
+  return '<div class="ov-layout">'+
+    '<div class="ov-panel" style="overflow-y:auto">'+
+      '<div class="ov-ph">에이전트 상태 <span style="color:#30363d;font-weight:400">'+[...agentIds].length+'</span></div>'+
+      agGridHtml+
+    '</div>'+
+    '<div class="ov-panel">'+
+      '<div class="ov-ph">통신 흐름</div>'+
+      '<div style="flex:0 0 auto;overflow:hidden;border-bottom:1px solid #21262d">'+graphSvg+'</div>'+
+      '<div style="flex:1;overflow:hidden;min-height:0">'+
+        '<div style="padding:3px 8px;font-size:9px;color:#484f58;border-bottom:1px solid #161b22">활동 히트맵</div>'+
+        '<div style="overflow:hidden">'+renderSwimlane()+'</div>'+
+      '</div>'+
+      tbHtml+
+    '</div>'+
+    '<div class="ov-panel">'+
+      '<div class="ov-ph">실시간 이벤트</div>'+
+      anomalyBanner+
+      '<div class="lf-list">'+lfHtml+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+function renderSwimlane(){
+  const now=Date.now();
+  const SW_WIN=_swWindow;
+  const winStart=now-SW_WIN;
+  const N=30; // always 30 buckets
+  const bucketMs=SW_WIN/N;
+
+  // Only show agents with actual LANE_EVENTS data in the window (no phantom empty rows)
+  const agentIds=Object.keys(LANE_EVENTS).filter(id=>
+    LANE_EVENTS[id].some(e=>(e.end||e.start)>=winStart)
+  );
+
+  if(!agentIds.length){
+    return '<div class="sw-wrap sw-empty">에이전트 활동 없음 — 태스크가 실행되면 히트맵이 표시됩니다</div>';
+  }
+
+  const ROW_H=20, HEADER_H=18, PAD_TOP=4;
+  const totalH=HEADER_H+PAD_TOP+agentIds.length*ROW_H+4;
+  const VW=1000;
+  const bucketW=VW/N;
+  const GAP=1.5;
+  const bw=bucketW-GAP;
+
+  // Event type priority for dominant-type selection per bucket
+  const TYPE_PRI={err:6,done:5,tool:4,stream:3,think:2,msg:1,wait:0};
+  const TYPE_COLOR={stream:'#a5b4fc',tool:'#3fb950',think:'#58a6ff',wait:'#d29922',err:'#f85149',done:'#238636',msg:'#79c0ff'};
+  const IDLE='#0d1117';
+
+  function fmtDur(ms){if(ms<1000)return ms+'ms';if(ms<60000)return (ms/1000).toFixed(1)+'s';return (ms/60000).toFixed(1)+'m';}
+  function fmtTime(ts){const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');}
+
+  // Label column
+  let labelsHtml='<div class="sw-labels"><div class="sw-label-hdr"></div>';
+  agentIds.forEach(id=>{
+    const color=topoAgentColor(id)||agentColor(id)||'#8b949e';
+    labelsHtml+='<div class="sw-label" style="color:'+color+';height:'+ROW_H+'px" title="'+escHtml(id)+'">'+
+      escHtml(id.length>9?id.slice(0,8)+'\u2026':id)+'</div>';
+  });
+  labelsHtml+='</div>';
+
+  // SVG
+  let svg='';
+
+  // Grid: 6 vertical dividers evenly spaced
+  for(let g=1;g<=5;g++){
+    const x=(g/6)*VW;
+    svg+='<line x1="'+x+'" y1="0" x2="'+x+'" y2="'+totalH+'" stroke="#1a2535" stroke-width="1" opacity="0.6"/>';
+  }
+  // Time axis (7 labels: 0…6 sixths)
+  for(let g=0;g<=6;g++){
+    const x=(g/6)*VW;
+    const label=fmtTime(winStart+(g/6)*SW_WIN);
+    const anchor=g===0?'start':g===6?'end':'middle';
+    svg+='<text x="'+x+'" y="'+(HEADER_H-3)+'" font-size="8" font-family="monospace" fill="#484f58" text-anchor="'+anchor+'">'+escHtml(label)+'</text>';
+  }
+
+  // Heatmap rows
+  agentIds.forEach((id,rowIdx)=>{
+    const y=HEADER_H+PAD_TOP+rowIdx*ROW_H;
+    const midY=y+ROW_H/2;
+    const bh=12;
+    const by=midY-bh/2;
+    const evts=LANE_EVENTS[id]||[];
+
+    if(rowIdx%2===0) svg+='<rect x="0" y="'+y+'" width="'+VW+'" height="'+ROW_H+'" fill="#0a0e18" opacity="0.45"/>';
+
+    for(let b=0;b<N;b++){
+      const bStart=winStart+b*bucketMs;
+      const bEnd=bStart+bucketMs;
+      const x=b*bucketW+GAP/2;
+
+      // Find dominant event type in this bucket
+      let bestEvt=null, bestPri=-1;
+      for(let i=0;i<evts.length;i++){
+        const e=evts[i];
+        const eEnd=e.end||now;
+        if(e.start<bEnd&&eEnd>bStart){
+          const pri=TYPE_PRI[e.type]??-1;
+          if(pri>bestPri){bestEvt=e;bestPri=pri;}
+        }
+      }
+
+      if(bestEvt){
+        const color=TYPE_COLOR[bestEvt.type]||'#484f58';
+        // Opacity encodes "how full" the bucket is (edge buckets may be partially covered)
+        const coverage=Math.min(1,((Math.min(bestEvt.end||now,bEnd)-Math.max(bestEvt.start,bStart))/bucketMs));
+        const opacity=Math.max(0.45, 0.45+coverage*0.5).toFixed(2);
+        const tip=escHtml(id)+' | '+escHtml(bestEvt.type)+(bestEvt.label&&bestEvt.label!==bestEvt.type?' ('+escHtml(bestEvt.label)+')':'')+' | '+fmtTime(bStart)+' +'+fmtDur(bucketMs);
+        svg+='<rect x="'+x+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="1.5" fill="'+color+'" opacity="'+opacity+'"><title>'+tip+'</title></rect>';
+      } else {
+        svg+='<rect x="'+x+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="1.5" fill="'+IDLE+'" opacity="0.8"/>';
+      }
+    }
+
+    // Current-state dot on right edge for ongoing events
+    const live=evts.find(e=>!e.end);
+    if(live){
+      const dotColor=TYPE_COLOR[live.type]||'#484f58';
+      svg+='<circle cx="'+(VW-3)+'" cy="'+midY+'" r="3.5" fill="'+dotColor+'" opacity="0.95"><title>진행 중: '+escHtml(live.type)+'</title></circle>';
+    }
+  });
+
+  // NOW line
+  svg+='<line x1="'+(VW-1)+'" y1="'+HEADER_H+'" x2="'+(VW-1)+'" y2="'+totalH+'" stroke="#58a6ff" stroke-width="1.5" opacity="0.6"/>'+
+       '<text x="'+(VW-3)+'" y="'+(HEADER_H-3)+'" font-size="7" font-family="monospace" fill="#58a6ff" text-anchor="end" opacity="0.6">NOW</text>';
+
+  const svgHtml='<svg viewBox="0 0 '+VW+' '+totalH+'" preserveAspectRatio="none" style="width:100%;height:'+totalH+'px;display:block">'+svg+'</svg>';
+
+  // Window selector buttons
+  const winOpts=[[30000,'30s'],[60000,'1m'],[120000,'2m'],[300000,'5m']];
+  const winBtns=winOpts.map(([ms,lbl])=>{
+    const active=ms===SW_WIN;
+    return '<button onclick="setSwWindow('+ms+')" style="background:'+(active?'#1f6feb':'transparent')+';color:'+(active?'#fff':'#484f58')+';border:1px solid '+(active?'#1f6feb':'#21262d')+';border-radius:3px;font-size:9px;padding:1px 6px;cursor:pointer;font-family:monospace;transition:all .15s">'+lbl+'</button>';
+  }).join('');
+  const winLabel=winOpts.find(([ms])=>ms===SW_WIN)?.[1]||'5m';
+
+  const legendItems=[['stream','#a5b4fc'],['tool','#3fb950'],['think','#58a6ff'],['wait','#d29922'],['err','#f85149'],['done','#238636'],['msg','#79c0ff']];
+  const legendHtml='<div class="sw-legend">'+
+    legendItems.map(([t,c])=>'<span class="sw-leg-item"><span class="sw-leg-sq" style="background:'+c+'"></span><span class="sw-leg-lbl">'+t+'</span></span>').join('')+
+  '</div>';
+
+  return '<div class="sw-wrap">'+
+    '<div class="sw-title">'+
+      '<span>에이전트 활동 히트맵 <span style="color:#484f58;font-weight:400">(최근 '+winLabel+')</span></span>'+
+      '<span style="display:flex;gap:3px;align-items:center"><span style="color:#484f58;font-size:9px;margin-right:4px">'+agentIds.length+' agents</span>'+winBtns+'</span>'+
+    '</div>'+
+    '<div class="sw-chart">'+labelsHtml+'<div class="sw-svg-wrap">'+svgHtml+'</div></div>'+
+    legendHtml+
+  '</div>';
+}
+
 function renderFlowTab(){
   const sessions=Object.values(meshSessions);
   const recentMsgs=meshMessages.slice(0,50);
@@ -2402,7 +2909,8 @@ function renderFlowTab(){
       }).join('')
     :'<div class="empty" style="padding:12px">메시지 없음</div>';
 
-  return '<div class="flow-grid">'+nodeHtml+'</div>'+
+  return renderSwimlane()+
+    '<div class="flow-grid">'+nodeHtml+'</div>'+
     matrixHtml+delegHtml+
     '<div class="flow-log-hdr"><span>메시지 흐름</span><span style="color:#30363d">'+recentMsgs.length+'건</span></div>'+
     '<div class="flow-log">'+logHtml+'</div>';
@@ -2510,6 +3018,7 @@ async function pollTasks(){
       if(t.updated_at){const ts=new Date(t.updated_at).getTime();if(ts>AGENT_STATS[a].lastActive)AGENT_STATS[a].lastActive=ts;}
     });
     if(activeTab==='sessions')renderTab();
+    detectAnomalies();
   }catch{}
 }
 
@@ -2528,10 +3037,146 @@ async function pollMesh(){
 }
 
 // ── Init ──────────────────────────────────────────────
+// ── F2: Session Comparison ─────────────────────────────
+function toggleSessionSel(sid){
+  const i=_selSessions.indexOf(sid);
+  if(i>=0)_selSessions.splice(i,1);
+  else if(_selSessions.length<2)_selSessions.push(sid);
+  renderTab();
+}
+async function fetchAndCompare(){
+  if(_selSessions.length!==2){showToast('정확히 2개 세션을 선택하세요','warn');return;}
+  const [id1,id2]=_selSessions;
+  try{
+    const [r1,r2]=await Promise.all([
+      fetch(API+'/api/discussions/'+encodeURIComponent(id1)+'/messages').then(r=>r.json()),
+      fetch(API+'/api/discussions/'+encodeURIComponent(id2)+'/messages').then(r=>r.json()),
+    ]);
+    const m1=discussions.find(d=>d.sessionId===id1)||{sessionId:id1};
+    const m2=discussions.find(d=>d.sessionId===id2)||{sessionId:id2};
+    _compData={s1:{meta:m1,msgs:r1.messages||[]},s2:{meta:m2,msgs:r2.messages||[]}};
+    _compView=true;
+    renderTab();
+  }catch(e){showToast('세션 데이터 로드 실패','err');}
+}
+function exitCompare(){_compView=false;_compData=null;_selSessions=[];renderTab();}
+function compareHtml(){
+  if(!_compData)return '';
+  const {s1,s2}=_compData;
+  const cr1=Math.round((s1.meta?.consensusRate||0)*100);
+  const cr2=Math.round((s2.meta?.consensusRate||0)*100);
+  const crDiff=Math.abs(cr1-cr2);
+  const ptColors=['#58a6ff','#3fb950','#a5b4fc','#d29922','#f85149','#79c0ff','#d2a8ff'];
+  function ptColor(name,list){const i=list.indexOf(name);return ptColors[i>=0?i%ptColors.length:0];}
+  function fmtTs(ts){if(!ts)return '';const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+  function panelHtml(sd,label){
+    const pts=sd.meta?.participants||[];
+    const cr=Math.round((sd.meta?.consensusRate||0)*100);
+    const crCls=cr>=70?'ok':cr>=40?'warn':'info';
+    return '<div class="cmp-panel">'+
+      '<div class="cmp-ph">'+escHtml(label)+'</div>'+
+      '<div class="cmp-topic">'+escHtml((sd.meta?.topic||sd.meta?.sessionId||'?').slice(0,80))+'</div>'+
+      '<div class="cmp-meta">'+
+        '<span class="cmp-badge info">'+escHtml(sd.meta?.mode||'?')+'</span>'+
+        '<span class="cmp-badge '+crCls+'">합의 '+cr+'%</span>'+
+        '<span class="cmp-badge info">라운드 '+(sd.meta?.currentRound||0)+'</span>'+
+        pts.map(p=>'<span class="cmp-badge info" style="color:'+ptColor(p,pts)+'">'+escHtml(p)+'</span>').join('')+
+      '</div>'+
+      '<div class="cmp-msgs">'+
+        (sd.msgs.length
+          ?sd.msgs.slice(0,40).map(m=>{
+            const pt=m.provider||m.participant||m.from||'?';
+            const pc=ptColor(pt,pts);
+            return '<div class="cmp-msg" style="border-left:2px solid '+pc+'22;padding-left:6px">'+
+              '<div class="cmp-msg-hdr"><span class="cmp-msg-who" style="color:'+pc+'">'+escHtml(pt)+'</span>'+
+              '<span class="cmp-msg-time">'+fmtTs(m.timestamp||m.created_at)+'</span></div>'+
+              '<div class="cmp-msg-body">'+escHtml((m.content||m.message||'').slice(0,200))+'</div>'+
+            '</div>';
+          }).join('')
+          :'<div style="color:#484f58;font-size:10px;padding:8px">메시지 없음</div>')+
+      '</div>'+
+    '</div>';
+  }
+  return '<div class="cmp-bar">'+
+    '<span style="color:#8b949e;font-size:10px;font-weight:700">세션 비교</span>'+
+    (crDiff>0?'<span class="cmp-diff">합의율 차이 '+crDiff+'%</span>':'')+
+    '<button class="cmp-reset" onclick="exitCompare()">✕ 비교 종료</button>'+
+  '</div>'+
+  '<div class="cmp-container">'+panelHtml(s1,'Session A')+panelHtml(s2,'Session B')+'</div>';
+}
+function showToast(msg,type){
+  const d=document.createElement('div');
+  d.textContent=msg;
+  d.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:'+(type==='err'?'#f85149':type==='warn'?'#d29922':'#1f6feb')+';color:#fff;padding:8px 16px;border-radius:6px;font-size:11px;z-index:300;pointer-events:none;opacity:0;transition:opacity .2s';
+  document.body.appendChild(d);
+  requestAnimationFrame(()=>{d.style.opacity='1';setTimeout(()=>{d.style.opacity='0';setTimeout(()=>d.remove(),250);},2500);});
+}
+function detectAnomalies(){
+  const now=Date.now();
+  const alerts=[];
+  // 1. 실패율 급증
+  Object.keys(AGENT_STATS).forEach(id=>{
+    const s=AGENT_STATS[id]||{}; const tot=s.total||0; const fail=s.failed||0;
+    if(tot>=10&&fail/tot>=0.5) alerts.push({id:'spike-'+id,type:'spike',sev:'warning',msg:id+': 실패율 '+Math.round(fail/tot*100)+'% ('+fail+'/'+tot+')'});
+  });
+  // 2. 태스크 정체
+  allTasks.forEach(t=>{
+    if(t.status!=='running'&&t.status!=='streaming')return;
+    const ts=new Date(t.updated_at).getTime(); if(!Number.isFinite(ts))return;
+    if(now-ts>300000) alerts.push({id:'stall-'+t.id,type:'stall',sev:'critical',msg:'태스크 정체: '+(t.provider||t.assigned_to||'?')+' — '+Math.round((now-ts)/60000)+'분'});
+  });
+  // 3. Zombie 에이전트
+  Object.values(meshSessions).forEach(s=>{
+    const hb=Number(s.lastHeartbeat); if(!Number.isFinite(hb))return;
+    if(now-hb>120000) alerts.push({id:'zombie-'+(s.sessionId||s.agentId),type:'zombie',sev:'critical',msg:'Zombie: '+(s.agentId||s.sessionId)+' ('+Math.round((now-hb)/60000)+'분 무응답)'});
+  });
+  // 4. 큐 정체
+  const stuckQ=allTasks.filter(t=>{if(t.status!=='queued')return false;const ts=new Date(t.created_at).getTime();return Number.isFinite(ts)&&now-ts>600000;});
+  if(stuckQ.length>=3) alerts.push({id:'queue-backup',type:'queue',sev:'warning',msg:'큐 정체: '+stuckQ.length+'개 10분+ 대기'});
+  // 5. 오류 폭풍
+  const recFails=allTasks.filter(t=>{if(t.status!=='failed')return false;const ts=new Date(t.updated_at).getTime();return Number.isFinite(ts)&&now-ts<60000;});
+  const stormMap={}; recFails.forEach(t=>{const p=t.provider||t.assigned_to||'?';stormMap[p]=(stormMap[p]||0)+1;});
+  Object.entries(stormMap).filter(([,c])=>c>=3).forEach(([p,c])=>alerts.push({id:'storm-'+p,type:'storm',sev:'critical',msg:'오류폭풍: '+p+' — 60초 내 '+c+'회 실패'}));
+  // 6. 파일 충돌 — 두 CLI 세션이 같은 파일 수정 중
+  const sessList=Object.values(meshSessions);
+  for(let i=0;i<sessList.length;i++){
+    for(let j=i+1;j<sessList.length;j++){
+      const fa=sessList[i].currentFiles||[];
+      const fb=sessList[j].currentFiles||[];
+      const shared=fa.filter(f=>fb.includes(f));
+      if(!shared.length)continue;
+      const aA=sessList[i].agentId||sessList[i].sessionId;
+      const aB=sessList[j].agentId||sessList[j].sessionId;
+      const conflictId='file-conflict-'+[aA,aB].sort().join('::');
+      alerts.push({id:conflictId,type:'conflict',sev:'critical',agentId:aA,msg:'파일 충돌: '+aA+' ↔ '+aB+' — '+shared.map(f=>f.split('/').pop()).slice(0,2).join(', ')+(shared.length>2?' +'+( shared.length-2)+'개':'')});
+    }
+  }
+  ANOMALY_ALERTS=alerts.filter(a=>!_dismissedAlerts.has(a.id));
+  renderAnomalyPanel();
+}
+function renderAnomalyPanel(){
+  const panel=document.getElementById('alert-panel'); if(!panel)return;
+  if(!ANOMALY_ALERTS.length){panel.innerHTML='';return;}
+  const SEV_ICON={critical:'⚠',warning:'◆'};
+  // XSS-safe: use data-alert-id + event delegation (no inline onclick)
+  panel.innerHTML=ANOMALY_ALERTS.map(a=>
+    '<div class="alert-card '+a.sev+'" data-alert-id="'+encodeURIComponent(a.id)+'" title="클릭하여 닫기">'+
+    '<div class="alert-dot '+a.sev+'"></div>'+
+    '<div><div style="font-weight:700;font-size:10px">'+(SEV_ICON[a.sev]||'!')+' '+a.type.toUpperCase()+'</div><div>'+escHtml(a.msg)+'</div></div>'+
+    '</div>').join('');
+  panel.querySelectorAll('.alert-card[data-alert-id]').forEach(card=>{
+    card.addEventListener('click',()=>{
+      _dismissedAlerts.add(decodeURIComponent(card.dataset.alertId||''));
+      // Limit Set size to prevent unbounded growth
+      if(_dismissedAlerts.size>500){const it=_dismissedAlerts.values();_dismissedAlerts.delete(it.next().value);}
+      renderAnomalyPanel();
+    },{once:true});
+  });
+}
 async function init(){
   // Restore tab + filter
   const savedTab=localStorage.getItem('nco-active-tab');
-  if(savedTab) switchTab(savedTab);
+  switchTab(savedTab||'overview');
   // Apply saved event filter button state
   document.querySelectorAll('.ef-btn').forEach(b=>{
     b.classList.toggle('active',b.dataset.ef===evtFilter);
@@ -2582,20 +3227,85 @@ async function init(){
       el('onlineCount').className='badge '+(online>0?'ok':'err');
     }
     catch{ el('apiDot').className='dot off'; el('apiText').textContent='API offline'; }
+    detectAnomalies();
   }
-  setInterval(checkHealth,10000);
+  // Store interval handles so they can be cleared on WS close / page unload
+  const _healthTimer=setInterval(checkHealth,10000);
+  const _meshTimer=setInterval(pollMesh,15000);
+  const _taskTimer=setInterval(pollTasks,10000);
+  const _heartbeatTimer=setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions'||activeTab==='overview')renderTab(); }, 10000);
 
-  setInterval(pollMesh,15000);
-  setInterval(pollTasks,10000);
+  // Animation loops via requestAnimationFrame — aligned to vsync, skips hidden tabs
+  let _lastTopoRender=0, _lastGraphRender=0;
+  function _topoRafLoop(ts){
+    if(!document.hidden && ts-_lastTopoRender>=800){
+      renderTopology(); _lastTopoRender=ts;
+    }
+    requestAnimationFrame(_topoRafLoop);
+  }
+  requestAnimationFrame(_topoRafLoop);
+  function _graphRafLoop(ts){
+    if(!document.hidden && _graphOpen && ts-_lastGraphRender>=1000){
+      renderMeshGraph(); _lastGraphRender=ts;
+    }
+    requestAnimationFrame(_graphRafLoop);
+  }
+  requestAnimationFrame(_graphRafLoop);
 
-  // Heartbeat refresh counter
-  setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions')renderTab(); }, 10000);
+  // Pause polling when tab is hidden, resume on visibility
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden){ pollMesh(); pollTasks(); checkHealth(); }
+  });
 
-  // Start animation loops
-  (function topoLoop(){ renderTopology(); setTimeout(topoLoop, 800); })();
-  (function graphLoop(){ renderMeshGraph(); setTimeout(graphLoop, 1000); })();
+  // ── Keyboard Shortcuts ────────────────────────────────
+  const TAB_KEYS={'1':'overview','2':'mesh','3':'sessions','4':'messages','5':'tasks','6':'flow'};
+  document.addEventListener('keydown',e=>{
+    if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA')return;
+    if(e.metaKey||e.ctrlKey||e.altKey)return;
+    const k=e.key;
+    // Escape: close modal + clear topology selection
+    if(k==='Escape'){
+      const modal=document.getElementById('nco-modal');
+      if(modal){modal.remove();return;}
+      if(_topoSelected){_topoSelected=null;return;}
+      if(focusAgent){clearFocus();return;}
+      return;
+    }
+    // 1-6: switch tabs
+    if(TAB_KEYS[k]){switchTab(TAB_KEYS[k]);e.preventDefault();return;}
+    // g/G: toggle mesh graph
+    if(k==='g'||k==='G'){toggleGraphSection();return;}
+    // f/F: clear event focus
+    if(k==='f'||k==='F'){clearFocus();return;}
+    // l/L: toggle event log
+    if(k==='l'||k==='L'){toggleEventLog();return;}
+    // ?: keyboard help overlay
+    if(k==='?'){
+      if(document.getElementById('kb-help'))return;
+      const d=document.createElement('div');
+      d.id='kb-help';
+      d.style.cssText='position:fixed;inset:0;background:#000b;z-index:500;display:flex;align-items:center;justify-content:center';
+      d.innerHTML='<div style="background:#161b22;border:1px solid #30363d;border-radius:8px;padding:18px 24px;min-width:300px;font-size:11px;line-height:2">'+
+        '<div style="font-size:13px;font-weight:700;color:#58a6ff;margin-bottom:10px">⌨ 키보드 단축키</div>'+
+        '<div style="display:grid;grid-template-columns:80px 1fr;gap:2px 12px;color:#8b949e">'+
+        '<b style="color:#e3b341">1-6</b><span>탭 전환 (Mesh/Sessions/Messages/Discussions/Tasks/Flow)</span>'+
+        '<b style="color:#e3b341">Esc</b><span>모달 닫기 / 포커스 해제 / 툴팁 닫기</span>'+
+        '<b style="color:#e3b341">G</b><span>Mesh 그래프 토글</span>'+
+        '<b style="color:#e3b341">F</b><span>이벤트 포커스 해제</span>'+
+        '<b style="color:#e3b341">L</b><span>이벤트 로그 패널 토글</span>'+
+        '<b style="color:#e3b341">?</b><span>이 도움말 표시</span>'+
+        '</div>'+
+        '<div style="margin-top:12px;color:#484f58;font-size:10px">클릭하거나 Esc로 닫기</div>'+
+      '</div>';
+      d.onclick=()=>d.remove();
+      document.addEventListener('keydown',function esc(e2){if(e2.key==='Escape'){d.remove();document.removeEventListener('keydown',esc);}},{once:true});
+      document.body.appendChild(d);
+      return;
+    }
+  });
 
   await checkHealth();
+  detectAnomalies();
 }
 
 init();

@@ -594,8 +594,9 @@ class CliMesh {
       const db = getDb();
       const rows = db.prepare(`
         SELECT * FROM mesh_sessions
-        WHERE last_heartbeat > datetime('now', '-2 minutes')
-        ORDER BY agent_id
+        WHERE last_heartbeat > datetime('now', '-10 minutes')
+          AND status != 'disconnected'
+        ORDER BY last_heartbeat DESC
       `).all() as any[];
 
       const alive: MeshSession[] = [];
