@@ -7,7 +7,7 @@ LAST_USE_FILE="/tmp/vllm-last-use"
 CURRENT_MODEL_FILE="/tmp/vllm-current-model"
 
 MODEL_GEMMA_PATH="/mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4"
-MODEL_OMNI_PATH="/mnt/d/llm-models/vllm/Qwen2.5-Omni-7B"
+MODEL_QWEN35_PATH="/mnt/d/llm-models/vllm/Qwen3.5-9B"
 
 # ──────────────────────────────────────────────
 # 헬퍼 함수
@@ -33,22 +33,23 @@ _start_gemma() {
   echo "▶ Gemma 4 26B 시작 (PID: $!, 로딩 ~3분)"
 }
 
-_start_omni() {
+_start_qwen35() {
+  source ~/vllm-env/bin/activate
   nohup python -m vllm.entrypoints.openai.api_server \
-    --model "$MODEL_OMNI_PATH" \
+    --model "$MODEL_QWEN35_PATH" \
     --dtype auto \
-    --gpu-memory-utilization 0.88 \
+    --gpu-memory-utilization 0.90 \
     --max-model-len 32768 \
     --max-num-seqs 4 \
     --trust-remote-code \
+    --enforce-eager \
     --enable-auto-tool-choice \
-    --tool-call-parser hermes \
-    --limit-mm-per-prompt "audio=5,image=10,video=2" \
+    --tool-call-parser qwen3_coder \
     --port $PORT \
     --host 127.0.0.1 \
     > "$LOG" 2>&1 &
-  echo "omni" > "$CURRENT_MODEL_FILE"
-  echo "▶ Qwen2.5-Omni-7B 시작 (PID: $!, 로딩 ~2분)"
+  echo "qwen35" > "$CURRENT_MODEL_FILE"
+  echo "▶ Qwen3.5-9B 시작 (PID: $!, 로딩 ~2분)"
 }
 
 _start_proxy() {
@@ -74,6 +75,15 @@ _wait_ready() {
 # ──────────────────────────────────────────────
 case "${1:-status}" in
   start)
+    # ─── 동시 시작 방지 락 ───
+    LOCK_FILE="/tmp/vllm-start.lock"
+    if [ -f "$LOCK_FILE" ]; then
+      LOCK_PID=$(cat "$LOCK_FILE" 2>/dev/null)
+      LOCK_MODEL=$(sed -n '2p' "$LOCK_FILE" 2>/dev/null)
+      echo "⚠ 다른 세션이 vLLM 시작 중: 모델=$LOCK_MODEL (PID=$LOCK_PID)"
+      echo "  충돌 방지: 현재 시작 요청 취소됨"
+      exit 1
+    fi
     if pgrep -f "vllm.entrypoints" > /dev/null 2>&1; then
       echo "이미 실행 중 (PID: $(pgrep -f 'vllm.entrypoints' | head -1), 모델: $(_current_model))"
       exit 0
@@ -82,16 +92,18 @@ case "${1:-status}" in
     export HF_TOKEN=$(grep '^HF_TOKEN=' /home/nova/projects/neural-cli-orchestrator/.env 2>/dev/null | cut -d= -f2)
     TARGET="${2:-$(_current_model)}"
     case "$TARGET" in
-      omni|qwen)
-        if [ ! -d "$MODEL_OMNI_PATH" ]; then
-          echo "✗ Omni 모델 없음: $MODEL_OMNI_PATH"
-          echo "  먼저 실행: vllm-ctl.sh download omni"
+      qwen|qwen35|qwen3.5|27b)
+        if [ ! -d "$MODEL_QWEN35_PATH" ]; then
+          echo "✗ Qwen3.5-27B 모델 없음: $MODEL_QWEN35_PATH"
           exit 1
         fi
-        _start_omni ;;
+        _start_qwen35 ;;
       *) _start_gemma ;;
     esac
     date +%s > "$LAST_USE_FILE"
+    # 락 파일 생성 (시작 완료 or 실패 시 자동 삭제)
+    echo "$$" > "$LOCK_FILE"; echo "${TARGET:-gemma}" >> "$LOCK_FILE"
+    trap 'rm -f "$LOCK_FILE"' EXIT
     _start_proxy
     ;;
 
@@ -121,14 +133,9 @@ case "${1:-status}" in
     source ~/vllm-env/bin/activate
     export HF_TOKEN=$(grep '^HF_TOKEN=' /home/nova/projects/neural-cli-orchestrator/.env 2>/dev/null | cut -d= -f2)
     case "$TARGET" in
-      omni|qwen)
-        if [ ! -d "$MODEL_OMNI_PATH" ]; then
-          echo "✗ Omni 모델 없음. 먼저: vllm-ctl.sh download omni"
-          exit 1
-        fi
-        _start_omni ;;
+      qwen|qwen35|qwen3.5|27b) _start_qwen35 ;;
       gemma|gemma4|26b) _start_gemma ;;
-      *) echo "✗ 알 수 없는 모델: $TARGET (gemma|omni)"; exit 1 ;;
+      *) echo "✗ 알 수 없는 모델: $TARGET (gemma|qwen35)"; exit 1 ;;
     esac
     date +%s > "$LAST_USE_FILE"
     _start_proxy
@@ -165,44 +172,32 @@ case "${1:-status}" in
   models)
     echo "사용 가능한 모델:"
     [ -d "$MODEL_GEMMA_PATH" ] \
-      && echo "  ✓ gemma  — Gemma 4 26B A4B (이미지+텍스트, NVFP4)" \
+      && echo "  ✓ gemma  — Gemma 4 26B A4B (이미지+텍스트, NVFP4, 16K ctx)" \
       || echo "  ✗ gemma  — 미설치"
-    [ -d "$MODEL_OMNI_PATH" ] \
-      && echo "  ✓ omni   — Qwen2.5-Omni-7B (이미지+오디오+비디오+텍스트)" \
-      || echo "  ✗ omni   — 미설치 (vllm-ctl.sh download omni)"
+    [ -d "$MODEL_QWEN35_PATH" ] \
+      && echo "  ✓ qwen35 — Qwen3.5-27B-GPTQ-Int4 (텍스트, 32K ctx)" \
+      || echo "  ✗ qwen35 — 미설치"
     echo ""
     echo "현재 활성: $(_current_model)"
-    echo "전환 명령: vllm-ctl.sh use {gemma|omni}"
+    echo "전환 명령: vllm-ctl.sh use {gemma|qwen35}"
     ;;
 
   download)
-    TARGET="${2:-omni}"
+    TARGET="${2:-qwen35}"
     source ~/vllm-env/bin/activate
     export HF_TOKEN=$(grep '^HF_TOKEN=' /home/nova/projects/neural-cli-orchestrator/.env 2>/dev/null | cut -d= -f2)
     case "$TARGET" in
-      omni|qwen)
-        if [ -d "$MODEL_OMNI_PATH" ] && [ -f "$MODEL_OMNI_PATH/config.json" ]; then
-          echo "이미 존재: $MODEL_OMNI_PATH"
+      qwen|qwen35|qwen3.5|27b)
+        if [ -d "$MODEL_QWEN35_PATH" ] && [ -f "$MODEL_QWEN35_PATH/config.json" ]; then
+          echo "이미 존재: $MODEL_QWEN35_PATH"
           exit 0
         fi
-        echo "Qwen2.5-Omni-7B 다운로드 시작..."
-        echo "경로: $MODEL_OMNI_PATH (~15GB, 시간 소요)"
-        mkdir -p "$MODEL_OMNI_PATH"
-        python3 - <<'PYEOF'
-from huggingface_hub import snapshot_download
-import os, sys
-dest = os.environ.get('MODEL_OMNI_PATH', '/mnt/d/llm-models/vllm/Qwen2.5-Omni-7B')
-print(f"다운로드 중: Qwen/Qwen2.5-Omni-7B → {dest}")
-snapshot_download(
-    repo_id='Qwen/Qwen2.5-Omni-7B',
-    local_dir=dest,
-    ignore_patterns=['*.gguf', '*.pt'],
-)
-print("✓ 다운로드 완료!")
-PYEOF
+        echo "Qwen3.5-27B-GPTQ-Int4 다운로드 시작..."
+        echo "경로: $MODEL_QWEN35_PATH (~29GB, 시간 소요)"
+        hf download Qwen/Qwen3.5-27B-GPTQ-Int4 --local-dir "$MODEL_QWEN35_PATH"
         ;;
       *)
-        echo "Usage: $0 download {omni}"
+        echo "Usage: $0 download {qwen35}"
         ;;
     esac
     ;;
@@ -231,12 +226,12 @@ PYEOF
     fi
     echo ""
     echo "  사용 가능한 모델:"
-    [ -d "$MODEL_GEMMA_PATH" ] && echo "  ✓ gemma  — Gemma 4 26B" || echo "  ✗ gemma  — 없음"
-    [ -d "$MODEL_OMNI_PATH" ]  && echo "  ✓ omni   — Qwen2.5-Omni-7B" || echo "  ✗ omni   — 없음 (download omni)"
+    [ -d "$MODEL_GEMMA_PATH" ] && echo "  ✓ gemma  — Gemma 4 26B (16K ctx)" || echo "  ✗ gemma  — 없음"
+    [ -d "$MODEL_QWEN35_PATH" ] && echo "  ✓ qwen35 — Qwen3.5-27B-GPTQ-Int4 (32K ctx)" || echo "  ✗ qwen35 — 없음"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     ;;
 
   *)
-    echo "Usage: $0 {start [gemma|omni] | stop | status | use {gemma|omni} | models | download {omni} | ensure}"
+    echo "Usage: $0 {start [gemma|qwen35] | stop | status | use {gemma|qwen35} | models | download {qwen35} | ensure}"
     ;;
 esac
