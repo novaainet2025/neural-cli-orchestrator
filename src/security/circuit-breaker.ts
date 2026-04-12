@@ -13,7 +13,7 @@ export interface CircuitBreakerConfig {
 const DEFAULT_CONFIG: CircuitBreakerConfig = {
   failureThreshold: 5,
   resetTimeoutMs: 60_000,
-  halfOpenMaxAttempts: 1,
+  halfOpenMaxAttempts: 3,  // must be >= 3 to allow 3 consecutive success check
 };
 
 export class CircuitBreaker {

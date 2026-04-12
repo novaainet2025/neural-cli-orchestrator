@@ -4,6 +4,37 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('knowledge-base');
 
+// ─── Embedding Service (optional, localhost:6270) ────
+const EMBED_URL = 'http://localhost:6270/embed';
+
+async function fetchEmbedding(text: string): Promise<number[] | null> {
+  try {
+    const res = await fetch(EMBED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { embedding?: number[] };
+    return Array.isArray(data.embedding) ? data.embedding : null;
+  } catch {
+    return null; // service unavailable — fall back to lexical
+  }
+}
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
 export interface KnowledgeEntry {
   id?: string;
   projectPath: string;
@@ -59,8 +90,8 @@ class KnowledgeBase {
 
     const results = db.prepare(sql).all(...params) as any[];
 
-    // Increment used_count for returned results
-    const updateStmt = db.prepare('UPDATE knowledge_base SET used_count = used_count + 1 WHERE id = ?');
+    // Increment used_count and apply small confidence boost (feedback loop)
+    const updateStmt = db.prepare('UPDATE knowledge_base SET used_count = used_count + 1, confidence = MIN(1.0, confidence + 0.01) WHERE id = ?');
     for (const r of results) {
       updateStmt.run(r.id);
     }
@@ -82,6 +113,40 @@ class KnowledgeBase {
   }
 
   /**
+   * Semantic similarity search: uses embedding API (localhost:6270) when available,
+   * falls back to Jaccard coefficient for lexical matching.
+   */
+  async findSimilarAsync(query: string, limit = 5): Promise<KnowledgeEntry[]> {
+    const db = getDb();
+    const rows = db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
+    if (rows.length === 0) return [];
+
+    const queryEmbedding = await fetchEmbedding(query);
+
+    if (queryEmbedding) {
+      // Embedding-based cosine similarity
+      const scored: { row: Record<string, unknown>; sim: number }[] = [];
+      for (const row of rows) {
+        const stored = typeof row.embedding_json === 'string'
+          ? (JSON.parse(row.embedding_json) as number[])
+          : null;
+        if (stored && stored.length === queryEmbedding.length) {
+          scored.push({ row, sim: cosineSimilarity(queryEmbedding, stored) });
+        } else {
+          // No stored embedding — use Jaccard as fallback for this entry
+          const content = typeof row.content === 'string' ? row.content : '';
+          scored.push({ row, sim: this.jaccardSimilarity(this.tokenWordSet(query), this.tokenWordSet(content)) });
+        }
+      }
+      scored.sort((a, b) => b.sim - a.sim);
+      return scored.slice(0, limit).filter(s => s.sim > 0.1).map(s => this.rowToEntry(s.row));
+    }
+
+    // Fallback: lexical Jaccard
+    return this.findSimilar(query, limit);
+  }
+
+  /**
    * Lexical similarity search without embeddings: token overlap via Jaccard coefficient
    * (lightweight stand-in for TF–IDF cosine on bag-of-words).
    */
@@ -98,12 +163,92 @@ class KnowledgeBase {
     return scored.slice(0, limit).map(s => this.rowToEntry(s.row));
   }
 
-  inferCategory(content: string): string {
+  /**
+   * LLM-inspired category inference: multi-signal scoring across all categories.
+   * Scores keyword density for each category and picks the winner.
+   */
+  inferCategory(content: string): KnowledgeEntry['category'] {
     const lower = content.toLowerCase();
-    if (/\berror\b|\bfix\b|\bbug\b/i.test(lower)) return 'bug_pattern';
-    if (/\bdesign\b|\bstructure\b|\bpattern\b/i.test(lower)) return 'architecture';
-    if (/\bdecided\b|\bchose\b|\breason\b/i.test(lower)) return 'decision';
-    return 'convention';
+    const scores: Record<KnowledgeEntry['category'], number> = {
+      bug_pattern: 0,
+      architecture: 0,
+      convention: 0,
+      decision: 0,
+    };
+
+    const patterns: Array<{ category: KnowledgeEntry['category']; terms: RegExp[] }> = [
+      { category: 'bug_pattern', terms: [/\berror\b/, /\bfix\b/, /\bbug\b/, /\bcrash\b/, /\bfail\b/, /\bnull\b/, /\bundefined\b/, /\bexception\b/, /원인/, /수정/, /버그/] },
+      { category: 'architecture', terms: [/\bdesign\b/, /\bstructure\b/, /\bpattern\b/, /\bmodule\b/, /\blayer\b/, /\bservice\b/, /\bcomponent\b/, /\binterface\b/, /아키텍처/, /설계/, /구조/] },
+      { category: 'decision', terms: [/\bdecided\b/, /\bchose\b/, /\breason\b/, /\bapproach\b/, /\btradeoff\b/, /\bselected\b/, /결정/, /선택/, /방향/, /이유/] },
+      { category: 'convention', terms: [/\bconvention\b/, /\bstandard\b/, /\bformat\b/, /\bstyle\b/, /\bnaming\b/, /\brule\b/, /\bguideline\b/, /규칙/, /컨벤션/, /형식/] },
+    ];
+
+    for (const { category, terms } of patterns) {
+      for (const term of terms) {
+        const matches = (lower.match(new RegExp(term.source, 'gi')) || []).length;
+        scores[category] += matches;
+      }
+    }
+
+    let best: KnowledgeEntry['category'] = 'convention';
+    let bestScore = -1;
+    for (const [cat, score] of Object.entries(scores) as Array<[KnowledgeEntry['category'], number]>) {
+      if (score > bestScore) { bestScore = score; best = cat; }
+    }
+    return best;
+  }
+
+  /**
+   * Save with optional embedding generation (async variant).
+   */
+  async saveWithEmbedding(entry: KnowledgeEntry): Promise<string> {
+    const id = entry.id || createId('kb');
+    const embedding = await fetchEmbedding(entry.content);
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO knowledge_base (id, project_path, category, content, source_task_id, source_discussion_id, confidence, embedding_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET embedding_json=excluded.embedding_json
+    `).run(
+      id,
+      entry.projectPath,
+      entry.category,
+      entry.content,
+      entry.sourceTaskId || null,
+      entry.sourceDiscussionId || null,
+      entry.confidence ?? 0.8,
+      embedding ? JSON.stringify(embedding) : null,
+    );
+    log.info({ id, category: entry.category, hasEmbedding: !!embedding }, 'Knowledge saved with embedding');
+    return id;
+  }
+
+  /**
+   * LLM-based category classification (async). Falls back to inferCategory() on error.
+   * Uses OpenRouter API when available.
+   */
+  async inferCategoryAsync(content: string): Promise<KnowledgeEntry['category']> {
+    try {
+      const { default: OpenAI } = await import('openai');
+      const client = new OpenAI({
+        apiKey: process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || 'dummy',
+        baseURL: 'https://openrouter.ai/api/v1',
+      });
+      const res = await client.chat.completions.create({
+        model: 'openai/gpt-4o-mini',
+        max_tokens: 10,
+        messages: [
+          {
+            role: 'system',
+            content: 'Classify into exactly one: bug_pattern, architecture, convention, decision. Reply with the category name only.',
+          },
+          { role: 'user', content: content.slice(0, 300) },
+        ],
+      });
+      const cat = res.choices[0]?.message?.content?.trim().toLowerCase() as KnowledgeEntry['category'];
+      if (['bug_pattern', 'architecture', 'convention', 'decision'].includes(cat)) return cat;
+    } catch { /* API unavailable — fall back to regex */ }
+    return this.inferCategory(content);
   }
 
   updateConfidence(id: string, delta: number): void {

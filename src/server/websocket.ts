@@ -9,6 +9,31 @@ import { nanoid } from 'nanoid';
 
 const log = createLogger('websocket');
 
+// ─── RFC 6902 JSON Patch (flat-key diff, no external dep) ─
+type JsonPatchOp = { op: 'add' | 'replace' | 'remove'; path: string; value?: unknown };
+
+function computeJsonPatch(prev: Record<string, unknown>, next: Record<string, unknown>): JsonPatchOp[] {
+  const ops: JsonPatchOp[] = [];
+  const keys = new Set([...Object.keys(prev), ...Object.keys(next)]);
+  for (const key of keys) {
+    const path = `/${key}`;
+    if (!(key in prev)) {
+      ops.push({ op: 'add', path, value: next[key] });
+    } else if (!(key in next)) {
+      ops.push({ op: 'remove', path });
+    } else if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
+      ops.push({ op: 'replace', path, value: next[key] });
+    }
+  }
+  return ops;
+}
+
+// Event types where delta encoding is applied (state-update events)
+const DELTA_EVENT_TYPES = new Set([
+  'agent:status', 'agent:heartbeat', 'task:started', 'task:completed', 'task:failed',
+  'discussion:round_completed', 'discussion:completed',
+]);
+
 interface ClientInfo {
   id: string;
   ws: WebSocket;
@@ -17,6 +42,10 @@ interface ClientInfo {
   connectedAt: number;
   /** When true, event payloads are sent as msgpackr binary; protocol messages via send() stay JSON. */
   isBinary: boolean;
+  /** When true, send JSON Patch diffs for state-update events instead of full payloads. */
+  deltaMode: boolean;
+  /** Last-sent state snapshot per event-type key (agentId or taskId) for delta diffing. */
+  lastState: Map<string, Record<string, unknown>>;
 }
 
 class RingBuffer<T> {
@@ -62,6 +91,8 @@ class WebSocketBridge {
         lastSeq: '0',
         connectedAt: Date.now(),
         isBinary: false,
+        deltaMode: false,
+        lastState: new Map(),
       };
       this.clients.set(clientId, client);
 
@@ -129,17 +160,23 @@ class WebSocketBridge {
         if (msg.binary === true) {
           client.isBinary = true;
         }
+        if (msg.delta === true) {
+          client.deltaMode = true;
+        }
         break;
 
       case 'subscribe': {
         const taskId = typeof msg.taskId === 'string' ? msg.taskId : undefined;
         const sessionId = typeof msg.sessionId === 'string' ? msg.sessionId : undefined;
+        const agentId = typeof msg.agentId === 'string' ? msg.agentId : undefined;
         if (taskId) client.subscriptions.add(taskId);
         if (sessionId) client.subscriptions.add(`discussion:${sessionId}`);
+        if (agentId) client.subscriptions.add(`agent:${agentId}`);
         this.send(client.ws, {
           type: 'subscribed',
           taskId,
           sessionId,
+          agentId,
           timestamp: new Date().toISOString(),
         });
         break;
@@ -149,6 +186,9 @@ class WebSocketBridge {
         if (typeof msg.taskId === 'string') client.subscriptions.delete(msg.taskId);
         if (typeof msg.sessionId === 'string') {
           client.subscriptions.delete(`discussion:${msg.sessionId}`);
+        }
+        if (typeof msg.agentId === 'string') {
+          client.subscriptions.delete(`agent:${msg.agentId}`);
         }
         this.send(client.ws, { type: 'unsubscribed', timestamp: new Date().toISOString() });
         break;
@@ -220,10 +260,15 @@ class WebSocketBridge {
         const sessionId =
           (event as { sessionId?: string; discussionId?: string }).sessionId ||
           (event as { discussionId?: string }).discussionId;
+        const evtAgentId =
+          (event as { agentId?: string; from?: string }).agentId ||
+          (event as { from?: string }).from;
         const discussionKey = sessionId ? `discussion:${sessionId}` : null;
+        const agentKey = evtAgentId ? `agent:${evtAgentId}` : null;
 
         const matches = (taskId && client.subscriptions.has(taskId)) ||
-                        (discussionKey && client.subscriptions.has(discussionKey));
+                        (discussionKey && client.subscriptions.has(discussionKey)) ||
+                        (agentKey && client.subscriptions.has(agentKey));
 
         // Also always send system events, agent status, and mesh events
         const isGlobal = event.type.startsWith('system:') ||
@@ -240,7 +285,22 @@ class WebSocketBridge {
         continue;
       }
 
-      const payload = client.isBinary ? pack(event) : JSON.stringify(event);
+      // JSON Patch delta encoding for state-update events
+      let sendData: unknown = event;
+      if (client.deltaMode && DELTA_EVENT_TYPES.has(event.type)) {
+        const stateKey = (event as any).agentId || (event as any).taskId || event.type;
+        const prev = client.lastState.get(stateKey) ?? {};
+        const next = event as unknown as Record<string, unknown>;
+        const patch = computeJsonPatch(prev, next);
+        client.lastState.set(stateKey, next);
+        if (patch.length > 0) {
+          sendData = { type: 'patch', target: stateKey, patch, id: event.id };
+        } else {
+          continue; // no change — skip send
+        }
+      }
+
+      const payload = client.isBinary ? pack(sendData) : JSON.stringify(sendData);
       client.ws.send(payload);
       client.lastSeq = event.id;
     }

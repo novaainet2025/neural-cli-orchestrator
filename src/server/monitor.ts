@@ -304,6 +304,111 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
 /* Empty states */
 .empty{padding:24px;color:#484f58;text-align:center;font-size:11px}
 
+/* ── Flow tab ───────────────────────────────────────── */
+.flow-grid{display:flex;flex-wrap:wrap;gap:6px;padding:8px 6px;border-bottom:2px solid #21262d;min-height:80px}
+.flow-node{flex:1;min-width:80px;max-width:150px;border:1px solid #1a2540;border-radius:6px;overflow:hidden;background:#080e1a;transition:border-color .2s,box-shadow .2s}
+.flow-node:hover{border-color:#388bfd55;box-shadow:0 0 8px #388bfd11}
+.fn-hdr{padding:5px 7px;display:flex;align-items:center;gap:4px;border-bottom:1px solid #0f1a2a;background:#0a1020}
+.fn-name{font-weight:700;font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fn-pid{color:#21262d;font-size:9px;font-variant-numeric:tabular-nums}
+.fn-body{padding:4px 7px}
+.fn-wm{font-size:9px;color:#484f58;margin-bottom:3px}
+.fn-io{display:flex;gap:3px;flex-wrap:wrap;margin-top:2px}
+.fn-out{font-size:9px;padding:1px 5px;border-radius:3px;background:#0d1e3d;color:#58a6ff;border:1px solid #1f6feb44}
+.fn-in{font-size:9px;padding:1px 5px;border-radius:3px;background:#0d2818;color:#3fb950;border:1px solid #23863644}
+.fn-bc{font-size:9px;padding:1px 5px;border-radius:3px;background:#241900;color:#d29922;border:1px solid #d2992244}
+.fn-last{font-size:9px;color:#484f58;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-top:3px;border-top:1px solid #0f1a2a;font-style:italic}
+.flow-matrix-wrap{padding:7px 8px;border-bottom:1px solid #21262d}
+.flow-matrix-title{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
+.flow-matrix{display:grid;gap:1px;overflow-x:auto}
+.fm-cell{font-size:9px;padding:2px 4px;border-radius:2px;text-align:center;min-width:26px;min-height:18px;display:flex;align-items:center;justify-content:center}
+.fm-cell.hdr{color:#484f58;font-weight:700;background:transparent;font-size:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm-cell.self{background:#161b22;color:#21262d}
+.fm-cell.has-msg{cursor:pointer;font-weight:700}
+.fm-cell.ti{background:#0d1e3d55;color:#58a6ff}
+.fm-cell.tw{background:#24190055;color:#d29922}
+.fm-cell.tc{background:#2a080855;color:#f85149;animation:pulse 1.5s infinite}
+.fm-cell.tr{background:#1e104055;color:#a5b4fc}
+.fm-cell.tm{background:#1a1a2a55;color:#8b949e}
+@keyframes flowBlink{0%,100%{opacity:1}50%{opacity:.3}}
+.fm-cell.fresh{animation:flowBlink .4s 3}
+.deleg-section{padding:5px 8px;border-bottom:1px solid #21262d}
+.deleg-hdr{font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.deleg-row{display:grid;grid-template-columns:70px 14px 70px 1fr 54px;gap:4px;padding:2px 0;font-size:10px;border-bottom:1px solid #0d1117;align-items:center}
+.deleg-row:last-child{border-bottom:none}
+.deleg-from,.deleg-to{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.deleg-arrow{color:#484f58;text-align:center;font-size:10px}
+.deleg-task{color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.deleg-status{font-size:8px;padding:1px 4px;border-radius:2px;text-align:center;font-weight:700;white-space:nowrap}
+.flow-log-hdr{padding:4px 8px 3px;font-size:9px;color:#484f58;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #21262d;display:flex;justify-content:space-between}
+.flow-log{padding:2px 8px 6px}
+.flow-msg-row{display:grid;grid-template-columns:48px 1fr 10px 1fr 1.8fr;gap:4px;padding:2px 0;font-size:10px;border-bottom:1px solid #0d1117;align-items:center}
+.flow-msg-row:last-child{border-bottom:none}
+.flow-msg-row:hover{background:#161b22;border-radius:2px;padding-left:3px}
+.fm-time2{color:#30363d;font-variant-numeric:tabular-nums;font-size:9px}
+.fm-fromA{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm-arr{font-size:11px;text-align:center;line-height:1}
+.fm-toA{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm-body{color:#6e7681;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}
+
+/* ── Mesh Network Graph ──────────────────────────────── */
+.graph-section{flex-shrink:0;display:flex;flex-direction:column;border-bottom:2px solid #1a2535;position:relative;height:28px;overflow:hidden;background:#05080e;transition:height .2s}
+.graph-section.expanded{height:180px}
+.graph-ph{padding:4px 10px;color:#6e7681;font-size:9px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #1a2535;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;background:#080c12;height:24px}
+.graph-ph-title{display:flex;align-items:center;gap:6px}
+.graph-svg-wrap{flex:1;overflow:hidden;background:#05080e;position:relative}
+.graph-node text{pointer-events:none}
+.graph-node:hover>circle:first-of-type{filter:brightness(1.4)}
+.graph-legend{position:absolute;bottom:5px;right:8px;font-size:8px;color:#21262d;display:flex;gap:8px;pointer-events:none}
+/* Graph detail panel (overlays graph) */
+.graph-detail{position:absolute;top:4px;right:6px;width:190px;background:#0a0e14ee;border:1px solid #30363d;border-radius:6px;padding:9px 10px;z-index:10;backdrop-filter:blur(6px);max-height:calc(100% - 10px);overflow-y:auto;box-shadow:0 4px 20px #00000066}
+.gd-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.gd-name{font-size:12px;font-weight:700;letter-spacing:.3px}
+.gd-close{color:#484f58;font-size:12px;cursor:pointer;padding:1px 5px;border-radius:3px;line-height:1}
+.gd-close:hover{color:#c9d1d9;background:#21262d}
+.gd-stat{font-size:9px;color:#6e7681;margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
+.gd-work{font-size:10px;color:#c9d1d9;margin-bottom:7px;border-left:2px solid;padding-left:6px;line-height:1.45;word-break:break-word}
+.gd-section-hdr{font-size:8px;color:#30363d;text-transform:uppercase;letter-spacing:.8px;margin:7px 0 3px;border-bottom:1px solid #21262d;padding-bottom:2px}
+.gd-row{font-size:9px;padding:2px 0;color:#8b949e;display:flex;gap:4px;align-items:baseline;overflow:hidden}
+.gd-row-time{color:#21262d;flex-shrink:0;font-variant-numeric:tabular-nums}
+.gd-row-dir{flex-shrink:0;font-weight:700}
+.gd-row-body{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+/* ── Topology View ───────────────────────────────────── */
+.topo-wrap{flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;background:#05080e;position:relative}
+.topo-svg-area{flex:1;overflow:hidden;position:relative;cursor:grab}
+.topo-svg-area:active{cursor:grabbing}
+.topo-svg-area svg{width:100%;height:100%}
+/* tooltip */
+.topo-tooltip{
+  position:absolute;pointer-events:none;display:none;
+  background:#0d1117;border:1px solid #30363d;border-radius:6px;
+  padding:8px 10px;font-size:9px;z-index:20;max-width:200px;
+  box-shadow:0 4px 16px #00000088;
+}
+.topo-tooltip .tt-title{font-weight:700;color:#e6edf3;margin-bottom:4px;font-size:10px}
+.topo-tooltip .tt-row{display:flex;gap:6px;color:#8b949e;margin-bottom:2px}
+.topo-tooltip .tt-key{min-width:48px;flex-shrink:0}
+.topo-tooltip .tt-val{color:#c9d1d9;word-break:break-all}
+/* legend */
+.topo-leg{
+  position:absolute;bottom:8px;left:8px;
+  background:#0d1117cc;border:1px solid #1a2535;border-radius:5px;
+  padding:6px 10px;font-size:8px;pointer-events:none;
+}
+.topo-leg-row{display:flex;align-items:center;gap:5px;color:#8b949e;margin-bottom:2px}
+.topo-leg-row:last-child{margin:0}
+.tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.tl-line{width:18px;height:0;flex-shrink:0}
+/* event strip */
+.evt-strip{height:24px;flex-shrink:0;border-top:1px solid #1a2535;background:#05080e;display:flex;align-items:center;padding:0 8px;gap:6px;overflow:hidden;font-size:9px}
+.es-sep{color:#1a2535;flex-shrink:0}
+.es-item{display:flex;align-items:center;gap:3px;white-space:nowrap;overflow:hidden;flex-shrink:0;max-width:240px}
+.es-from{font-weight:700}
+.es-arr{color:#484f58}
+.es-body{color:#30363d;overflow:hidden;text-overflow:ellipsis}
+.sl-log-panel{display:none;flex-direction:column;max-height:35%;flex-shrink:0;border-top:2px solid #1a2535;overflow:hidden}
+.sl-log-panel.open{display:flex}
+
 /* ── Input bar ───────────────────────────────────────── */
 .input-bar{height:36px;background:#161b22;border-top:1px solid #30363d;padding:4px 12px;display:flex;gap:8px;align-items:center;flex-shrink:0}
 .input-bar select{background:#0d1117;border:1px solid #30363d;color:#c9d1d9;padding:3px 6px;border-radius:4px;font-size:11px;font-family:inherit;cursor:pointer;user-select:auto}
@@ -340,6 +445,8 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
       <span id="uptime" title="Uptime">↑ –</span>
       <span id="queueDepth" title="Task Queue" style="display:none">Q:<span id="qDepthVal">0</span></span>
     </div>
+    <div class="hdr-sep"></div>
+    <a href="/topology" target="_blank" style="font-size:9px;padding:2px 8px;border:1px solid #30363d;border-radius:3px;color:#8b949e;text-decoration:none;background:#161b22;transition:all .15s" onmouseover="this.style.background='#1f6feb';this.style.borderColor='#1f6feb';this.style.color='#fff'" onmouseout="this.style.background='#161b22';this.style.borderColor='#30363d';this.style.color='#8b949e'">⬡ Topology ↗</a>
   </div>
 </div>
 
@@ -367,26 +474,104 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
   <!-- Resizer L -->
   <div class="resizer" id="resizer-l" title="드래그하여 크기 조절"></div>
 
-  <!-- CENTER pane: Event Stream -->
+  <!-- CENTER pane: Mesh Graph + Topology -->
   <div class="pane pane-center">
-    <div class="ph">
-      <div class="ph-title"><span>Event Stream</span></div>
-      <span id="evtCount" style="color:#484f58;font-size:10px">0 events</span>
-    </div>
-    <div class="ph-filters" id="evtFilterBar">
-      <div class="evt-filters">
-        <button class="ef-btn active" data-ef="all" onclick="setEvtFilter('all')">All</button>
-        <button class="ef-btn" data-ef="task" onclick="setEvtFilter('task')">Task</button>
-        <button class="ef-btn" data-ef="mesh" onclick="setEvtFilter('mesh')">Mesh</button>
-        <button class="ef-btn" data-ef="system" onclick="setEvtFilter('system')">System</button>
-        <button class="ef-btn" data-ef="action" onclick="setEvtFilter('action')">Action</button>
-        <button class="ef-btn" data-ef="discussion" onclick="setEvtFilter('discussion')">Discussion</button>
+
+    <!-- ── Mesh Network Graph ── -->
+    <div class="graph-section" id="graphSection">
+      <div class="graph-ph">
+        <div class="graph-ph-title">
+          <span style="font-size:11px;color:#1f6feb">⬡</span>
+          <span style="font-weight:700;color:#8b949e;letter-spacing:.5px">MESH NETWORK</span>
+          <span id="graphNodeCount" style="font-size:9px;color:#1f6feb;background:#0d1e3d;padding:1px 5px;border-radius:3px;border:1px solid #1f6feb44">0</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="graphEdgeCount" style="font-size:9px;color:#21262d">0 links</span>
+          <button class="ef-btn" onclick="toggleGraphSection()" id="graphToggleBtn" title="그래프 접기/펼치기">▸</button>
+        </div>
       </div>
-      <span id="focusBadge" style="display:none" class="focus-badge" onclick="clearFocus()">
-        <span id="focusBadgeText"></span><span>✕</span>
-      </span>
+      <div class="graph-svg-wrap" id="graphSvgWrap" style="display:none">
+        <div id="graphSvg" style="width:100%;height:100%">
+          <div style="display:flex;align-items:center;justify-content:center;height:100%;color:#1f6feb22;font-size:11px">
+            세션 없음 — /nco-mesh ping 으로 등록
+          </div>
+        </div>
+        <div class="graph-detail" id="graphDetail" style="display:none"></div>
+        <div class="graph-legend">
+          <span style="color:#58a6ff">● info</span>
+          <span style="color:#d29922">● warn</span>
+          <span style="color:#f85149">● conflict</span>
+          <span style="color:#a5b4fc">● request</span>
+        </div>
+      </div>
     </div>
-    <div class="evt-list" id="eventList"></div>
+
+    <!-- ── Topology View ── -->
+    <div class="ph" style="flex-shrink:0">
+      <div class="ph-title">
+        <span style="font-size:11px;color:#7c3aed">◈</span>
+        <span style="font-weight:700;color:#8b949e;letter-spacing:.5px">TOPOLOGY</span>
+        <span id="topoNodeCount" style="font-size:9px;color:#7c3aed;background:#1a0a2e;padding:1px 5px;border-radius:3px;border:1px solid #7c3aed44">0 nodes</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="nowTime" style="color:#388bfd;font-size:10px;font-variant-numeric:tabular-nums;font-weight:700;letter-spacing:.5px">--:--:--</span>
+        <span id="topoEdgeCount" style="color:#484f58;font-size:10px">0 links</span>
+        <button class="ef-btn" id="slLogBtn" onclick="toggleEventLog()" title="이벤트 로그 토글">Log ▾</button>
+      </div>
+    </div>
+    <!-- Topology SVG -->
+    <div class="topo-wrap">
+      <div class="topo-svg-area" id="topoSvgArea">
+        <svg id="topoSvg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrowTask" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#d29922" opacity="0.7"/>
+            </marker>
+            <marker id="arrowMesh" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+              <path d="M0,0 L6,3 L0,6 Z" fill="#1f6feb" opacity="0.8"/>
+            </marker>
+            <filter id="topoGlow">
+              <feGaussianBlur stdDeviation="2.5" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <g id="topoEdgeLayer"></g>
+          <g id="topoParticleLayer"></g>
+          <g id="topoNodeLayer"></g>
+        </svg>
+        <div class="topo-tooltip" id="topoTooltip"></div>
+        <div class="topo-leg">
+          <div class="topo-leg-row"><span class="tl-dot" style="background:#7c3aed"></span>NCO Router</div>
+          <div class="topo-leg-row"><span class="tl-dot" style="background:#1f6feb"></span>CLI Session</div>
+          <div class="topo-leg-row"><span class="tl-dot" style="background:#3fb950"></span>Agent</div>
+          <div class="topo-leg-row"><span class="tl-line" style="border-top:1px dashed #1f3a5f"></span>Heartbeat ↑</div>
+          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px solid #e3b34133"></span>① Route path</div>
+          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px dashed #e3b341"></span>② CLI→Agent</div>
+          <div class="topo-leg-row"><span class="tl-line" style="border-top:2px solid #1f6feb88"></span>Mesh msg</div>
+          <div class="topo-leg-row" style="color:#58a6ff"><span style="font-size:8px;margin-right:4px">◉</span>③ Live pulse</div>
+        </div>
+      </div>
+      <div class="evt-strip" id="evtStrip">
+        <span style="color:#21262d">이벤트 없음</span>
+      </div>
+    </div>
+    <!-- Collapsible event log -->
+    <div class="sl-log-panel" id="slLogPanel">
+      <div class="ph-filters" id="evtFilterBar" style="flex-shrink:0">
+        <div class="evt-filters">
+          <button class="ef-btn active" data-ef="all" onclick="setEvtFilter('all')">All</button>
+          <button class="ef-btn" data-ef="task" onclick="setEvtFilter('task')">Task</button>
+          <button class="ef-btn" data-ef="mesh" onclick="setEvtFilter('mesh')">Mesh</button>
+          <button class="ef-btn" data-ef="system" onclick="setEvtFilter('system')">System</button>
+          <button class="ef-btn" data-ef="action" onclick="setEvtFilter('action')">Action</button>
+          <button class="ef-btn" data-ef="discussion" onclick="setEvtFilter('discussion')">Discussion</button>
+        </div>
+        <span id="focusBadge" style="display:none" class="focus-badge" onclick="clearFocus()">
+          <span id="focusBadgeText"></span><span>✕</span>
+        </span>
+      </div>
+      <div class="evt-list" id="eventList" style="flex:1;overflow-y:auto"></div>
+    </div>
   </div>
 
   <!-- Task detail modal -->
@@ -433,6 +618,7 @@ body{font-family:'Cascadia Code','Fira Code',monospace;background:#0d1117;color:
       <div class="tab" data-tab="messages" onclick="switchTab('messages')">Messages</div>
       <div class="tab" data-tab="discussions" onclick="switchTab('discussions')">Discussions</div>
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
+      <div class="tab" data-tab="flow" onclick="switchTab('flow')">⇄ Flow</div>
     </div>
     <div class="tab-content" id="tabContent"></div>
   </div>
@@ -490,6 +676,17 @@ let tasks=[];
 let allTasks=[];
 let meshSessions={};
 let meshMessages=[];
+// Swimlane state
+const LANE_EVENTS={}; // agentId → [{start,end,type,label}]
+const MSG_ARROWS=[];  // [{from,to,time,msgType}]
+const SL_WINDOW=120000; // 2min visible window
+let _slLogOpen=false;
+// Mesh Graph state
+const COMM_MATRIX={}; // "from::to" → {from,to,count,lastTime,msgs:[{time,content,msgType}]}
+// CLI→Agent task delegation tracking
+const CLI_TASK_LINKS={}; // "cliId::agentName" → {cli,agent,count,lastTime,tasks:[{id,prompt,status,time}]}
+let GRAPH_SELECTED=null; // agentId selected in graph
+let _graphOpen=false; // 기본 접힘 — 토폴로지가 주 시각화
 let evtFilter=localStorage.getItem('nco-evt-filter')||'all';
 let focusAgent=null;
 let _evtDomCount=0;
@@ -648,12 +845,35 @@ function handleEvent(evt){
     const m=evt.message;
     if(m){ meshMessages.unshift(m); if(meshMessages.length>200)meshMessages.length=200; }
     events.unshift({...evt,agentId:m?.fromAgent||'mesh',_isMesh:true});
+    // Track in COMM_MATRIX for graph visualization (resolve sessionId → agentId)
+    if(m){
+      const _gf=m.fromAgent||m.from_agent||'?';
+      const _gtRaw=m.to||'*';
+      const _gt=_gtRaw==='*'?'*':(meshSessions[_gtRaw]?.agentId||_gtRaw);
+      const _gtype=m.messageType||m.type||'info';
+      addCommEdge(_gf,_gt,m.content||'',_gtype);
+    }
     flashTab('mesh');
     scheduleMonitorUi({tabMesh:activeTab==='mesh',events:true});
     return;
   }
 
   events.unshift(evt);
+
+  // ── Swimlane lane event tracking ──────────────────────
+  {const _a=evt.agentId||evt.from;
+  if(_a&&_a!=='system'&&_a!=='user'){
+    addLaneEvt(_a,classifyEvt(evt),evt.type+(evt.taskId?' ['+String(evt.taskId).slice(0,6)+']':''));
+  }}
+  if(evt._isMesh&&evt.type==='mesh:message'&&evt.message){
+    const _m=evt.message;
+    const _mf=_m.fromAgent||_m.from_agent||'?';
+    const _mt2=_m.to||'*';
+    const _mtype=_m.messageType||_m.type||'info';
+    addMsgArrow(_mf,_mt2,_mtype);
+    addLaneEvt(_mf,'msg','→'+(_mt2==='*'?'ALL':String(_mt2).slice(0,8)));
+    if(_mt2&&_mt2!=='*')addLaneEvt(_mt2,'msg','←'+String(_mf).slice(0,8));
+  }
 
   const aid=evt.agentId||evt.from;
   if(aid&&aid!=='system'&&aid!=='user'){
@@ -697,16 +917,22 @@ function handleEvent(evt){
   if(evt.type==='task:created'||evt.type==='task:started'){
     tasks.unshift({id:evt.taskId,agent:evt.agentId,status:'running',time:evt.timestamp});
     if(tasks.length>50)tasks.length=50;
-    // Refresh full task list shortly after creation so sessions tab has prompt/workspace data
+    // Track CLI→Agent delegation: match event sessionId/pid to mesh session
+    if(evt.agentId&&evt.taskId){
+      const srcSess=Object.values(meshSessions).find(s=>s.sessionId===evt.sessionId||String(s.pid)===String(evt.pid));
+      if(srcSess)addCliTaskLink(srcSess.agentId,evt.agentId,evt.taskId,evt.prompt||'',evt.status||'running');
+    }
     setTimeout(pollTasks, 500);
   }
   if(evt.type==='task:completed'){
     const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='completed';t.output=(evt.output||'').slice(0,300);}
     const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='completed';
+    Object.values(CLI_TASK_LINKS).forEach(l=>{const tk=l.tasks.find(t=>t.id===evt.taskId);if(tk)tk.status='completed';});
   }
   if(evt.type==='task:failed'){
     const t=tasks.find(t=>t.id===evt.taskId);if(t){t.status='failed';t.error=evt.error;}
     const at=allTasks.find(t=>t.id===evt.taskId);if(at)at.status='failed';
+    Object.values(CLI_TASK_LINKS).forEach(l=>{const tk=l.tasks.find(t=>t.id===evt.taskId);if(tk)tk.status='failed';});
   }
 
   scheduleMonitorUi({full:true});
@@ -720,6 +946,521 @@ function flashTab(tab){
   el2.style.color='#58a6ff';
   clearTimeout(tabNotify[tab]);
   tabNotify[tab]=setTimeout(()=>{ if(activeTab!==tab)el2.style.color=''; },4000);
+}
+
+// ── Swimlane helpers ──────────────────────────────────
+function classifyEvt(evt){
+  const t=evt.type||'';
+  if(t.includes('streaming'))return 'stream';
+  if(t.startsWith('action:'))return 'tool';
+  if(t==='task:started'||t==='task:created')return 'think';
+  if(t==='task:completed')return 'done';
+  if(t==='task:failed')return 'err';
+  if(t.includes('rate_limit')||t.includes('fallback'))return 'wait';
+  if(t.includes('mesh:message')||t.startsWith('message:'))return 'msg';
+  return 'think';
+}
+function addLaneEvt(agentId,type,label){
+  if(!agentId||agentId==='system'||agentId==='user'||agentId==='monitor')return;
+  if(!LANE_EVENTS[agentId])LANE_EVENTS[agentId]=[];
+  const arr=LANE_EVENTS[agentId];
+  const now=Date.now();
+  if(type==='done'||type==='err')arr.forEach(e=>{if(!e.end&&e.type!=='msg')e.end=now;});
+  const last=arr[arr.length-1];
+  if(last&&!last.end&&last.type===type&&type!=='msg'&&type!=='done'&&type!=='err')return;
+  arr.push({start:now,end:(type==='done'||type==='err'||type==='msg')?now+300:null,type,label:label||type});
+  LANE_EVENTS[agentId]=arr.filter(e=>now-(e.end||e.start)<300000);
+}
+function addMsgArrow(from,to,msgType){
+  if(!from||from==='monitor')return;
+  MSG_ARROWS.push({from,to:to||'*',time:Date.now(),msgType:msgType||'info'});
+  if(MSG_ARROWS.length>300)MSG_ARROWS.shift();
+}
+function getLaneChip(agentId){
+  const arr=LANE_EVENTS[agentId]||[];
+  const now=Date.now();
+  const active=arr.filter(e=>!e.end||now-e.start<4000);
+  if(!active.length)return{cls:'ch-idle',txt:'IDLE'};
+  const t=active[active.length-1].type;
+  return({stream:{cls:'ch-stream',txt:'STREAM'},tool:{cls:'ch-tool',txt:'TOOL'},
+    think:{cls:'ch-tx',txt:'TX'},wait:{cls:'ch-wait',txt:'WAIT'},
+    err:{cls:'ch-err',txt:'ERR'},done:{cls:'ch-done',txt:'DONE'},
+    msg:{cls:'ch-rx',txt:'MSG'}})[t]||{cls:'ch-idle',txt:'IDLE'};
+}
+function toggleEventLog(){
+  _slLogOpen=!_slLogOpen;
+  const p=document.getElementById('slLogPanel');
+  const b=document.getElementById('slLogBtn');
+  if(p)p.classList.toggle('open',_slLogOpen);
+  if(b)b.textContent=_slLogOpen?'Log ▴':'Log ▾';
+  if(_slLogOpen)renderEvents(true);
+}
+
+// ── Topology state ────────────────────────────────────
+const TOPO_PARTICLES={}; // edgeKey → [{t:0..1, speed}]
+let _topoSelected=null; // agentId
+const AGENT_COLORS_MAP={
+  opencode:'#2da44e', gemini:'#d29922', codex:'#1f6feb',
+  aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
+  openrouter:'#d4773a', vllm:'#da3633',
+};
+function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
+
+// ── Render topology ───────────────────────────────────
+function renderTopology(){
+  const svg=document.getElementById('topoSvg');
+  const area=document.getElementById('topoSvgArea');
+  const nowEl=document.getElementById('nowTime');
+  const stripEl=document.getElementById('evtStrip');
+  if(!svg||!area)return;
+
+  if(nowEl)nowEl.textContent=new Date().toLocaleTimeString('ko',{hour12:false});
+
+  const W=area.offsetWidth||600;
+  const H=area.offsetHeight||300;
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+
+  // ── Compute node positions (3-layer hierarchy) ──
+  const PAD=24;
+  const sessions=Object.values(meshSessions);
+  const agentNames=Object.keys(agents).filter(Boolean);
+  const activeTasks=allTasks.filter(t=>t.status==='running'||t.status==='active'||t.status==='queued');
+
+  // CLI→Agent delegation edges are tracked in the global CLI_TASK_LINKS (populated by handleEvent + pollTasks)
+
+  // Layer Y positions
+  const Y0=PAD+28;           // NCO Hub
+  const Y1=H/2-10;           // CLI Sessions
+  const Y2=H-PAD-28;         // Agents
+
+  // NCO node
+  const ncoX=W/2, ncoY=Y0;
+  const ncoR=20;
+
+  // CLI session positions
+  const cliSpacing=Math.min(130, (W-PAD*2)/Math.max(sessions.length,1));
+  const cliNodes=sessions.map((s,i)=>{
+    const x=PAD+cliSpacing*0.5+cliSpacing*i;
+    return {id:'cli::'+s.agentId, agentId:s.agentId, session:s, x:Math.min(x,W-PAD), y:Y1};
+  });
+
+  // Agent positions
+  const agSpacing=Math.min(100,(W-PAD*2)/Math.max(agentNames.length,1));
+  const agNodes=agentNames.map((name,i)=>{
+    const x=PAD+agSpacing*0.5+agSpacing*i;
+    return {id:'agent::'+name, name, x:Math.min(x,W-PAD), y:Y2};
+  });
+
+  // ── Build SVG ──
+  let edgesHtml='';
+  let nodesHtml='';
+  let particlesHtml='';
+
+  const meshColors={info:'#1f6feb',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc',error:'#f85149'};
+  // B: File type → color mapping for diff visualization
+  function fileTypeColor(fname){
+    const ext=(fname||'').split('.').pop().toLowerCase();
+    const map={ts:'#a5b4fc',tsx:'#a5b4fc',js:'#f0db4f',jsx:'#f0db4f',
+      py:'#3572A5',sh:'#56d364',md:'#8b949e',json:'#d29922',
+      css:'#e879f9',html:'#f87171',go:'#00acd7',rs:'#f74c00'};
+    return map[ext]||'#58a6ff';
+  }
+  // B: Compute file type summary for a file list (top 3 unique extensions)
+  function fileTypeSummary(files){
+    if(!files||!files.length)return '';
+    const exts=[...new Set(files.map(f=>(f||'').split('.').pop().toLowerCase()).filter(Boolean))].slice(0,3);
+    return exts.map(e=>'<tspan fill="'+fileTypeColor('a.'+e)+'" font-size="5.5">'+e+'</tspan>').join(' ');
+  }
+
+  // pulse phase: 0..1 cycle every 2s, used for ripple animations (③)
+  const _phase=(Date.now()%2000)/2000;
+  const _slowPhase=(Date.now()%4000)/4000;
+
+  // ① Routing path highlight — when CLI has active delegation, draw CLI→NCO→Agent glow path
+  Object.values(CLI_TASK_LINKS).forEach(link=>{
+    const cliN=cliNodes.find(c=>c.agentId===link.cli);
+    const agN=agNodes.find(a=>a.name===link.agent);
+    if(!cliN||!agN)return;
+    const running=link.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued');
+    if(!running||Date.now()-link.lastTime>120000)return;
+    // Glow path: CLI → NCO Hub
+    edgesHtml+=
+      '<line x1="'+cliN.x+'" y1="'+(cliN.y-19)+'" x2="'+ncoX+'" y2="'+(ncoY+ncoR)+'"'+
+      ' stroke="#e3b341" stroke-width="3" opacity="0.12" stroke-linecap="round"/>'+
+      // Glow path: NCO Hub → Agent
+      '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+agN.x+'" y2="'+(agN.y-15)+'"'+
+      ' stroke="#e3b341" stroke-width="3" opacity="0.12" stroke-linecap="round"/>';
+    // "via NCO" routing label at NCO Hub
+    edgesHtml+=
+      '<text x="'+(ncoX+ncoR+4)+'" y="'+(ncoY+4)+'" font-size="6" fill="#e3b341" opacity="0.7">ROUTE</text>';
+  });
+
+  // 1. Heartbeat edges: NCO ↔ CLI (with directional arrow showing CLI reports up)
+  cliNodes.forEach(c=>{
+    const health=meshHealth(c.session.lastHeartbeat);
+    const strokeColor=health==='active'?'#1f3a5f':health==='idle'?'#d2992233':'#f8514922';
+    const op=health==='active'?'0.6':health==='idle'?'0.35':'0.2';
+    // NCO → CLI (downward config/command line)
+    edgesHtml+=
+      '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+c.x+'" y2="'+(c.y-19)+'"'+
+      ' stroke="'+strokeColor+'" stroke-width="1" stroke-dasharray="4 4" opacity="'+op+'"/>';
+    // CLI → NCO (upward heartbeat line with arrow)
+    edgesHtml+=
+      '<line x1="'+c.x+'" y1="'+(c.y-19)+'" x2="'+ncoX+'" y2="'+(ncoY+ncoR)+'"'+
+      ' stroke="'+strokeColor+'" stroke-width="1.5" opacity="'+(health==='active'?'0.5':'0.2')+'"'+
+      (health==='active'?' marker-end="url(#arrowMesh)"':'')+'/>';
+  });
+
+  // 2. NCO → Agent backbone edges (thin, always visible)
+  agNodes.forEach(a=>{
+    const hasIncoming=Object.values(CLI_TASK_LINKS).some(l=>l.agent===a.name&&Date.now()-l.lastTime<120000&&l.tasks.some(t=>t.status==='running'||t.status==='assigned'));
+    const isActive=activeTasks.some(t=>t.provider===a.name||t.agent===a.name)||hasIncoming;
+    const stroke=isActive?'#d29922':'#1a2535';
+    const opacity=isActive?'0.7':'0.25';
+    const w=isActive?1.5:1;
+    const mk=isActive?' marker-end="url(#arrowTask)"':'';
+    edgesHtml+=
+      '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+a.x+'" y2="'+(a.y-15)+'"'+
+      ' stroke="'+stroke+'" stroke-width="'+w+'" opacity="'+opacity+'"'+mk+'/>';
+    if(isActive){
+      const key='task::'+a.name;
+      if(!TOPO_PARTICLES[key]) TOPO_PARTICLES[key]=[{t:0,speed:0.007+Math.random()*0.005}];
+      TOPO_PARTICLES[key].forEach(p=>{
+        p.t=(p.t+p.speed)%1;
+        const px=ncoX+(a.x-ncoX)*p.t;
+        const py=(ncoY+ncoR)+(a.y-15-(ncoY+ncoR))*p.t;
+        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.9"/>';
+      });
+    }
+  });
+
+  // 3. CLI→Agent delegation edges (from CLI_TASK_LINKS) — ② 파일 플로우 정보 포함
+  Object.values(CLI_TASK_LINKS).forEach(link=>{
+    const cliN=cliNodes.find(c=>c.agentId===link.cli);
+    const agN=agNodes.find(a=>a.name===link.agent);
+    if(!cliN||!agN)return;
+    const fresh=Date.now()-link.lastTime<120000;
+    if(!fresh)return;
+    const running=link.tasks.some(t=>t.status==='running'||t.status==='active'||t.status==='queued'||t.status==='assigned');
+    const color=running?'#e3b341':'#484f58';
+    const bw=running?2:1;
+    const op=running?0.9:0.35;
+    edgesHtml+=
+      '<line x1="'+cliN.x+'" y1="'+(cliN.y+19)+'" x2="'+agN.x+'" y2="'+(agN.y-15)+'"'+
+      ' stroke="'+color+'" stroke-width="'+bw+'" stroke-dasharray="5 3" opacity="'+op+'"'+
+      (running?' marker-end="url(#arrowTask)"':'')+'/>';
+    const midX=(cliN.x+agN.x)/2;
+    const midY=((cliN.y+19)+(agN.y-15))/2;
+    const topTask=link.tasks[0];
+    // ② File flow badge: show prompt snippet + file count from CLI session
+    if(topTask){
+      const snippet=escHtml((topTask.prompt||'').slice(0,12));
+      const statusIcon=topTask.status==='running'||topTask.status==='assigned'?'\u25B6':topTask.status==='completed'?'\u2713':'\u2717';
+      const cliSess=cliN.session;
+      const fileCount=(cliSess.currentFiles||[]).length;
+      const fileLabel=fileCount>0?' \u00b7 '+fileCount+'\u25a4':'';
+      edgesHtml+=
+        '<rect x="'+(midX-34)+'" y="'+(midY-10)+'" width="68" height="18" rx="3"'+
+        ' fill="#080c12" stroke="'+color+'" stroke-width="0.7" opacity="0.95"/>'+
+        '<text x="'+midX+'" y="'+(midY-1)+'" text-anchor="middle" font-size="6.5" fill="'+color+'">'+
+        statusIcon+' '+snippet+(topTask.prompt&&topTask.prompt.length>12?'\u2026':'')+'</text>'+
+        '<text x="'+midX+'" y="'+(midY+7)+'" text-anchor="middle" font-size="6" fill="#58a6ff" opacity="0.9">'+
+        escHtml(link.cli)+' \u2192 '+escHtml(link.agent)+fileLabel+'</text>';
+    }
+    if(running){
+      const pkey='clt::'+link.cli+'::'+link.agent;
+      if(!TOPO_PARTICLES[pkey])TOPO_PARTICLES[pkey]=[{t:Math.random(),speed:0.009+Math.random()*0.006}];
+      TOPO_PARTICLES[pkey].forEach(p=>{
+        p.t=(p.t+p.speed)%1;
+        const px=cliN.x+(agN.x-cliN.x)*p.t;
+        const py=(cliN.y+19)+(agN.y-15-(cliN.y+19))*p.t;
+        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.95"/>';
+      });
+    }
+  });
+
+  // 4. Mesh edges: CLI ↔ CLI (from COMM_MATRIX)
+  Object.values(COMM_MATRIX).forEach(e=>{
+    const src=cliNodes.find(c=>c.agentId===e.from);
+    if(!src)return;
+    let dst;
+    if(e.to==='*'){dst={x:ncoX,y:ncoY};}
+    else{dst=cliNodes.find(c=>c.agentId===e.to);}
+    if(!dst)return;
+    const color=meshColors[e.msgType]||'#3fb950';
+    const fresh=Date.now()-e.lastTime<30000;
+    const op=fresh?'0.85':'0.3';
+    const w=fresh?2:1;
+    const mx=(src.x+dst.x)/2;
+    const my=Math.min(src.y,dst.y)-40;
+    edgesHtml+=
+      '<path d="M'+src.x+','+(src.y)+' Q'+mx+','+my+' '+dst.x+','+dst.y+'"'+
+      ' fill="none" stroke="'+color+'" stroke-width="'+w+'" opacity="'+op+'"'+
+      (fresh?' marker-end="url(#arrowMesh)"':'')+'/>';
+    if(fresh){
+      const key='mesh::'+e.from+'::'+e.to;
+      if(!TOPO_PARTICLES[key]) TOPO_PARTICLES[key]=[{t:0,speed:0.012+Math.random()*0.008}];
+      TOPO_PARTICLES[key].forEach(p=>{
+        p.t=(p.t+p.speed)%1;
+        const t=p.t;
+        const px=(1-t)*(1-t)*src.x+2*(1-t)*t*mx+t*t*dst.x;
+        const py=(1-t)*(1-t)*src.y+2*(1-t)*t*my+t*t*dst.y;
+        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2" fill="'+color+'" opacity="0.9"/>';
+      });
+    }
+  });
+
+  // 5. NCO Hub node — ③ pulse ring if any active delegations
+  const ncoHasActive=Object.values(CLI_TASK_LINKS).some(l=>l.tasks.some(t=>t.status==='running'||t.status==='assigned'));
+  const isSelected=_topoSelected==='nco';
+  const glowFilter=isSelected?' filter="url(#topoGlow)"':'';
+  if(ncoHasActive){
+    // ③ Routing pulse: expanding ring around NCO hub
+    const pr=ncoR+4+_phase*10;
+    const po=(1-_phase)*0.4;
+    nodesHtml+='<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+pr+'" fill="none" stroke="#e3b341" stroke-width="1.5" opacity="'+po+'"/>';
+  }
+  nodesHtml+=
+    '<g class="topo-node" data-tid="nco" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+glowFilter+'>'+
+    '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?2.5:1.5)+'"/>'+
+    '<text x="'+ncoX+'" y="'+(ncoY-5)+'" text-anchor="middle" font-size="10" fill="#e9d5ff" font-weight="700">NCO</text>'+
+    '<text x="'+ncoX+'" y="'+(ncoY+6)+'" text-anchor="middle" font-size="6.5" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
+    (ncoHasActive?'ROUTING':'ROUTER')+'</text>'+
+    '</g>';
+
+  // 5b. CLI Session nodes — ③ heartbeat ripple + ② file count display
+  const nodeW=86, nodeH=38;
+  cliNodes.forEach(c=>{
+    const s=c.session;
+    const color=topoAgentColor(c.agentId)||'#1f6feb';
+    const h=meshHealth(s.lastHeartbeat);
+    const dotColor=h==='active'?'#2da44e':h==='idle'?'#d29922':'#f85149';
+    const sel=_topoSelected===c.agentId;
+    const gf=sel?' filter="url(#topoGlow)"':'';
+    const bw=sel?2:1.5;
+    const bc=sel?color:color+'88';
+    const myLinks=Object.values(CLI_TASK_LINKS).filter(l=>l.cli===c.agentId&&Date.now()-l.lastTime<120000);
+    const activeLinks=myLinks.filter(l=>l.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued'));
+    const files=s.currentFiles||[];
+    const fileCount=files.length;
+    // ③ Heartbeat ripple ring for active sessions
+    if(h==='active'){
+      const pr=(nodeW/2+2)+_phase*6;
+      const po=(1-_phase)*0.35;
+      nodesHtml+='<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
+        ' rx="6" fill="none" stroke="'+color+'" stroke-width="1" opacity="'+po+'"/>';
+    } else if(h==='idle'){
+      const pr=(nodeW/2+1)+_slowPhase*3;
+      const po=(1-_slowPhase)*0.2;
+      nodesHtml+='<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
+        ' rx="6" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="'+po+'"/>';
+    }
+    nodesHtml+=
+      '<g class="topo-node" data-tid="'+escHtml(c.agentId)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
+      '<rect x="'+(c.x-nodeW/2)+'" y="'+(c.y-nodeH/2)+'" width="'+nodeW+'" height="'+nodeH+'"'+
+      ' rx="5" fill="#0a1628" stroke="'+bc+'" stroke-width="'+bw+'"/>'+
+      '<circle cx="'+(c.x-nodeW/2+9)+'" cy="'+(c.y-nodeH/2+9)+'" r="3" fill="'+dotColor+'"/>'+
+      '<text x="'+c.x+'" y="'+(c.y-6)+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y+5)+'" text-anchor="middle" font-size="7" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
+      // ② File count badge (bottom-right) — shows count + first filename hint
+      (fileCount>0?
+        '<rect x="'+(c.x+nodeW/2-22)+'" y="'+(c.y+nodeH/2-13)+'" width="21" height="12" rx="2" fill="#0d2137" stroke="#1f6feb44" stroke-width="0.5"/>'+
+        '<text x="'+(c.x+nodeW/2-11)+'" y="'+(c.y+nodeH/2-4)+'" text-anchor="middle" font-size="6.5" fill="#58a6ff">'+fileCount+'\u25a4</text>':'')+
+      // Active delegation badge (top-right yellow circle)
+      (activeLinks.length>0?
+        '<circle cx="'+(c.x+nodeW/2-4)+'" cy="'+(c.y-nodeH/2+4)+'" r="6" fill="#e3b341" opacity="0.95"/>'+
+        '<text x="'+(c.x+nodeW/2-4)+'" y="'+(c.y-nodeH/2+7.5)+'" text-anchor="middle" font-size="7" fill="#080c12" font-weight="700">'+activeLinks.length+'</text>':'')+
+      '</g>';
+    // ② File flow: show first 2 filenames as tiny labels above CLI node when selected
+    if(sel&&fileCount>0){
+      files.slice(0,2).forEach((f,fi)=>{
+        const fname=f.replace(/^.*[\\/]/,'').slice(0,16);
+        nodesHtml+=
+          '<rect x="'+(c.x-34)+'" y="'+(c.y-nodeH/2-13-fi*10)+'" width="68" height="9" rx="2"'+
+          ' fill="#0d1117" stroke="#1f6feb44" stroke-width="0.5" opacity="0.9"/>'+
+          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-6-fi*10)+'" text-anchor="middle" font-size="6" fill="#79c0ff">\u25a4 '+escHtml(fname)+'</text>';
+      });
+      if(fileCount>2){
+        nodesHtml+=
+          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-9-2*10)+'" text-anchor="middle" font-size="6" fill="#484f58">\u2026+'+(fileCount-2)+' more</text>';
+      }
+    }
+  });
+
+  // 6. Agent nodes — ③ active pulse ring + C 품질 메트릭
+  const agR=14;
+  agNodes.forEach(a=>{
+    const color=topoAgentColor(a.name);
+    const sel=_topoSelected===a.name;
+    const gf=sel?' filter="url(#topoGlow)"':'';
+    const hasIncoming=Object.values(CLI_TASK_LINKS).some(l=>l.agent===a.name&&Date.now()-l.lastTime<120000&&l.tasks.some(t=>t.status==='running'||t.status==='assigned'));
+    const isActive=activeTasks.some(t=>t.provider===a.name||t.agent===a.name)||hasIncoming;
+    const stroke=sel?color:isActive?color:color+'55';
+    const bw=sel?2.5:isActive?2:1.5;
+    const taskCount=activeTasks.filter(t=>t.provider===a.name||t.agent===a.name).length;
+    // C: Quality metrics from AGENT_STATS
+    const stats=AGENT_STATS[a.name];
+    const successRate=stats&&stats.total>0?Math.round(stats.completed/stats.total*100):null;
+    const barW=agR*2; // full bar = node diameter
+    // ③ Agent pulse ring when active
+    if(isActive){
+      const pr=agR+3+_phase*8;
+      const po=(1-_phase)*0.45;
+      nodesHtml+='<circle cx="'+a.x+'" cy="'+a.y+'" r="'+pr+'" fill="none" stroke="'+color+'" stroke-width="1.5" opacity="'+po+'"/>';
+    }
+    nodesHtml+=
+      '<g class="topo-node" data-tid="'+escHtml(a.name)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
+      '<circle cx="'+a.x+'" cy="'+a.y+'" r="'+agR+'" fill="#050810" stroke="'+stroke+'" stroke-width="'+bw+'"/>'+
+      (isActive?'<circle cx="'+a.x+'" cy="'+a.y+'" r="'+(agR+5)+'" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="0.25" stroke-dasharray="3 3"/>':'')+
+      '<text x="'+a.x+'" y="'+(a.y+3)+'" text-anchor="middle" font-size="7" fill="'+color+'" font-weight="700">'+escHtml(a.name.slice(0,8))+'</text>'+
+      // C: Success rate mini-bar below node name
+      (stats&&stats.total>0?
+        '<rect x="'+(a.x-agR)+'" y="'+(a.y+agR+2)+'" width="'+barW+'" height="3" rx="1.5" fill="#1a2535"/>'+
+        '<rect x="'+(a.x-agR)+'" y="'+(a.y+agR+2)+'" width="'+(barW*stats.completed/stats.total)+'" height="3" rx="1.5" fill="'+(successRate>75?'#3fb950':successRate>50?'#d29922':'#f85149')+'"/>'+
+        '<text x="'+a.x+'" y="'+(a.y+agR+11)+'" text-anchor="middle" font-size="5.5" fill="#8b949e">'+stats.total+'t '+successRate+'%</text>'
+      :'')+
+      // Active task count badge
+      (taskCount>0?'<text x="'+(a.x+agR-2)+'" y="'+(a.y-agR+4)+'" font-size="7" fill="#e3b341" font-weight="700">'+taskCount+'</text>':'')+
+      // ① Incoming CLI delegation label
+      (hasIncoming?
+        '<text x="'+a.x+'" y="'+(a.y-agR-4)+'" text-anchor="middle" font-size="5.5" fill="#e3b341" opacity="0.85">'+
+        Object.values(CLI_TASK_LINKS).filter(l=>l.agent===a.name&&l.tasks.some(t=>t.status==='running'||t.status==='assigned')).map(l=>l.cli).slice(0,2).join(',')+'</text>':'')+
+      '</g>';
+  });
+
+  // Update DOM
+  document.getElementById('topoEdgeLayer').innerHTML=edgesHtml;
+  document.getElementById('topoParticleLayer').innerHTML=particlesHtml;
+  document.getElementById('topoNodeLayer').innerHTML=nodesHtml;
+
+  // Counters
+  const nc=document.getElementById('topoNodeCount');
+  const ec=document.getElementById('topoEdgeCount');
+  if(nc)nc.textContent=(1+cliNodes.length+agNodes.length)+' nodes';
+  if(ec)ec.textContent=(Object.keys(COMM_MATRIX).length+Object.keys(CLI_TASK_LINKS).length)+' links';
+
+  // Tooltip on click (from topoSelect)
+  renderTopoTooltip(cliNodes,agNodes,activeTasks);
+
+  // Event strip ticker (4 most recent events)
+  if(stripEl){
+    const recentEvts=[];
+    events.filter(e=>{if(recentEvts.length<4){recentEvts.push(e);return true;}return false;});
+    const stripHtml=recentEvts.map(e=>{
+      const agent=e.agentId||e.from||'?';
+      const t=new Date(e.timestamp||Date.now()).toLocaleTimeString('ko',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const detail=String(e.content||e.chunk||e.type||'').slice(0,28);
+      return '<span class="es-item">'+
+        '<span style="color:#1f6feb44;font-variant-numeric:tabular-nums">'+t+'</span>'+
+        '<span class="es-from" style="color:'+agentColor(agent)+'">'+escHtml(agent)+'</span>'+
+        '<span class="es-arr">›</span>'+
+        '<span class="es-body">'+escHtml(detail)+'</span>'+
+      '</span><span class="es-sep">│</span>';
+    }).join('');
+    stripEl.innerHTML=stripHtml||'<span style="color:#1a2535">이벤트 없음</span>';
+  }
+}
+
+function topoSelect(id){
+  _topoSelected=_topoSelected===id?null:id;
+}
+
+function renderTopoTooltip(cliNodes,agNodes,activeTasks){
+  const tt=document.getElementById('topoTooltip');
+  if(!tt)return;
+  if(!_topoSelected){tt.style.display='none';return;}
+
+  let html='';
+  if(_topoSelected==='nco'){
+    html='<div class="tt-title">⬡ NCO Hub</div>'+
+      '<div class="tt-row"><span class="tt-key">API</span><span class="tt-val">:6200</span></div>'+
+      '<div class="tt-row"><span class="tt-key">WS</span><span class="tt-val">:6201</span></div>'+
+      '<div class="tt-row"><span class="tt-key">Sessions</span><span class="tt-val">'+cliNodes.length+'</span></div>'+
+      '<div class="tt-row"><span class="tt-key">Agents</span><span class="tt-val">'+agNodes.length+'</span></div>'+
+      '<div class="tt-row"><span class="tt-key">Links</span><span class="tt-val">'+(Object.keys(COMM_MATRIX).length+Object.keys(CLI_TASK_LINKS).length)+'</span></div>';
+  } else {
+    const cliNode=cliNodes.find(c=>c.agentId===_topoSelected);
+    const agNode=agNodes.find(a=>a.name===_topoSelected);
+    if(cliNode){
+      const s=cliNode.session;
+      const h=meshHealth(s.lastHeartbeat);
+      const msgOut=Object.values(COMM_MATRIX).filter(e=>e.from===_topoSelected).reduce((a,e)=>a+e.count,0);
+      const msgIn=Object.values(COMM_MATRIX).filter(e=>e.to===_topoSelected).reduce((a,e)=>a+e.count,0);
+      const myLinks=Object.values(CLI_TASK_LINKS).filter(l=>l.cli===_topoSelected&&Date.now()-l.lastTime<300000);
+      const activeLinks=myLinks.filter(l=>l.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued'));
+      const files=(s.currentFiles||[]);
+      html='<div class="tt-title" style="color:'+topoAgentColor(_topoSelected)+'">'+escHtml(_topoSelected)+'</div>'+
+        '<div class="tt-row"><span class="tt-key">PID</span><span class="tt-val">'+escHtml(String(s.pid||'—'))+'</span></div>'+
+        '<div class="tt-row"><span class="tt-key">Model</span><span class="tt-val">'+escHtml(s.model||'claude')+'</span></div>'+
+        '<div class="tt-row"><span class="tt-key">Health</span><span class="tt-val" style="color:'+(h==='active'?'#3fb950':h==='idle'?'#d29922':'#f85149')+'">'+h+'</span></div>'+
+        '<div class="tt-row"><span class="tt-key">Msgs ↑</span><span class="tt-val">'+msgOut+'</span></div>'+
+        '<div class="tt-row"><span class="tt-key">Msgs ↓</span><span class="tt-val">'+msgIn+'</span></div>'+
+        (s.currentWork?'<div class="tt-row"><span class="tt-key">Work</span><span class="tt-val">'+escHtml((s.currentWork||'').slice(0,40))+'</span></div>':'')+
+        (files.length>0
+          ?'<div class="tt-sep" style="margin:4px 0;border-top:1px solid #30363d"></div>'+
+            '<div class="tt-row"><span class="tt-key" style="color:#58a6ff">FILES ('+files.length+')</span></div>'+
+            files.slice(0,4).map(f=>{
+              const fname=f.replace(/^.*[\\/]/,'');
+              return '<div class="tt-row" style="padding-left:6px">'+
+                '<span style="font-size:9px;color:#79c0ff;font-family:monospace">◤ '+escHtml(fname)+'</span>'+
+              '</div>';
+            }).join('')+
+            (files.length>4?'<div class="tt-row" style="padding-left:6px"><span style="font-size:9px;color:#484f58">…+'+(files.length-4)+' more</span></div>':'')
+          :'')+
+        (myLinks.length>0
+          ?'<div class="tt-sep" style="margin:4px 0;border-top:1px solid #30363d"></div>'+
+            '<div class="tt-row"><span class="tt-key" style="color:#e3b341">DELEGATED ('+activeLinks.length+' active)</span></div>'+
+            myLinks.slice(0,4).map(link=>{
+              const liveTask=link.tasks.find(t=>t.status==='running'||t.status==='assigned')||link.tasks[0];
+              const sColor=liveTask&&(liveTask.status==='running'||liveTask.status==='assigned')?'#e3b341':liveTask&&liveTask.status==='completed'?'#3fb950':'#f85149';
+              const sIcon=liveTask&&(liveTask.status==='running'||liveTask.status==='assigned')?'\\u25b6':liveTask&&liveTask.status==='completed'?'\\u2713':'\\u2717';
+              return '<div class="tt-row">'+
+                '<span class="tt-key" style="color:'+topoAgentColor(link.agent)+'">\\u2192'+escHtml(link.agent)+'</span>'+
+                '<span class="tt-val" style="font-size:9px;color:'+sColor+'">'+sIcon+' '+escHtml((liveTask&&liveTask.prompt||'').slice(0,24))+'</span>'+
+              '</div>';
+            }).join('')
+          :'');
+    } else if(agNode){
+      const myTasks=activeTasks.filter(t=>t.provider===agNode.name||t.agent===agNode.name);
+      const incomingLinks=Object.values(CLI_TASK_LINKS).filter(l=>l.agent===agNode.name&&Date.now()-l.lastTime<300000);
+      const activeIncoming=incomingLinks.filter(l=>l.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued'));
+      html='<div class="tt-title" style="color:'+topoAgentColor(agNode.name)+'">'+escHtml(agNode.name)+'</div>'+
+        '<div class="tt-row"><span class="tt-key">Status</span><span class="tt-val" style="color:'+(myTasks.length>0?'#3fb950':activeIncoming.length>0?'#e3b341':'#484f58')+'">'+
+          (myTasks.length>0?myTasks.length+' active':activeIncoming.length>0?'queued':'idle')+'</span></div>'+
+        (incomingLinks.length>0
+          ?'<div class="tt-sep" style="margin:4px 0;border-top:1px solid #30363d"></div>'+
+            '<div class="tt-row"><span class="tt-key" style="color:#e3b341">FROM CLI ('+activeIncoming.length+' active)</span></div>'+
+            incomingLinks.slice(0,4).map(link=>{
+              const liveTask=link.tasks.find(t=>t.status==='running'||t.status==='assigned')||link.tasks[0];
+              const sColor=liveTask&&(liveTask.status==='running'||liveTask.status==='assigned')?'#e3b341':liveTask&&liveTask.status==='completed'?'#3fb950':'#f85149';
+              return '<div class="tt-row">'+
+                '<span class="tt-key" style="color:'+topoAgentColor(link.cli)+'">'+escHtml(link.cli)+'\\u2192</span>'+
+                '<span class="tt-val" style="font-size:9px;color:'+sColor+'">'+escHtml((liveTask&&liveTask.prompt||'').slice(0,28))+'</span>'+
+              '</div>';
+            }).join('')
+          :'')+
+        (myTasks.length>0
+          ?'<div class="tt-sep" style="margin:4px 0;border-top:1px solid #30363d"></div>'+
+            myTasks.slice(0,3).map(t=>{
+              const fromLink=incomingLinks.find(l=>l.tasks.some(lt=>lt.id===t.id));
+              return '<div class="tt-row">'+
+                (fromLink?'<span class="tt-key" style="color:'+topoAgentColor(fromLink.cli)+'">'+escHtml(fromLink.cli)+'\\u2192</span>':'<span class="tt-key">Task</span>')+
+                '<span class="tt-val">'+escHtml((t.prompt||t.id||'').slice(0,30))+'</span>'+
+                '<span style="margin-left:4px;font-size:9px;color:'+(t.status==='running'?'#3fb950':t.status==='streaming'?'#a5b4fc':'#8b949e')+'">'+t.status+'</span>'+
+              '</div>';
+            }).join('')
+          :'');
+    }
+  }
+
+  if(!html){tt.style.display='none';return;}
+  tt.innerHTML=html;
+  tt.style.display='block';
+  // Position: top-left to avoid covering right-side agent nodes
+  tt.style.top='8px';
+  tt.style.left='8px';
+  tt.style.right='auto';
+  tt.style.bottom='auto';
 }
 
 // ── Mesh helpers ──────────────────────────────────────
@@ -951,6 +1692,7 @@ function setFocusAgent(aid){
   renderEvents(true);
 }
 function clearFocus(){setFocusAgent(null);}
+function slLaneFocus(id){setFocusAgent(focusAgent===id?null:id);}
 
 // ── Render: Events (center) ───────────────────────────
 function makeEventRow(e,isFirst){
@@ -991,7 +1733,8 @@ function renderEvents(rebuild){
   }
   _evtDomCount=Math.min(newCount,100);
   const suffix=filtered.length<events.length?' ('+filtered.length+' shown)':'';
-  el('evtCount').textContent=events.length+' events'+suffix;
+  const evtCountEl=el('evtCount');
+  if(evtCountEl)evtCountEl.textContent=events.length+' events'+suffix;
 }
 
 // ── Render: Tabs (right) ──────────────────────────────
@@ -1227,7 +1970,442 @@ function renderTab(){
           '</div>';
         }).join('')
       : '<div class="empty">No tasks yet</div>';
+
+  }else if(activeTab==='flow'){
+    content.innerHTML=renderFlowTab();
   }
+}
+
+// ── Flow tab renderer ─────────────────────────────────
+// ── Mesh Network Graph ────────────────────────────────
+
+function addCommEdge(from,to,content,msgType){
+  const key=from+'::'+to;
+  if(!COMM_MATRIX[key])COMM_MATRIX[key]={from,to,count:0,lastTime:0,msgs:[]};
+  const e=COMM_MATRIX[key];
+  e.count++;e.lastTime=Date.now();
+  e.msgs.unshift({time:Date.now(),content,msgType});
+  if(e.msgs.length>20)e.msgs.pop();
+  // Expire edges older than 10min
+  const now=Date.now();
+  Object.keys(COMM_MATRIX).forEach(k=>{if(now-COMM_MATRIX[k].lastTime>600000)delete COMM_MATRIX[k];});
+}
+
+function addCliTaskLink(cliAgentId,agentName,taskId,prompt,status){
+  if(!cliAgentId||!agentName)return;
+  const key=cliAgentId+'::'+agentName;
+  if(!CLI_TASK_LINKS[key])CLI_TASK_LINKS[key]={cli:cliAgentId,agent:agentName,count:0,lastTime:0,tasks:[]};
+  const link=CLI_TASK_LINKS[key];
+  link.lastTime=Date.now();
+  const existing=link.tasks.find(t=>t.id===taskId);
+  if(existing){existing.status=status;}
+  else{
+    link.count++;
+    link.tasks.unshift({id:taskId,prompt:(prompt||'').slice(0,60),status,time:Date.now()});
+    if(link.tasks.length>5)link.tasks.length=5;
+  }
+  // Expire links older than 5min
+  const now=Date.now();
+  Object.keys(CLI_TASK_LINKS).forEach(k=>{if(now-CLI_TASK_LINKS[k].lastTime>300000)delete CLI_TASK_LINKS[k];});
+}
+
+function toggleGraphSection(){
+  _graphOpen=!_graphOpen;
+  const wrap=el('graphSvgWrap');
+  const gs=el('graphSection');
+  const btn=el('graphToggleBtn');
+  if(gs)gs.classList.toggle('expanded',_graphOpen);
+  if(wrap)wrap.style.display=_graphOpen?'':'none';
+  if(btn)btn.textContent=_graphOpen?'▾':'▸';
+}
+
+function renderMeshGraph(){
+  const svgDiv=el('graphSvg');
+  if(!svgDiv||!_graphOpen)return;
+  const sessions=Object.values(meshSessions);
+  const n=sessions.length;
+  const nc=el('graphNodeCount'),ec=el('graphEdgeCount');
+  if(nc)nc.textContent=n;
+
+  if(!n){
+    svgDiv.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#1f6feb22;font-size:11px">세션 없음 — /nco-mesh ping 으로 등록</div>';
+    if(ec)ec.textContent='0 links';
+    return;
+  }
+
+  const W=svgDiv.offsetWidth||600;
+  const H=svgDiv.offsetHeight||188;
+  if(W<20||H<20)return;
+  const cx=W/2,cy=H/2;
+  const nodeR=Math.min(28,Math.max(15,Math.floor(80/Math.max(1,n))));
+  const rr=Math.min(cx-nodeR-20,cy-nodeR-16);
+
+  // Circular layout
+  const pos={};
+  if(n===1){
+    pos[sessions[0].agentId]={x:cx,y:cy,session:sessions[0]};
+  }else{
+    sessions.forEach((s,i)=>{
+      const a=(2*Math.PI*i/n)-Math.PI/2;
+      pos[s.agentId]={x:cx+rr*Math.cos(a),y:cy+rr*Math.sin(a),session:s};
+    });
+  }
+
+  const now=Date.now();
+  const edges=Object.values(COMM_MATRIX).filter(e=>{
+    const hasFrom=!!pos[e.from];
+    const hasTo=e.to==='*'||!!pos[e.to];
+    return hasFrom&&hasTo&&now-e.lastTime<600000;
+  });
+  if(ec)ec.textContent=edges.length+' links';
+
+  const ECOL={info:'#1f6feb',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc'};
+
+  let svg='<svg viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="display:block;background:#05080e">';
+
+  // Defs: arrow markers + glow
+  svg+='<defs>';
+  Object.entries(ECOL).forEach(([t,c])=>{
+    svg+='<marker id="mk-'+t+'" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto" markerUnits="strokeWidth">'+
+      '<path d="M0,0 L7,3.5 L0,7 Z" fill="'+c+'" opacity="0.75"/>'+
+    '</marker>';
+  });
+  svg+='<filter id="glow" x="-50%" y="-50%" width="200%" height="200%">'+
+    '<feGaussianBlur stdDeviation="2" result="b"/>'+
+    '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'+
+  '</filter>';
+  svg+='</defs>';
+
+  // Subtle grid
+  svg+='<g opacity="0.025">';
+  for(let gx=0;gx<W;gx+=36)svg+='<line x1="'+gx+'" y1="0" x2="'+gx+'" y2="'+H+'" stroke="#58a6ff" stroke-width="0.5"/>';
+  for(let gy=0;gy<H;gy+=36)svg+='<line x1="0" y1="'+gy+'" x2="'+W+'" y2="'+gy+'" stroke="#58a6ff" stroke-width="0.5"/>';
+  svg+='</g>';
+
+  // Edges
+  edges.forEach((e,ei)=>{
+    const fp=pos[e.from];
+    const tp=e.to==='*'?{x:cx,y:cy}:pos[e.to];
+    if(!fp||!tp)return;
+    const fresh=now-e.lastTime<15000;
+    const type=e.msgs[0]?.msgType||'info';
+    const color=ECOL[type]||'#30363d';
+    const mId='mk-'+(ECOL[type]?type:'info');
+    const pid='ep'+ei;
+
+    // Quadratic curve offset (for bidirectional distinction)
+    const dx=tp.x-fp.x,dy=tp.y-fp.y;
+    const len=Math.sqrt(dx*dx+dy*dy)||1;
+    const ox=(dy/len)*14,oy=-(dx/len)*14;
+    const mx=(fp.x+tp.x)/2+ox,my=(fp.y+tp.y)/2+oy;
+    const d='M'+fp.x.toFixed(1)+','+fp.y.toFixed(1)+
+      ' Q'+mx.toFixed(1)+','+my.toFixed(1)+
+      ' '+tp.x.toFixed(1)+','+tp.y.toFixed(1);
+
+    const opacity=fresh?0.85:0.28;
+    const sw=fresh?2.5:1;
+    svg+='<path id="'+pid+'" d="'+d+'" stroke="'+color+'" stroke-width="'+sw+
+      '" fill="none" opacity="'+opacity+'" marker-end="url(#'+mId+')"'+
+      (fresh?'':' stroke-dasharray="4 3"')+'/>';
+
+    // Animated particle on fresh edges
+    if(fresh){
+      const dur=(0.9+Math.random()*0.5).toFixed(2);
+      svg+='<circle r="3.5" fill="'+color+'" filter="url(#glow)" opacity="0.9">'+
+        '<animateMotion dur="'+dur+'s" repeatCount="indefinite">'+
+          '<mpath href="#'+pid+'"/>'+
+        '</animateMotion>'+
+      '</circle>';
+    }
+
+    // Count label at midpoint
+    const lx=(mx+ox*0.3).toFixed(1),ly=(my+oy*0.3-3).toFixed(1);
+    svg+='<text x="'+lx+'" y="'+ly+'" text-anchor="middle" fill="'+color+'" font-size="8" opacity="'+(fresh?0.9:0.4)+'">'+e.count+'</text>';
+  });
+
+  // Nodes
+  Object.entries(pos).forEach(([agId,p])=>{
+    const s=p.session;
+    const color=agentColor(agId);
+    const wm=resolveWorkMode(s);
+    const h=meshHealth(s.lastHeartbeat);
+    const active=wm!=='done'&&wm!=='idle';
+    const sel=GRAPH_SELECTED===agId;
+    const px=p.x.toFixed(1),py=p.y.toFixed(1);
+    const totalOut=Object.values(COMM_MATRIX).filter(e=>e.from===agId).reduce((s,e)=>s+e.count,0);
+
+    svg+='<g class="graph-node" onclick="selectGraphNode('+JSON.stringify(agId)+')" style="cursor:pointer">';
+
+    // Pulse ring for active sessions
+    if(active){
+      svg+='<circle cx="'+px+'" cy="'+py+'" r="'+nodeR+'" fill="none" stroke="'+color+'" stroke-width="0.6">'+
+        '<animate attributeName="r" values="'+nodeR+';'+(nodeR+11)+'" dur="2.2s" repeatCount="indefinite" calcMode="ease-out"/>'+
+        '<animate attributeName="opacity" values="0.45;0" dur="2.2s" repeatCount="indefinite"/>'+
+      '</circle>';
+    }
+
+    // Selection dashed ring
+    if(sel){
+      svg+='<circle cx="'+px+'" cy="'+py+'" r="'+(nodeR+7)+'" fill="none" stroke="'+color+'" stroke-width="1.5" stroke-dasharray="3 2" opacity="0.7">'+
+        '<animateTransform attributeName="transform" type="rotate"'+
+          ' from="0 '+px+' '+py+'" to="360 '+px+' '+py+'" dur="7s" repeatCount="indefinite"/>'+
+      '</circle>';
+    }
+
+    // Main circle
+    svg+='<circle cx="'+px+'" cy="'+py+'" r="'+nodeR+'" fill="'+(sel?color+'1a':'#05080e')+
+      '" stroke="'+color+'" stroke-width="'+(sel?2.5:1.5)+'"/>';
+
+    // Health dot (top-right corner)
+    const hdC=h==='ok'?'#3fb950':h==='stale'?'#d29922':'#f85149';
+    svg+='<circle cx="'+(p.x+nodeR-3).toFixed(1)+'" cy="'+(p.y-nodeR+3).toFixed(1)+
+      '" r="3.5" fill="'+hdC+'" stroke="#05080e" stroke-width="1"/>';
+
+    // Outgoing count badge (top-left)
+    if(totalOut>0){
+      const bx=(p.x-nodeR+3).toFixed(1),by=(p.y-nodeR+3).toFixed(1);
+      svg+='<circle cx="'+bx+'" cy="'+by+'" r="5.5" fill="#1f6feb" stroke="#05080e" stroke-width="1"/>'+
+        '<text x="'+bx+'" y="'+(p.y-nodeR+6.5).toFixed(1)+'" text-anchor="middle" fill="#fff" font-size="6.5" font-weight="700">'+Math.min(totalOut,99)+'</text>';
+    }
+
+    // Agent name + work mode
+    const short=agId.length>9?agId.slice(0,8)+'\u2026':agId;
+    svg+='<text x="'+px+'" y="'+(p.y-4).toFixed(1)+'" text-anchor="middle" fill="'+color+'" font-size="9" font-weight="600">'+escHtml(short)+'</text>';
+    svg+='<text x="'+px+'" y="'+(p.y+8.5).toFixed(1)+'" text-anchor="middle" fill="#484f58" font-size="7.5">'+escHtml(WM_LABEL[wm]||wm)+'</text>';
+
+    svg+='</g>';
+  });
+
+  svg+='</svg>';
+  svgDiv.innerHTML=svg;
+  renderGraphDetail();
+}
+
+function selectGraphNode(agId){
+  GRAPH_SELECTED=GRAPH_SELECTED===agId?null:agId;
+  renderMeshGraph();
+}
+
+function renderGraphDetail(){
+  const panel=el('graphDetail');
+  if(!panel)return;
+  if(!GRAPH_SELECTED){panel.style.display='none';return;}
+
+  const agId=GRAPH_SELECTED;
+  const s=Object.values(meshSessions).find(x=>x.agentId===agId);
+  if(!s){panel.innerHTML='<div style="color:#f85149;font-size:10px">세션 없음</div>';panel.style.display='block';return;}
+
+  const color=agentColor(agId);
+  const wm=resolveWorkMode(s);
+  const h=meshHealth(s.lastHeartbeat);
+
+  const outEdges=Object.values(COMM_MATRIX).filter(e=>e.from===agId);
+  const inEdges=Object.values(COMM_MATRIX).filter(e=>e.to===agId||e.to==='*'&&e.from!==agId);
+  const totalOut=outEdges.reduce((acc,e)=>acc+e.count,0);
+  const totalIn=inEdges.reduce((acc,e)=>acc+e.count,0);
+
+  // All messages sorted newest first
+  const allMsgs=[...outEdges,...inEdges]
+    .flatMap(e=>e.msgs.map(m=>({...m,_from:e.from,_to:e.to})))
+    .sort((a,b)=>b.time-a.time);
+
+  // Recent lane events
+  const recentEvts=(LANE_EVENTS[agId]||[]).slice(-6).reverse();
+
+  const fmt=t=>new Date(t).toLocaleTimeString('ko',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  panel.style.display='block';
+  panel.innerHTML=
+    '<div class="gd-hdr">'+
+      '<span class="gd-name" style="color:'+color+'">'+escHtml(agId)+'</span>'+
+      '<span class="gd-close" onclick="GRAPH_SELECTED=null;renderMeshGraph()">✕</span>'+
+    '</div>'+
+    '<div class="gd-stat">'+
+      '<span style="color:'+(h==='ok'?'#3fb950':'#d29922')+'">⬤ '+h+'</span>'+
+      '<span>'+escHtml(WM_LABEL[wm]||wm)+'</span>'+
+      '<span style="color:#484f58">pid '+s.pid+'</span>'+
+    '</div>'+
+    '<div class="gd-stat">'+
+      '<span style="color:#58a6ff">↑ '+totalOut+' 발신</span>'+
+      '<span style="color:#3fb950">↓ '+totalIn+' 수신</span>'+
+    '</div>'+
+    (s.currentWork
+      ?'<div class="gd-work" style="border-color:'+color+'55">'+escHtml(s.currentWork.slice(0,90))+'</div>'
+      :'')+
+
+    // Connection list
+    ([...outEdges.map(e=>({dir:'out',other:e.to,count:e.count,lastTime:e.lastTime})),
+      ...inEdges.map(e=>({dir:'in',other:e.from,count:e.count,lastTime:e.lastTime}))]
+      .sort((a,b)=>b.lastTime-a.lastTime).length
+      ?'<div class="gd-section-hdr">연결 ('+([...outEdges,...inEdges].length)+')</div>'+
+        [...outEdges.map(e=>({dir:'out',other:e.to,cnt:e.count,fresh:Date.now()-e.lastTime<15000})),
+         ...inEdges.map(e=>({dir:'in',other:e.from,cnt:e.count,fresh:Date.now()-e.lastTime<15000}))]
+        .map(c=>'<div class="gd-row">'+
+          '<span class="gd-row-dir" style="color:'+(c.dir==='out'?'#58a6ff':'#3fb950')+'">'+(c.dir==='out'?'→':'←')+'</span>'+
+          '<span style="color:'+agentColor(c.other==='*'?'ALL':c.other)+'">'+escHtml(c.other==='*'?'ALL':c.other)+'</span>'+
+          '<span class="gd-row-time" style="margin-left:auto">'+c.cnt+'건'+(c.fresh?' <span style="color:#58a6ff">●</span>':'')+'</span>'+
+        '</div>').join('')
+      :'')+
+
+    // Recent events from swimlane
+    (recentEvts.length
+      ?'<div class="gd-section-hdr">이벤트</div>'+
+        recentEvts.map(e=>'<div class="gd-row">'+
+          '<span class="gd-row-time">'+fmt(e.start)+'</span>'+
+          '<span class="gd-row-body">'+escHtml(e.label||e.type||'')+'</span>'+
+        '</div>').join('')
+      :'')+
+
+    // Message log
+    (allMsgs.length
+      ?'<div class="gd-section-hdr">메시지 ('+allMsgs.length+'건)</div>'+
+        '<div style="max-height:110px;overflow-y:auto">'+
+        allMsgs.slice(0,15).map(m=>{
+          const isOut=m._from===agId;
+          const other=isOut?(m._to==='*'?'ALL':m._to):m._from;
+          const tc={info:'#1f6feb',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc'}[m.msgType]||'#484f58';
+          return '<div class="gd-row" title="'+escHtml(m.content||'')+'">'+
+            '<span class="gd-row-time">'+fmt(m.time)+'</span>'+
+            '<span class="gd-row-dir" style="color:'+(isOut?'#58a6ff':'#3fb950')+'">'+
+              (isOut?'→':'←')+' '+
+            '</span>'+
+            '<span style="color:'+agentColor(other)+';flex-shrink:0">'+escHtml(other)+'</span>'+
+            '<span style="color:'+tc+';flex-shrink:0;margin-left:2px;font-size:8px">['+escHtml(m.msgType||'info')+']</span>'+
+            '<span class="gd-row-body">'+escHtml((m.content||'').slice(0,35))+'</span>'+
+          '</div>';
+        }).join('')+
+        '</div>'
+      :'');
+}
+
+function renderFlowTab(){
+  const sessions=Object.values(meshSessions);
+  const recentMsgs=meshMessages.slice(0,50);
+  const sidToAgent={};
+  sessions.forEach(s=>{sidToAgent[s.sessionId]=s.agentId;});
+  function rTo(to){if(!to||to==='*')return '*';return sidToAgent[to]||to;}
+
+  // Build pair map
+  const pairMap={};
+  recentMsgs.forEach(m=>{
+    const from=m.fromAgent||m.from_agent||'?';
+    const to=rTo(m.to||'*');
+    if(from==='monitor')return;
+    const key=from+'::'+to;
+    if(!pairMap[key])pairMap[key]={from,to,count:0,lastTime:0,types:[]};
+    pairMap[key].count++;
+    const t=m.createdAt?new Date(m.createdAt).getTime():0;
+    if(t>pairMap[key].lastTime)pairMap[key].lastTime=t;
+    const mt=m.messageType||m.type||'info';
+    if(!pairMap[key].types.includes(mt))pairMap[key].types.push(mt);
+  });
+
+  // 1. Session node grid
+  const nodeHtml=sessions.length
+    ?sessions.map(s=>{
+        const h=meshHealth(s.lastHeartbeat);
+        const wm=resolveWorkMode(s);
+        const color=agentColor(s.agentId);
+        const out=recentMsgs.filter(m=>(m.fromAgent||m.from_agent)===s.agentId);
+        const inc=recentMsgs.filter(m=>{const to2=rTo(m.to||'*');return(to2===s.agentId||to2==='*')&&(m.fromAgent||m.from_agent)!==s.agentId;});
+        const bc=recentMsgs.filter(m=>m.to==='*'&&(m.fromAgent||m.from_agent)===s.agentId);
+        const last=[...out,...inc].sort((a,b)=>new Date(b.createdAt||0).getTime()-new Date(a.createdAt||0).getTime())[0];
+        return '<div class="flow-node" style="border-color:'+color+'44">'+
+          '<div class="fn-hdr" style="border-bottom-color:'+color+'22">'+hDot(h)+
+            '<span class="fn-name" style="color:'+color+'">'+escHtml(s.agentId)+'</span>'+
+            '<span class="fn-pid">'+s.pid+'</span></div>'+
+          '<div class="fn-body">'+
+            '<div class="fn-wm">'+escHtml(WM_LABEL[wm]||wm)+'</div>'+
+            '<div class="fn-io">'+
+              (out.length?'<span class="fn-out" title="송신">↑'+out.length+'</span>':'')+
+              (inc.length?'<span class="fn-in" title="수신">↓'+inc.length+'</span>':'')+
+              (bc.length?'<span class="fn-bc" title="브로드캐스트">⬡'+bc.length+'</span>':'')+
+            '</div>'+
+            (last?'<div class="fn-last">'+escHtml((last.content||'').slice(0,26))+'</div>':'')+
+          '</div></div>';
+      }).join('')
+    :'<div style="color:#1f6feb44;font-size:11px;padding:12px;width:100%;text-align:center">활성 세션 없음 — /nco-mesh ping 으로 등록</div>';
+
+  // 2. Communication matrix
+  const allA=[...new Set(recentMsgs.flatMap(m=>[(m.fromAgent||m.from_agent||'?'),rTo(m.to||'*')]).filter(a=>a&&a!=='?'&&a!=='monitor'))];
+  const mainA=allA.filter(a=>a!=='*');
+  const hasBc=recentMsgs.some(m=>m.to==='*');
+  let matrixHtml='';
+  if(mainA.length>=2){
+    const abbr=a=>escHtml(a.length>7?a.slice(0,6)+'…':a);
+    const hRow='<div class="fm-cell hdr"></div>'+
+      mainA.map(a=>'<div class="fm-cell hdr" title="'+escHtml(a)+'" style="color:'+agentColor(a)+'">'+abbr(a)+'</div>').join('')+
+      (hasBc?'<div class="fm-cell hdr" style="color:#3fb950">ALL</div>':'');
+    const rows=mainA.map(fa=>{
+      const cells=mainA.map(ta=>{
+        if(fa===ta)return '<div class="fm-cell self">·</div>';
+        const p=pairMap[fa+'::'+ta];
+        if(!p)return '<div class="fm-cell"></div>';
+        const dom=p.types[0]||'info';
+        const fresh=p.lastTime>Date.now()-30000;
+        const cls={info:'ti',warning:'tw',conflict:'tc',request:'tr'}[dom]||'tm';
+        return '<div class="fm-cell has-msg '+cls+(fresh?' fresh':'')+'" title="'+escHtml(fa)+'→'+escHtml(ta)+': '+p.count+'건">'+p.count+'</div>';
+      }).join('');
+      const bcp=pairMap[fa+'::*'];
+      const bcCell=hasBc?(bcp?'<div class="fm-cell has-msg ti'+(bcp.lastTime>Date.now()-30000?' fresh':'')+'" title="broadcast '+bcp.count+'건">'+bcp.count+'</div>':'<div class="fm-cell"></div>'):'';
+      return '<div class="fm-cell hdr" style="color:'+agentColor(fa)+'" title="'+escHtml(fa)+'">'+abbr(fa)+'</div>'+cells+bcCell;
+    }).join('');
+    const nc=mainA.length+1+(hasBc?1:0);
+    matrixHtml='<div class="flow-matrix-wrap">'+
+      '<div class="flow-matrix-title">통신 매트릭스 — 행(발신) × 열(수신), 숫자=메시지수</div>'+
+      '<div class="flow-matrix" style="grid-template-columns:repeat('+nc+',minmax(26px,1fr))">'+hRow+rows+'</div>'+
+      '<div style="margin-top:5px;display:flex;gap:8px;font-size:9px;flex-wrap:wrap">'+
+        '<span style="color:#58a6ff">■ info</span><span style="color:#d29922">■ warning</span>'+
+        '<span style="color:#f85149">■ conflict</span><span style="color:#a5b4fc">■ request</span>'+
+        '<span style="color:#484f58;margin-left:4px">깜빡임=30초내 신규</span></div>'+
+    '</div>';
+  }else{
+    matrixHtml='<div class="flow-matrix-wrap" style="color:#21262d;font-size:10px;text-align:center;padding:8px">'+
+      (recentMsgs.length===0?'메시지 없음 — 매트릭스 표시 불가':'세션 2개 이상 필요 (현재 '+mainA.length+'개)')+'</div>';
+  }
+
+  // 3. AI delegation
+  const recentT=allTasks.filter(t=>['running','streaming','completed','assigned','pending'].includes(t.status)).slice(0,10);
+  const delegHtml=recentT.length
+    ?'<div class="deleg-section"><div class="deleg-hdr">AI 위임 현황 (최근 '+recentT.length+'건)</div>'+
+        recentT.map(t=>{
+          const sc=({running:'#58a6ff',streaming:'#a5b4fc',completed:'#3fb950',assigned:'#79c0ff',pending:'#d29922'})[t.status]||'#8b949e';
+          const fromId=t.workspace_id&&t.workspace_id!=='default'?t.workspace_id:'';
+          const from=sidToAgent[fromId]||fromId||t.spawned_by_cli||'–';
+          const to=t.assigned_to||'?';
+          return '<div class="deleg-row">'+
+            '<span class="deleg-from" style="color:'+agentColor(from)+'">'+escHtml(from)+'</span>'+
+            '<span class="deleg-arrow">→</span>'+
+            '<span class="deleg-to" style="color:'+agentColor(to)+'">'+escHtml(to)+'</span>'+
+            '<span class="deleg-task">'+escHtml((t.prompt||'').slice(0,50))+'</span>'+
+            '<span class="deleg-status" style="background:'+sc+'22;color:'+sc+';border:1px solid '+sc+'44">'+escHtml(t.status)+'</span>'+
+          '</div>';
+        }).join('')+'</div>'
+    :'';
+
+  // 4. Message flow log
+  const logHtml=recentMsgs.length
+    ?recentMsgs.slice(0,20).map(m=>{
+        const from=m.fromAgent||m.from_agent||'?';
+        const to=rTo(m.to||'*');
+        const isBc=m.to==='*';
+        const t=m.createdAt?new Date(m.createdAt).toLocaleTimeString('ko',{hour12:false}):'';
+        const mt=m.messageType||m.type||'info';
+        const tc={info:'#58a6ff',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc'}[mt]||'#8b949e';
+        return '<div class="flow-msg-row">'+
+          '<span class="fm-time2">'+t+'</span>'+
+          '<span class="fm-fromA" style="color:'+agentColor(from)+'">'+escHtml(from)+'</span>'+
+          '<span class="fm-arr" style="color:'+tc+'">→</span>'+
+          '<span class="fm-toA" style="color:'+(isBc?'#3fb950':agentColor(to))+'">'+escHtml(isBc?'ALL':to)+'</span>'+
+          '<span class="fm-body">'+escHtml((m.content||'').slice(0,70))+'</span>'+
+        '</div>';
+      }).join('')
+    :'<div class="empty" style="padding:12px">메시지 없음</div>';
+
+  return '<div class="flow-grid">'+nodeHtml+'</div>'+
+    matrixHtml+delegHtml+
+    '<div class="flow-log-hdr"><span>메시지 흐름</span><span style="color:#30363d">'+recentMsgs.length+'건</span></div>'+
+    '<div class="flow-log">'+logHtml+'</div>';
 }
 
 function render(){ renderAgents(); renderEvents(); renderTab(); updateCounts(); }
@@ -1299,6 +2477,9 @@ function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function el(id){return document.getElementById(id);}
 
 // ── Tasks polling ─────────────────────────────────────
+// C: Per-agent quality metrics (computed from allTasks)
+const AGENT_STATS={}; // agentId → {total,completed,failed,running,lastActive}
+
 async function pollTasks(){
   try{
     const d=await(await fetch(API+'/api/tasks?limit=80')).json();
@@ -1307,6 +2488,26 @@ async function pollTasks(){
     allTasks.forEach(t=>{
       const existing=tasks.find(x=>x.id===t.id);
       if(existing){ existing.status=t.status; if(t.response)existing.output=t.response.slice(0,300); }
+      // Populate CLI→Agent links from spawned_by_cli field
+      // spawned_by_cli may be agentId (e.g. 'claude-1') or sessionId (e.g. '335070')
+      if(t.spawned_by_cli&&t.assigned_to){
+        const sess=meshSessions[t.spawned_by_cli]
+          ||Object.values(meshSessions).find(s=>s.agentId===t.spawned_by_cli);
+        const cliId=sess?sess.agentId:t.spawned_by_cli;
+        addCliTaskLink(cliId,t.assigned_to,t.id,t.prompt||'',t.status);
+      }
+    });
+    // C: Compute per-agent stats
+    Object.keys(AGENT_STATS).forEach(k=>delete AGENT_STATS[k]);
+    allTasks.forEach(t=>{
+      const a=t.assigned_to||t.provider;
+      if(!a)return;
+      if(!AGENT_STATS[a])AGENT_STATS[a]={total:0,completed:0,failed:0,running:0,lastActive:0};
+      AGENT_STATS[a].total++;
+      if(t.status==='completed')AGENT_STATS[a].completed++;
+      else if(t.status==='failed')AGENT_STATS[a].failed++;
+      else if(t.status==='running'||t.status==='assigned')AGENT_STATS[a].running++;
+      if(t.updated_at){const ts=new Date(t.updated_at).getTime();if(ts>AGENT_STATS[a].lastActive)AGENT_STATS[a].lastActive=ts;}
     });
     if(activeTab==='sessions')renderTab();
   }catch{}
@@ -1389,6 +2590,10 @@ async function init(){
 
   // Heartbeat refresh counter
   setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions')renderTab(); }, 10000);
+
+  // Start animation loops
+  (function topoLoop(){ renderTopology(); setTimeout(topoLoop, 800); })();
+  (function graphLoop(){ renderMeshGraph(); setTimeout(graphLoop, 1000); })();
 
   await checkHealth();
 }

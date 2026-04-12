@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { eventBus } from './event-bus.js';
 import { sharedState } from './shared-state.js';
 import { agentManager } from '../agent/agent-manager.js';
@@ -6,6 +7,13 @@ import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('discussion-engine');
+
+// ─── Zod Schema for structured evaluation JSON ────────
+const EvalScoreSchema = z.object({
+  scores: z.record(z.string(), z.number().min(1).max(10)),
+  winner: z.string().optional(),
+  reason: z.string().optional(),
+});
 
 // ─── Types ────────────────────────────────────────────
 export type DiscussionMode = 'task' | 'parallel' | 'discussion' | 'realtime' | 'consensus' | 'hive' | 'broadcast' | 'commander';
@@ -41,10 +49,44 @@ export interface DiscussionReport {
   totalDurationMs: number;
 }
 
+// ─── PID Controller (동적 consensus threshold 조정) ──
+class PIDController {
+  private integral = 0;
+  private prevError = 0;
+
+  constructor(
+    private readonly kp = 0.4,
+    private readonly ki = 0.05,
+    private readonly kd = 0.1,
+  ) {}
+
+  /**
+   * Compute next threshold adjustment.
+   * setpoint = target consensus rate, measurement = current rate.
+   * Returns a delta in [-0.15, +0.15] to clamp threshold drift.
+   */
+  compute(setpoint: number, measurement: number, dt = 1): number {
+    const error = setpoint - measurement;
+    this.integral += error * dt;
+    const derivative = (error - this.prevError) / dt;
+    this.prevError = error;
+    const output = this.kp * error + this.ki * this.integral + this.kd * derivative;
+    return Math.max(-0.15, Math.min(0.15, output));
+  }
+
+  reset(): void {
+    this.integral = 0;
+    this.prevError = 0;
+  }
+}
+
 // ─── Discussion Engine ────────────────────────────────
 class DiscussionEngine {
 
   private trustScores = new Map<string, number>();
+  /** Long-term reputation: persists across discussions (EMA α=0.1) */
+  private reputationScores = new Map<string, number>();
+  private pid = new PIDController();
 
   // ═══ 단일 작업 위임 (mode: task) ═══
   async executeTask(agentId: string, prompt: string, options?: { systemPrompt?: string }): Promise<string> {
@@ -109,8 +151,9 @@ class DiscussionEngine {
     const sessionId = options.sessionId || createSessionId();
     const startTime = Date.now();
     const maxRounds = options.maxRounds || 3;
-    const threshold = options.consensusThreshold || 0.8;
+    let threshold = options.consensusThreshold || 0.8;
     const participants = options.providers || this.selectParticipants(options.mode);
+    this.pid.reset();
     const initiator = options.initiator || 'claude-code';
 
     // Initialize trust scores to 1.0 for each agent
@@ -168,17 +211,22 @@ class DiscussionEngine {
       const scores = this.extractScores(evaluations, participants);
       consensusRate = this.calculateConsensus(scores, participants);
 
-      // Update trust scores based on consensus alignment
+      // Update trust scores and long-term reputation
       this.updateTrustScores(scores, participants);
+      this.updateReputation(scores, participants);
 
       rounds.push({ round, responses: evaluations, evaluations: scores, consensusRate });
       this.saveRound(sessionId, round, 'evaluation', evaluations, scores, consensusRate);
+
+      // PID: adjust threshold based on how far current rate is from target
+      const thresholdDelta = this.pid.compute(threshold, consensusRate);
+      threshold = Math.max(0.5, Math.min(0.95, threshold - thresholdDelta));
 
       await eventBus.publish({
         type: 'discussion:round_completed', sessionId, round, consensusRate,
       });
 
-      log.info({ sessionId, round, consensusRate }, 'Round completed');
+      log.info({ sessionId, round, consensusRate, threshold }, 'Round completed');
 
       // Check consensus
       if (consensusRate >= threshold) {
@@ -514,15 +562,22 @@ class DiscussionEngine {
       if (jsonMatch) {
         try {
           const parsed = JSON.parse(jsonMatch[1]);
-          if (parsed.scores && typeof parsed.scores === "object") {
-            for (const t of participants) { if (t === evaluator) continue; const s = parsed.scores[t]; if (typeof s === "number") scores[evaluator][t] = Math.min(10, Math.max(1, s)); }
+          const validated = EvalScoreSchema.safeParse(parsed);
+          if (validated.success) {
+            for (const t of participants) {
+              if (t === evaluator) continue;
+              const s = validated.data.scores[t];
+              if (typeof s === 'number') {
+                scores[evaluator][t] = Math.min(10, Math.max(1, s));
+              }
+            }
             continue;
           }
-        } catch { }
+        } catch { /* fall through to regex */ }
       }
       for (const target of participants) {
         if (target === evaluator) continue;
-        // Simple score extraction: look for "N/10" or "N점" patterns
+        // Regex fallback: look for "N/10" or "N점" patterns
         const pattern = new RegExp(`${target}[^\\d]*(\\d+)\\s*[/점]\\s*10?`, 'i');
         const match = text.match(pattern);
         if (match) {
@@ -536,55 +591,52 @@ class DiscussionEngine {
     return scores;
   }
 
-  // ─── Internal: Calculate consensus rate ─────────────
+  // ─── Internal: Calculate consensus rate (trust-weighted voting) ──
   private calculateConsensus(
     scores: Record<string, Record<string, number>>,
     participants: string[]
   ): number {
     if (participants.length < 2) return 1.0;
 
-    // Calculate weighted average scores using trust scores
+    // Phase 1: trust-weighted score sum per candidate
     const weightedScores: Record<string, number> = {};
     let totalWeight = 0;
-    let totalWeightedScore = 0;
 
     for (const evaluator of participants) {
       const trust = this.trustScores.get(evaluator) ?? 1.0;
       totalWeight += trust;
-
       const evalScores = scores[evaluator] || {};
       for (const [target, score] of Object.entries(evalScores)) {
-        const weightedScore = score * trust;
-        weightedScores[target] = (weightedScores[target] || 0) + weightedScore;
+        weightedScores[target] = (weightedScores[target] || 0) + score * trust;
       }
     }
 
-    // Calculate mean weighted score for each target
-    const meanScores: Record<string, number> = {};
-    for (const [target, total] of Object.entries(weightedScores)) {
-      meanScores[target] = totalWeight > 0 ? total / totalWeight : 0;
-    }
-
-    // Find the top-rated proposal
-    let maxScore = 0;
+    // Phase 2: find trust-weighted top candidate
+    let maxWeightedMean = 0;
     let topChoice = '';
-    for (const [target, score] of Object.entries(meanScores)) {
-      if (score > maxScore) {
-        maxScore = score;
+    for (const [target, total] of Object.entries(weightedScores)) {
+      const mean = totalWeight > 0 ? total / totalWeight : 0;
+      if (mean > maxWeightedMean) {
+        maxWeightedMean = mean;
         topChoice = target;
       }
     }
 
-    // Calculate agreement with top choice
-    let agreementCount = 0;
-    for (const evalScores of Object.values(scores)) {
-      const topScore = Object.entries(evalScores).sort((a, b) => b[1] - a[1])[0]?.[1] || 0;
-      if (Math.abs(topScore - maxScore) <= 1) {
-        agreementCount++;
+    if (!topChoice) return 0;
+
+    // Phase 3: sum trust weights of evaluators whose top pick matches overall winner
+    let agreementWeight = 0;
+    for (const evaluator of participants) {
+      const evalScores = scores[evaluator] || {};
+      if (Object.keys(evalScores).length === 0) continue;
+      const evalTop = Object.entries(evalScores)
+        .sort((a, b) => b[1] - a[1])[0]?.[0];
+      if (evalTop === topChoice) {
+        agreementWeight += this.trustScores.get(evaluator) ?? 1.0;
       }
     }
 
-    return participants.length > 0 ? agreementCount / participants.length : 0;
+    return totalWeight > 0 ? agreementWeight / totalWeight : 0;
   }
 
   // ─── Internal: Update trust scores based on consensus ─
@@ -625,6 +677,26 @@ class DiscussionEngine {
         // Outside mean - decrease trust
         this.trustScores.set(pid, Math.max(0.1, currentTrust - 0.05));
       }
+    }
+  }
+
+  // ─── Internal: Update long-term reputation (EMA α=0.1) ─
+  private updateReputation(
+    scores: Record<string, Record<string, number>>,
+    participants: string[]
+  ): void {
+    for (const pid of participants) {
+      let sum = 0, count = 0;
+      for (const [evaluator, evalScores] of Object.entries(scores)) {
+        if (evaluator === pid) continue;
+        const s = evalScores[pid];
+        if (typeof s === 'number') { sum += s; count++; }
+      }
+      if (count === 0) continue;
+      const mean = sum / count;
+      const current = this.reputationScores.get(pid) ?? 5.0;
+      // Exponential moving average: blends long-term history with latest round
+      this.reputationScores.set(pid, current * 0.9 + mean * 0.1);
     }
   }
 
