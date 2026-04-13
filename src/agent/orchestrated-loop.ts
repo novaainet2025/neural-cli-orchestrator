@@ -141,7 +141,14 @@ export class OrchestratedLoop {
         .filter(Boolean)
         .join('\n\n');
 
-      return { output: finalOutput, iterations, toolCalls: totalToolCalls, artifacts };
+      // finalOutput이 비어있으면 마지막 assistant 원본 메시지를 사용
+      const output = finalOutput || history
+        .filter(h => h.role === 'assistant')
+        .map(h => h.content)
+        .filter(Boolean)
+        .pop() || '';
+
+      return { output, iterations, toolCalls: totalToolCalls, artifacts };
     } finally {
       await sharedState.setAgentState(agentId, {
         status: 'idle',

@@ -187,6 +187,26 @@ class CliMesh {
       const redis = await getRedis();
       const key = `${MESH_PREFIX}${session.sessionId}`;
 
+      // Evict stale sessions with the same agentId but different sessionId (zombie prevention)
+      if (session.agentId) {
+        const allKeys = await redis.keys(`${MESH_PREFIX}*`);
+        for (const k of allKeys) {
+          if (k.includes(':alias:') || k === key) continue;
+          const raw = await redis.get(k);
+          if (!raw) continue;
+          try {
+            const prev: MeshSession = JSON.parse(raw);
+            if (prev.agentId === session.agentId && prev.sessionId !== session.sessionId) {
+              if (!isPidAlive(prev.pid)) {
+                log.info({ oldSession: prev.sessionId, newSession: session.sessionId, agentId: session.agentId }, 'Evicting stale same-agent session');
+                await redis.del(k);
+                this.markSessionDisconnected(prev.sessionId);
+              }
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+
       // Preserve existing startedAt, messageQueue, and detect done transition
       const existing = await redis.get(key);
       if (existing) {
@@ -381,12 +401,16 @@ class CliMesh {
 
     await eventBus.publish({
       type: 'mesh:message',
-      messageId: message.id,
-      from: fromSessionId,
-      fromAgent,
-      to: toSessionId,
-      messageType: type,
-    });
+      message: {
+        id: message.id,
+        from: fromSessionId,
+        fromAgent,
+        to: toSessionId,
+        content,
+        messageType: type,
+        createdAt: message.createdAt,
+      },
+    } as any);
 
     log.info({ from: fromAgent, to: toSessionId, type, delivered }, 'Mesh message sent');
     return delivered;
@@ -649,6 +673,19 @@ class CliMesh {
         WHERE from_session = ? OR to_session = ? OR to_session = '*'
         ORDER BY created_at DESC LIMIT ?
       `).all(sessionId, sessionId, limit);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Get recent messages across ALL sessions (for monitor initial load) */
+  getRecentMessages(limit = 50): any[] {
+    try {
+      const db = getDb();
+      return db.prepare(`
+        SELECT * FROM mesh_messages
+        ORDER BY created_at DESC LIMIT ?
+      `).all(limit);
     } catch {
       return [];
     }
