@@ -11,6 +11,9 @@ const log = createLogger('event-bus');
 const CHANNEL = 'nco:events';
 const STREAM = 'nco:event-stream';
 const MAX_STREAM_LEN = 10000;
+/** Cap localEmittedIds (echo suppression) — trim oldest batch when exceeded. */
+const LOCAL_EMITTED_IDS_MAX = 5000;
+const LOCAL_EMITTED_IDS_PRUNE_BATCH = 1000;
 
 // ─── Persistent Event Types (saved to SQLite) ─────────
 const PERSIST_TYPES = new Set([
@@ -98,6 +101,11 @@ export class EventBus {
     this.sequence++;
 
     // 1. Local emit (always works) — track ID to suppress Redis echo
+    if (this.localEmittedIds.size > LOCAL_EMITTED_IDS_MAX) {
+      Array.from(this.localEmittedIds)
+        .slice(0, LOCAL_EMITTED_IDS_PRUNE_BATCH)
+        .forEach((id) => this.localEmittedIds.delete(id));
+    }
     this.localEmittedIds.add(enriched.id);
     setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
     this.local.emit(enriched.type, enriched);
@@ -262,6 +270,13 @@ export class EventBus {
       );
     } catch (err) {
       log.error({ err, type: event.type }, 'Event persist failed');
+    }
+  }
+
+  // ─── Echo-suppression Set maintenance ───────────────
+  private trimLocalEmittedIdsIfNeeded(): void {
+    if (this.localEmittedIds.size > LOCAL_EMITTED_IDS_MAX) {
+      Array.from(this.localEmittedIds).slice(0, LOCAL_EMITTED_IDS_PRUNE_BATCH).forEach(id => this.localEmittedIds.delete(id));
     }
   }
 

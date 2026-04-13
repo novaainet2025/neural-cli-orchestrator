@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { env } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { redisHealthCheck } from '../storage/redis.js';
@@ -20,10 +21,56 @@ import { collaborationEngine } from '../core/collaboration-engine.js';
 
 const log = createLogger('gateway');
 
+// ─── Lazy-cached dynamic imports (avoid repeated await import() per request) ─
+let _cliMeshMod: Awaited<typeof import('../core/cli-mesh.js')> | null = null;
+async function getCliMesh() {
+  if (!_cliMeshMod) _cliMeshMod = await import('../core/cli-mesh.js');
+  return _cliMeshMod.cliMesh;
+}
+let _smartRouterMod: Awaited<typeof import('../core/smart-router.js')> | null = null;
+async function getSmartRouter() {
+  if (!_smartRouterMod) _smartRouterMod = await import('../core/smart-router.js');
+  return _smartRouterMod.smartRouter;
+}
+let _commanderMod: Awaited<typeof import('../core/commander.js')> | null = null;
+async function getCommander() {
+  if (!_commanderMod) _commanderMod = await import('../core/commander.js');
+  return _commanderMod.commander;
+}
+let _sessionManagerMod: Awaited<typeof import('../agent/session-manager.js')> | null = null;
+async function getSessionManager() {
+  if (!_sessionManagerMod) _sessionManagerMod = await import('../agent/session-manager.js');
+  return _sessionManagerMod.sessionManager;
+}
+
 export async function createGateway() {
   const app = Fastify({ logger: false });
 
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: [
+      'http://localhost:6200', 'http://127.0.0.1:6200',
+      'http://localhost:3000', 'http://127.0.0.1:3000',
+      /^http:\/\/localhost:\d+$/,
+    ],
+  });
+
+  // ═══ Rate Limiting ═══════════════════════════════════
+  await app.register(rateLimit, {
+    max: 120,
+    timeWindow: '1 minute',
+    allowList: ['127.0.0.1', '::1'],
+  });
+
+  // ═══ Global Error Handler ═══════════════════════════
+  app.setErrorHandler((error, _request, reply) => {
+    const err = error as any;
+    log.error({ err: err.message, stack: err.stack }, 'Unhandled route error');
+    const statusCode = err.statusCode || 500;
+    reply.code(statusCode).send({
+      error: statusCode >= 500 ? 'Internal Server Error' : err.message,
+      statusCode,
+    });
+  });
 
   // ═══ Health ═══════════════════════════════════════
   app.get('/health', async () => {
@@ -59,10 +106,16 @@ export async function createGateway() {
   // ═══ SSE Event Stream ═════════════════════════════════
   app.get('/api/events/stream', async (request, reply) => {
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
-    const handler = (event: NCOEvent) => { reply.raw.write(`data: ${JSON.stringify(event)}\n\n`); };
+    const handler = (event: NCOEvent) => {
+      try { reply.raw.write(`data: ${JSON.stringify(event)}\n\n`); } catch { /* client gone */ }
+    };
     eventBus.on('*', handler);
-    request.raw.on('close', () => { eventBus.off('*', handler); });
-    await new Promise(() => {}); // keep alive
+    // Keep-alive ping to detect dead connections
+    const keepAlive = setInterval(() => {
+      try { reply.raw.write(': keepalive\n\n'); } catch { clearInterval(keepAlive); eventBus.off('*', handler); }
+    }, 30000);
+    request.raw.on('close', () => { clearInterval(keepAlive); eventBus.off('*', handler); });
+    await new Promise(() => {}); // keep alive until client disconnects
   });
 
   // ═══ AI Providers ═════════════════════════════════
@@ -137,10 +190,15 @@ export async function createGateway() {
 
     // Save to DB
     const db = getDb();
-    db.prepare(`
-      INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli)
-      VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
-    `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli);
+    try {
+      db.prepare(`
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
+      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli);
+    } catch (dbErr) {
+      log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
+      reply.code(500); return { error: 'Failed to create task' };
+    }
 
     await eventBus.publish({ type: 'task:created', taskId, agentId, prompt: input.prompt });
 
@@ -166,12 +224,16 @@ export async function createGateway() {
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
-        db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-          .run(result.success ? 'completed' : 'failed', response, taskId);
+        try {
+          db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+            .run(result.success ? 'completed' : 'failed', response, taskId);
+        } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
       })
       .catch(err => {
-        db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-          .run(err.message, taskId);
+        try {
+          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
+            .run(err.message, taskId);
+        } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task failure failed'); }
       });
 
     reply.code(202);
@@ -185,7 +247,8 @@ export async function createGateway() {
 
   app.get('/api/tasks', async (req) => {
     const query = req.query as any;
-    const limit = Math.min(Number(query.limit || 100), 500);
+    const rawLimit = Number(query.limit || 100);
+    const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 500);
     const db = getDb();
     let sql = 'SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?';
     const params: any[] = [limit];
@@ -222,7 +285,15 @@ export async function createGateway() {
     // Abort via taskQueue (works for both BullMQ queued and semaphore active tasks)
     const killed = await taskQueue.abort(id);
 
-    db.prepare("UPDATE tasks SET status='cancelled', updated_at=datetime('now') WHERE id=?").run(id);
+    // Atomic DB update — transaction ensures status + timestamp are consistent
+    const cancelTask = db.transaction(() => {
+      db.prepare("UPDATE tasks SET status='cancelled', updated_at=datetime('now') WHERE id=?").run(id);
+    });
+    try {
+      cancelTask();
+    } catch (dbErr) {
+      log.error({ err: (dbErr as Error).message, taskId: id }, 'Failed to cancel task in DB');
+    }
     await eventBus.publish({ type: 'task:cancelled', taskId: id });
     return { ok: true, killed };
   });
@@ -230,7 +301,8 @@ export async function createGateway() {
   // ═══ Chat ═════════════════════════════════════════
   app.post('/api/chat/messages', async (req, reply) => {
     const body = req.body as any;
-    const prompt = body.message || body.prompt || '';
+    const prompt = (body.message || body.prompt || '').trim();
+    if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
     const agentId = body.ai || 'claude-code';
 
     const taskId = createTaskId();
@@ -252,6 +324,9 @@ export async function createGateway() {
   app.post('/api/nlp/intent', async (req, reply) => {
     const { parseIntent } = await import('../utils/intent-parser.js');
     const body = req.body as any;
+    if (!body.query || typeof body.query !== 'string') {
+      reply.code(400); return { error: 'query is required' };
+    }
     const result = parseIntent(body.query);
     return { intent: result };
   });
@@ -276,11 +351,15 @@ export async function createGateway() {
       .then(report => {
         // Save summary to tasks table so nco_list_tasks / nco_get_task can find it
         const taskId = createTaskId();
-        db.prepare(`
-          INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
-          VALUES (?, ?, ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
-        `).run(taskId, input.mode, input.prompt, report.adoptedProposal);
-        log.info({ sessionId, taskId, consensusRate: report.finalConsensusRate }, 'Discussion saved');
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+            VALUES (?, ?, ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
+          `).run(taskId, input.mode, input.prompt, report.adoptedProposal);
+          log.info({ sessionId, taskId, consensusRate: report.finalConsensusRate }, 'Discussion saved');
+        } catch (dbErr) {
+          log.error({ err: (dbErr as Error).message, sessionId, taskId }, 'Failed to save discussion result');
+        }
       })
       .catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
 
@@ -298,10 +377,12 @@ export async function createGateway() {
         // Save each parallel result as a completed task
         for (const [agentId, output] of Object.entries(responses)) {
           const taskId = createTaskId();
-          db.prepare(`
-            INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
-            VALUES (?, 'parallel', ?, ?, 'completed', ?, datetime('now'), datetime('now'))
-          `).run(taskId, body.prompt, agentId, output as string);
+          try {
+            db.prepare(`
+              INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+              VALUES (?, 'parallel', ?, ?, 'completed', ?, datetime('now'), datetime('now'))
+            `).run(taskId, body.prompt, agentId, output as string);
+          } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'Failed to save parallel result'); }
         }
       })
       .catch(err => log.error({ err: err.message }, 'Parallel failed'));
@@ -325,10 +406,12 @@ export async function createGateway() {
     })
       .then(report => {
         const taskId = createTaskId();
-        db.prepare(`
-          INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
-          VALUES (?, 'consensus', ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
-        `).run(taskId, input.prompt, report.adoptedProposal);
+        try {
+          db.prepare(`
+            INSERT OR IGNORE INTO tasks (id, mode, prompt, assigned_to, status, response, completed_at, updated_at)
+            VALUES (?, 'consensus', ?, 'discussion-engine', 'completed', ?, datetime('now'), datetime('now'))
+          `).run(taskId, input.prompt, report.adoptedProposal);
+        } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'Failed to save consensus result'); }
       })
       .catch(err => log.error({ err: err.message, sessionId }, 'Consensus failed'));
 
@@ -384,7 +467,8 @@ export async function createGateway() {
     ).all(id) as any[];
 
     if (format === 'markdown') {
-      const participants = JSON.parse(disc.participants_json || '[]');
+      let participants: string[] = [];
+      try { participants = JSON.parse(disc.participants_json || '[]'); } catch { /* corrupted JSON */ }
       const lines: string[] = [
         `# Discussion Export: ${disc.topic}`,
         ``,
@@ -459,7 +543,7 @@ export async function createGateway() {
 
   // ═══ CLI Mesh — Inter-agent awareness ══════════════
   app.post('/api/mesh/heartbeat', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const body = req.body as any;
     if (!body.sessionId || !body.agentId) return { error: 'sessionId and agentId required' };
     const result = await cliMesh.heartbeat(body);
@@ -486,7 +570,7 @@ export async function createGateway() {
 
   // Pre-work conflict check — call before starting a task
   app.post('/api/mesh/check', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { sessionId, agentId, plannedWork, plannedFiles, branch } = req.body as any;
     if (!sessionId || !agentId) return { error: 'sessionId and agentId required' };
     const result = await cliMesh.checkWorkConflicts(
@@ -499,19 +583,19 @@ export async function createGateway() {
   });
 
   app.get('/api/mesh/sessions', async () => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const sessions = await cliMesh.getActiveSessions();
     return { sessions, count: sessions.length };
   });
 
   app.get('/api/mesh/summary', async () => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const summary = await cliMesh.getWorkSummary();
     return { summary };
   });
 
   app.post('/api/mesh/send', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { fromSessionId, fromAgent, toSessionId, content, type } = req.body as any;
     if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
     const delivered = await cliMesh.sendMessage(
@@ -522,13 +606,13 @@ export async function createGateway() {
   });
 
   app.get('/api/mesh/messages/:sessionId', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { sessionId } = req.params as any;
     return { messages: cliMesh.getMessageHistory(sessionId) };
   });
 
   app.post('/api/mesh/complete', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { sessionId, completedWork } = req.body as any;
     if (!sessionId) return { error: 'sessionId required' };
     await cliMesh.complete(sessionId, completedWork);
@@ -537,13 +621,13 @@ export async function createGateway() {
 
   // Recent messages across all sessions (for monitor initial load)
   app.get('/api/mesh/messages', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const limit = Math.min(Number((req.query as any)?.limit) || 50, 200);
     return { messages: cliMesh.getRecentMessages(limit) };
   });
 
   app.post('/api/mesh/disconnect', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { sessionId } = req.body as any;
     if (!sessionId) return { error: 'sessionId required' };
     await cliMesh.disconnect(sessionId);
@@ -557,7 +641,7 @@ export async function createGateway() {
 
   // Broadcast a message from one CLI session to all active sessions
   app.post('/api/mesh/broadcast', async (req) => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const { fromSessionId, fromAgent, content, type } = req.body as any;
     if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
     const delivered = await cliMesh.sendMessage(
@@ -626,7 +710,7 @@ export async function createGateway() {
 
   // ═══ Monitor Overview ══════════════════════════════════
   app.get('/api/monitor/overview', async () => {
-    const { cliMesh } = await import('../core/cli-mesh.js');
+    const cliMesh = await getCliMesh();
     const meshSessions = await cliMesh.getActiveSessions();
     const invocations = invocationTracker.getOverview();
     const allDelegations = delegationManager.getAll(200);
@@ -916,7 +1000,7 @@ export async function createGateway() {
     // 2) mesh_messages 이력에서 from_session→from_agent 역추적 (오래된 세션 포함)
     let sessionMap: Record<string, string> = {};
     try {
-      const { cliMesh } = await import('../core/cli-mesh.js');
+      const cliMesh = await getCliMesh();
       const sessions = await cliMesh.getActiveSessions();
       for (const s of sessions) {
         if (s.sessionId && s.agentId) sessionMap[s.sessionId] = s.agentId;
@@ -999,7 +1083,7 @@ export async function createGateway() {
 
   // ═══ Commander 4-Layer ═════════════════════════════
   app.post('/api/commander', async (req) => {
-    const { commander } = await import('../core/commander.js');
+    const commander = await getCommander();
     const { prompt } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
     const result = await commander.executeCommand(prompt);
@@ -1007,7 +1091,7 @@ export async function createGateway() {
   });
 
   app.get('/api/commander/layers', async () => {
-    const { commander } = await import('../core/commander.js');
+    const commander = await getCommander();
     return { layers: commander.getLayers() };
   });
 
@@ -1101,7 +1185,7 @@ export async function createGateway() {
 
   // ═══ Conductor (Smart Router Auto-Dispatch) ════════
   app.post('/api/conductor', async (req) => {
-    const { smartRouter } = await import('../core/smart-router.js');
+    const smartRouter = await getSmartRouter();
     const { prompt } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
 
@@ -1112,22 +1196,31 @@ export async function createGateway() {
     const taskId = (await import('../utils/id.js')).createTaskId();
 
     // Record task
-    db.prepare(`
-      INSERT INTO tasks (id, mode, prompt, assigned_to, status, priority)
-      VALUES (?, ?, ?, ?, 'assigned', 5)
-    `).run(taskId, decision.mode, prompt, decision.providers[0] || null);
+    try {
+      db.prepare(`
+        INSERT INTO tasks (id, mode, prompt, assigned_to, status, priority)
+        VALUES (?, ?, ?, ?, 'assigned', 5)
+      `).run(taskId, decision.mode, prompt, decision.providers[0] || null);
+    } catch (dbErr) {
+      log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert conductor task');
+      return { error: 'Failed to create task' };
+    }
 
     // Execute via discussion engine for multi-agent modes, or taskQueue for single
     const sessionId = createSessionId();
     if (decision.mode === 'task' && decision.providers.length === 1) {
       taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
         .then(result => {
-          db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-            .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+          try {
+            db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+              .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+          } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
-          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-            .run(err.message, taskId);
+          try {
+            db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
+              .run(err.message, taskId);
+          } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     } else {
       const { discussionEngine: de } = await import('../core/discussion-engine.js');
@@ -1139,12 +1232,16 @@ export async function createGateway() {
         sessionId,
       })
         .then(report => {
-          db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-            .run(report.adoptedProposal, taskId);
+          try {
+            db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
+              .run(report.adoptedProposal, taskId);
+          } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
-          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-            .run(err.message, taskId);
+          try {
+            db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
+              .run(err.message, taskId);
+          } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     }
 
@@ -1160,7 +1257,7 @@ export async function createGateway() {
 
   // ═══ Agent Sessions ════════════════════════════════
   app.post('/api/agent/start', async (req) => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const { prompt, provider, systemPrompt, autoApprove } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
     const agentId = provider || 'codex';
@@ -1169,14 +1266,14 @@ export async function createGateway() {
   });
 
   app.get('/api/agent/sessions', async () => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const active = sessionManager.listSessions();
     const history = sessionManager.getSessionsFromDb(20);
     return { sessions: [...active, ...history.filter(h => !active.find(a => a.id === h.id))] };
   });
 
   app.get('/api/agent/:sessionId/status', async (req) => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const { sessionId } = req.params as any;
     const session = sessionManager.getSession(sessionId);
     if (!session) return { error: 'Session not found' };
@@ -1189,21 +1286,21 @@ export async function createGateway() {
   });
 
   app.post('/api/agent/:sessionId/abort', async (req) => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const { sessionId } = req.params as any;
     const aborted = await sessionManager.abortSession(sessionId);
     return { aborted };
   });
 
   app.post('/api/agent/:sessionId/approve', async (req) => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const { sessionId } = req.params as any;
     const approved = sessionManager.approveAction(sessionId);
     return { approved };
   });
 
   app.post('/api/agent/:sessionId/reject', async (req) => {
-    const { sessionManager } = await import('../agent/session-manager.js');
+    const sessionManager = await getSessionManager();
     const { sessionId } = req.params as any;
     const { reason } = req.body as any;
     const rejected = sessionManager.rejectAction(sessionId, reason);

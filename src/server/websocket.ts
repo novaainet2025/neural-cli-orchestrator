@@ -2,12 +2,52 @@ import http from 'http';
 import { pack, unpack } from 'msgpackr';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { BridgeServerMessage } from '../bridge/types.js';
-import { eventBus, type NCOEvent } from '../core/event-bus.js';
+import { eventBus, type EventHandler, type NCOEvent } from '../core/event-bus.js';
 import { env } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { nanoid } from 'nanoid';
 
 const log = createLogger('websocket');
+
+/** Max keys per client lastState map; LRU eviction when exceeded. */
+const LAST_STATE_MAX_KEYS = 10_000;
+
+function lastStateTouchGet(
+  map: Map<string, Record<string, unknown>>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const v = map.get(key);
+  if (v !== undefined) {
+    map.delete(key);
+    map.set(key, v);
+  }
+  return v;
+}
+
+function lastStateTouchSet(
+  map: Map<string, Record<string, unknown>>,
+  key: string,
+  value: Record<string, unknown>,
+): void {
+  if (map.has(key)) {
+    map.delete(key);
+  }
+  map.set(key, value);
+  while (map.size > LAST_STATE_MAX_KEYS) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
+function stateKeyForDelta(event: NCOEvent): string {
+  const e = event as { agentId?: string; taskId?: string; sessionId?: string; discussionId?: string };
+  if (e.agentId) return `agent:${e.agentId}`;
+  if (e.taskId) return `task:${e.taskId}`;
+  const sid = e.sessionId ?? e.discussionId;
+  if (sid) return `discussion:${sid}`;
+  return `type:${event.type}`;
+}
 
 // ─── RFC 6902 JSON Patch (flat-key diff, no external dep) ─
 type JsonPatchOp = { op: 'add' | 'replace' | 'remove'; path: string; value?: unknown };
@@ -21,8 +61,15 @@ function computeJsonPatch(prev: Record<string, unknown>, next: Record<string, un
       ops.push({ op: 'add', path, value: next[key] });
     } else if (!(key in next)) {
       ops.push({ op: 'remove', path });
-    } else if (JSON.stringify(prev[key]) !== JSON.stringify(next[key])) {
-      ops.push({ op: 'replace', path, value: next[key] });
+    } else {
+      const pv = prev[key], nv = next[key];
+      // Fast path: identical references or primitive equality
+      if (pv === nv) continue;
+      // Fallback: deep comparison via JSON for objects/arrays
+      if (typeof pv === 'object' || typeof nv === 'object') {
+        if (JSON.stringify(pv) === JSON.stringify(nv)) continue;
+      }
+      ops.push({ op: 'replace', path, value: nv });
     }
   }
   return ops;
@@ -40,12 +87,42 @@ interface ClientInfo {
   subscriptions: Set<string>;
   lastSeq: string;
   connectedAt: number;
-  /** When true, event payloads are sent as msgpackr binary; protocol messages via send() stay JSON. */
   isBinary: boolean;
-  /** When true, send JSON Patch diffs for state-update events instead of full payloads. */
   deltaMode: boolean;
-  /** Last-sent state snapshot per event-type key (agentId or taskId) for delta diffing. */
   lastState: Map<string, Record<string, unknown>>;
+  pendingTimers: Set<ReturnType<typeof setTimeout>>;
+}
+
+function pruneLastStateMaps(clients: Map<string, ClientInfo>, event: NCOEvent): void {
+  const isTaskEnd = event.type === 'task:completed' || event.type === 'task:failed' || event.type === 'task:cancelled';
+  const isAgentEnd = event.type === 'agent:terminated' || event.type === 'agent:offline' || event.type === 'agent:failed';
+  const isDiscussionEnd = event.type === 'discussion:completed';
+
+  if (isTaskEnd) {
+    const taskId = (event as { taskId?: string }).taskId;
+    const agentId = (event as { agentId?: string }).agentId;
+    for (const c of clients.values()) {
+      if (taskId) c.lastState.delete(`task:${taskId}`);
+      if (agentId) c.lastState.delete(`agent:${agentId}`);
+      c.lastState.delete(`type:${event.type}`);
+    }
+  } else if (isAgentEnd) {
+    const agentId = (event as { agentId?: string }).agentId;
+    if (agentId) {
+      for (const c of clients.values()) {
+        c.lastState.delete(`agent:${agentId}`);
+        c.lastState.delete(`type:${event.type}`);
+      }
+    }
+  } else if (isDiscussionEnd) {
+    const sid = (event as { sessionId?: string }).sessionId || (event as { discussionId?: string }).discussionId;
+    if (sid) {
+      for (const c of clients.values()) {
+        c.lastState.delete(`discussion:${sid}`);
+        c.lastState.delete(`type:${event.type}`);
+      }
+    }
+  }
 }
 
 class RingBuffer<T> {
@@ -74,9 +151,14 @@ class WebSocketBridge {
   private server: http.Server | null = null;
   private clients = new Map<string, ClientInfo>();
   private eventBuffer = new RingBuffer<NCOEvent>(1000);
-  private maxBufferSize = 1000;
   private lastBroadcast = 0;
   private pendingBroadcast: NCOEvent[] = [];
+  private pendingBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private readonly bridgeEventHandler: EventHandler = (event: NCOEvent) => {
+    this.bufferEvent(event);
+    this.broadcastToClients(event);
+  };
 
   async start(): Promise<void> {
     this.server = http.createServer();
@@ -93,16 +175,16 @@ class WebSocketBridge {
         isBinary: false,
         deltaMode: false,
         lastState: new Map(),
+        pendingTimers: new Set(),
       };
       this.clients.set(clientId, client);
 
-      // Handle discussion path: /discussion/:id
       const match = req.url?.match(/^\/discussion\/(.+)$/);
       if (match) {
         client.subscriptions.add(`discussion:${match[1]}`);
       }
 
-      this.send(ws, {
+      this.sendJsonToClient(client, {
         type: 'connected',
         clientId,
         timestamp: new Date().toISOString(),
@@ -124,45 +206,43 @@ class WebSocketBridge {
             this.handleClientMessage(client, msg as Record<string, unknown>);
           }
         } catch {
-          this.send(ws, { type: 'error', message: 'Invalid message' });
+          this.sendJsonToWebSocket(ws, { type: 'error', message: 'Invalid message' });
         }
       });
 
       ws.on('close', () => {
         this.clients.delete(clientId);
+        client.lastState.clear();
         log.debug({ clientId }, 'Client disconnected');
       });
 
       ws.on('error', (err) => {
         log.error({ clientId, err: err.message }, 'WebSocket error');
+        this.clients.delete(clientId);
+        try {
+          ws.terminate();
+        } catch {
+          /* ignore */
+        }
       });
     });
 
-    // Bridge: Event Bus → all WebSocket clients
-    eventBus.on('*', (event: NCOEvent) => {
-      this.bufferEvent(event);
-      this.broadcastToClients(event);
-    });
+    eventBus.on('*', this.bridgeEventHandler);
 
     this.server.listen(env.WS_PORT, '127.0.0.1', () => {
       log.info({ port: env.WS_PORT }, 'WebSocket server listening');
     });
   }
 
-  // ─── Client Message Handling ────────────────────────
   private handleClientMessage(client: ClientInfo, msg: Record<string, unknown>): void {
     if (typeof msg.type !== 'string') {
-      this.send(client.ws, { type: 'echo', received: msg, timestamp: new Date().toISOString() });
+      this.sendJsonToClient(client, { type: 'echo', received: msg, timestamp: new Date().toISOString() });
       return;
     }
     switch (msg.type) {
       case 'init':
-        if (msg.binary === true) {
-          client.isBinary = true;
-        }
-        if (msg.delta === true) {
-          client.deltaMode = true;
-        }
+        if (msg.binary === true) client.isBinary = true;
+        if (msg.delta === true) client.deltaMode = true;
         break;
 
       case 'subscribe': {
@@ -172,7 +252,7 @@ class WebSocketBridge {
         if (taskId) client.subscriptions.add(taskId);
         if (sessionId) client.subscriptions.add(`discussion:${sessionId}`);
         if (agentId) client.subscriptions.add(`agent:${agentId}`);
-        this.send(client.ws, {
+        this.sendJsonToClient(client, {
           type: 'subscribed',
           taskId,
           sessionId,
@@ -183,22 +263,25 @@ class WebSocketBridge {
       }
 
       case 'unsubscribe':
-        if (typeof msg.taskId === 'string') client.subscriptions.delete(msg.taskId);
+        if (typeof msg.taskId === 'string') {
+          client.subscriptions.delete(msg.taskId);
+          client.lastState.delete(msg.taskId);
+        }
         if (typeof msg.sessionId === 'string') {
           client.subscriptions.delete(`discussion:${msg.sessionId}`);
         }
         if (typeof msg.agentId === 'string') {
           client.subscriptions.delete(`agent:${msg.agentId}`);
+          client.lastState.delete(msg.agentId);
         }
-        this.send(client.ws, { type: 'unsubscribed', timestamp: new Date().toISOString() });
+        this.sendJsonToClient(client, { type: 'unsubscribed', timestamp: new Date().toISOString() });
         break;
 
       case 'ping':
-        this.send(client.ws, { type: 'pong', timestamp: Date.now() });
+        this.sendJsonToClient(client, { type: 'pong', timestamp: Date.now() });
         break;
 
       case 'replay': {
-        // Replay events since lastSeq
         const last = msg.lastEventId;
         const lastStr =
           typeof last === 'string' ? last : last != null ? String(last) : '0';
@@ -206,7 +289,6 @@ class WebSocketBridge {
         break;
       }
 
-      // User intervention in discussion
       case 'discussion:intervene':
         if (typeof msg.sessionId === 'string' && typeof msg.content === 'string') {
           eventBus.publish({
@@ -219,11 +301,10 @@ class WebSocketBridge {
         break;
 
       default:
-        this.send(client.ws, { type: 'echo', received: msg, timestamp: new Date().toISOString() });
+        this.sendJsonToClient(client, { type: 'echo', received: msg, timestamp: new Date().toISOString() });
     }
   }
 
-  // ─── Broadcast to matching clients ──────────────────
   private broadcastToClients(event: NCOEvent): void {
     const now = Date.now();
     const elapsed = now - this.lastBroadcast;
@@ -232,7 +313,13 @@ class WebSocketBridge {
       this.pendingBroadcast.push(event);
       const remaining = 16 - elapsed;
       if (this.pendingBroadcast.length === 1) {
-        setTimeout(() => this.flushPendingBroadcast(), remaining);
+        if (this.pendingBroadcastTimer !== null) {
+          clearTimeout(this.pendingBroadcastTimer);
+        }
+        this.pendingBroadcastTimer = setTimeout(() => {
+          this.pendingBroadcastTimer = null;
+          this.flushPendingBroadcast();
+        }, remaining);
       }
       return;
     }
@@ -251,91 +338,163 @@ class WebSocketBridge {
   }
 
   private flushEvent(event: NCOEvent): void {
-    for (const client of this.clients.values()) {
+    // Pre-serialize for non-delta clients (cache per event, not per client)
+    let cachedJson: string | null = null;
+    let cachedBinary: Buffer | null = null;
+
+    const ids = [...this.clients.keys()];
+
+    // Pre-extract event fields once for subscription filtering
+    const taskId = (event as { taskId?: string }).taskId;
+    const sessionId =
+      (event as { sessionId?: string; discussionId?: string }).sessionId ||
+      (event as { discussionId?: string }).discussionId;
+    const evtAgentId =
+      (event as { agentId?: string; from?: string }).agentId ||
+      (event as { from?: string }).from;
+    const discussionKey = sessionId ? `discussion:${sessionId}` : null;
+    const agentKey = evtAgentId ? `agent:${evtAgentId}` : null;
+    const isGlobal = event.type.startsWith('system:') ||
+                     event.type.startsWith('agent:') ||
+                     event.type.startsWith('mesh:') ||
+                     event.type === 'message:broadcast';
+
+    for (const clientId of ids) {
+      const client = this.clients.get(clientId);
+      if (!client) continue;
+
       if (client.ws.readyState !== WebSocket.OPEN) continue;
 
-      // Filter: if client has subscriptions, only send matching events
       if (client.subscriptions.size > 0) {
-        const taskId = (event as { taskId?: string }).taskId;
-        const sessionId =
-          (event as { sessionId?: string; discussionId?: string }).sessionId ||
-          (event as { discussionId?: string }).discussionId;
-        const evtAgentId =
-          (event as { agentId?: string; from?: string }).agentId ||
-          (event as { from?: string }).from;
-        const discussionKey = sessionId ? `discussion:${sessionId}` : null;
-        const agentKey = evtAgentId ? `agent:${evtAgentId}` : null;
-
         const matches = (taskId && client.subscriptions.has(taskId)) ||
                         (discussionKey && client.subscriptions.has(discussionKey)) ||
                         (agentKey && client.subscriptions.has(agentKey));
 
-        // Also always send system events, agent status, and mesh events
-        const isGlobal = event.type.startsWith('system:') ||
-                         event.type.startsWith('agent:') ||
-                         event.type.startsWith('mesh:') ||
-                         event.type === 'message:broadcast';
-
         if (!matches && !isGlobal) continue;
       }
 
-      // Backpressure: check buffered amount
       if (client.ws.bufferedAmount > 1024 * 1024) {
         log.warn({ clientId: client.id }, 'Backpressure: skipping event');
         continue;
       }
 
-      // JSON Patch delta encoding for state-update events
       let sendData: unknown = event;
       if (client.deltaMode && DELTA_EVENT_TYPES.has(event.type)) {
-        const stateKey = (event as any).agentId || (event as any).taskId || event.type;
-        const prev = client.lastState.get(stateKey) ?? {};
+        const stateKey = stateKeyForDelta(event);
+        const prev = lastStateTouchGet(client.lastState, stateKey) ?? {};
         const next = event as unknown as Record<string, unknown>;
         const patch = computeJsonPatch(prev, next);
-        client.lastState.set(stateKey, next);
+        lastStateTouchSet(client.lastState, stateKey, next);
         if (patch.length > 0) {
           sendData = { type: 'patch', target: stateKey, patch, id: event.id };
         } else {
-          continue; // no change — skip send
+          continue;
         }
       }
 
-      const payload = client.isBinary ? pack(sendData) : JSON.stringify(sendData);
-      client.ws.send(payload);
+      let payload: string | Buffer;
+      if (sendData === event) {
+        // Non-delta: use cached serialization
+        if (client.isBinary) {
+          if (cachedBinary === null) cachedBinary = pack(sendData);
+          payload = cachedBinary;
+        } else {
+          if (cachedJson === null) cachedJson = JSON.stringify(sendData);
+          payload = cachedJson;
+        }
+      } else {
+        // Delta patch: unique per client, cannot cache
+        payload = client.isBinary ? pack(sendData) : JSON.stringify(sendData);
+      }
+      if (!this.safeSendPayload(client, payload)) continue;
       client.lastSeq = event.id;
     }
+
+    pruneLastStateMaps(this.clients, event);
   }
 
-  // ─── Replay missed events ──────────────────────────
   private async replayEvents(client: ClientInfo, lastEventId: string): Promise<void> {
     const missed = await eventBus.replaySince(lastEventId);
 
-    this.send(client.ws, {
+    this.sendJsonToClient(client, {
       type: 'replay_start',
       count: missed.length,
       from: lastEventId,
     });
 
     for (const event of missed) {
-      if (client.ws.readyState === WebSocket.OPEN) {
-        const payload = client.isBinary ? pack(event) : JSON.stringify(event);
-        client.ws.send(payload);
-      }
+      if (!this.clients.has(client.id)) return;
+      if (client.ws.readyState !== WebSocket.OPEN) break;
+      const payload = client.isBinary ? pack(event) : JSON.stringify(event);
+      if (!this.safeSendPayload(client, payload)) return;
     }
 
-    this.send(client.ws, { type: 'replay_end', count: missed.length });
+    if (!this.clients.has(client.id)) return;
+    this.sendJsonToClient(client, { type: 'replay_end', count: missed.length });
     log.info({ clientId: client.id, replayed: missed.length }, 'Replay complete');
+    if (client.deltaMode) {
+      client.lastState.clear();
+    }
   }
 
-  // ─── Buffer for short-term replay ──────────────────
   private bufferEvent(event: NCOEvent): void {
     this.eventBuffer.push(event);
   }
 
-  // ─── Helpers ────────────────────────────────────────
-  private send(ws: WebSocket, data: BridgeServerMessage): void {
-    if (ws.readyState === WebSocket.OPEN) {
+  private safeSendPayload(client: ClientInfo, payload: string | Buffer): boolean {
+    if (this.clients.get(client.id) !== client) return false;
+    if (client.ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      client.ws.send(payload);
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn({ clientId: client.id, err: message }, 'WebSocket send failed; removing client');
+      this.clients.delete(client.id);
+      try {
+        client.ws.close();
+      } catch {
+        /* ignore */
+      }
+      return false;
+    }
+  }
+
+  private sendJsonToClient(client: ClientInfo, data: BridgeServerMessage): void {
+    if (this.clients.get(client.id) !== client) return;
+    if (client.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      client.ws.send(JSON.stringify(data));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn({ clientId: client.id, err: message }, 'WebSocket send failed; removing client');
+      this.clients.delete(client.id);
+      try {
+        client.ws.close();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  private sendJsonToWebSocket(ws: WebSocket, data: BridgeServerMessage): void {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    try {
       ws.send(JSON.stringify(data));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn({ err: message }, 'WebSocket send failed');
+      for (const [id, c] of this.clients) {
+        if (c.ws === ws) {
+          this.clients.delete(id);
+          break;
+        }
+      }
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -344,7 +503,20 @@ class WebSocketBridge {
   }
 
   stop(): void {
+    if (this.pendingBroadcastTimer !== null) {
+      clearTimeout(this.pendingBroadcastTimer);
+      this.pendingBroadcastTimer = null;
+    }
+    this.pendingBroadcast = [];
+
+    eventBus.off('*', this.bridgeEventHandler);
+
     for (const client of this.clients.values()) {
+      for (const t of client.pendingTimers) {
+        clearTimeout(t);
+      }
+      client.pendingTimers.clear();
+      client.lastState.clear();
       client.ws.close();
     }
     this.clients.clear();

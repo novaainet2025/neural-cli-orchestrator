@@ -764,7 +764,9 @@ const events=(function(){
         buf[(start+size)%EVENT_RING_CAP]=el;
         size++;
       }else{
-        buf[(start+size-1+EVENT_RING_CAP)%EVENT_RING_CAP]=el;
+        // Buffer full: overwrite newest (start), advance start to drop it
+        buf[start]=el;
+        start=(start+1)%EVENT_RING_CAP;
       }
     },
     get length(){return size;},
@@ -849,27 +851,32 @@ function scheduleMonitorUi(p){
 
   function makeDragger(resizerId, getSize, setSize, minSize){
     const handle=document.getElementById(resizerId);
+    if(!handle)return;
     let startX, startSize;
     handle.addEventListener('mousedown',e=>{
       startX=e.clientX;
       startSize=getSize();
       handle.classList.add('dragging');
       document.body.style.cursor='col-resize';
-      const onMove=e=>{
-        const delta=e.clientX-startX;
-        const newSize=Math.max(minSize, startSize+delta);
-        setSize(newSize);
+      let onMove,onUp;
+      onMove=e=>{
+        try{
+          const delta=e.clientX-startX;
+          const newSize=Math.max(minSize, startSize+delta);
+          setSize(newSize);
+        }catch{}
       };
-      const onUp=()=>{
+      onUp=()=>{
         handle.classList.remove('dragging');
         document.body.style.cursor='';
         document.removeEventListener('mousemove',onMove);
         document.removeEventListener('mouseup',onUp);
-        // Save
-        const s=JSON.parse(localStorage.getItem('nco-monitor-sizes')||'{}');
-        s.left=parseInt(paneL.style.width||'240');
-        s.right=parseInt(paneR.style.width||'320');
-        localStorage.setItem('nco-monitor-sizes',JSON.stringify(s));
+        try{
+          const s=JSON.parse(localStorage.getItem('nco-monitor-sizes')||'{}');
+          s.left=parseInt(paneL.style.width||'240');
+          s.right=parseInt(paneR.style.width||'320');
+          localStorage.setItem('nco-monitor-sizes',JSON.stringify(s));
+        }catch{}
       };
       document.addEventListener('mousemove',onMove);
       document.addEventListener('mouseup',onUp);
@@ -886,6 +893,7 @@ function scheduleMonitorUi(p){
   // So invert the delta for the right panel
   {
     const handle=document.getElementById('resizer-r');
+    if(!handle)return;
     let startX, startSize;
     handle.addEventListener('mousedown',e=>{
       startX=e.clientX;
@@ -928,10 +936,26 @@ function toggleSection(id){
 });
 
 // ── WebSocket ─────────────────────────────────────────
+let _wsReconnectAttempts=0;
+const _WS_MAX_RECONNECT=15;
 function connect(){
   ws=new WebSocket(WS_URL);
-  ws.onopen=()=>{ el('wsDot').className='dot on'; el('wsText').textContent='WS connected'; };
-  ws.onclose=()=>{ el('wsDot').className='dot off'; el('wsText').textContent='WS disconnected'; setTimeout(connect,3000); };
+  ws.onopen=()=>{
+    _wsReconnectAttempts=0;
+    el('wsDot').className='dot on';
+    el('wsText').textContent='WS connected';
+  };
+  ws.onclose=()=>{
+    el('wsDot').className='dot off';
+    if(_wsReconnectAttempts>=_WS_MAX_RECONNECT){
+      el('wsText').textContent='WS reconnect limit reached';
+      return;
+    }
+    const delay=Math.min(30000,1000*Math.pow(2,_wsReconnectAttempts));
+    _wsReconnectAttempts++;
+    el('wsText').textContent='WS reconnecting ('+_wsReconnectAttempts+'/'+_WS_MAX_RECONNECT+')...';
+    setTimeout(connect,delay);
+  };
   ws.onerror=()=>{};
   ws.onmessage=e=>{ try{handleEvent(JSON.parse(e.data));}catch(err){console.warn('[NCO Monitor] WS parse error',err);} };
 }
@@ -1245,10 +1269,10 @@ function renderTopology(){
   // Cache node arrays for hash-guard early-return tooltip path
   _lastCliNodes=cliNodes; _lastAgNodes=agNodes; _lastActiveTasks=activeTasks;
 
-  // ── Build SVG ──
-  let edgesHtml='';
-  let nodesHtml='';
-  let particlesHtml='';
+  // ── Build SVG (array-based for efficient concatenation) ──
+  const _edgeParts=[];
+  const _nodeParts=[];
+  const _particleParts=[];
 
   const meshColors={info:'#1f6feb',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc',error:'#f85149'};
   // B: File type → color mapping for diff visualization
@@ -1267,8 +1291,9 @@ function renderTopology(){
   }
 
   // pulse phase: 0..1 cycle every 2s, used for ripple animations (③)
-  const _phase=(Date.now()%2000)/2000;
-  const _slowPhase=(Date.now()%4000)/4000;
+  const _tpNow=Date.now();
+  const _phase=(_tpNow%2000)/2000;
+  const _slowPhase=(_tpNow%4000)/4000;
 
   // ① Routing path highlight — when CLI has active delegation, draw CLI→NCO→Agent glow path
   Object.values(CLI_TASK_LINKS).forEach(link=>{
@@ -1278,15 +1303,15 @@ function renderTopology(){
     const running=link.tasks.some(t=>t.status==='running'||t.status==='assigned'||t.status==='queued');
     if(!running||Date.now()-link.lastTime>120000)return;
     // Glow path: CLI → NCO Hub
-    edgesHtml+=
+    _edgeParts.push(
       '<line x1="'+cliN.x+'" y1="'+(cliN.y-19)+'" x2="'+ncoX+'" y2="'+(ncoY+ncoR)+'"'+
       ' stroke="#e3b341" stroke-width="3" opacity="0.12" stroke-linecap="round"/>'+
       // Glow path: NCO Hub → Agent
       '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+agN.x+'" y2="'+(agN.y-15)+'"'+
-      ' stroke="#e3b341" stroke-width="3" opacity="0.12" stroke-linecap="round"/>';
+      ' stroke="#e3b341" stroke-width="3" opacity="0.12" stroke-linecap="round"/>');
     // "via NCO" routing label at NCO Hub
-    edgesHtml+=
-      '<text x="'+(ncoX+ncoR+4)+'" y="'+(ncoY+4)+'" font-size="6" fill="#e3b341" opacity="0.7">ROUTE</text>';
+    _edgeParts.push(
+      '<text x="'+(ncoX+ncoR+4)+'" y="'+(ncoY+4)+'" font-size="6" fill="#e3b341" opacity="0.7">ROUTE</text>');
   });
 
   // 1. Heartbeat edges: NCO ↔ CLI (with directional arrow showing CLI reports up)
@@ -1295,14 +1320,14 @@ function renderTopology(){
     const strokeColor=health==='active'?'#388bfd':health==='idle'?'#d29922':'#f85149';
     const op=health==='active'?'0.7':health==='idle'?'0.45':'0.3';
     // NCO → CLI (downward config/command line)
-    edgesHtml+=
+    _edgeParts.push(
       '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+c.x+'" y2="'+(c.y-19)+'"'+
-      ' stroke="'+strokeColor+'" stroke-width="1" stroke-dasharray="4 4" opacity="'+op+'"/>';
+      ' stroke="'+strokeColor+'" stroke-width="1" stroke-dasharray="4 4" opacity="'+op+'"/>');
     // CLI → NCO (upward heartbeat line with arrow)
-    edgesHtml+=
+    _edgeParts.push(
       '<line x1="'+c.x+'" y1="'+(c.y-19)+'" x2="'+ncoX+'" y2="'+(ncoY+ncoR)+'"'+
       ' stroke="'+strokeColor+'" stroke-width="1.5" opacity="'+(health==='active'?'0.6':'0.3')+'"'+
-      ' marker-end="url(#arrowMesh)"/>';
+      ' marker-end="url(#arrowMesh)"/>');
   });
 
   // 2. NCO → Agent backbone edges (thin, always visible)
@@ -1313,9 +1338,9 @@ function renderTopology(){
     const opacity=isActive?'0.7':'0.25';
     const w=isActive?1.5:1;
     const mk=isActive?' marker-end="url(#arrowTask)"':'';
-    edgesHtml+=
+    _edgeParts.push(
       '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+a.x+'" y2="'+(a.y-15)+'"'+
-      ' stroke="'+stroke+'" stroke-width="'+w+'" opacity="'+opacity+'"'+mk+'/>';
+      ' stroke="'+stroke+'" stroke-width="'+w+'" opacity="'+opacity+'"'+mk+'/>');
     if(isActive){
       const key='task::'+a.name;
       if(!TOPO_PARTICLES[key]) TOPO_PARTICLES[key]=[{t:0,speed:0.007+Math.random()*0.005}];
@@ -1323,7 +1348,7 @@ function renderTopology(){
         p.t=(p.t+p.speed)%1;
         const px=ncoX+(a.x-ncoX)*p.t;
         const py=(ncoY+ncoR)+(a.y-15-(ncoY+ncoR))*p.t;
-        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.9"/>';
+        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.9"/>');
       });
     }
   });
@@ -1339,10 +1364,10 @@ function renderTopology(){
     const color=running?'#e3b341':'#484f58';
     const bw=running?2:1;
     const op=running?0.9:0.35;
-    edgesHtml+=
+    _edgeParts.push(
       '<line x1="'+cliN.x+'" y1="'+(cliN.y+19)+'" x2="'+agN.x+'" y2="'+(agN.y-15)+'"'+
       ' stroke="'+color+'" stroke-width="'+bw+'" stroke-dasharray="5 3" opacity="'+op+'"'+
-      (running?' marker-end="url(#arrowTask)"':'')+'/>';
+      (running?' marker-end="url(#arrowTask)"':'')+'/>');
     const midX=(cliN.x+agN.x)/2;
     const midY=((cliN.y+19)+(agN.y-15))/2;
     const topTask=link.tasks[0];
@@ -1361,7 +1386,7 @@ function renderTopology(){
       });
       if(files.length>4)fileDots+='<text x="'+(midX+22)+'" y="'+(midY+15)+'" font-size="5" fill="#484f58">+'+( files.length-4)+'</text>';
       const badgeH=fileCount>0?22:15;
-      edgesHtml+=
+      _edgeParts.push(
         '<rect x="'+(midX-34)+'" y="'+(midY-10)+'" width="68" height="'+badgeH+'" rx="3"'+
         ' fill="#080c12" stroke="'+color+'" stroke-width="0.7" opacity="0.95"/>'+
         '<text x="'+midX+'" y="'+(midY-1)+'" text-anchor="middle" font-size="6.5" fill="'+color+'">'+
@@ -1381,7 +1406,7 @@ function renderTopology(){
         p.t=(p.t+p.speed)%1;
         const px=cliN.x+(agN.x-cliN.x)*p.t;
         const py=(cliN.y+19)+(agN.y-15-(cliN.y+19))*p.t;
-        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.95"/>';
+        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="2.5" fill="#e3b341" opacity="0.95"/>');
       });
     }
   });
@@ -1400,10 +1425,10 @@ function renderTopology(){
     const w=fresh?2:1;
     const mx=(src.x+dst.x)/2;
     const my=Math.min(src.y,dst.y)-40;
-    edgesHtml+=
+    _edgeParts.push(
       '<path d="M'+src.x+','+(src.y)+' Q'+mx+','+my+' '+dst.x+','+dst.y+'"'+
       ' fill="none" stroke="'+color+'" stroke-width="'+w+'" opacity="'+op+'"'+
-      (fresh?' marker-end="url(#arrowMesh)"':'')+'/>';
+      (fresh?' marker-end="url(#arrowMesh)"':'')+'/>');
     if(fresh){
       const key='mesh::'+e.from+'::'+e.to;
       if(!TOPO_PARTICLES[key]) TOPO_PARTICLES[key]=[{t:0,speed:0.012+Math.random()*0.008}];
@@ -1412,7 +1437,7 @@ function renderTopology(){
         const t=p.t;
         const px=(1-t)*(1-t)*src.x+2*(1-t)*t*mx+t*t*dst.x;
         const py=(1-t)*(1-t)*src.y+2*(1-t)*t*my+t*t*dst.y;
-        particlesHtml+='<circle cx="'+px+'" cy="'+py+'" r="2" fill="'+color+'" opacity="0.9"/>';
+        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="2" fill="'+color+'" opacity="0.9"/>');
       });
     }
   });
@@ -1425,15 +1450,15 @@ function renderTopology(){
     // ③ Routing pulse: expanding ring around NCO hub
     const pr=ncoR+4+_phase*10;
     const po=(1-_phase)*0.4;
-    nodesHtml+='<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+pr+'" fill="none" stroke="#e3b341" stroke-width="1.5" opacity="'+po+'"/>';
+    _nodeParts.push('<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+pr+'" fill="none" stroke="#e3b341" stroke-width="1.5" opacity="'+po+'"/>');
   }
-  nodesHtml+=
+  _nodeParts.push(
     '<g class="topo-node" data-tid="nco" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+glowFilter+'>'+
     '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?2.5:1.5)+'"/>'+
     '<text x="'+ncoX+'" y="'+(ncoY-5)+'" text-anchor="middle" font-size="10" fill="#e9d5ff" font-weight="700">NCO</text>'+
     '<text x="'+ncoX+'" y="'+(ncoY+6)+'" text-anchor="middle" font-size="6.5" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
     (ncoHasActive?'ROUTING':'ROUTER')+'</text>'+
-    '</g>';
+    '</g>');
 
   // 5b. CLI Session nodes — ③ heartbeat ripple + ② file count display
   const nodeW=86, nodeH=38;
@@ -1454,15 +1479,15 @@ function renderTopology(){
     if(h==='active'){
       const pr=(nodeW/2+2)+_phase*6;
       const po=(1-_phase)*0.35;
-      nodesHtml+='<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
-        ' rx="6" fill="none" stroke="'+color+'" stroke-width="1" opacity="'+po+'"/>';
+      _nodeParts.push('<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
+        ' rx="6" fill="none" stroke="'+color+'" stroke-width="1" opacity="'+po+'"/>');
     } else if(h==='idle'){
       const pr=(nodeW/2+1)+_slowPhase*3;
       const po=(1-_slowPhase)*0.2;
-      nodesHtml+='<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
-        ' rx="6" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="'+po+'"/>';
+      _nodeParts.push('<rect x="'+(c.x-pr)+'" y="'+(c.y-pr*0.5)+'" width="'+(pr*2)+'" height="'+(pr)+'"'+
+        ' rx="6" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="'+po+'"/>');
     }
-    nodesHtml+=
+    _nodeParts.push(
       '<g class="topo-node" data-tid="'+escHtml(c.agentId)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
       '<rect x="'+(c.x-nodeW/2)+'" y="'+(c.y-nodeH/2)+'" width="'+nodeW+'" height="'+nodeH+'"'+
       ' rx="5" fill="#0a1628" stroke="'+bc+'" stroke-width="'+bw+'"/>'+
@@ -1477,19 +1502,19 @@ function renderTopology(){
       (activeLinks.length>0?
         '<circle cx="'+(c.x+nodeW/2-4)+'" cy="'+(c.y-nodeH/2+4)+'" r="6" fill="#e3b341" opacity="0.95"/>'+
         '<text x="'+(c.x+nodeW/2-4)+'" y="'+(c.y-nodeH/2+7.5)+'" text-anchor="middle" font-size="7" fill="#080c12" font-weight="700">'+activeLinks.length+'</text>':'')+
-      '</g>';
+      '</g>');
     // ② File flow: show first 2 filenames as tiny labels above CLI node when selected
     if(sel&&fileCount>0){
       files.slice(0,2).forEach((f,fi)=>{
         const fname=f.replace(/^.*[\\/]/,'').slice(0,16);
-        nodesHtml+=
+        _nodeParts.push(
           '<rect x="'+(c.x-34)+'" y="'+(c.y-nodeH/2-13-fi*10)+'" width="68" height="9" rx="2"'+
           ' fill="#0d1117" stroke="#1f6feb44" stroke-width="0.5" opacity="0.9"/>'+
-          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-6-fi*10)+'" text-anchor="middle" font-size="6" fill="#79c0ff">\u25a4 '+escHtml(fname)+'</text>';
+          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-6-fi*10)+'" text-anchor="middle" font-size="6" fill="#79c0ff">\u25a4 '+escHtml(fname)+'</text>');
       });
       if(fileCount>2){
-        nodesHtml+=
-          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-9-2*10)+'" text-anchor="middle" font-size="6" fill="#484f58">\u2026+'+(fileCount-2)+' more</text>';
+        _nodeParts.push(
+          '<text x="'+c.x+'" y="'+(c.y-nodeH/2-9-2*10)+'" text-anchor="middle" font-size="6" fill="#484f58">\u2026+'+(fileCount-2)+' more</text>');
       }
     }
   });
@@ -1513,9 +1538,9 @@ function renderTopology(){
     if(isActive){
       const pr=agR+3+_phase*8;
       const po=(1-_phase)*0.45;
-      nodesHtml+='<circle cx="'+a.x+'" cy="'+a.y+'" r="'+pr+'" fill="none" stroke="'+color+'" stroke-width="1.5" opacity="'+po+'"/>';
+      _nodeParts.push('<circle cx="'+a.x+'" cy="'+a.y+'" r="'+pr+'" fill="none" stroke="'+color+'" stroke-width="1.5" opacity="'+po+'"/>');
     }
-    nodesHtml+=
+    _nodeParts.push(
       '<g class="topo-node" data-tid="'+escHtml(a.name)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
       '<circle cx="'+a.x+'" cy="'+a.y+'" r="'+agR+'" fill="#050810" stroke="'+stroke+'" stroke-width="'+bw+'"/>'+
       (isActive?'<circle cx="'+a.x+'" cy="'+a.y+'" r="'+(agR+5)+'" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="0.25" stroke-dasharray="3 3"/>':'')+
@@ -1532,7 +1557,7 @@ function renderTopology(){
       (hasIncoming?
         '<text x="'+a.x+'" y="'+(a.y-agR-4)+'" text-anchor="middle" font-size="5.5" fill="#e3b341" opacity="0.85">'+
         Object.values(CLI_TASK_LINKS).filter(l=>l.agent===a.name&&l.tasks.some(t=>t.status==='running'||t.status==='assigned')).map(l=>l.cli).slice(0,2).join(',')+'</text>':'')+
-      '</g>';
+      '</g>');
   });
 
   // Evict stale TOPO_PARTICLES (memory leak fix — keys were never deleted)
@@ -1555,10 +1580,15 @@ function renderTopology(){
     });
   }
 
-  // Update DOM
-  document.getElementById('topoEdgeLayer').innerHTML=edgesHtml;
-  document.getElementById('topoParticleLayer').innerHTML=particlesHtml;
-  document.getElementById('topoNodeLayer').innerHTML=nodesHtml;
+  // Update DOM — batch to minimize reflows
+  requestAnimationFrame(()=>{
+    const el_e=document.getElementById('topoEdgeLayer');
+    const el_p=document.getElementById('topoParticleLayer');
+    const el_n=document.getElementById('topoNodeLayer');
+    if(el_e)el_e.innerHTML=_edgeParts.join('');
+    if(el_p)el_p.innerHTML=_particleParts.join('');
+    if(el_n)el_n.innerHTML=_nodeParts.join('');
+  });
 
   // Counters
   const nc=document.getElementById('topoNodeCount');
@@ -1901,7 +1931,7 @@ function getTypeCategory(e){
 }
 function getFilteredEvents(){
   return events.filter(e=>{
-    if(focusAgent&&(e.agentId||e.from)!==focusAgent)return false;
+    if(focusAgent&&(e.agentId||e.from)!==focusAgent&&!e.type?.startsWith('system:'))return false;
     if(evtFilter==='all')return true;
     return getTypeCategory(e)===evtFilter;
   });
@@ -1954,16 +1984,20 @@ function renderEvents(rebuild){
   if(rebuild||fkey!==_evtFilterKey){
     list.innerHTML='';_evtDomCount=0;_evtFilterKey=fkey;
   }
-  const show=filtered.slice(0,100);
+  // Viewport-based limit: render only what's visible + buffer
+  const evtItemH=24;
+  const visibleCount=list.clientHeight>0?Math.ceil(list.clientHeight/evtItemH)+10:100;
+  const maxShow=Math.min(Math.max(visibleCount,30),200);
+  const show=filtered.slice(0,maxShow);
   const newCount=show.length;
   if(newCount>_evtDomCount){
     const newEvts=show.slice(0,newCount-_evtDomCount);
     const frag=document.createDocumentFragment();
     newEvts.forEach((e,i)=>frag.appendChild(makeEventRow(e,i===0&&_evtDomCount===0)));
     list.prepend(frag);
-    while(list.children.length>100)list.removeChild(list.lastChild);
+    while(list.children.length>maxShow)list.removeChild(list.lastChild);
   }
-  _evtDomCount=Math.min(newCount,100);
+  _evtDomCount=Math.min(newCount,maxShow);
   const suffix=filtered.length<events.length?' ('+filtered.length+' shown)':'';
   const evtCountEl=el('evtCount');
   if(evtCountEl)evtCountEl.textContent=events.length+' events'+suffix;
@@ -2249,9 +2283,6 @@ function addCommEdge(from,to,content,msgType){
   e.count++;e.lastTime=Date.now();
   e.msgs.unshift({time:Date.now(),content,msgType});
   if(e.msgs.length>20)e.msgs.pop();
-  // Expire edges older than 10min
-  const now=Date.now();
-  Object.keys(COMM_MATRIX).forEach(k=>{if(now-COMM_MATRIX[k].lastTime>600000)delete COMM_MATRIX[k];});
 }
 
 function addCliTaskLink(cliAgentId,agentName,taskId,prompt,status){
@@ -2267,10 +2298,13 @@ function addCliTaskLink(cliAgentId,agentName,taskId,prompt,status){
     link.tasks.unshift({id:taskId,prompt:(prompt||'').slice(0,60),status,time:Date.now()});
     if(link.tasks.length>5)link.tasks.length=5;
   }
-  // Expire links older than 5min
-  const now=Date.now();
-  Object.keys(CLI_TASK_LINKS).forEach(k=>{if(now-CLI_TASK_LINKS[k].lastTime>300000)delete CLI_TASK_LINKS[k];});
 }
+// Timer-based cleanup (every 60s) instead of O(N) on every add call
+setInterval(()=>{
+  const now=Date.now();
+  Object.keys(COMM_MATRIX).forEach(k=>{if(now-COMM_MATRIX[k].lastTime>600000)delete COMM_MATRIX[k];});
+  Object.keys(CLI_TASK_LINKS).forEach(k=>{if(now-CLI_TASK_LINKS[k].lastTime>300000)delete CLI_TASK_LINKS[k];});
+},60000);
 
 function toggleGraphSection(){
   _graphOpen=!_graphOpen;
@@ -3092,7 +3126,9 @@ async function pollTasks(){
     });
     if(activeTab==='sessions')renderTab();
     detectAnomalies();
-  }catch{}
+  }catch(err){
+    console.warn('[NCO Monitor] pollTasks failed',err);
+  }
 }
 
 // ── Mesh polling ──────────────────────────────────────
@@ -3106,7 +3142,11 @@ async function pollMesh(){
     renderMeshNodes();
     updateCounts();
     if(activeTab==='mesh')renderTab();
-  }catch{}
+    el('apiDot').className='dot on';
+  }catch(err){
+    console.warn('[NCO Monitor] pollMesh failed',err);
+    el('apiDot').className='dot off';
+  }
 }
 
 /** Load recent mesh messages into COMM_MATRIX on init (so graph is populated immediately) */
@@ -3358,7 +3398,10 @@ async function init(){
 
   // Animation loops via requestAnimationFrame — aligned to vsync, skips hidden tabs
   let _lastTopoRender=0, _lastGraphRender=0;
+  let _rafActive=true;
+  window.addEventListener('beforeunload',()=>{_rafActive=false;});
   function _topoRafLoop(ts){
+    if(!_rafActive)return;
     if(!document.hidden && ts-_lastTopoRender>=800){
       renderTopology(); _lastTopoRender=ts;
     }
@@ -3366,6 +3409,7 @@ async function init(){
   }
   requestAnimationFrame(_topoRafLoop);
   function _graphRafLoop(ts){
+    if(!_rafActive)return;
     if(!document.hidden && _graphOpen && ts-_lastGraphRender>=1000){
       renderMeshGraph(); _lastGraphRender=ts;
     }

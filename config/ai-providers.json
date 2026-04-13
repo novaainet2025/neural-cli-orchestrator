@@ -11,12 +11,21 @@
       "score": 95,
       "model": "claude-opus-4-6",
       "command": "claude",
-      "args": ["--dangerously-skip-permissions"],
+      "args": [
+        "--dangerously-skip-permissions"
+      ],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["code", "review", "architecture", "security", "decision", "delegation"],
+      "capabilities": [
+        "code",
+        "review",
+        "architecture",
+        "security",
+        "decision",
+        "delegation"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": true,
@@ -30,7 +39,9 @@
       },
       "healthCheck": {
         "command": "claude",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -43,12 +54,20 @@
       "score": 90,
       "model": "multi-llm",
       "command": "opencode",
-      "args": ["run"],
+      "args": [
+        "run"
+      ],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["code", "architecture", "multi-model", "design", "analysis"],
+      "capabilities": [
+        "code",
+        "architecture",
+        "multi-model",
+        "design",
+        "analysis"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": true,
@@ -62,7 +81,9 @@
       },
       "healthCheck": {
         "command": "opencode",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -80,7 +101,13 @@
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["design", "ui-ux", "multimodal", "analysis", "performance"],
+      "capabilities": [
+        "design",
+        "ui-ux",
+        "multimodal",
+        "analysis",
+        "performance"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -94,7 +121,9 @@
       },
       "healthCheck": {
         "command": "gemini",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -112,7 +141,12 @@
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["code", "algorithms", "generation", "testing"],
+      "capabilities": [
+        "code",
+        "algorithms",
+        "generation",
+        "testing"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -126,7 +160,9 @@
       },
       "healthCheck": {
         "command": "codex",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -139,14 +175,25 @@
       "score": 82,
       "model": "openrouter/meta-llama/llama-4-maverick:free",
       "command": "aider",
-      "args": ["--yes", "--no-auto-commits", "--model", "openrouter/meta-llama/llama-4-maverick:free"],
+      "args": [
+        "--yes",
+        "--no-auto-commits",
+        "--model",
+        "openrouter/meta-llama/llama-4-maverick:free"
+      ],
       "env": {
         "OPENROUTER_API_KEY": "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"
       },
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "free",
-      "capabilities": ["code", "refactoring", "git", "editing", "large-changes"],
+      "capabilities": [
+        "code",
+        "refactoring",
+        "git",
+        "editing",
+        "large-changes"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -174,7 +221,9 @@
       },
       "healthCheck": {
         "command": "aider",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -192,7 +241,12 @@
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["review", "analysis", "ide-integration", "bug-detection"],
+      "capabilities": [
+        "review",
+        "analysis",
+        "ide-integration",
+        "bug-detection"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -207,7 +261,9 @@
       "note": "WSL binary at ~/.local/bin/cursor-agent",
       "healthCheck": {
         "command": "cursor-agent",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -220,12 +276,19 @@
       "score": 75,
       "model": "claude-haiku-4.5",
       "command": "copilot",
-      "args": ["--prompt"],
+      "args": [
+        "--prompt"
+      ],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
-      "capabilities": ["completion", "research", "suggestion", "documentation"],
+      "capabilities": [
+        "completion",
+        "research",
+        "suggestion",
+        "documentation"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -240,7 +303,9 @@
       "note": "GitHub Copilot CLI v1.0.22. Uses claude-haiku-4.5 via Copilot API.",
       "healthCheck": {
         "command": "copilot",
-        "args": ["--version"],
+        "args": [
+          "--version"
+        ],
         "timeout": 5000
       }
     },
@@ -276,7 +341,13 @@
       "concurrency": 2,
       "rateLimitRpm": 10,
       "cost": "free",
-      "capabilities": ["code", "analysis", "general", "reasoning", "research"],
+      "capabilities": [
+        "code",
+        "analysis",
+        "general",
+        "reasoning",
+        "research"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -311,7 +382,12 @@
       "concurrency": 1,
       "rateLimitRpm": 5,
       "cost": "free",
-      "capabilities": ["validation", "testing", "local-inference", "verification"],
+      "capabilities": [
+        "validation",
+        "testing",
+        "local-inference",
+        "verification"
+      ],
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
