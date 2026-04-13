@@ -165,8 +165,9 @@ export async function createGateway() {
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
       .then(result => {
+        const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
         db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-          .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+          .run(result.success ? 'completed' : 'failed', response, taskId);
       })
       .catch(err => {
         db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
@@ -516,18 +517,7 @@ export async function createGateway() {
     const delivered = await cliMesh.sendMessage(
       fromSessionId, fromAgent || 'unknown', toSessionId || '*', content, type || 'info',
     );
-    // Broadcast new mesh message to dashboard
-    await eventBus.publish({
-      type: 'mesh:message',
-      message: {
-        from: fromSessionId,
-        fromAgent: fromAgent || 'unknown',
-        to: toSessionId || '*',
-        content,
-        messageType: type || 'info',
-        createdAt: new Date().toISOString(),
-      },
-    } as any);
+    // cli-mesh.sendMessage already publishes mesh:message event
     return { delivered };
   });
 
@@ -543,6 +533,13 @@ export async function createGateway() {
     if (!sessionId) return { error: 'sessionId required' };
     await cliMesh.complete(sessionId, completedWork);
     return { completed: true };
+  });
+
+  // Recent messages across all sessions (for monitor initial load)
+  app.get('/api/mesh/messages', async (req) => {
+    const { cliMesh } = await import('../core/cli-mesh.js');
+    const limit = Math.min(Number((req.query as any)?.limit) || 50, 200);
+    return { messages: cliMesh.getRecentMessages(limit) };
   });
 
   app.post('/api/mesh/disconnect', async (req) => {
@@ -566,17 +563,7 @@ export async function createGateway() {
     const delivered = await cliMesh.sendMessage(
       fromSessionId, fromAgent || 'unknown', '*', content, type || 'info',
     );
-    await eventBus.publish({
-      type: 'mesh:message',
-      message: {
-        from: fromSessionId,
-        fromAgent: fromAgent || 'unknown',
-        to: '*',
-        content,
-        messageType: type || 'info',
-        createdAt: new Date().toISOString(),
-      },
-    } as any);
+    // cli-mesh.sendMessage already publishes mesh:message event
     return { delivered };
   });
 

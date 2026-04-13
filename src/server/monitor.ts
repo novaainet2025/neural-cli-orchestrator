@@ -980,13 +980,18 @@ function handleEvent(evt){
     return;
   }
   if(evt.type==='mesh:message'){
-    const m=evt.message;
+    // Support both wrapped (evt.message) and top-level field formats
+    const m=evt.message||((evt.fromAgent||evt.from)?{
+      from:evt.from,fromAgent:evt.fromAgent,to:evt.to,
+      content:evt.content||'',messageType:evt.messageType||'info',
+      createdAt:evt.createdAt||new Date().toISOString()
+    }:null);
     if(m){ meshMessages.unshift(m); if(meshMessages.length>200)meshMessages.length=200; }
-    events.unshift({...evt,agentId:m?.fromAgent||'mesh',_isMesh:true});
+    events.unshift({...evt,agentId:m?.fromAgent||m?.from_agent||'mesh',_isMesh:true});
     // Track in COMM_MATRIX for graph visualization (resolve sessionId → agentId)
     if(m){
       const _gf=m.fromAgent||m.from_agent||'?';
-      const _gtRaw=m.to||'*';
+      const _gtRaw=m.to||m.to_session||'*';
       const _gt=_gtRaw==='*'?'*':(meshSessions[_gtRaw]?.agentId||_gtRaw);
       const _gtype=m.messageType||m.type||'info';
       addCommEdge(_gf,_gt,m.content||'',_gtype);
@@ -1049,6 +1054,33 @@ function handleEvent(evt){
       discussions.unshift({sessionId:evt.sessionId,topic:evt.topic,mode:evt.mode,
         participants:evt.participants||[],status:'active',lastEvent:evt.type,
         lastUpdate:evt.timestamp,consensusRate:0,currentRound:0});
+    }
+    // 토론 참여 에이전트 → 토폴로지 에지 활성화
+    if(evt.type==='discussion:provider_started'&&evt.agentId){
+      addCliTaskLink('NCO',evt.agentId,evt.sessionId||'disc','💬 토론 참여','running');
+    }
+    if(evt.type==='discussion:provider_completed'&&evt.agentId){
+      addCliTaskLink('NCO',evt.agentId,evt.sessionId||'disc','💬 토론 완료','completed');
+    }
+    if(evt.type==='discussion:started'&&evt.participants){
+      (evt.participants||[]).forEach(p=>addCliTaskLink('NCO',p,evt.sessionId||'disc','💬 '+((evt.topic||'').slice(0,30)),'running'));
+    }
+    // 토론 메시지를 통신 라인(meshMessages + commMatrix)에 반영
+    if(evt.type==='discussion:provider_completed'&&evt.agentId&&evt.content){
+      const dm={from:evt.agentId,fromAgent:evt.agentId,to:'discussion',
+        content:(evt.content||'').slice(0,200),messageType:'discussion',
+        createdAt:evt.timestamp||new Date().toISOString()};
+      meshMessages.unshift(dm); if(meshMessages.length>200)meshMessages.length=200;
+      addCommEdge(evt.agentId,'discussion',dm.content,'discussion');
+      addLaneEvt(evt.agentId,'msg','💬→discussion');
+      pushFeed('💬',evt.agentId,(evt.content||'').slice(0,60),'lf-msg');
+    }
+    if(evt.type==='discussion:message'&&evt.from&&evt.content){
+      const dm2={from:evt.from,fromAgent:evt.from,to:'discussion',
+        content:(evt.content||'').slice(0,200),messageType:'discussion',
+        createdAt:evt.timestamp||new Date().toISOString()};
+      meshMessages.unshift(dm2); if(meshMessages.length>200)meshMessages.length=200;
+      addCommEdge(evt.from,'discussion',dm2.content,'discussion');
     }
   }
 
@@ -1260,8 +1292,8 @@ function renderTopology(){
   // 1. Heartbeat edges: NCO ↔ CLI (with directional arrow showing CLI reports up)
   cliNodes.forEach(c=>{
     const health=meshHealth(c.session.lastHeartbeat);
-    const strokeColor=health==='active'?'#1f3a5f':health==='idle'?'#d2992233':'#f8514922';
-    const op=health==='active'?'0.6':health==='idle'?'0.35':'0.2';
+    const strokeColor=health==='active'?'#388bfd':health==='idle'?'#d29922':'#f85149';
+    const op=health==='active'?'0.7':health==='idle'?'0.45':'0.3';
     // NCO → CLI (downward config/command line)
     edgesHtml+=
       '<line x1="'+ncoX+'" y1="'+(ncoY+ncoR)+'" x2="'+c.x+'" y2="'+(c.y-19)+'"'+
@@ -1269,8 +1301,8 @@ function renderTopology(){
     // CLI → NCO (upward heartbeat line with arrow)
     edgesHtml+=
       '<line x1="'+c.x+'" y1="'+(c.y-19)+'" x2="'+ncoX+'" y2="'+(ncoY+ncoR)+'"'+
-      ' stroke="'+strokeColor+'" stroke-width="1.5" opacity="'+(health==='active'?'0.5':'0.2')+'"'+
-      (health==='active'?' marker-end="url(#arrowMesh)"':'')+'/>';
+      ' stroke="'+strokeColor+'" stroke-width="1.5" opacity="'+(health==='active'?'0.6':'0.3')+'"'+
+      ' marker-end="url(#arrowMesh)"/>';
   });
 
   // 2. NCO → Agent backbone edges (thin, always visible)
@@ -1362,7 +1394,7 @@ function renderTopology(){
     if(e.to==='*'){dst={x:ncoX,y:ncoY};}
     else{dst=cliNodes.find(c=>c.agentId===e.to);}
     if(!dst)return;
-    const color=meshColors[e.msgType]||'#3fb950';
+    const color=meshColors[e.msgs[0]?.msgType]||meshColors[e.msgType]||'#3fb950';
     const fresh=Date.now()-e.lastTime<30000;
     const op=fresh?'0.85':'0.3';
     const w=fresh?2:1;
@@ -2054,10 +2086,11 @@ function renderTab(){
             const selCls=selIdx===0?' sel-1':selIdx===1?' sel-2':'';
             const cr=Math.round((d.consensusRate||0)*100);
             const crCls=cr>=70?'ok':cr>=40?'warn':'info';
+            const sid=escHtml(d.sessionId||'');
             return '<div class="disc-item'+selCls+'" style="display:flex;align-items:flex-start;gap:6px;padding:8px">'+
               '<input type="checkbox" class="disc-chk" '+(selIdx>=0?'checked':'')+
-                ' onchange="toggleSessionSel(\\''+escHtml(d.sessionId||'')+'\\')">'+
-              '<div style="flex:1;min-width:0">'+
+                ' onchange="toggleSessionSel(\\''+sid+'\\')">'+
+              '<div style="flex:1;min-width:0;cursor:pointer" onclick="toggleDiscDetail(\\''+sid+'\\')">'+
                 '<div class="dt">'+escHtml(d.mode||'')+': '+escHtml((d.topic||'').slice(0,70))+'</div>'+
                 '<div class="dm" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">'+
                   '<span class="cmp-badge info">'+escHtml(d.status||'')+'</span>'+
@@ -2066,7 +2099,8 @@ function renderTab(){
                   (d.participants||[]).map(p=>'<span class="cmp-badge info" style="font-size:9px">'+escHtml(p)+'</span>').join('')+
                 '</div>'+
               '</div>'+
-            '</div>';
+            '</div>'+
+            '<div id="disc-detail-'+sid+'" class="disc-detail" style="display:none;padding:4px 12px 12px 32px"></div>';
           }).join('')
         : '<div class="empty">No discussions yet</div>');
     }
@@ -2557,7 +2591,7 @@ function renderOverviewTab(){
     id,x:VW-55,y:nodeY(i,Math.min(aiIds.length,9),VH),
     color:topoAgentColor(id)||agentColor(id)||'#8b949e'
   }));
-  // Edges
+  // Edges: CLI_TASK_LINKS (delegation)
   Object.values(CLI_TASK_LINKS).forEach(link=>{
     if(now-link.lastTime>30000&&!link.tasks.some(t=>t.status==='running'||t.status==='assigned'))return;
     const src=cliNodes.find(n=>n.id===link.cli)||aiNodes.find(n=>n.id===link.cli);
@@ -2572,6 +2606,45 @@ function renderOverviewTab(){
     gSvg+='<path d="M'+src.x+' '+src.y+' Q'+mx+' '+cy+' '+dst.x+' '+dst.y+'" fill="none" stroke="'+ec+'" stroke-width="'+(running?2:1)+'" opacity="0.65"'+(queued?' stroke-dasharray="4 3"':failed?' stroke-dasharray="2 3"':'')+'/>';
     if(running)gSvg+='<circle r="3" fill="'+ec+'" opacity="0.8"><animateMotion dur="1.4s" repeatCount="indefinite" path="M'+src.x+' '+src.y+' Q'+mx+' '+cy+' '+dst.x+' '+dst.y+'"/></circle>';
   });
+  // Edges: COMM_MATRIX (mesh messages between sessions)
+  Object.values(COMM_MATRIX).forEach(e=>{
+    const src=cliNodes.find(n=>n.id===e.from)||aiNodes.find(n=>n.id===e.from);
+    if(!src)return;
+    let dst;
+    if(e.to==='*'){dst={x:VW/2,y:VH/2,color:'#7c3aed'};}
+    else{dst=cliNodes.find(n=>n.id===e.to)||aiNodes.find(n=>n.id===e.to);}
+    if(!dst)return;
+    const fresh=now-e.lastTime<30000;
+    const ECOL2={info:'#1f6feb',warning:'#d29922',conflict:'#f85149',request:'#a5b4fc'};
+    const lastType=e.msgs[0]?.msgType||'info';
+    const ec=ECOL2[lastType]||'#1f6feb';
+    const mx=(src.x+dst.x)/2;
+    const cy2=Math.min(src.y,dst.y)-20;
+    gSvg+='<path d="M'+src.x+' '+src.y+' Q'+mx+' '+cy2+' '+dst.x+' '+dst.y+'" fill="none" stroke="'+ec+'" stroke-width="'+(fresh?2:1)+'" opacity="'+(fresh?0.85:0.4)+'"'+(fresh?'':' stroke-dasharray="4 3"')+'/>';
+    // Count label
+    const lx=mx,ly=cy2-4;
+    gSvg+='<text x="'+lx+'" y="'+ly+'" font-size="7" font-family="monospace" fill="'+ec+'" text-anchor="middle" opacity="'+(fresh?0.9:0.5)+'">'+e.count+'</text>';
+    if(fresh)gSvg+='<circle r="2.5" fill="'+ec+'" opacity="0.85"><animateMotion dur="1.2s" repeatCount="indefinite" path="M'+src.x+' '+src.y+' Q'+mx+' '+cy2+' '+dst.x+' '+dst.y+'"/></circle>';
+  });
+  // Edges: Heartbeat links (CLI ↔ CLI via mesh — always show when multiple CLIs exist)
+  if(cliNodes.length>=2){
+    for(let i=0;i<cliNodes.length;i++){
+      for(let j=i+1;j<cliNodes.length;j++){
+        const a=cliNodes[i],b=cliNodes[j];
+        // Skip if already has a COMM_MATRIX edge
+        const hasEdge=Object.values(COMM_MATRIX).some(e=>
+          (e.from===a.id&&e.to===b.id)||(e.from===b.id&&e.to===a.id));
+        if(hasEdge)continue;
+        const ha=meshHealth(cliSessions.find(s=>s.agentId===a.id)?.lastHeartbeat);
+        const hb=meshHealth(cliSessions.find(s=>s.agentId===b.id)?.lastHeartbeat);
+        const bothActive=ha==='active'&&hb==='active';
+        const lineColor=bothActive?'#1f6feb':'#30363d';
+        const lineOp=bothActive?0.35:0.15;
+        gSvg+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+b.x+'" y2="'+b.y+'"'+
+          ' stroke="'+lineColor+'" stroke-width="0.8" stroke-dasharray="2 3" opacity="'+lineOp+'"/>';
+      }
+    }
+  }
   // File Conflict edges — orange arcs between CLI nodes sharing files
   for(let i=0;i<cliSessions.length;i++){
     for(let j=i+1;j<cliSessions.length;j++){
@@ -3036,6 +3109,26 @@ async function pollMesh(){
   }catch{}
 }
 
+/** Load recent mesh messages into COMM_MATRIX on init (so graph is populated immediately) */
+async function loadRecentMessages(){
+  try{
+    const d=await(await fetch(API+'/api/mesh/messages?limit=50')).json();
+    const msgs=d.messages||[];
+    // Resolve session IDs to agent IDs using current meshSessions
+    msgs.reverse().forEach(m=>{
+      const fromAgent=m.from_agent||meshSessions[m.from_session]?.agentId||m.from_session||'?';
+      const toRaw=m.to_session||'*';
+      const toAgent=toRaw==='*'?'*':(meshSessions[toRaw]?.agentId||toRaw);
+      const msgType=m.type||'info';
+      const createdAt=new Date(m.created_at||Date.now()).getTime();
+      // Only load messages from last 10 minutes
+      if(Date.now()-createdAt<600000){
+        addCommEdge(fromAgent,toAgent,m.content||'',msgType);
+      }
+    });
+  }catch{}
+}
+
 // ── Init ──────────────────────────────────────────────
 // ── F2: Session Comparison ─────────────────────────────
 function toggleSessionSel(sid){
@@ -3043,6 +3136,33 @@ function toggleSessionSel(sid){
   if(i>=0)_selSessions.splice(i,1);
   else if(_selSessions.length<2)_selSessions.push(sid);
   renderTab();
+}
+async function toggleDiscDetail(sid){
+  const el=document.getElementById('disc-detail-'+sid);
+  if(!el)return;
+  if(el.style.display!=='none'){el.style.display='none';return;}
+  el.innerHTML='<span style="color:#8b949e">로딩 중...</span>';
+  el.style.display='block';
+  try{
+    const res=await fetch(API+'/api/discussions/'+encodeURIComponent(sid)+'/messages');
+    const raw=await res.json();
+    const msgs=Array.isArray(raw)?raw:(raw.messages||[]);
+    if(!msgs.length){el.innerHTML='<span style="color:#484f58">메시지 없음</span>';return;}
+    el.innerHTML=msgs.map(m=>{
+      const from=m.agent_id||m.agentId||m.from||'?';
+      const round=m.round!=null?'R'+m.round:'';
+      const ct=(m.content||m.response||'').slice(0,500);
+      const time=m.created_at?new Date(m.created_at).toLocaleTimeString('ko',{hour12:false}):'';
+      return '<div style="border-left:2px solid '+agentColor(from)+';padding:4px 8px;margin:4px 0;font-size:11px">'+
+        '<div style="display:flex;gap:6px;margin-bottom:2px">'+
+          '<span style="color:'+agentColor(from)+';font-weight:bold">'+escHtml(from)+'</span>'+
+          (round?'<span class="cmp-badge info" style="font-size:9px">'+round+'</span>':'')+
+          '<span style="color:#484f58;margin-left:auto">'+time+'</span>'+
+        '</div>'+
+        '<div style="color:#c9d1d9;white-space:pre-wrap;word-break:break-word">'+escHtml(ct)+'</div>'+
+      '</div>';
+    }).join('');
+  }catch(e){el.innerHTML='<span style="color:#f85149">로딩 실패: '+escHtml(String(e))+'</span>';}
 }
 async function fetchAndCompare(){
   if(_selSessions.length!==2){showToast('정확히 2개 세션을 선택하세요','warn');return;}
@@ -3209,6 +3329,7 @@ async function init(){
   }catch{}
 
   await pollMesh();
+  await loadRecentMessages();
   await pollTasks();
   render();
   connect();

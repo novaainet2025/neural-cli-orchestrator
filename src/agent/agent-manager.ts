@@ -100,6 +100,7 @@ class AgentManager {
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
             env: { ...process.env, ...provider.env },
             reject: false,
+            stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
           });
           output = result.stdout || result.stderr || '';
           iterations = 1;
