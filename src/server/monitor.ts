@@ -1397,7 +1397,7 @@ function renderTopology(){
         :
           '<text x="'+midX+'" y="'+(midY+7)+'" text-anchor="middle" font-size="5.5" fill="#484f58">'+
           escHtml(link.cli)+'\u2192'+escHtml(link.agent)+'</text>'
-        );
+        ));
     }
     if(running){
       const pkey='clt::'+link.cli+'::'+link.agent;
