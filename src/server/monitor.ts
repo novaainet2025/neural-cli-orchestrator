@@ -561,6 +561,27 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 ::-webkit-scrollbar-thumb{background:rgba(100,116,139,.25);border-radius:10px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.4)}
 *{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.25) transparent}
+/* ── Debug tab ─────────────────────────────────────────── */
+.dbg-layout{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;box-sizing:border-box}
+.dbg-full{grid-column:1/-1}
+.dbg-panel{background:#0d1117;border:1px solid #21262d;border-radius:6px;overflow:hidden}
+.dbg-ph{font-size:9px;font-weight:700;color:#484f58;letter-spacing:1px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #21262d}
+.dbg-row{display:flex;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid #0d1117}
+.dbg-label{font-size:10px;color:#8b949e;min-width:100px;flex-shrink:0}
+.dbg-bar-wrap{flex:1;height:4px;background:#1a2535;border-radius:2px}
+.dbg-bar-fill{height:4px;border-radius:2px;transition:width .4s}
+.dbg-val{font-size:10px;font-variant-numeric:tabular-nums;min-width:30px;text-align:right;font-weight:700}
+.dbg-actions{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px}
+.dbg-btn{font-size:10px;padding:3px 8px;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#8b949e;cursor:pointer;transition:all .15s}
+.dbg-btn:hover{background:#1f6feb22;border-color:#1f6feb;color:#58a6ff}
+.dbg-ep{display:grid;grid-template-columns:90px 1fr;grid-template-rows:auto auto;gap:2px 8px;padding:5px 8px;border-bottom:1px solid #0d1117}
+.dbg-ep-btn{font-size:10px;padding:2px 6px;background:#161b22;border:1px solid #30363d;border-radius:3px;color:#58a6ff;cursor:pointer;text-align:left;transition:all .15s;white-space:nowrap}
+.dbg-ep-btn:hover{background:#1f6feb22;border-color:#1f6feb}
+.dbg-ep-url{font-size:9px;color:#484f58;align-self:center;font-family:monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dbg-ep-res{grid-column:1/-1;font-size:9px;font-family:monospace;color:#8b949e;white-space:pre-wrap;word-break:break-all;max-height:80px;overflow-y:auto;margin:0;padding:3px 0;border-top:1px solid #161b22}
+.dbg-grid{display:grid;grid-template-columns:130px 1fr;gap:1px 0;padding:6px 8px;font-size:10px}
+.dbg-k{color:#484f58;padding:2px 0}
+.dbg-v{color:#8b949e;font-family:monospace;padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -756,6 +777,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
       <div class="tab" data-tab="discussions" onclick="switchTab('discussions')">Discussions</div>
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
       <div class="tab" data-tab="flow" onclick="switchTab('flow')">⇄ Flow</div>
+      <div class="tab" data-tab="debug" onclick="switchTab('debug')">⚙ Debug</div>
     </div>
     <div class="tab-content" id="tabContent"></div>
   </div>
@@ -2299,6 +2321,8 @@ function renderTab(){
     content.innerHTML=renderFlowTab();
   }else if(activeTab==='overview'){
     content.innerHTML=renderOverviewTab();
+  }else if(activeTab==='debug'){
+    content.innerHTML=renderDebugTab();
   }
 }
 
@@ -3050,6 +3074,99 @@ function renderFlowTab(){
     matrixHtml+delegHtml+
     '<div class="flow-log-hdr"><span>메시지 흐름</span><span style="color:#30363d">'+recentMsgs.length+'건</span></div>'+
     '<div class="flow-log">'+logHtml+'</div>';
+}
+
+function renderDebugTab(){
+  const bufStats=[
+    {label:'Event Ring',val:eventRing.length,max:EVENT_RING_CAP,color:'#58a6ff'},
+    {label:'All Tasks',val:allTasks.length,max:80,color:'#3fb950'},
+    {label:'Mesh Messages',val:meshMessages.length,max:200,color:'#a5b4fc'},
+    {label:'Mesh Sessions',val:Object.keys(meshSessions).length,max:20,color:'#d29922'},
+    {label:'Live Feed',val:LIVE_FEED.length,max:40,color:'#56d364'},
+    {label:'Anomaly Alerts',val:ANOMALY_ALERTS.length,max:10,color:ANOMALY_ALERTS.length>0?'#f85149':'#3fb950'},
+  ];
+  const endpoints=[
+    {label:'Health',path:'/health'},
+    {label:'Providers',path:'/api/ai-providers/status'},
+    {label:'Tasks',path:'/api/tasks?limit=5'},
+    {label:'Metrics',path:'/api/metrics'},
+    {label:'Mesh',path:'/api/mesh/sessions'},
+    {label:'Kanban',path:'/api/kanban'},
+  ];
+  const sysInfo=[
+    ['API URL',API],
+    ['활성 탭',activeTab],
+    ['이벤트 필터',evtFilter],
+    ['포커스 에이전트',focusAgent||'없음'],
+    ['Swimlane 창',(_swWindow/1000)+'s'],
+    ['그래프 상태',_graphOpen?'열림':'닫힘'],
+    ['Comm Matrix',Object.keys(COMM_MATRIX).length+'개'],
+    ['CLI Task 링크',Object.keys(CLI_TASK_LINKS).length+'개'],
+    ['Lane Events',Object.keys(LANE_EVENTS).length+'개 에이전트'],
+    ['MSG Arrows',MSG_ARROWS.length+'개'],
+  ];
+  return '<div class="dbg-layout">'+
+    '<div class="dbg-panel">'+
+      '<div class="dbg-ph">버퍼 상태</div>'+
+      bufStats.map(s=>{
+        const pct=Math.min(100,Math.round(s.val/s.max*100));
+        return '<div class="dbg-row">'+
+          '<span class="dbg-label">'+s.label+'</span>'+
+          '<div class="dbg-bar-wrap"><div class="dbg-bar-fill" style="width:'+pct+'%;background:'+s.color+'"></div></div>'+
+          '<span class="dbg-val" style="color:'+s.color+'">'+s.val+'</span>'+
+        '</div>';
+      }).join('')+
+      '<div class="dbg-ph" style="margin-top:8px">빠른 액션</div>'+
+      '<div class="dbg-actions">'+
+        '<button class="dbg-btn" onclick="if(ws)ws.close();setTimeout(connect,300)">⟳ WS 재연결</button>'+
+        '<button class="dbg-btn" onclick="setEvtFilter(\'all\');renderEvents()">⊘ 필터 초기화</button>'+
+        '<button class="dbg-btn" onclick="ANOMALY_ALERTS.splice(0);renderTab()">✓ 알림 지우기</button>'+
+        '<button class="dbg-btn" onclick="localStorage.clear();location.reload()">↺ 캐시 초기화</button>'+
+        '<button class="dbg-btn" onclick="dbgExportState()">↓ 상태 내보내기</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="dbg-panel">'+
+      '<div class="dbg-ph">API 엔드포인트 테스터</div>'+
+      endpoints.map(e=>{
+        const rid='dbg-res-'+e.label.replace(/\s/g,'_');
+        return '<div class="dbg-ep">'+
+          '<button class="dbg-ep-btn" onclick="dbgTest(\''+API+e.path+'\',\''+rid+'\')">'+e.label+'</button>'+
+          '<span class="dbg-ep-url">'+escHtml(e.path)+'</span>'+
+          '<pre class="dbg-ep-res" id="'+rid+'">–</pre>'+
+        '</div>';
+      }).join('')+
+    '</div>'+
+    '<div class="dbg-panel dbg-full">'+
+      '<div class="dbg-ph">시스템 정보</div>'+
+      '<div class="dbg-grid">'+
+        sysInfo.map(([k,v])=>'<span class="dbg-k">'+escHtml(k)+'</span><span class="dbg-v">'+escHtml(String(v))+'</span>').join('')+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+async function dbgTest(url,resId){
+  const el2=document.getElementById(resId);
+  if(!el2)return;
+  el2.textContent='로딩 중...';
+  el2.style.color='#8b949e';
+  try{
+    const t0=Date.now();
+    const r=await fetch(url);
+    const d=await r.json();
+    const ms=Date.now()-t0;
+    el2.style.color='#3fb950';
+    el2.textContent=r.status+' OK ('+ms+'ms)\n'+JSON.stringify(d,null,2).slice(0,400);
+  }catch(e){
+    el2.style.color='#f85149';
+    el2.textContent=String(e);
+  }
+}
+function dbgExportState(){
+  const state={tasks:allTasks.length,meshSessions:Object.keys(meshSessions),anomalies:ANOMALY_ALERTS,evtFilter,activeTab,commMatrix:Object.keys(COMM_MATRIX).length,ts:new Date().toISOString()};
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}));
+  a.download='nco-debug-'+Date.now()+'.json';
+  a.click();
 }
 
 function render(){ renderAgents(); renderEvents(); renderTab(); updateCounts(); }
