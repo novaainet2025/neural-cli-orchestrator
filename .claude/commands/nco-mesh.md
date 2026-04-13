@@ -15,6 +15,19 @@
 
 ACTION=$(echo "$ARGUMENTS" | cut -d' ' -f1)
 
+# ── 자연어 감지: "claude-3과 인사해" → "send @claude-3 인사해" ──
+# claude-N + 조사(과/에게/한테/에/와) 패턴 감지
+if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)(과|에게|한테|에|와|,)'; then
+  _NL_TARGET=$(echo "$ACTION" | sed -E 's/(과|에게|한테|에|와|,)$//')
+  _NL_MSG=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
+  ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
+  ACTION="send"
+elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)' && [ "$ACTION" != "send" ]; then
+  # "@claude-3 안녕" → "send @claude-3 안녕"
+  ARGUMENTS="send $ARGUMENTS"
+  ACTION="send"
+fi
+
 # ── 세션 ID / 이름 결정 (등록된 값과 일치시킴) ──────────────────────
 _CK=$$
 for _i in 1 2 3 4 5; do
@@ -141,9 +154,17 @@ for rec in recs:
       TO="*"
       MSG="$TARGET_OR_MSG"
     fi
-    curl -s -X POST http://localhost:6200/api/mesh/send \
+    SEND_RESULT=$(curl -s -X POST http://localhost:6200/api/mesh/send \
       -H "Content-Type: application/json" \
-      -d "{\"fromSessionId\":\"${MY_SESSION_ID}\",\"fromAgent\":\"${MY_NAME}\",\"toSessionId\":\"$TO\",\"content\":\"$MSG\"}" | python3 -m json.tool
+      -d "{\"fromSessionId\":\"${MY_SESSION_ID}\",\"fromAgent\":\"${MY_NAME}\",\"toSessionId\":\"$TO\",\"content\":\"$MSG\"}")
+    DELIVERED=$(echo "$SEND_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('delivered',0))" 2>/dev/null || echo "0")
+    if [ "$DELIVERED" = "0" ] && [ "$TO" != "*" ]; then
+      echo "⚠ $TO 세션이 오프라인 (heartbeat 만료)."
+      echo "  메시지는 DB에 저장됨 — 상대방이 /nco-mesh messages 로 확인 가능."
+      echo "  활성 세션: $(curl -s http://localhost:6200/api/mesh/sessions | python3 -c "import sys,json; d=json.load(sys.stdin); print(', '.join(s['agentId'] for s in d.get('sessions',[])))" 2>/dev/null)"
+    else
+      echo "✓ 메시지 전송 완료 (${MY_NAME} → ${TO}, delivered: ${DELIVERED})"
+    fi
     ;;
 
   messages)
