@@ -15,53 +15,73 @@
 
 ACTION=$(echo "$ARGUMENTS" | cut -d' ' -f1)
 
-# ── 자연어 감지: "claude-3과 인사해" → "send @claude-3 인사해" ──
-# claude-N + 조사(과/에게/한테/에/와) 패턴 감지
+# ── 자연어 감지: 다양한 한국어 패턴 → "send" 액션으로 변환 ──
+
+# 1순위: "claude-N + 조사" 패턴 (claude-3과 인사해)
 if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)(과|에게|한테|에|와|,)'; then
   _NL_TARGET=$(echo "$ACTION" | sed -E 's/(과|에게|한테|에|와|,)$//')
   _NL_MSG=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
   ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
   ACTION="send"
+
+# 2순위: "@claude-N 메시지" 패턴
 elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)' && [ "$ACTION" != "send" ]; then
-  # "@claude-3 안녕" → "send @claude-3 안녕"
   ARGUMENTS="send $ARGUMENTS"
+  ACTION="send"
+
+# 3순위: 자연어 통신 의도 감지 (통신/테스트/보내/전송 + claude/mesh/세션)
+elif echo "$ARGUMENTS" | grep -qiE '(통신|테스트|보내|전송|메시지).*(claude|세션|mesh)|claude.*(통신|테스트|보내|메시지)|(mesh|메시).*(테스트|진행|시작|보내)'; then
+  # 대상 추출: "claude-3에게" → claude-3, 없으면 * (브로드캐스트)
+  _NL_TARGET=$(echo "$ARGUMENTS" | grep -oE 'claude-[0-9]+' | head -1)
+  _NL_TARGET="${_NL_TARGET:-*}"
+  _NL_MSG="[mesh-test] ${MY_NAME:-claude}에서 통신 테스트"
+  if [ "$_NL_TARGET" = "*" ]; then
+    ARGUMENTS="send ${_NL_MSG}"
+  else
+    ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
+  fi
+  ACTION="send"
+
+# 4순위: "모든/전체/다른 클로드/세션" + 작업 지시 → 브로드캐스트 태스크
+elif echo "$ARGUMENTS" | grep -qiE '(모든|전체|다른|모두|전부|모든세션|전체세션|모든클|전체클|클로드들|세션들).*(해|하|진행|실행|시작|검사|점검|분석|수정|확인|보고|작업)|(해|하|진행|실행|시작).*((모든|전체|다른|모두).*클|세션)'; then
+  _NL_MSG="[TASK] $ARGUMENTS"
+  ARGUMENTS="send ${_NL_MSG}"
+  ACTION="send"
+
+# 5순위: 명확한 작업 지시가 포함된 텍스트 (send 없이 직접 입력) → 브로드캐스트
+elif echo "$ARGUMENTS" | grep -qiE '(해줘|해봐|하세요|해주세요|하라|한다|진행해|실행해|시작해|확인해|수정해|분석해|점검해|보고해|검사해|조회해|테스트해|만들어|구현해|최적화|리팩토링|배포)' && [ "$ACTION" != "done" ] && [ "$ACTION" != "check" ] && [ "$ACTION" != "send" ] && [ "$ACTION" != "messages" ] && [ "$ACTION" != "ping" ]; then
+  _NL_TARGET=$(echo "$ARGUMENTS" | grep -oE 'claude-[0-9]+' | head -1)
+  if [ -n "$_NL_TARGET" ]; then
+    _NL_MSG="[TASK] $(echo "$ARGUMENTS" | sed "s/${_NL_TARGET}[^ ]* *//")"
+    ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
+  else
+    _NL_MSG="[TASK] $ARGUMENTS"
+    ARGUMENTS="send ${_NL_MSG}"
+  fi
   ACTION="send"
 fi
 
-# ── 세션 ID / 이름 결정 (등록된 값과 일치시킴) ──────────────────────
-_CK=$$
-for _i in 1 2 3 4 5; do
-  _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
-  [ -z "$_CK" ] && break
-  _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
-  if echo "$_CM" | grep -qE '^(claude|node)$'; then
-    MY_SESSION_ID="$_CK"
-    break
-  fi
-done
-MY_SESSION_ID="${MY_SESSION_ID:-${NCO_SESSION_ID:-${PPID:-$$}}}"
-
-# 이름 결정: NCO_NAME 환경변수를 pid 파일로 교차 검증, 불일치 시 pid 파일 우선
+# ── 세션 ID / 이름 결정 (등록된 PID 파일 기반 — 조상 PID 매칭) ──────
+# 프로세스 트리를 올라가면서 /tmp/nco-names/ 에 등록된 PID와 매칭
+# 가장 가까운(자기에게 가까운) 등록 조상을 선택하여 다른 세션 PID를 잡는 버그 방지
+MY_SESSION_ID=""
 MY_NAME=""
-if [ -n "$NCO_NAME" ]; then
-  # env var의 pid 파일이 존재하고 내 SESSION_ID와 일치하는지 검증
-  _env_pf="/tmp/nco-names/${NCO_NAME}.pid"
-  if [ -f "$_env_pf" ]; then
-    _env_pid=$(cat "$_env_pf" 2>/dev/null | tr -d '[:space:]')
-    [ "$_env_pid" = "$MY_SESSION_ID" ] && MY_NAME="$NCO_NAME"
-  fi
-fi
-# env var가 없거나 검증 실패 시 pid 파일에서 직접 조회
-if [ -z "$MY_NAME" ]; then
+_CK=$$
+for _i in 1 2 3 4 5 6 7 8; do
+  _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
+  [ -z "$_CK" ] || [ "$_CK" = "1" ] && break
+  # 이 조상 PID가 등록된 세션인지 확인
   for _pf in /tmp/nco-names/claude-*.pid; do
     [ -f "$_pf" ] || continue
     _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
-    if [ "$_rp" = "$MY_SESSION_ID" ]; then
+    if [ "$_rp" = "$_CK" ]; then
+      MY_SESSION_ID="$_CK"
       MY_NAME=$(basename "$_pf" .pid)
-      break
+      break 2
     fi
   done
-fi
+done
+MY_SESSION_ID="${MY_SESSION_ID:-${NCO_SESSION_ID:-${PPID:-$$}}}"
 MY_NAME="${MY_NAME:-claude-code}"
 
 # ── heartbeat 헬퍼 함수 ──────────────────────────────
@@ -154,16 +174,77 @@ for rec in recs:
       TO="*"
       MSG="$TARGET_OR_MSG"
     fi
+    # JSON 이스케이프: 백슬래시(\)와 큰따옴표(")를 안전하게 처리
+    MSG_ESCAPED=$(printf '%s' "$MSG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read(),ensure_ascii=False)[1:-1])" 2>/dev/null || printf '%s' "$MSG" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
     SEND_RESULT=$(curl -s -X POST http://localhost:6200/api/mesh/send \
       -H "Content-Type: application/json" \
-      -d "{\"fromSessionId\":\"${MY_SESSION_ID}\",\"fromAgent\":\"${MY_NAME}\",\"toSessionId\":\"$TO\",\"content\":\"$MSG\"}")
+      -d "{\"fromSessionId\":\"${MY_SESSION_ID}\",\"fromAgent\":\"${MY_NAME}\",\"toSessionId\":\"$TO\",\"content\":\"$MSG_ESCAPED\"}")
     DELIVERED=$(echo "$SEND_RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('delivered',0))" 2>/dev/null || echo "0")
-    if [ "$DELIVERED" = "0" ] && [ "$TO" != "*" ]; then
-      echo "⚠ $TO 세션이 오프라인 (heartbeat 만료)."
-      echo "  메시지는 DB에 저장됨 — 상대방이 /nco-mesh messages 로 확인 가능."
+    if [ "$DELIVERED" = "0" ]; then
+      echo "⚠ 메시지 전달 실패 (delivered: 0)"
+      echo "  curl 응답: $SEND_RESULT"
       echo "  활성 세션: $(curl -s http://localhost:6200/api/mesh/sessions | python3 -c "import sys,json; d=json.load(sys.stdin); print(', '.join(s['agentId'] for s in d.get('sessions',[])))" 2>/dev/null)"
+      echo "  (메시지는 DB에 저장됨 — /nco-mesh messages 로 확인 가능)"
     else
       echo "✓ 메시지 전송 완료 (${MY_NAME} → ${TO}, delivered: ${DELIVERED})"
+      # ── 응답 대기: 전체 메시지 스트림에서 응답 확인 (세션 ID 불일치 문제 우회) ──
+      echo ""
+      echo "⏳ 응답 대기 중 (20초)..."
+      sleep 1  # 초기 1초 대기
+      # 20초간 5초 간격으로 폴링 — 응답이 오면 즉시 표시
+      _POLL_END=$(($(date +%s) + 20))
+      _SHOWN=0
+      while [ "$(date +%s)" -lt "$_POLL_END" ]; do
+        _SHOWN=$(curl -s "http://localhost:6200/api/mesh/messages" 2>/dev/null | python3 -c "
+import sys, json
+from datetime import datetime, timezone
+data = json.load(sys.stdin)
+msgs = data.get('messages', data) if isinstance(data, dict) else data
+now = datetime.now(timezone.utc)
+shown = 0
+for m in msgs:
+    fr = m.get('from_agent', m.get('fromAgent', '?'))
+    content = m.get('content', '')
+    created = m.get('created_at', m.get('createdAt', ''))
+    if not content.startswith('[AUTO]'): continue
+    try:
+        ct = datetime.fromisoformat(created.replace('Z','+00:00'))
+        if (now - ct).total_seconds() > 60: continue
+    except: continue
+    shown += 1
+print(shown)
+" 2>/dev/null || echo "0")
+        [ "$_SHOWN" -ge "$DELIVERED" ] && break
+        sleep 1
+      done
+      echo ""
+      echo "=== 수신 메시지 (${_SHOWN}/${DELIVERED}) ==="
+      curl -s "http://localhost:6200/api/mesh/messages" 2>/dev/null | python3 -c "
+import sys, json
+from datetime import datetime, timezone
+try:
+    data = json.load(sys.stdin)
+    msgs = data.get('messages', data) if isinstance(data, dict) else data
+    now = datetime.now(timezone.utc)
+    shown = 0
+    for m in msgs:
+        fr = m.get('from_agent', m.get('fromAgent', '?'))
+        content = m.get('content', '')
+        created = m.get('created_at', m.get('createdAt', ''))
+        if not content.startswith('[AUTO]'): continue
+        try:
+            ct = datetime.fromisoformat(created.replace('Z','+00:00'))
+            if (now - ct).total_seconds() > 60: continue
+        except: continue
+        content_short = content[:200].replace('[AUTO]', '').replace('[TASK-RESULT]', '✅').strip()
+        print(f'  {fr}: {content_short}')
+        shown += 1
+        if shown >= 10: break
+    if shown == 0:
+        print('  (아직 응답 없음 — /nco-mesh messages 로 나중에 확인 가능)')
+except Exception as e:
+    print(f'  조회 실패: {e}')
+" 2>/dev/null
     fi
     ;;
 

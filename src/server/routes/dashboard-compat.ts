@@ -16,7 +16,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   // ═══ Task Master / Kanban ═══════════════════════════
   app.get('/api/task-master/tasks', async (req) => {
     const db = getDb();
-    const limit = Math.min(Number((req.query as any).limit || 100), 500);
+    const rawLimit = Number((req.query as any).limit || 100);
+    const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 200);
     return { tasks: db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?').all(limit) };
   });
 
@@ -37,7 +38,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
   app.get('/api/v2/tasks', async (req) => {
     const db = getDb();
-    const limit = Math.min(Number((req.query as any).limit || 100), 500);
+    const rawLimit = Number((req.query as any).limit || 100);
+    const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 200);
     return { tasks: db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?').all(limit) };
   });
 
