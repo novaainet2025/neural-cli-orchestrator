@@ -193,62 +193,79 @@ class DiscussionEngine {
       consensusRate: 0, responseCount: Object.keys(proposals).length,
     });
 
-    // ─── Round 2+: 상호 평가 ──────────────────────
-    for (let round = 2; round <= maxRounds + 1; round++) {
+    // ─── Round 2: 순차 평가 (이전 응답 참조) ──────────────
+    {
+      const round = 2;
       await eventBus.publish({
-        type: 'discussion:round_started', sessionId, round, totalRounds: maxRounds + 1,
+        type: 'discussion:round_started', sessionId, round, totalRounds: maxRounds,
       });
 
-      // Build evaluation prompt with all previous proposals
       const allProposals = this.formatProposals(proposals);
-      const evalPrompt = round === 2
-        ? `다른 AI들의 제안을 평가하세요:\n\n${allProposals}\n\n각 제안의 장점/단점을 분석하고 1-10점으로 평가하세요. 가장 좋은 제안을 선택하고 이유를 설명하세요.\n\nIMPORTANT: 평가 끝에 반드시 JSON 블록을 포함하세요:\n\`\`\`json\n{"scores": {"agentId": 점수}, "winner": "agentId", "reason": "이유"}\n\`\`\``
-        : `이전 평가를 기반으로 쟁점에 대해 집중 토론하세요:\n\n${allProposals}\n\n합의에 도달할 수 있도록 타협안을 제시하세요.`;
+      const evalPrompt = `다른 AI들의 제안을 평가하세요:\n\n${allProposals}\n\n각 제안의 장점/단점을 분석하고 1-10점으로 평가하세요. 가장 좋은 제안을 선택하고 이유를 설명하세요.\n\nIMPORTANT: 평가 끝에 반드시 JSON 블록을 포함하세요:\n\`\`\`json\n{"scores": {"agentId": 점수}, "winner": "agentId", "reason": "이유"}\n\`\`\``;
 
-      const evaluations = await this.collectResponses(sessionId, round, 'evaluation', participants, evalPrompt);
+      // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음
+      const nonClaude = participants.filter(p => p !== 'claude-code');
+      const evaluations = await this.collectResponsesSequential(
+        sessionId, round, 'evaluation', nonClaude, evalPrompt, allProposals,
+      );
 
-      // Calculate consensus
       const scores = this.extractScores(evaluations, participants);
       consensusRate = this.calculateConsensus(scores, participants);
-
-      // Update trust scores and long-term reputation
       this.updateTrustScores(scores, participants);
       this.updateReputation(scores, participants);
-
       rounds.push({ round, responses: evaluations, evaluations: scores, consensusRate });
       this.saveRound(sessionId, round, 'evaluation', evaluations, scores, consensusRate);
 
-      // PID: adjust threshold based on how far current rate is from target
       const thresholdDelta = this.pid.compute(threshold, consensusRate);
       threshold = Math.max(0.5, Math.min(0.95, threshold - thresholdDelta));
 
       await eventBus.publish({
         type: 'discussion:round_completed', sessionId, round, consensusRate,
       });
-
-      log.info({ sessionId, round, consensusRate, threshold }, 'Round completed');
-
-      // Check consensus
-      if (consensusRate >= threshold) {
-        await eventBus.publish({
-          type: 'discussion:consensus_reached', sessionId, rate: consensusRate,
-        });
-        break;
-      }
+      log.info({ sessionId, round, consensusRate, threshold }, 'Round 2 (sequential) completed');
     }
 
-    // ─── Commander 합성 단계 (commander 모드만) ───
-    if (options.mode === 'commander') {
+    // ─── Final: claude-code 최종 결론 생성 ───────────
+    {
+      const finalRound = 3;
+      await eventBus.publish({
+        type: 'discussion:round_started', sessionId, round: finalRound, totalRounds: maxRounds,
+      });
+
+      const r1Summary = this.formatProposals(rounds[0]?.responses || {});
+      const r2Summary = this.formatProposals(rounds[1]?.responses || {});
+      const synthPrompt = `너는 Commander다. 팀 토론 결과를 종합하여 최종 결론을 생성하라.\n\n=== 라운드 1: 독립 제안 (병렬) ===\n${r1Summary}\n\n=== 라운드 2: 상호 평가 (순차) ===\n${r2Summary}\n\n위 토론을 바탕으로:\n1. 핵심 합의 사항 정리\n2. 주요 쟁점과 해결 방향\n3. 최종 결론 (팀 합의안)\n\n간결하고 명확하게 작성하라.`;
+
       try {
-        const allProposals = this.formatProposals(rounds[0]?.responses || {});
-        const synthPrompt = `You are the Commander. Synthesize these ${participants.length} AI responses into one final consolidated answer:\n\n${allProposals}\n\nProvide the single best answer.`;
-        const synthResponse = await agentManager.executeTask('claude-code', synthPrompt, {
+        const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
+          systemPrompt: `Discussion session: ${sessionId}. You are synthesizing team discussion results.`,
           signal: AbortSignal.timeout(90_000),
         });
-        if (synthResponse.success && synthResponse.output) {
-          rounds.push({ round: rounds.length + 1, responses: { 'commander-synthesis': synthResponse.output }, consensusRate: 1 });
+
+        if (synthResult.success && synthResult.output) {
+          const db2 = getDb();
+          db2.prepare(`
+            INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(createMessageId(), sessionId, 'claude-code', finalRound, 'synthesis', synthResult.output);
+
+          await eventBus.publish({
+            type: 'discussion:provider_completed', sessionId, agentId: 'claude-code', round: finalRound,
+            content: synthResult.output.slice(0, 500),
+          });
+
+          rounds.push({ round: finalRound, responses: { 'claude-code': synthResult.output }, consensusRate: 1 });
+          this.saveRound(sessionId, finalRound, 'synthesis', { 'claude-code': synthResult.output });
+          consensusRate = Math.max(consensusRate, 0.8); // 최종 합성 시 최소 80% 합의
         }
-      } catch { /* synthesis optional */ }
+      } catch (err: any) {
+        log.warn({ err: err.message }, 'Commander synthesis failed');
+      }
+
+      await eventBus.publish({
+        type: 'discussion:round_completed', sessionId, round: finalRound, consensusRate,
+      });
+      log.info({ sessionId, round: finalRound, consensusRate }, 'Final synthesis completed');
     }
 
     // ─── 최종 보고서 생성 ─────────────────────────
@@ -481,6 +498,58 @@ class DiscussionEngine {
           { reason: ex?.message ?? String(err), timeout: isTimeout },
           'Agent failed in discussion',
         );
+      }
+    }
+    return responses;
+  }
+
+  /**
+   * 순차 응답 수집: 각 에이전트가 이전 에이전트의 응답을 볼 수 있음.
+   * Round 2에서 사용 — 1라운드 제안 + 이전 에이전트의 평가를 누적 컨텍스트로 전달.
+   */
+  private async collectResponsesSequential(
+    sessionId: string,
+    round: number,
+    type: string,
+    participants: string[],
+    basePrompt: string,
+    proposalsSummary: string,
+  ): Promise<Record<string, string>> {
+    const responses: Record<string, string> = {};
+    const accumulated: string[] = [];
+
+    for (const pid of participants) {
+      await eventBus.publish({
+        type: 'discussion:provider_started', sessionId, agentId: pid, round,
+      });
+
+      // 이전 에이전트들의 평가를 컨텍스트에 추가
+      let prompt = basePrompt;
+      if (accumulated.length > 0) {
+        prompt += `\n\n=== 이전 에이전트 평가 ===\n${accumulated.join('\n\n')}`;
+      }
+
+      try {
+        const result = await agentManager.executeTask(pid, prompt, {
+          systemPrompt: `You are participating in a team discussion (round ${round}, sequential). Session: ${sessionId}. Review previous evaluations and build on them.`,
+          signal: AbortSignal.timeout(60_000),
+        });
+
+        responses[pid] = result.output;
+        accumulated.push(`[${pid}]\n${result.output.slice(0, 800)}`);
+
+        const db = getDb();
+        db.prepare(`
+          INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(createMessageId(), sessionId, pid, round, type, result.output);
+
+        await eventBus.publish({
+          type: 'discussion:provider_completed', sessionId, agentId: pid, round,
+          content: result.output.slice(0, 500),
+        });
+      } catch (err: any) {
+        log.warn({ agentId: pid, err: err.message }, 'Agent failed in sequential discussion');
       }
     }
     return responses;
