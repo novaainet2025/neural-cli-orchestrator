@@ -6,8 +6,9 @@
 # ║  Windows:  setup.ps1 사용 (WSL2 자동 설치 후 이 스크립트 실행)             ║
 # ║                                                                          ║
 # ║  사용법:                                                                  ║
-# ║    bash setup.sh                          # 대화형 설치                  ║
-# ║    bash setup.sh --no-interactive         # 자동 설치                    ║
+# ║    bash setup.sh                          # 전체 설치 (에이전트 포함)     ║
+# ║    bash setup.sh --no-interactive         # 자동 전체 설치               ║
+# ║    bash setup.sh --skip-agents            # 에이전트 설치 스킵            ║
 # ║    bash setup.sh --skip-vllm             # vLLM 안내 스킵                ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 set -euo pipefail
@@ -22,14 +23,15 @@ warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
 err()  { echo -e "${RED}  ✗${NC} $*" >&2; }
 hdr()  { echo -e "\n${BOLD}${CYAN}━━ $* ━━${NC}"; }
 step() { echo -e "\n${BOLD}[${1}/${TOTAL}] ${2}${NC}"; }
-TOTAL=12
+TOTAL=13
 
 # ── 인수 ──────────────────────────────────────────────────────────────────
-INTERACTIVE=true; SKIP_VLLM=false; DEV_MODE=false
+INTERACTIVE=true; SKIP_VLLM=false; DEV_MODE=false; SKIP_AGENTS=false
 for arg in "${@:-}"; do
   case "$arg" in
     --no-interactive) INTERACTIVE=false ;;
     --skip-vllm)      SKIP_VLLM=true ;;
+    --skip-agents)    SKIP_AGENTS=true ;;
     --dev)            DEV_MODE=true ;;
   esac
 done
@@ -437,24 +439,42 @@ RCEOF
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-# AI 에이전트 설치 (선택)
+# 13. AI 프로바이더 & 에이전트 설치 (기본 포함)
 # ══════════════════════════════════════════════════════════════════════════
 setup_agents() {
+  step 13 "AI 프로바이더 & 에이전트 설치"
+
+  if [[ "$SKIP_AGENTS" == "true" ]]; then
+    warn "에이전트 설치 스킵 (--skip-agents)"
+    info "나중에 실행: bash $NCO_DIR/cli-installs/install-all.sh"
+    return
+  fi
+
+  local AGENT_SCRIPT="$NCO_DIR/cli-installs/install-all.sh"
+  if [[ ! -f "$AGENT_SCRIPT" ]]; then
+    warn "install-all.sh 없음: $AGENT_SCRIPT"
+    return
+  fi
+
   echo ""
-  hdr "AI 에이전트 설치 (선택)"
-  echo "  codex · gemini-cli · aider · opencode 등 NCO에서 사용하는 에이전트"
+  echo -e "  설치 대상 에이전트 (9개):"
+  echo -e "  ${CYAN}claude-code · opencode · gemini-cli · codex · aider${NC}"
+  echo -e "  ${CYAN}cursor-agent · copilot · vllm-env · gemini-api(SDK)${NC}"
   echo ""
 
   if [[ "$INTERACTIVE" == "true" ]]; then
-    read -rp "  AI 에이전트들도 설치할까요? [y/N]: " INSTALL_AGENTS
-    if [[ "$INSTALL_AGENTS" =~ ^[Yy]$ ]]; then
-      bash "$NCO_DIR/cli-installs/install-all.sh"
+    read -rp "  지금 설치할까요? [Y/n]: " CONFIRM
+    # 기본값 Y (엔터만 쳐도 설치)
+    if [[ -z "$CONFIRM" ]] || [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+      info "AI 에이전트 전체 설치 시작..."
+      bash "$AGENT_SCRIPT"
     else
-      info "나중에 실행: bash $NCO_DIR/cli-installs/install-all.sh"
+      info "스킵 — 나중에 실행: bash $NCO_DIR/cli-installs/install-all.sh"
     fi
   else
-    info "에이전트 설치 스킵 (non-interactive)"
-    info "나중에 실행: bash $NCO_DIR/cli-installs/install-all.sh"
+    # --no-interactive: 자동으로 설치
+    info "AI 에이전트 전체 설치 시작 (자동)..."
+    bash "$AGENT_SCRIPT"
   fi
 }
 
@@ -503,6 +523,14 @@ verify() {
   _check "settings.json"   "grep -q mesh-register '$CLAUDE_DIR/settings.json'" "훅 등록됨"
   _check "MCP nco-commands" "python3 -c \"import json; d=json.load(open('$CLAUDE_DIR/claude_desktop_config.json')); exit(0 if 'nco-commands' in d.get('mcpServers',{}) else 1)\"" "등록됨"
   _check "nco 래퍼"         "[ -x '$LOCAL_BIN/nco' ]"                     "$LOCAL_BIN/nco"
+
+  # 에이전트 설치 여부
+  echo ""
+  echo -e "  ${BOLD}에이전트 설치 상태:${NC}"
+  for agent in claude codex aider opencode gemini; do
+    printf "  %-28s" "$agent"
+    command -v "$agent" &>/dev/null && ok "설치됨" || warn "미설치"
+  done
   echo ""
 }
 
@@ -526,7 +554,6 @@ print_done() {
   echo -e "  ${CYAN}6.${NC} claude-gemma       (로컬 AI 사용)"
   echo ""
   echo -e "  API 키 설정: ${CYAN}$NCO_DIR/.env${NC}"
-  echo -e "  에이전트 설치: ${CYAN}bash $NCO_DIR/cli-installs/install-all.sh${NC}"
   echo ""
 }
 
