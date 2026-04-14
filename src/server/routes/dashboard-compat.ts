@@ -259,6 +259,18 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   });
 
   // ═══ Learning ═══════════════════════════════════════
+  app.get('/api/learn/search', async (req) => {
+    try {
+      const { knowledgeBase } = await import('../../core/knowledge-base.js');
+      const { q, keywords, project, limit } = req.query as any;
+      const searchTerms = q || keywords;
+      if (!searchTerms) return { data: [], message: 'q or keywords parameter required' };
+      return { data: knowledgeBase.query(searchTerms, project, Number(limit) || 10) };
+    } catch {
+      return { data: [] };
+    }
+  });
+
   app.get('/api/learning', async () => {
     try {
       const { knowledgeBase } = await import('../../core/knowledge-base.js');
@@ -308,8 +320,18 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   });
 
   // ═══ Catch-all for unimplemented routes ═════════════
+  // Note: This must be the LAST route registered. Routes added in gateway.ts
+  // before registerDashboardRoutes() take priority via Fastify's route matching.
   app.all('/api/*', async (req, reply) => {
-    // Return empty data instead of 404 for dashboard compat
+    // Handle /api/learn/search inline (catch-all overrides specific routes in Fastify)
+    const urlPath = req.url.split('?')[0];
+    if (urlPath === '/api/learn/search' && req.method === 'GET') {
+      const { knowledgeBase } = await import('../../core/knowledge-base.js');
+      const { q, keywords, project, limit } = req.query as any;
+      const searchTerms = q || keywords;
+      if (!searchTerms) return { data: [], message: 'q or keywords parameter required' };
+      return { data: knowledgeBase.query(searchTerms, project, Number(limit) || 10) };
+    }
     reply.code(200);
     return { data: [], message: `Route ${req.method} ${req.url} — pending implementation` };
   });

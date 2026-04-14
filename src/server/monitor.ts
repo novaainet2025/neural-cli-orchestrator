@@ -2174,8 +2174,8 @@ function renderTab(){
             const sid=escHtml(d.sessionId||'');
             return '<div class="disc-item'+selCls+'" style="display:flex;align-items:flex-start;gap:6px;padding:8px">'+
               '<input type="checkbox" class="disc-chk" '+(selIdx>=0?'checked':'')+
-                ' onchange="toggleSessionSel(\\''+sid+'\\')">'+
-              '<div style="flex:1;min-width:0;cursor:pointer" onclick="toggleDiscDetail(\\''+sid+'\\')">'+
+                ' onchange="toggleSessionSel(\\''+sid+'\&apos;)">'+
+              '<div style="flex:1;min-width:0;cursor:pointer" onclick="toggleDiscDetail(\\''+sid+'\&apos;)">'+
                 '<div class="dt">'+escHtml(d.mode||'')+': '+escHtml((d.topic||'').slice(0,70))+'</div>'+
                 '<div class="dm" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:3px">'+
                   '<span class="cmp-badge info">'+escHtml(d.status||'')+'</span>'+
@@ -3078,7 +3078,7 @@ function renderFlowTab(){
 
 function renderDebugTab(){
   const bufStats=[
-    {label:'Event Ring',val:eventRing.length,max:EVENT_RING_CAP,color:'#58a6ff'},
+    {label:'Event Ring',val:events.length,max:EVENT_RING_CAP,color:'#58a6ff'},
     {label:'All Tasks',val:allTasks.length,max:80,color:'#3fb950'},
     {label:'Mesh Messages',val:meshMessages.length,max:200,color:'#a5b4fc'},
     {label:'Mesh Sessions',val:Object.keys(meshSessions).length,max:20,color:'#d29922'},
@@ -3119,7 +3119,7 @@ function renderDebugTab(){
       '<div class="dbg-ph" style="margin-top:8px">빠른 액션</div>'+
       '<div class="dbg-actions">'+
         '<button class="dbg-btn" onclick="if(ws)ws.close();setTimeout(connect,300)">⟳ WS 재연결</button>'+
-        '<button class="dbg-btn" onclick="setEvtFilter(\'all\');renderEvents()">⊘ 필터 초기화</button>'+
+        '<button class="dbg-btn" onclick="setEvtFilter(&apos;all&apos;);renderEvents()">⊘ 필터 초기화</button>'+
         '<button class="dbg-btn" onclick="ANOMALY_ALERTS.splice(0);renderTab()">✓ 알림 지우기</button>'+
         '<button class="dbg-btn" onclick="localStorage.clear();location.reload()">↺ 캐시 초기화</button>'+
         '<button class="dbg-btn" onclick="dbgExportState()">↓ 상태 내보내기</button>'+
@@ -3130,7 +3130,7 @@ function renderDebugTab(){
       endpoints.map(e=>{
         const rid='dbg-res-'+e.label.replace(/\s/g,'_');
         return '<div class="dbg-ep">'+
-          '<button class="dbg-ep-btn" onclick="dbgTest(\''+API+e.path+'\',\''+rid+'\')">'+e.label+'</button>'+
+          '<button class="dbg-ep-btn" onclick="dbgTest(&apos;'+API+e.path+'&apos;,&apos;'+rid+'&apos;)">'+e.label+'</button>'+
           '<span class="dbg-ep-url">'+escHtml(e.path)+'</span>'+
           '<pre class="dbg-ep-res" id="'+rid+'">–</pre>'+
         '</div>';
@@ -3155,7 +3155,7 @@ async function dbgTest(url,resId){
     const d=await r.json();
     const ms=Date.now()-t0;
     el2.style.color='#3fb950';
-    el2.textContent=r.status+' OK ('+ms+'ms)\n'+JSON.stringify(d,null,2).slice(0,400);
+    el2.textContent=r.status+' OK ('+ms+'ms)\\n'+JSON.stringify(d,null,2).slice(0,400);
   }catch(e){
     el2.style.color='#f85149';
     el2.textContent=String(e);
