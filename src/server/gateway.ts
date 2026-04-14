@@ -1129,6 +1129,8 @@ export async function createGateway() {
     return { results: knowledgeBase.query(keywords, project) };
   });
 
+  // /api/learn/search is registered in dashboard-compat.ts (inside catch-all handler)
+
   app.get('/api/learn/context', async (req) => {
     const { knowledgeBase } = await import('../core/knowledge-base.js');
     const { project } = req.query as any;
