@@ -52,10 +52,12 @@
       "type": "cli",
       "role": "Architect",
       "score": 90,
-      "model": "multi-llm",
+      "model": "openrouter/openai/gpt-oss-120b:free",
       "command": "opencode",
       "args": [
-        "run"
+        "run",
+        "--model",
+        "openrouter/openai/gpt-oss-120b:free"
       ],
       "env": {},
       "concurrency": 4,
@@ -173,13 +175,13 @@
       "type": "cli",
       "role": "Engineer",
       "score": 82,
-      "model": "openrouter/meta-llama/llama-4-maverick:free",
+      "model": "openrouter/openai/gpt-oss-120b:free",
       "command": "aider",
       "args": [
         "--yes",
         "--no-auto-commits",
         "--model",
-        "openrouter/meta-llama/llama-4-maverick:free"
+        "openrouter/openai/gpt-oss-120b:free"
       ],
       "env": {
         "OPENROUTER_API_KEY": "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"
@@ -210,10 +212,10 @@
           "provider": "openrouter",
           "baseUrl": "https://openrouter.ai/api/v1",
           "apiKeyRef": "OPENROUTER_API_KEYS",
-          "model": "openrouter/meta-llama/llama-4-maverick:free"
+          "model": "openrouter/openai/gpt-oss-120b:free"
         },
         "fallback": {
-          "provider": "vllm",
+          "provider": "mlx",
           "baseUrl": "http://localhost:8000/v1",
           "apiKeyRef": null,
           "model": "local-model"
@@ -367,13 +369,13 @@
       }
     },
     {
-      "id": "vllm",
-      "name": "vLLM",
+      "id": "mlx",
+      "name": "MLX (Local)",
       "enabled": true,
       "type": "api",
       "role": "Validator",
       "score": 75,
-      "model": "/mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4",
+      "model": "/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit",
       "command": null,
       "args": [],
       "endpoint": "http://localhost:8000/v1",
@@ -400,20 +402,22 @@
         "style": "rigorous"
       },
       "modelSpec": {
-        "name": "Gemma 4",
+        "name": "Gemma 4 (MLX)",
         "developer": "Google DeepMind",
         "parameters": "26B (Active 4B, MoE)",
-        "quantization": "NVFP4 (modelopt)",
-        "gpu": "RTX 4090 24GB",
-        "vram": "~16GB model + ~8GB KV cache",
+        "quantization": "MLX 4-bit",
+        "gpu": "Apple M-series (Metal)",
+        "vram": "~15GB unified memory",
         "maxModelLen": 8192
       },
-      "note": "Gemma 4 26B NVFP4. Start: source ~/vllm-env/bin/activate && VLLM_NVFP4_GEMM_BACKEND=marlin vllm serve /mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4 --quantization modelopt --dtype auto --kv-cache-dtype fp8 --gpu-memory-utilization 0.85 --max-model-len 8192 --max-num-seqs 4 --trust-remote-code --port 8000",
+      "note": "Gemma 4 26B MLX 4-bit on Apple Silicon. MLX server: pm2 start mlx-server  Proxy: python3 /Users/nova-ai/project/nco/cli-installs/anthropic-mlx-proxy.py 4100  Use as Claude Code: claude-gemma (alias) = ANTHROPIC_BASE_URL=http://localhost:4100 claude",
       "healthCheck": {
         "type": "api",
         "url": "http://localhost:8000/health",
         "timeout": 5000
-      }
+      },
+      "proxy_endpoint": "http://localhost:4100",
+      "updated": "2026-04-15"
     }
   ]
 }
