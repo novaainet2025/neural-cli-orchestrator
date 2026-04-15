@@ -25,6 +25,7 @@ Endpoints proxied:
 import json
 import uuid
 import threading
+import time
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import urlopen, Request
@@ -34,6 +35,10 @@ PROXY_PORT   = 4100
 MLX_BASE     = "http://localhost:8000/v1"
 # Gemma 4 26B on MLX (4K safe, 8K max)
 MAX_TOKENS   = 4096
+
+# ── GPU 직렬화: Metal 크래시 방지 (동시 GPU 요청 1개로 제한) ──────────────────
+_gpu_semaphore = threading.Semaphore(1)
+_gpu_lock_timeout = 180  # 최대 대기 시간(초)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -276,7 +281,11 @@ class ProxyHandler(BaseHTTPRequestHandler):
     # ── /v1/messages ──────────────────────────────────────────────────────────
 
     def _handle_messages(self, req):
+        # ── MLX 헬스 프리체크 (재시도 1회, 3초 대기) ─────────────────────────────
         mlx_model = get_mlx_model()
+        if mlx_model is None:
+            time.sleep(3)
+            mlx_model = get_mlx_model()
         if mlx_model is None:
             self._error(503, "service_unavailable_error",
                         "MLX server not running. Start with: pm2 start mlx-server  "
@@ -314,6 +323,13 @@ class ProxyHandler(BaseHTTPRequestHandler):
             method="POST"
         )
 
+        # ── GPU 세마포어: Metal 크래시 방지 (동시 추론 1개로 직렬화) ──────────────
+        acquired = _gpu_semaphore.acquire(timeout=_gpu_lock_timeout)
+        if not acquired:
+            self._error(503, "service_unavailable_error",
+                        "MLX GPU busy (timeout waiting for semaphore). Try again.")
+            return
+
         try:
             if streaming:
                 self._stream(mlx_http_req, mlx_model)
@@ -323,6 +339,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._error(503, "service_unavailable_error", f"MLX error: {e}")
         except Exception as e:
             self._error(500, "api_error", f"Proxy internal error: {e}")
+        finally:
+            _gpu_semaphore.release()
 
     # ── non-streaming ─────────────────────────────────────────────────────────
 
@@ -339,7 +357,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Connection", "keep-alive")
+        self.send_header("Connection", "close")
         self.end_headers()
 
         def sse(event, data):
@@ -418,6 +436,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
             "usage": {"output_tokens": output_tokens}
         })
         sse("message_stop", {"type": "message_stop"})
+        try:
+            self.wfile.flush()
+        except Exception:
+            pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
