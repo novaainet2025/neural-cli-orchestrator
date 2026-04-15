@@ -362,13 +362,16 @@ class CliMesh {
 
     if (toSessionId === '*') {
       // Broadcast to all active sessions
+      // Skip-self uses BOTH sessionId AND agentId to avoid PPID/sessionId collision
+      // (PPID-derived sessionIds can accidentally match another session's pid)
       const keys = await redis.keys(`${MESH_PREFIX}*`);
       for (const key of keys) {
         if (key.includes(':alias:')) continue; // skip alias keys
         const raw = await redis.get(key);
         if (!raw) continue;
         const session: MeshSession = JSON.parse(raw);
-        if (session.sessionId === fromSessionId) continue; // skip self
+        // Only skip if BOTH sessionId AND agentId match (true self)
+        if (session.sessionId === fromSessionId && session.agentId === fromAgent) continue;
         session.messageQueue.push(message);
         await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
         delivered++;
@@ -660,6 +663,33 @@ class CliMesh {
         WHERE session_id = ?
       `).run(sessionId);
     } catch { /* non-critical */ }
+  }
+
+  /**
+   * Peek messages queued for a session in Redis (real-time inbox).
+   * If drain=true, the queue is cleared after read.
+   * Also resolves agentId aliases (e.g., "claude-1" → canonical sessionId).
+   */
+  async peekPendingMessages(sessionIdOrAgent: string, drain = false): Promise<MeshMessage[]> {
+    if (!isRedisConnected()) return [];
+    const redis = await getRedis();
+
+    // Resolve agentId alias to canonical sessionId
+    let resolved = sessionIdOrAgent;
+    const aliasVal = await redis.get(`${MESH_PREFIX}alias:${sessionIdOrAgent}`);
+    if (aliasVal) resolved = aliasVal;
+
+    const key = `${MESH_PREFIX}${resolved}`;
+    const raw = await redis.get(key);
+    if (!raw) return [];
+    const session: MeshSession = JSON.parse(raw);
+    const pending = session.messageQueue || [];
+
+    if (drain && pending.length > 0) {
+      session.messageQueue = [];
+      await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
+    }
+    return pending;
   }
 
   /**

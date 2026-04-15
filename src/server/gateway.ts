@@ -435,6 +435,25 @@ export async function createGateway() {
     };
   });
 
+  // Start a discussion tied to the real engine (replaces legacy /discussion/start stub)
+  app.post('/api/discussion/start', async (req, reply) => {
+    const body = req.body as any;
+    const topic = body.topic || body.prompt;
+    if (!topic) { reply.code(400); return { error: 'topic or prompt required' }; }
+    const sessionId = body.sessionId || createSessionId();
+    const mode: any = body.mode || 'discussion';
+    reply.code(202);
+    discussionEngine.startDiscussion({
+      topic,
+      mode,
+      providers: body.providers,
+      maxRounds: body.maxRounds ?? body.rounds,
+      consensusThreshold: body.consensusThreshold,
+      sessionId,
+    }).catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
+    return { sessionId, status: 'started', mode, wsUrl: `ws://localhost:${env.WS_PORT}/discussion/${sessionId}` };
+  });
+
   // ═══ Discussions DB ═══════════════════════════════
   app.get('/api/discussions', async () => {
     const db = getDb();
@@ -608,7 +627,11 @@ export async function createGateway() {
   app.get('/api/mesh/messages/:sessionId', async (req) => {
     const cliMesh = await getCliMesh();
     const { sessionId } = req.params as any;
-    return { messages: cliMesh.getMessageHistory(sessionId) };
+    const { drain } = (req.query as any) || {};
+    // Combined view: persisted history + pending queue (real-time inbox)
+    const history = cliMesh.getMessageHistory(sessionId);
+    const pending = await cliMesh.peekPendingMessages(sessionId, drain === '1');
+    return { messages: history, pending };
   });
 
   app.post('/api/mesh/complete', async (req) => {
