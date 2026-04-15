@@ -13,7 +13,7 @@ const log = createLogger('agent-manager');
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
 // Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
-// Type C: API (vllm, openrouter) — OpenAI-compatible API
+// Type C: API (mlx, openrouter) — OpenAI-compatible API
 
 type AgentType = 'A' | 'B' | 'C';
 

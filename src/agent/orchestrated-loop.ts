@@ -203,9 +203,11 @@ export class OrchestratedLoop {
       case 'aider':
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];
-      case 'opencode':
-        // opencode run <message> — non-interactive; 'chat' opens TUI
-        return ['run', prompt];
+      case 'opencode': {
+        // opencode run <message> — non-interactive. Honor provider.args (e.g. --model) from config.
+        const extra = baseArgs.filter(a => a !== 'run');
+        return ['run', ...extra, prompt];
+      }
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];

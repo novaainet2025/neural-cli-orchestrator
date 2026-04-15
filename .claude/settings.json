@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash /home/nova/projects/neural-cli-orchestrator/.claude/hooks/nco-statusline.sh"
+    "command": "bash /Users/nova-ai/.claude/hooks/nco-statusline.sh"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -16,18 +16,7 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/end-of-turn-check.sh",
-            "timeout": 30,
-            "statusMessage": "Gap analysis + verification..."
-          }
-        ]
-      }
-    ],
+    "Stop": [],
     "SessionStart": [
       {
         "hooks": [

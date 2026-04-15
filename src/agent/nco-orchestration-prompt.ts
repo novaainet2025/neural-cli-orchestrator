@@ -38,7 +38,7 @@ export function buildOrchestrationSystemPrompt(
   ].join('\n');
 }
 
-/** Extra line for OpenAI-compatible APIs that register `tools` (vLLM, OpenRouter): prefer native tool_calls over XML. */
+/** Extra line for OpenAI-compatible APIs that register `tools` (MLX, OpenRouter): prefer native tool_calls over XML. */
 export const NCO_API_NATIVE_TOOLS_HINT = [
   '# Tool Use Guidelines',
   '- When this request includes function tools in the API, call those functions for file, shell, search, and git actions.',
@@ -61,7 +61,7 @@ export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: st
 
 /**
  * OpenAI-compatible tool definitions (structured tool_use), matching AgentToolExecutor.dispatch.
- * Mirrors Claude-style function calling so vLLM / OpenRouter can emit native tool_calls.
+ * Mirrors Claude-style function calling so MLX / OpenRouter can emit native tool_calls.
  */
 export function getNcoOpenAiTools(): ChatCompletionTool[] {
   const str = { type: 'string' as const };

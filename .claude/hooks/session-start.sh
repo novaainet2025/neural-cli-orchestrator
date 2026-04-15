@@ -36,44 +36,51 @@ NCO_NAMES_DIR="/tmp/nco-names"
 mkdir -p "$NCO_NAMES_DIR" 2>/dev/null
 
 if [ -z "$NCO_NAME" ]; then
-    # Atomic name reservation using flock
-    (
-        flock -w 5 200 || exit 1
+    # Atomic name reservation using mkdir lock (macOS-compatible)
+    _LOCK_DIR="$NCO_NAMES_DIR/.lock.d"
+    _LOCK_WAIT=0
+    while ! mkdir "$_LOCK_DIR" 2>/dev/null; do
+        sleep 0.1
+        _LOCK_WAIT=$((_LOCK_WAIT + 1))
+        [ "$_LOCK_WAIT" -gt 50 ] && rm -rf "$_LOCK_DIR" && break  # 5s timeout
+    done
 
-        # 1. Clean dead PID files
-        for _pidfile in "$NCO_NAMES_DIR"/claude-*.pid; do
-            [ -f "$_pidfile" ] || continue
-            _rpid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
-            if [ -z "$_rpid" ] || ! [ -d "/proc/$_rpid" ]; then
-                rm -f "$_pidfile"
-            fi
-        done
+    # 1. Clean dead PID files
+    for _pidfile in "$NCO_NAMES_DIR"/claude-*.pid; do
+        [ -f "$_pidfile" ] || continue
+        _rpid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
+        if [ -z "$_rpid" ] || ! ps -p "$_rpid" >/dev/null 2>&1; then
+            rm -f "$_pidfile"
+        fi
+    done
 
-        # 2. Check if we already have a name (reconnecting session)
-        for _pidfile in "$NCO_NAMES_DIR"/claude-*.pid; do
-            [ -f "$_pidfile" ] || continue
-            _rpid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
-            if [ "$_rpid" = "$NCO_SESSION_ID" ]; then
-                _existing=$(basename "$_pidfile" .pid)
-                echo "$_existing" > "$NCO_NAMES_DIR/.last-assigned"
-                exit 0
-            fi
-        done
+    # 2. Check if we already have a name (reconnecting session)
+    for _pidfile in "$NCO_NAMES_DIR"/claude-*.pid; do
+        [ -f "$_pidfile" ] || continue
+        _rpid=$(cat "$_pidfile" 2>/dev/null | tr -d '[:space:]')
+        if [ "$_rpid" = "$NCO_SESSION_ID" ]; then
+            _existing=$(basename "$_pidfile" .pid)
+            echo "$_existing" > "$NCO_NAMES_DIR/.last-assigned"
+            rmdir "$_LOCK_DIR" 2>/dev/null
+            NCO_NAME="$_existing"
+            break
+        fi
+    done
 
+    if [ -z "$NCO_NAME" ]; then
         # 3. Find lowest available number
         _NUM=1
         while [ -f "$NCO_NAMES_DIR/claude-${_NUM}.pid" ]; do
             _NUM=$((_NUM + 1))
         done
 
-        # 4. Reserve it atomically
+        # 4. Reserve it
         echo "$NCO_SESSION_ID" > "$NCO_NAMES_DIR/claude-${_NUM}.pid"
         echo "claude-${_NUM}" > "$NCO_NAMES_DIR/.last-assigned"
+        NCO_NAME="claude-${_NUM}"
+    fi
 
-    ) 200>"$NCO_NAMES_DIR/.lock"
-
-    NCO_NAME=$(cat "$NCO_NAMES_DIR/.last-assigned" 2>/dev/null)
-    NCO_NAME="${NCO_NAME:-claude-1}"
+    rmdir "$_LOCK_DIR" 2>/dev/null
 fi
 
 # ========================================

@@ -15,7 +15,7 @@ interface Topology {
     websocket: number;
     dashboard: number;
     redis: number;
-    vllm: number;
+    mlx: number;
   };
   paths: {
     backend: string;

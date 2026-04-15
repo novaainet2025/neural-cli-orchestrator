@@ -55,7 +55,7 @@ function isLikelyToolsUnsupportedError(err: unknown): boolean {
 }
 
 /**
- * Type C Executor: API-based agents (vLLM, OpenRouter, Gemini API).
+ * Type C Executor: API-based agents (MLX, OpenRouter, Gemini API).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
  */
 export class ApiExecutor {

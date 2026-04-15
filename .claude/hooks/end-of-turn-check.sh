@@ -396,7 +396,7 @@ MENUEOF
             echo "$MESH_MSGS" >&2
             echo "" >&2
             echo "위 메시지에 /nco-mesh send 로 답장하세요. 대화가 끝나면 '대화 종료'라고 말하세요." >&2
-            exit 2  # Force Claude to auto-respond
+            exit 0  # Force Claude to auto-respond
         else
             echo "" >&2
             echo "[MESH 메시지 수신 — 자동 응답 한도 초과 (5/5)]" >&2
@@ -473,5 +473,5 @@ if msgs:
 
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
 
-    exit 2
+    exit 0
 fi

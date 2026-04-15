@@ -4,7 +4,7 @@
     "websocket": 6201,
     "dashboard": 6260,
     "redis": 6379,
-    "vllm": 8000
+    "mlx": 8000
   },
   "paths": {
     "backend": "/mnt/d/neural-cli-orchestrator",

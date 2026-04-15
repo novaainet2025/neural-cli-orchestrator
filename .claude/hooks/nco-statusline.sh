@@ -53,7 +53,7 @@ if [ -z "$NCO_NAME" ]; then
         for _pf in /tmp/nco-names/claude-*.pid; do
           [ -f "$_pf" ] || continue
           _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
-          [ -n "$_rp" ] && ! [ -d "/proc/$_rp" ] && rm -f "$_pf"
+          [ -n "$_rp" ] && ! ps -p "$_rp" >/dev/null 2>&1 && rm -f "$_pf"
         done
         # Find lowest available
         _N=1
