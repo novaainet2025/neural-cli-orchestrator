@@ -1,4 +1,6 @@
 #!/bin/bash
+echo "[$(date +%H:%M:%S)] HOOK_START end-of-turn-check.sh" >> /tmp/claude-hook-trace.log
+trap 'echo "[$(date +%H:%M:%S)] HOOK_END   end-of-turn-check.sh exit=$?" >> /tmp/claude-hook-trace.log' EXIT
 # ═══════════════════════════════════════════════════════════
 # NCO Stop Hook v3.0 — Self-Eval + Gap Analysis + Action Menu
 # ═══════════════════════════════════════════════════════════
@@ -20,7 +22,7 @@
 # exit 2 = Claude 재실행 (stderr → 프롬프트 주입)
 # ═══════════════════════════════════════════════════════════
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/home/nova/projects/neural-cli-orchestrator}"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project/nco}"
 cd "$PROJECT_DIR" 2>/dev/null || exit 0
 
 # ═══ Resolve NCO_SESSION_ID: env var > process tree walk ═══
@@ -372,16 +374,32 @@ if msgs:
 " 2>/dev/null)
     fi
 
+    # ─── Advisor 권장 여부 판단 ───
+    ADVISOR_SUGGEST=""
+    # 복잡도 신호: 변경 파일 5+, 추가 라인 100+, tsc 오류 직전 수정 있음
+    if [ "$CHANGED_COUNT" -ge 5 ] || [ "$ADDITIONS" -ge 100 ]; then
+        ADVISOR_SUGGEST="large-change"
+    fi
+
     cat >&2 <<MENUEOF
 
 [액션]
   /nco-next          — 다음 순차 작업
   /nco-next-parallel  — 독립 태스크 병렬 실행
-  /nco-task <설명> — NCO에 작업 위임
+  /nco-task <설명>   — NCO에 작업 위임
   /nco-mesh          — CLI Mesh 상태
   /nco-gap           — gap 재분석
+  /advisor           — Opus 심층 리뷰 (설계·아키텍처·복잡 디버깅)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MENUEOF
+
+    if [ -n "$ADVISOR_SUGGEST" ]; then
+        cat >&2 <<ADVEOF
+[ADVISOR 권장] 변경 파일 ${CHANGED_COUNT}개 / +${ADDITIONS}줄 — 복잡도 높음
+  → /advisor 로 Opus 심층 리뷰 후 다음 작업 진행 권장
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ADVEOF
+    fi
 
     # Auto-reply to mesh messages (with loop prevention: max 5 consecutive)
     if [ -n "$MESH_MSGS" ]; then
@@ -396,7 +414,7 @@ MENUEOF
             echo "$MESH_MSGS" >&2
             echo "" >&2
             echo "위 메시지에 /nco-mesh send 로 답장하세요. 대화가 끝나면 '대화 종료'라고 말하세요." >&2
-            exit 0  # Force Claude to auto-respond
+            exit 0  # Auto-respond disabled (was exit 2)
         else
             echo "" >&2
             echo "[MESH 메시지 수신 — 자동 응답 한도 초과 (5/5)]" >&2
@@ -445,6 +463,16 @@ FAILEOF
 
     echo "" >&2
     echo "위 항목을 수정하여 gap ${THRESHOLD}% 이상을 달성하세요." >&2
+
+    # ─── Grade C/D: advisor 강력 권장 ───
+    if [ "$GRADE" = "C" ] || [ "$GRADE" = "D" ]; then
+        cat >&2 <<ADVFAILEOF
+
+[ADVISOR 강력 권장] Grade ${GRADE} — ${GRADE_DESC}
+  → /advisor 를 먼저 호출하여 Opus가 문제를 심층 분석하게 하세요.
+  → 원인: 복잡한 버그 / 설계 오류 / 타입 에러 다수 시 Opus가 더 정확합니다.
+ADVFAILEOF
+    fi
 
     # ─── Check for mesh messages even in fail path ───
     MESH_HB_FAIL=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \

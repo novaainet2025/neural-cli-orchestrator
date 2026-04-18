@@ -1,4 +1,5 @@
 #!/bin/bash
+echo "[$(date +%H:%M:%S)] HOOK_START session-start.sh" >> /tmp/claude-hook-trace.log
 # SessionStart Hook - NCO context auto-load + CLI Mesh registration
 # Usage: NCO_NAME=nova claude   ← 이름으로 mesh에 자동 등록
 
@@ -9,7 +10,7 @@ MAGENTA='\033[35m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/home/nova/projects/neural-cli-orchestrator}"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project/nco}"
 cd "$PROJECT_DIR" 2>/dev/null || exit 0
 
 # ========================================
@@ -159,7 +160,7 @@ if [ -f ".llm/todo.md" ]; then
 fi
 
 # ========================================
-# NCO + vLLM status
+# NCO + MLX status
 # ========================================
 NCO_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/health 2>/dev/null)
 if [ -n "$NCO_HEALTH" ]; then
@@ -170,11 +171,41 @@ else
     echo -e "${YELLOW}NCO Engine: Offline${NC}" >&2
 fi
 
-VLLM_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/health 2>/dev/null)
-if [ -n "$VLLM_HEALTH" ]; then
-    echo -e "${GREEN}vLLM: Online${NC}" >&2
+MLX_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/health 2>/dev/null)
+if [ -n "$MLX_HEALTH" ]; then
+    echo -e "${GREEN}MLX: Online${NC}" >&2
 else
-    echo -e "${YELLOW}vLLM: Offline${NC}" >&2
+    echo -e "${YELLOW}MLX: Offline${NC}" >&2
+fi
+
+# ========================================
+# Advisor 모델 설정 표시
+# ========================================
+SETTINGS_FILE="$HOME/.claude/settings.json"
+ADVISOR_MODEL=""
+MAIN_MODEL=""
+if [ -f "$SETTINGS_FILE" ]; then
+    ADVISOR_MODEL=$(python3 -c "
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print(d.get('advisorModel', ''))
+except: print('')
+" 2>/dev/null)
+    MAIN_MODEL=$(python3 -c "
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print(d.get('model', 'sonnet'))
+except: print('sonnet')
+" 2>/dev/null)
+fi
+echo "" >&2
+if [ -n "$ADVISOR_MODEL" ]; then
+    echo -e "${MAGENTA}Advisor: ${BOLD}${ADVISOR_MODEL}${NC}${MAGENTA} (메인: ${MAIN_MODEL}) — 복잡·설계 작업 전 /advisor 호출 권장${NC}" >&2
+    echo -e "${MAGENTA}  사용: 복잡한 구현 전 | Grade C/D 발생 시 | 아키텍처 결정 시${NC}" >&2
+else
+    echo -e "${YELLOW}Advisor: 미설정 — settings.json에 advisorModel 추가 권장${NC}" >&2
 fi
 
 # ========================================
