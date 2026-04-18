@@ -23,6 +23,7 @@ Endpoints proxied:
 """
 
 import json
+import re
 import uuid
 import threading
 import time
@@ -39,6 +40,156 @@ MAX_TOKENS   = 4096
 # ── GPU 직렬화: Metal 크래시 방지 (동시 GPU 요청 1개로 제한) ──────────────────
 _gpu_semaphore = threading.Semaphore(1)
 _gpu_lock_timeout = 180  # 최대 대기 시간(초)
+
+# Gemma/MLX 텍스트 내 도구 호출 — 시작 패턴 (JSON 은 균형 잡힌 {…} 로 추출)
+GEMMA_TOOL_HEAD = re.compile(
+    r"<\|?tool_call\|?>\s*call:([\w\-\.:]+)\s*\{",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _balanced_brace_slice(s: str, open_idx: int):
+    """s[open_idx] == '{'. Returns (json_slice, idx_after_closing_brace) or None."""
+    if open_idx >= len(s) or s[open_idx] != "{":
+        return None
+    depth = 0
+    for j in range(open_idx, len(s)):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return s[open_idx : j + 1], j + 1
+    return None
+
+
+def _find_gemma_tool_end(text: str, json_end: int):
+    """Skip whitespace; optional closing </tool_call> or <|…tool_call…|>. Returns end index."""
+    rest = text[json_end:]
+    m = re.match(
+        r"\s*(?:</tool_call>|<\|/\s*tool_call\s*\|>|<\|tool_call\|>|<\|/\s*tool_call\|?>)?",
+        rest,
+        re.IGNORECASE,
+    )
+    return json_end + (m.end() if m else 0)
+
+
+def find_next_gemma_tool(text: str, start: int = 0):
+    """
+    Returns (abs_start, abs_end, tool_name, json_str) for first complete Gemma tool call, or None.
+    Handles nested JSON in {…} (non-greedy regex could not).
+    """
+    m = GEMMA_TOOL_HEAD.search(text, start)
+    if not m:
+        return None
+    abs_start = m.start()
+    name = m.group(1)
+    brace_open = m.end() - 1
+    if brace_open < 0 or text[brace_open] != "{":
+        return None
+    got = _balanced_brace_slice(text, brace_open)
+    if not got:
+        return None
+    json_str, after_brace = got
+    abs_end = _find_gemma_tool_end(text, after_brace)
+    return (abs_start, abs_end, name, json_str)
+
+
+def parse_tool_json_robust(raw: str) -> dict:
+    """Parse tool arguments; tolerate minor model mistakes."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except Exception:
+        pass
+    # Strip accidental fences
+    t = raw
+    if t.startswith("```"):
+        lines = t.split("\n")
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        t = "\n".join(lines).strip()
+    try:
+        return json.loads(t)
+    except Exception:
+        return {"_raw": raw}
+
+
+def split_text_and_tools(text: str):
+    """Split assistant text into ordered list of ('text', str) or ('tool', name, dict)."""
+    out = []
+    pos = 0
+    while True:
+        hit = find_next_gemma_tool(text, pos)
+        if not hit:
+            if pos < len(text):
+                out.append(("text", text[pos:]))
+            break
+        abs_start, abs_end, name, json_str = hit
+        if abs_start > pos:
+            out.append(("text", text[pos:abs_start]))
+        out.append(("tool", name, parse_tool_json_robust(json_str)))
+        pos = abs_end
+    return out
+
+
+def take_safe_text_prefix(buf: str) -> tuple[str, str]:
+    """
+    Emit text that cannot be the start of an incomplete Gemma tool tag.
+    Returns (safe_prefix, rest_keep_in_buffer).
+    """
+    if not buf:
+        return "", ""
+    best = -1
+    for mk in ("<|tool_call", "<tool_call"):
+        p = buf.find(mk)
+        if p != -1 and (best == -1 or p < best):
+            best = p
+    if best == -1:
+        return buf, ""
+    if best == 0:
+        return "", buf
+    return buf[:best], buf[best:]
+
+
+# Claude Code가 기대하는 도구 이름(대소문자)에 맞춤
+_CC_TOOL_ALIASES = {
+    "bash": "Bash",
+    "read": "Read",
+    "write": "Write",
+    "glob": "Glob",
+    "grep": "Grep",
+    "edit": "Edit",
+    "multiedit": "MultiEdit",
+    "notebookedit": "NotebookEdit",
+    "task": "Task",
+    "todowrite": "TodoWrite",
+    "webfetch": "WebFetch",
+    "websearch": "WebSearch",
+    "listdir": "ListDir",
+    "run_terminal_cmd": "Bash",
+    "runterminalcmd": "Bash",
+}
+
+
+def normalize_tool_name(name: str) -> str:
+    if not name or not isinstance(name, str):
+        return name or ""
+    s = name.strip()
+    tail = s.split(".")[-1] if "." in s else s
+    low = tail.lower()
+    if low in _CC_TOOL_ALIASES:
+        return _CC_TOOL_ALIASES[low]
+    low_full = s.lower()
+    if low_full in _CC_TOOL_ALIASES:
+        return _CC_TOOL_ALIASES[low_full]
+    if len(s) > 1 and s[0].islower() and s[1:].replace("_", "").isalnum():
+        return s[0].upper() + s[1:]
+    return s
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -140,22 +291,50 @@ def openai_response_to_anthropic(openai_resp, model="mlx-gemma"):
     if reasoning:
         content_blocks.append({"type": "thinking", "thinking": reasoning})
 
-    text = message.get("content", "")
-    if text:
-        content_blocks.append({"type": "text", "text": text})
+    text = message.get("content", "") or ""
+    tcs = message.get("tool_calls") or []
 
-    for tc in message.get("tool_calls", []):
-        fn = tc.get("function", {})
-        try:
-            input_data = json.loads(fn.get("arguments", "{}"))
-        except Exception:
-            input_data = {}
-        content_blocks.append({
-            "type": "tool_use",
-            "id": tc.get("id", f"toolu_{uuid.uuid4().hex[:8]}"),
-            "name": fn.get("name", ""),
-            "input": input_data
-        })
+    # OpenAI-style tool_calls (MLX native) — 우선 처리해 텍스트 내 태그와 중복 방지
+    if tcs:
+        for tc in tcs:
+            fn = tc.get("function", {})
+            nm = fn.get("name", "") or ""
+            args_raw = fn.get("arguments", "{}")
+            if isinstance(args_raw, str):
+                input_data = parse_tool_json_robust(args_raw)
+            elif isinstance(args_raw, dict):
+                input_data = args_raw
+            else:
+                input_data = {}
+            content_blocks.append({
+                "type": "tool_use",
+                "id": tc.get("id", f"toolu_{uuid.uuid4().hex[:8]}"),
+                "name": normalize_tool_name(nm),
+                "input": input_data,
+            })
+        if text.strip():
+            tail = text
+            while True:
+                hit = find_next_gemma_tool(tail, 0)
+                if not hit:
+                    break
+                tail = tail[hit[1] :].lstrip()
+            if tail.strip():
+                content_blocks.append({"type": "text", "text": tail})
+    elif text.strip():
+        for item in split_text_and_tools(text):
+            if item[0] == "text":
+                chunk = item[1]
+                if chunk and chunk.strip():
+                    content_blocks.append({"type": "text", "text": chunk})
+            else:
+                _, tname, inp = item
+                content_blocks.append({
+                    "type": "tool_use",
+                    "id": f"toolu_{uuid.uuid4().hex[:8]}",
+                    "name": normalize_tool_name(tname),
+                    "input": inp if isinstance(inp, dict) else {},
+                })
 
     stop_reason = "end_turn"
     if finish_reason == "tool_calls":
@@ -382,12 +561,87 @@ class ProxyHandler(BaseHTTPRequestHandler):
             "type": "content_block_start", "index": 0,
             "content_block": {"type": "text", "text": ""}
         })
-        sse("ping", {"type": "ping"})
 
-        stop_reason   = "end_turn"
+        stop_reason = "end_turn"
         output_tokens = 0
-        # Accumulate reasoning but don't stream it (confuses Claude Code)
-        # We stream content deltas only
+        # 블록 0 = 텍스트(프롤로그). tool_use 전에 반드시 content_block_stop 필요 (Claude Code 파서)
+        st = {"next_idx": 1, "text_idx": 0, "text_open": True}
+        current_tool_id = None
+        current_tool_name = None
+        current_tool_block_idx = None
+        pending_text = ""
+
+        def close_text_block():
+            if st["text_open"]:
+                sse("content_block_stop", {"type": "content_block_stop", "index": st["text_idx"]})
+                st["text_open"] = False
+
+        def open_fresh_text_block():
+            """도구 뒤에 이어지는 텍스트용 새 블록."""
+            close_text_block()
+            idx = st["next_idx"]
+            st["next_idx"] += 1
+            st["text_idx"] = idx
+            sse("content_block_start", {
+                "type": "content_block_start",
+                "index": idx,
+                "content_block": {"type": "text", "text": ""},
+            })
+            st["text_open"] = True
+
+        def emit_text_delta(txt: str):
+            if not txt:
+                return
+            sse("content_block_delta", {
+                "type": "content_block_delta",
+                "index": st["text_idx"],
+                "delta": {"type": "text_delta", "text": txt},
+            })
+
+        def emit_gemma_tool_use(t_name: str, json_str: str):
+            nonlocal stop_reason
+            close_text_block()
+            t_name = normalize_tool_name(t_name)
+            tool_idx = st["next_idx"]
+            st["next_idx"] += 1
+            t_id = f"toolu_{uuid.uuid4().hex[:8]}"
+            sse("content_block_start", {
+                "type": "content_block_start",
+                "index": tool_idx,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": t_id,
+                    "name": t_name,
+                    "input": {},
+                },
+            })
+            sse("content_block_delta", {
+                "type": "content_block_delta",
+                "index": tool_idx,
+                "delta": {"type": "input_json_delta", "partial_json": json_str},
+            })
+            sse("content_block_stop", {"type": "content_block_stop", "index": tool_idx})
+            stop_reason = "tool_use"
+
+        def flush_gemma_from_pending():
+            nonlocal pending_text
+            while True:
+                hit = find_next_gemma_tool(pending_text, 0)
+                if not hit:
+                    break
+                abs_start, abs_end, t_name, json_str = hit
+                pre = pending_text[:abs_start]
+                if pre:
+                    emit_text_delta(pre)
+                emit_gemma_tool_use(t_name, json_str)
+                pending_text = pending_text[abs_end:]
+
+            safe, keep = take_safe_text_prefix(pending_text)
+            pending_text = keep
+            if safe:
+                if not st["text_open"]:
+                    open_fresh_text_block()
+                emit_text_delta(safe)
 
         try:
             with urlopen(mlx_req, timeout=180) as resp:
@@ -404,15 +658,47 @@ class ProxyHandler(BaseHTTPRequestHandler):
                         continue
 
                     choice = (chunk.get("choices") or [{}])[0]
-                    delta  = choice.get("delta", {})
-                    fr     = choice.get("finish_reason")
+                    delta = choice.get("delta", {})
+                    fr = choice.get("finish_reason")
 
-                    content_delta = delta.get("content", "")
+                    # 1. OpenAI-style tool_calls — 텍스트 블록을 먼저 닫음
+                    if "tool_calls" in delta:
+                        for tc in delta["tool_calls"]:
+                            if "id" in tc:
+                                close_text_block()
+                                current_tool_id = tc["id"]
+                                current_tool_block_idx = st["next_idx"]
+                                st["next_idx"] += 1
+                                fn = tc.get("function", {})
+                                current_tool_name = normalize_tool_name(fn.get("name", "") or "")
+                                sse("content_block_start", {
+                                    "type": "content_block_start",
+                                    "index": current_tool_block_idx,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": current_tool_id,
+                                        "name": current_tool_name,
+                                        "input": {},
+                                    },
+                                })
+                            if "function" in tc and "arguments" in tc["function"]:
+                                arg_delta = tc["function"]["arguments"]
+                                idx = current_tool_block_idx
+                                if idx is not None:
+                                    sse("content_block_delta", {
+                                        "type": "content_block_delta",
+                                        "index": idx,
+                                        "delta": {
+                                            "type": "input_json_delta",
+                                            "partial_json": arg_delta,
+                                        },
+                                    })
+
+                    # 2. 본문 텍스트 (Gemma 태그)
+                    content_delta = delta.get("content", "") or ""
                     if content_delta:
-                        sse("content_block_delta", {
-                            "type": "content_block_delta", "index": 0,
-                            "delta": {"type": "text_delta", "text": content_delta}
-                        })
+                        pending_text += content_delta
+                        flush_gemma_from_pending()
 
                     if fr == "tool_calls":
                         stop_reason = "tool_use"
@@ -423,13 +709,22 @@ class ProxyHandler(BaseHTTPRequestHandler):
                     if usage.get("completion_tokens"):
                         output_tokens = usage["completion_tokens"]
 
-        except Exception as e:
-            sse("content_block_delta", {
-                "type": "content_block_delta", "index": 0,
-                "delta": {"type": "text_delta", "text": f"\n[proxy error: {e}]"}
-            })
+            if current_tool_block_idx is not None:
+                sse("content_block_stop", {"type": "content_block_stop", "index": current_tool_block_idx})
+                current_tool_block_idx = None
 
-        sse("content_block_stop",  {"type": "content_block_stop", "index": 0})
+            if pending_text:
+                if not st["text_open"]:
+                    open_fresh_text_block()
+                emit_text_delta(pending_text)
+                pending_text = ""
+
+        except Exception as e:
+            if not st["text_open"]:
+                open_fresh_text_block()
+            emit_text_delta(f"\n[proxy error: {e}]")
+
+        close_text_block()
         sse("message_delta", {
             "type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": None},

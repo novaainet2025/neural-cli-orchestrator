@@ -1,0 +1,243 @@
+/* dashboard/style.css — 카메라 대시보드 */
+:root {
+  --bg-color: #1a1a2e;
+  --text-color: #e0e0e0;
+  --accent-color: #4fc3f7;
+  --enter-color: #4caf50;
+  --exit-color: #ff5252;
+  --card-bg: #16213e;
+  --font-primary: 'Pretendard', 'Noto Sans KR', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: var(--font-primary);
+  background: var(--bg-color);
+  color: var(--text-color);
+  overflow-y: auto;
+}
+
+/* Header */
+header {
+  text-align: center;
+  padding: 1rem 1rem 0.5rem;
+}
+header h1 {
+  font-size: 1.4rem;
+}
+.header-desc {
+  font-size: 0.85rem;
+  color: #888;
+  margin-top: 0.25rem;
+}
+
+/* Control Bar */
+.control-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  flex-wrap: wrap;
+}
+
+.cam-button {
+  padding: 0.5rem 1.2rem;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent-color);
+  color: #000;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.cam-button:hover {
+  background: #29b6f6;
+}
+.cam-button.running {
+  background: var(--exit-color);
+  color: #fff;
+}
+
+.control-bar select {
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: var(--card-bg);
+  color: var(--text-color);
+  font-size: 0.85rem;
+  max-width: 200px;
+}
+
+/* Camera Grid */
+.camera-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+
+.camera-cell {
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 0.75rem;
+  text-align: center;
+}
+.camera-cell h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  color: #aaa;
+}
+
+.video-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.video-wrap video,
+.video-wrap canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.video-wrap canvas {
+  pointer-events: none;
+}
+
+/* Palm indicator overlay */
+.palm-indicator {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #555;
+  border: 2px solid #333;
+  transition: background 0.15s;
+  z-index: 2;
+}
+.palm-indicator.active {
+  background: var(--enter-color);
+  border-color: #fff;
+  box-shadow: 0 0 8px var(--enter-color);
+}
+
+/* Event Log */
+.event-log-section {
+  padding: 0.75rem 1rem;
+  max-width: 1300px;
+  margin: 0 auto;
+}
+.event-log-section h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+  color: #aaa;
+}
+
+.event-log {
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 0.75rem;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Menlo', monospace;
+}
+
+.event-placeholder {
+  color: #555;
+  text-align: center;
+  padding: 1rem;
+}
+
+.event-row {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 2px;
+  animation: fadeIn 0.3s ease;
+}
+.event-row:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.event-time {
+  color: #666;
+  flex-shrink: 0;
+}
+.event-type {
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 3em;
+}
+.event-enter .event-type {
+  color: var(--enter-color);
+}
+.event-exit .event-type {
+  color: var(--exit-color);
+}
+.event-msg {
+  color: #bbb;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Stats bar */
+.stats-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem 0;
+  font-size: 0.85rem;
+  z-index: 10;
+}
+.status.online { color: #4caf50; }
+.status.offline { color: #f44336; }
+
+/* Scrollbar */
+.event-log::-webkit-scrollbar {
+  width: 6px;
+}
+.event-log::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+/* Responsive */
+@media (max-width: 700px) {
+  .camera-grid {
+    grid-template-columns: 1fr;
+  }
+  .control-bar {
+    flex-direction: column;
+  }
+  .control-bar select {
+    max-width: 100%;
+    width: 100%;
+  }
+}

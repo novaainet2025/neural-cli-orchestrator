@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>카메라 대시보드 — 손바닥 인식</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>카메라 대시보드 — 손바닥 인식</h1>
+    <p class="header-desc">Camera1 = 입실 | Camera2 = 퇴실</p>
+  </header>
+
+  <section class="control-bar">
+    <button id="cam-toggle" class="cam-button" title="카메라 시작/중지">📷 카메라 시작</button>
+    <select id="cam1-select"><option value="">Camera1 선택…</option></select>
+    <select id="cam2-select"><option value="">Camera2 선택…</option></select>
+  </section>
+
+  <section class="camera-grid">
+    <div class="camera-cell">
+      <h3>Camera 1 — 입실</h3>
+      <div class="video-wrap">
+        <video id="video1" autoplay playsinline muted></video>
+        <canvas id="canvas1"></canvas>
+        <div class="palm-indicator" id="indicator1"></div>
+      </div>
+    </div>
+    <div class="camera-cell">
+      <h3>Camera 2 — 퇴실</h3>
+      <div class="video-wrap">
+        <video id="video2" autoplay playsinline muted></video>
+        <canvas id="canvas2"></canvas>
+        <div class="palm-indicator" id="indicator2"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="event-log-section">
+    <h3>이벤트 로그</h3>
+    <div class="event-log" id="event-log">
+      <p class="event-placeholder">카메라를 시작하면 손바닥 감지 이벤트가 여기에 표시됩니다.</p>
+    </div>
+  </section>
+
+  <footer class="stats-bar">
+    <div id="detection-stats">감지: 입실 <span id="enter-count">0</span> | 퇴실 <span id="exit-count">0</span></div>
+    <div id="fps-display">FPS: —</div>
+    <div id="model-status">모델: <span class="status offline">로딩 중</span></div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1675466124/drawing_utils.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -16,6 +16,7 @@ const NCO_TOOL_REGEX = /<nco-tool\s+name="([^"]+)">([\s\S]*?)<\/nco-tool>/g;
 const ARG_REGEX = /<arg\s+name="([^"]+)">([\s\S]*?)<\/arg>/g;
 const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*```/g;
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
+const GEMMA_TOOL_REGEX = /<\|?tool_call\|?>\s*call:(\w+)\s*(\{[\s\S]*?\})\s*<\|?\/?[a-z_]*tool_call\|?>/g;
 
 // 4. Fallback: Natural language commands (Claude Code style — English & Korean)
 const NL_PATTERNS = [
@@ -73,7 +74,33 @@ export function parseToolCalls(text: string): ToolCall[] {
 
   if (calls.length > 0) return calls;
 
-  // 3. Fallback: Bracket notation [TOOL: name(args)]
+  // 3. Fallback: Gemma style <|tool_call|>call:name{args}<|tool_call|>
+  const gemmaRegex = new RegExp(GEMMA_TOOL_REGEX.source, 'g');
+  while ((match = gemmaRegex.exec(text)) !== null) {
+    const tool = match[1];
+    let rawArgs = match[2].trim();
+    
+    try {
+      // Try parsing as JSON first
+      const args = JSON.parse(rawArgs);
+      calls.push({ tool, args });
+    } catch {
+      // Fallback: simple key-value extraction if JSON fails
+      const args: Record<string, string> = {};
+      const pairs = rawArgs.match(/"([^"]+)":\s*"([^"]+)"/g);
+      if (pairs) {
+        for (const p of pairs) {
+          const [k, v] = p.split(/:\s*/);
+          args[k.replace(/"/g, '')] = v.replace(/"/g, '');
+        }
+      }
+      calls.push({ tool, args: Object.keys(args).length > 0 ? args : { _raw: rawArgs } });
+    }
+  }
+
+  if (calls.length > 0) return calls;
+
+  // 4. Fallback: Bracket notation [TOOL: name(args)]
   const bracketRegex = new RegExp(BRACKET_REGEX.source, 'g');
   while ((match = bracketRegex.exec(text)) !== null) {
     const tool = match[1];
@@ -117,7 +144,7 @@ export function parseToolCalls(text: string): ToolCall[] {
 
 // Check if text contains any tool calls
 export function hasToolCalls(text: string): boolean {
-  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text)) return true;
+  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text) || GEMMA_TOOL_REGEX.test(text)) return true;
   
   // Also check NL patterns
   const lines = text.split('\n');
@@ -134,7 +161,8 @@ export function extractThinking(text: string): string {
   let output = text
     .replace(new RegExp(NCO_TOOL_REGEX.source, 'g'), '')
     .replace(new RegExp(JSON_TOOL_REGEX.source, 'g'), '')
-    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '');
+    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '')
+    .replace(new RegExp(GEMMA_TOOL_REGEX.source, 'g'), '');
     
   // Also strip NL pattern lines
   const lines = output.split('\n');
