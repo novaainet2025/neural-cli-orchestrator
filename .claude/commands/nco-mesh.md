@@ -18,14 +18,14 @@ ACTION=$(echo "$ARGUMENTS" | cut -d' ' -f1)
 # ── 자연어 감지: 다양한 한국어 패턴 → "send" 액션으로 변환 ──
 
 # 1순위: "claude-N + 조사" 패턴 (claude-3과 인사해)
-if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)(과|에게|한테|에|와|,)'; then
+if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|mlx|mlx)(과|에게|한테|에|와|,)'; then
   _NL_TARGET=$(echo "$ACTION" | sed -E 's/(과|에게|한테|에|와|,)$//')
   _NL_MSG=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
   ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
   ACTION="send"
 
 # 2순위: "@claude-N 메시지" 패턴
-elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)' && [ "$ACTION" != "send" ]; then
+elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|mlx|mlx)' && [ "$ACTION" != "send" ]; then
   ARGUMENTS="send $ARGUMENTS"
   ACTION="send"
 
@@ -61,28 +61,37 @@ elif echo "$ARGUMENTS" | grep -qiE '(해줘|해봐|하세요|해주세요|하라
   ACTION="send"
 fi
 
-# ── 세션 ID / 이름 결정 (등록된 PID 파일 기반 — 조상 PID 매칭) ──────
-# 프로세스 트리를 올라가면서 /tmp/nco-names/ 에 등록된 PID와 매칭
-# 가장 가까운(자기에게 가까운) 등록 조상을 선택하여 다른 세션 PID를 잡는 버그 방지
-MY_SESSION_ID=""
+# ── 세션 ID / 이름 결정 ──────
+# UUID 기반 세션 ID (PID 충돌 방지). 동일 셸 세션 내에서는 캐시됨.
 MY_NAME=""
 _CK=$$
 for _i in 1 2 3 4 5 6 7 8; do
   _CK=$(ps -o ppid= -p "$_CK" 2>/dev/null | tr -d ' ')
   [ -z "$_CK" ] || [ "$_CK" = "1" ] && break
-  # 이 조상 PID가 등록된 세션인지 확인
   for _pf in /tmp/nco-names/claude-*.pid; do
     [ -f "$_pf" ] || continue
     _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
     if [ "$_rp" = "$_CK" ]; then
-      MY_SESSION_ID="$_CK"
       MY_NAME=$(basename "$_pf" .pid)
       break 2
     fi
   done
 done
-MY_SESSION_ID="${MY_SESSION_ID:-${NCO_SESSION_ID:-${PPID:-$$}}}"
 MY_NAME="${MY_NAME:-claude-code}"
+
+# Session ID: agent name + 8-char random. Cached per shell/PPID under /tmp/nco-names.
+_SID_FILE="/tmp/nco-names/${MY_NAME}-${PPID:-$$}.sid"
+mkdir -p /tmp/nco-names 2>/dev/null
+if [ -f "$_SID_FILE" ] && [ -n "${NCO_SESSION_ID:-}" ]; then
+  MY_SESSION_ID="${NCO_SESSION_ID}"
+elif [ -f "$_SID_FILE" ]; then
+  MY_SESSION_ID=$(cat "$_SID_FILE" 2>/dev/null)
+fi
+if [ -z "${MY_SESSION_ID:-}" ]; then
+  MY_SESSION_ID="${MY_NAME}-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:8])' 2>/dev/null || echo "$(date +%s)$$")"
+  echo "$MY_SESSION_ID" > "$_SID_FILE" 2>/dev/null
+fi
+MY_PID="${PPID:-$$}"
 
 # ── heartbeat 헬퍼 함수 ──────────────────────────────
 send_heartbeat() {
@@ -96,7 +105,7 @@ send_heartbeat() {
     -d "{
       \"sessionId\": \"${MY_SESSION_ID}\",
       \"agentId\": \"${MY_NAME}\",
-      \"pid\": ${MY_SESSION_ID},
+      \"pid\": ${MY_PID},
       \"workMode\": \"${WORK_MODE}\",
       \"status\": \"${STATUS}\",
       \"currentWork\": ${WORK_DESC},
@@ -187,61 +196,39 @@ for rec in recs:
       echo "  (메시지는 DB에 저장됨 — /nco-mesh messages 로 확인 가능)"
     else
       echo "✓ 메시지 전송 완료 (${MY_NAME} → ${TO}, delivered: ${DELIVERED})"
-      # ── 응답 대기: 전체 메시지 스트림에서 응답 확인 (세션 ID 불일치 문제 우회) ──
+      # ── 응답 대기: 내 pending queue 에서 응답 확인 ──
       echo ""
       echo "⏳ 응답 대기 중 (20초)..."
-      sleep 1  # 초기 1초 대기
-      # 20초간 5초 간격으로 폴링 — 응답이 오면 즉시 표시
       _POLL_END=$(($(date +%s) + 20))
       _SHOWN=0
       while [ "$(date +%s)" -lt "$_POLL_END" ]; do
-        _SHOWN=$(curl -s "http://localhost:6200/api/mesh/messages" 2>/dev/null | python3 -c "
+        _SHOWN=$(curl -s "http://localhost:6200/api/mesh/messages/${MY_SESSION_ID}" 2>/dev/null | python3 -c "
 import sys, json
-from datetime import datetime, timezone
-data = json.load(sys.stdin)
-msgs = data.get('messages', data) if isinstance(data, dict) else data
-now = datetime.now(timezone.utc)
-shown = 0
-for m in msgs:
-    fr = m.get('from_agent', m.get('fromAgent', '?'))
-    content = m.get('content', '')
-    created = m.get('created_at', m.get('createdAt', ''))
-    if not content.startswith('[AUTO]'): continue
-    try:
-        ct = datetime.fromisoformat(created.replace('Z','+00:00'))
-        if (now - ct).total_seconds() > 60: continue
-    except: continue
-    shown += 1
-print(shown)
+try:
+    data = json.load(sys.stdin)
+    pending = data.get('pending', [])
+    print(len(pending))
+except: print(0)
 " 2>/dev/null || echo "0")
-        [ "$_SHOWN" -ge "$DELIVERED" ] && break
+        [ "$_SHOWN" -gt "0" ] && break
         sleep 1
       done
       echo ""
-      echo "=== 수신 메시지 (${_SHOWN}/${DELIVERED}) ==="
-      curl -s "http://localhost:6200/api/mesh/messages" 2>/dev/null | python3 -c "
+      echo "=== 수신 메시지 (pending: ${_SHOWN}) ==="
+      curl -s "http://localhost:6200/api/mesh/messages/${MY_SESSION_ID}?drain=1" 2>/dev/null | python3 -c "
 import sys, json
-from datetime import datetime, timezone
 try:
     data = json.load(sys.stdin)
-    msgs = data.get('messages', data) if isinstance(data, dict) else data
-    now = datetime.now(timezone.utc)
+    pending = data.get('pending', [])
     shown = 0
-    for m in msgs:
-        fr = m.get('from_agent', m.get('fromAgent', '?'))
+    for m in pending:
+        fr = m.get('fromAgent', m.get('from', '?'))
         content = m.get('content', '')
-        created = m.get('created_at', m.get('createdAt', ''))
-        if not content.startswith('[AUTO]'): continue
-        try:
-            ct = datetime.fromisoformat(created.replace('Z','+00:00'))
-            if (now - ct).total_seconds() > 60: continue
-        except: continue
-        content_short = content[:200].replace('[AUTO]', '').replace('[TASK-RESULT]', '✅').strip()
-        print(f'  {fr}: {content_short}')
+        print(f'  {fr}: {content[:200]}')
         shown += 1
         if shown >= 10: break
     if shown == 0:
-        print('  (아직 응답 없음 — /nco-mesh messages 로 나중에 확인 가능)')
+        print('  (아직 응답 없음)')
 except Exception as e:
     print(f'  조회 실패: {e}')
 " 2>/dev/null
@@ -249,7 +236,25 @@ except Exception as e:
     ;;
 
   messages)
-    curl -s "http://localhost:6200/api/mesh/messages/${MY_SESSION_ID}" | python3 -m json.tool
+    curl -s "http://localhost:6200/api/mesh/messages/${MY_SESSION_ID}" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+history = d.get('messages', [])
+pending = d.get('pending', [])
+print('=== Pending (real-time inbox) ===')
+if pending:
+    for m in pending:
+        print(f\"  [{m.get('type','info')}] {m.get('fromAgent','?')}: {m.get('content','')[:200]}\")
+else:
+    print('  (없음)')
+print()
+print('=== History (DB, 최근 20개) ===')
+if history:
+    for m in history[:20]:
+        print(f\"  [{m.get('created_at','?')[:19]}] {m.get('from_agent','?')} → {m.get('to_session','?')}: {(m.get('content') or '')[:150]}\")
+else:
+    print('  (없음)')
+"
     ;;
 
   ping)

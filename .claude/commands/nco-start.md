@@ -7,7 +7,7 @@ if curl -sf http://localhost:6200/health > /dev/null 2>&1; then
   exit 0
 fi
 
-cd /home/nova/projects/neural-cli-orchestrator && npx tsx src/index.ts &
+cd /Users/nova-ai/project/nco && npx tsx src/index.ts &
 echo "NCO Backend starting on :6200 + :6201 (PID: $!)"
 sleep 3
 curl -s http://localhost:6200/health | python3 -m json.tool
