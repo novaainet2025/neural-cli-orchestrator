@@ -370,7 +370,33 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       }
     } catch {}
 
-    return { contextNote, improvementNotes };
+    // 맥락노트 이전 세션 히스토리 읽기
+    const histDir = path.join(home, 'projects', 'context_history');
+    const contextHistory: any[] = [];
+    try {
+      const files = fs.readdirSync(histDir)
+        .filter((f: string) => f.endsWith('.md'))
+        .sort()
+        .reverse()
+        .slice(0, 50);
+      for (const f of files) {
+        const fpath = path.join(histDir, f);
+        const stat = fs.statSync(fpath);
+        const content = fs.readFileSync(fpath, 'utf-8');
+        // 세션 제목 추출 (첫 줄 또는 SESSION_START 이후)
+        const titleMatch = content.match(/##\s*(.+)/);
+        const title = titleMatch ? titleMatch[1].trim() : f;
+        contextHistory.push({
+          filename: f,
+          mtime: stat.mtime.toISOString(),
+          size: stat.size,
+          content,
+          title,
+        });
+      }
+    } catch {}
+
+    return { contextNote, improvementNotes, contextHistory };
   });
 
   // ═══ Catch-all for unimplemented routes ═════════════

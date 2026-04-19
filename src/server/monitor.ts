@@ -1317,7 +1317,7 @@ function renderTopology(){
 
   // NCO node
   const ncoX=W/2, ncoY=Y0;
-  const ncoR=20;
+  const ncoR=30;
 
   // CLI session positions
   const cliSpacing=Math.min(130, (W-PAD*2)/Math.max(sessions.length,1));
@@ -1488,8 +1488,8 @@ function renderTopology(){
     if(!dst)return;
     const color=meshColors[e.msgs[0]?.msgType]||meshColors[e.msgType]||'#3fb950';
     const fresh=Date.now()-e.lastTime<30000;
-    const op=fresh?'0.85':'0.3';
-    const w=fresh?2:1;
+    const op=fresh?'1.0':'0.55';
+    const w=fresh?5:2;
     const mx=(src.x+dst.x)/2;
     const my=Math.min(src.y,dst.y)-40;
     _edgeParts.push(
@@ -1504,7 +1504,7 @@ function renderTopology(){
         const t=p.t;
         const px=(1-t)*(1-t)*src.x+2*(1-t)*t*mx+t*t*dst.x;
         const py=(1-t)*(1-t)*src.y+2*(1-t)*t*my+t*t*dst.y;
-        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="2" fill="'+color+'" opacity="0.9"/>');
+        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="4" fill="'+color+'" opacity="0.95"/>');
       });
     }
   });
@@ -1521,14 +1521,15 @@ function renderTopology(){
   }
   _nodeParts.push(
     '<g class="topo-node" data-tid="nco" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+glowFilter+'>'+
-    '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?2.5:1.5)+'"/>'+
-    '<text x="'+ncoX+'" y="'+(ncoY-5)+'" text-anchor="middle" font-size="10" fill="#e9d5ff" font-weight="700">NCO</text>'+
-    '<text x="'+ncoX+'" y="'+(ncoY+6)+'" text-anchor="middle" font-size="6.5" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
+    '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?4:2.5)+'"/>'+
+    (ncoHasActive?'<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+(ncoR+8)+'" fill="none" stroke="#c4b5fd" stroke-width="2" opacity="0.4" stroke-dasharray="6 4"/>':'')+
+    '<text x="'+ncoX+'" y="'+(ncoY-7)+'" text-anchor="middle" font-size="14" fill="#e9d5ff" font-weight="700">NCO</text>'+
+    '<text x="'+ncoX+'" y="'+(ncoY+10)+'" text-anchor="middle" font-size="10" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
     (ncoHasActive?'ROUTING':'ROUTER')+'</text>'+
     '</g>');
 
   // 5b. CLI Session nodes — ③ heartbeat ripple + ② file count display
-  const nodeW=86, nodeH=38;
+  const nodeW=114, nodeH=52;
   cliNodes.forEach(c=>{
     const s=c.session;
     const color=topoAgentColor(c.agentId)||'#1f6feb';
@@ -1559,8 +1560,8 @@ function renderTopology(){
       '<rect x="'+(c.x-nodeW/2)+'" y="'+(c.y-nodeH/2)+'" width="'+nodeW+'" height="'+nodeH+'"'+
       ' rx="5" fill="#0a1628" stroke="'+bc+'" stroke-width="'+bw+'"/>'+
       '<circle cx="'+(c.x-nodeW/2+9)+'" cy="'+(c.y-nodeH/2+9)+'" r="3" fill="'+dotColor+'"/>'+
-      '<text x="'+c.x+'" y="'+(c.y-6)+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
-      '<text x="'+c.x+'" y="'+(c.y+5)+'" text-anchor="middle" font-size="7" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y-8)+'" text-anchor="middle" font-size="13" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y+8)+'" text-anchor="middle" font-size="10" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
       // ② File count badge (bottom-right) — shows count + first filename hint
       (fileCount>0?
         '<rect x="'+(c.x+nodeW/2-22)+'" y="'+(c.y+nodeH/2-13)+'" width="21" height="12" rx="2" fill="#0d2137" stroke="#1f6feb44" stroke-width="0.5"/>'+
@@ -1587,7 +1588,7 @@ function renderTopology(){
   });
 
   // 6. Agent nodes — ③ active pulse ring + C 품질 메트릭
-  const agR=14;
+  const agR=22;
   agNodes.forEach(a=>{
     const color=topoAgentColor(a.name);
     const sel=_topoSelected===a.name;
@@ -1611,7 +1612,7 @@ function renderTopology(){
       '<g class="topo-node" data-tid="'+escHtml(a.name)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
       '<circle cx="'+a.x+'" cy="'+a.y+'" r="'+agR+'" fill="#050810" stroke="'+stroke+'" stroke-width="'+bw+'"/>'+
       (isActive?'<circle cx="'+a.x+'" cy="'+a.y+'" r="'+(agR+5)+'" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="0.25" stroke-dasharray="3 3"/>':'')+
-      '<text x="'+a.x+'" y="'+(a.y+3)+'" text-anchor="middle" font-size="7" fill="'+color+'" font-weight="700">'+escHtml(a.name.slice(0,8))+'</text>'+
+      '<text x="'+a.x+'" y="'+(a.y+5)+'" text-anchor="middle" font-size="11" fill="'+color+'" font-weight="700">'+escHtml(a.name.slice(0,10))+'</text>'+
       // C: Success rate mini-bar below node name
       (stats&&stats.total>0?
         '<rect x="'+(a.x-agR)+'" y="'+(a.y+agR+2)+'" width="'+barW+'" height="3" rx="1.5" fill="#1a2535"/>'+
@@ -3713,6 +3714,8 @@ async function init(){
   const _meshTimer=setInterval(pollMesh,15000);
   const _taskTimer=setInterval(pollTasks,10000);
   const _heartbeatTimer=setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions'||activeTab==='overview')renderTab(); }, 10000);
+  // Notes auto-refresh: 60초마다 캐시 무효화 후 탭 활성 시 재렌더
+  const _notesTimer=setInterval(()=>{ _notesData=null; if(activeTab==='notes') renderNotesTab(); }, 60000);
 
   // Animation loops via requestAnimationFrame — aligned to vsync, skips hidden tabs
   let _lastTopoRender=0, _lastGraphRender=0;

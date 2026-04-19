@@ -371,22 +371,25 @@
       "name": "Ollama",
       "enabled": true,
       "type": "api",
-      "role": "Validator",
-      "score": 75,
+      "role": "Engineer",
+      "score": 80,
       "model": "gemma4:26b-a4b-it-q4_K_M",
       "command": null,
       "args": [],
       "endpoint": "http://172.28.112.1:11434/v1",
       "apiKeyRef": null,
       "env": {},
-      "concurrency": 1,
-      "rateLimitRpm": 5,
+      "concurrency": 2,
+      "rateLimitRpm": 20,
       "cost": "free",
       "capabilities": [
+        "code",
+        "analysis",
+        "local-inference",
         "validation",
         "testing",
-        "local-inference",
-        "verification"
+        "verification",
+        "reasoning"
       ],
       "permissions": {
         "canInitiateCollaboration": true,
@@ -395,29 +398,21 @@
         "canFinalApprove": false
       },
       "persona": {
-        "systemPrompt": "You are the local Quality Assurance & Validation Specialist of the NCO AI team. You use systematic thinking and tool-based verification to ensure all changes meet the highest standards. You always plan your validation steps in <thinking> blocks.",
-        "tone": "secure",
-        "style": "rigorous"
+        "systemPrompt": "You are a local AI engineer on the NCO team. You run on Ollama (Windows RTX 4090) and handle code generation, analysis, validation, and testing tasks efficiently.",
+        "tone": "efficient",
+        "style": "practical"
       },
       "modelSpec": {
         "name": "Gemma 4 26B A4B (Ollama)",
         "developer": "Google DeepMind",
         "parameters": "26B MoE (active ~4B)",
-        "quantization": "Ollama 라이브러리 기본 (NVFP4/Q4 등 태그별 상이)",
         "gpu": "RTX 4090 24GB",
-        "vram": "가중치 ~14GiB대+KV(컨텍스트·동시성에 비례)",
-        "maxModelLen": 8192,
-        "recommendedEnv": {
-          "OLLAMA_MODEL": "gemma4:26b-a4b-it-q4_K_M",
-          "OLLAMA_MAX_MODEL_LEN": "8192",
-          "OLLAMA_KEEP_ALIVE": "15m",
-          "OLLAMA_NUM_PARALLEL": "1"
-        }
+        "maxModelLen": 8192
       },
-      "note": "Validator용 로컬 추론. `ollama pull gemma4:26b` 후 `claude-gemma`(프록시 :4100→:11434). WSL+Windows Ollama: OLLAMA_BASE_URL 또는 OLLAMA_HOST. 프록시/Claude Code는 `claude-ollama-gemma`가 OLLAMA_MODEL·컨텍스트·keep_alive 기본값을 설정.",
+      "note": "Windows Ollama (포트 11434). 프록시: localhost:4100 → 172.28.112.1:11434",
       "healthCheck": {
         "type": "api",
-        "url": "http://localhost:11434/api/tags",
+        "url": "http://172.28.112.1:11434/api/tags",
         "timeout": 5000
       }
     }
