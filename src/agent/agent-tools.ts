@@ -78,7 +78,7 @@ export class AgentToolExecutor {
 
   private async dispatch(call: ToolCall): Promise<ToolResult> {
     switch (call.tool) {
-      case 'readFile': return this.readFile(call.args.path);
+      case 'readFile': return this.readFile(call.args.path, Number(call.args.offset), Number(call.args.limit));
       case 'writeFile': return this.writeFile(call.args.path, call.args.content);
       case 'createFile': return this.createFile(call.args.path, call.args.content);
       case 'editFile': return this.editFile(call.args.path, call.args.old, call.args.new);
@@ -105,11 +105,20 @@ export class AgentToolExecutor {
   }
 
   // ─── File Operations ────────────────────────────────
-  private async readFile(path: string): Promise<ToolResult> {
+  private async readFile(path: string, offset?: number, limit?: number): Promise<ToolResult> {
     this.sandbox.assertPath(path);
     try {
       const content = await readFile(path, 'utf-8');
-      return { ok: true, output: content };
+
+      let result = content;
+      if (offset !== undefined && offset > 0) {
+        result = content.substring(offset);
+      }
+      if (limit !== undefined && limit > 0) {
+        result = result.substring(0, limit);
+      }
+
+      return { ok: true, output: result };
     } catch (err: any) {
       return { ok: false, output: '', error: err.message };
     }

@@ -36,8 +36,20 @@ const ROLE_MAP: Record<string, string[]> = {
   quality: ['cursor-agent', 'ollama'],
 };
 
-// Cost preference order (free first)
-const COST_ORDER = ['ollama', 'openrouter', 'aider', 'copilot', 'codex', 'gemini', 'cursor-agent', 'opencode', 'claude-code'];
+/** Prefer local MLX first, then vLLM, then other free tiers. */
+export const PROVIDER_COST_ORDER = [
+  'mlx', 'vllm', 'openrouter', 'aider', 'copilot', 'codex', 'gemini', 'cursor-agent', 'opencode', 'claude-code',
+];
+
+export function sortProvidersByCostOrder(ids: string[]): string[] {
+  return [...ids].sort((a, b) => {
+    const ia = PROVIDER_COST_ORDER.indexOf(a);
+    const ib = PROVIDER_COST_ORDER.indexOf(b);
+    const sa = ia === -1 ? 999 : ia;
+    const sb = ib === -1 ? 999 : ib;
+    return sa - sb;
+  });
+}
 
 class SmartRouter {
   /**
@@ -112,10 +124,7 @@ class SmartRouter {
     // Determine count by mode
     const targetCount = count || this.getTargetCount(mode);
 
-    // Sort by cost preference (free first)
-    const sorted = available.sort((a, b) => {
-      return COST_ORDER.indexOf(a) - COST_ORDER.indexOf(b);
-    });
+    const sorted = sortProvidersByCostOrder(available);
 
     return sorted.slice(0, targetCount);
   }

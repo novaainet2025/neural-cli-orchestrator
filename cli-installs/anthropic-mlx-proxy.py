@@ -8,7 +8,7 @@ Architecture:
   Claude Code
     → ANTHROPIC_BASE_URL=http://localhost:4100
       → This proxy  (port 4100)
-        → MLX server (port 8000, OpenAI-compatible, Gemma 4 26B A4B 4-bit)
+        → MLX server (port 8000, OpenAI-compatible; model path from pm2 mlx-server)
 
 Usage:
   python3 anthropic-mlx-proxy.py [port]   # default port 4100

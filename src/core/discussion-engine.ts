@@ -5,6 +5,7 @@ import { agentManager } from '../agent/agent-manager.js';
 import { getDb } from '../storage/database.js';
 import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
+import { sortProvidersByCostOrder } from './smart-router.js';
 
 const log = createLogger('discussion-engine');
 
@@ -599,7 +600,7 @@ class DiscussionEngine {
 
   // ─── Internal: Select participants by mode ──────────
   private selectParticipants(mode: DiscussionMode): string[] {
-    const all = agentManager.listEnabledIds();
+    const all = sortProvidersByCostOrder(agentManager.listEnabledIds());
 
     switch (mode) {
       case 'task': return [all[0] || 'claude-code'];
