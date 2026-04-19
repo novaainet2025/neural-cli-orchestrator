@@ -27,6 +27,17 @@ export interface Invocation {
   createdAt: string;
   completedAt?: string;
   notified: boolean;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  model?: string;
+}
+
+export interface TokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  model?: string;
 }
 
 export interface InvocationOverview {
@@ -50,6 +61,10 @@ function rowToInvocation(row: Record<string, unknown>): Invocation {
     createdAt: row.created_at as string,
     completedAt: row.completed_at as string | undefined,
     notified: Boolean(row.notified),
+    promptTokens: (row.prompt_tokens as number | undefined) ?? undefined,
+    completionTokens: (row.completion_tokens as number | undefined) ?? undefined,
+    totalTokens: (row.total_tokens as number | undefined) ?? undefined,
+    model: (row.model as string | undefined) ?? undefined,
   };
 }
 
@@ -98,10 +113,10 @@ class InvocationTracker {
     status: 'completed' | 'failed' | 'cancelled',
     resultSummary?: string,
     error?: string,
+    usage?: TokenUsage,
   ): void {
     const db = getDb();
 
-    // duration_ms 계산을 위해 created_at 조회
     const row = db.prepare(
       `SELECT created_at FROM agent_invocations WHERE id = ?`
     ).get(invocationId) as { created_at: string } | undefined;
@@ -111,17 +126,35 @@ class InvocationTracker {
       durationMs = Date.now() - new Date(row.created_at).getTime();
     }
 
+    const pT = usage?.promptTokens ?? 0;
+    const cT = usage?.completionTokens ?? 0;
+    const tT = usage?.totalTokens ?? (pT + cT);
+
     db.prepare(`
       UPDATE agent_invocations
       SET status = ?,
           result_summary = ?,
           error = ?,
           duration_ms = ?,
-          completed_at = datetime('now')
+          completed_at = datetime('now'),
+          prompt_tokens = ?,
+          completion_tokens = ?,
+          total_tokens = ?,
+          model = COALESCE(?, model)
       WHERE id = ?
-    `).run(status, resultSummary ?? null, error ?? null, durationMs, invocationId);
+    `).run(
+      status,
+      resultSummary ?? null,
+      error ?? null,
+      durationMs,
+      pT,
+      cT,
+      tT,
+      usage?.model ?? null,
+      invocationId,
+    );
 
-    log.debug(`Completed invocation ${invocationId} → ${status}`);
+    log.debug(`Completed invocation ${invocationId} → ${status} (tokens=${tT})`);
   }
 
   /**

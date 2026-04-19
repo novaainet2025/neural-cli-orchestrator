@@ -13,7 +13,7 @@ const log = createLogger('agent-manager');
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
 // Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
-// Type C: API (mlx, openrouter) — OpenAI-compatible API
+// Type C: API (ollama, openrouter) — OpenAI-compatible API
 
 type AgentType = 'A' | 'B' | 'C';
 
@@ -59,6 +59,7 @@ class AgentManager {
   async executeTask(agentId: string, prompt: string, options?: {
     taskId?: string;
     systemPrompt?: string;
+    compact?: boolean;
     signal?: AbortSignal;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
@@ -116,7 +117,10 @@ class AgentManager {
             ? AbortSignal.any([options.signal, wallClock])
             : wallClock;
           const loop = new OrchestratedLoop(provider, sandbox, signal);
-          const result = await loop.run(taskId, prompt, options?.systemPrompt);
+          const result = await loop.run(taskId, prompt, {
+            systemPrompt: options?.systemPrompt,
+            compact: options?.compact,
+          });
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
@@ -126,7 +130,10 @@ class AgentManager {
         case 'C': {
           // Type C: API executor
           const executor = new ApiExecutor(provider, sandbox);
-          const result = await executor.run(taskId, prompt, options?.systemPrompt);
+          const result = await executor.run(taskId, prompt, {
+            systemPrompt: options?.systemPrompt,
+            compact: options?.compact,
+          });
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
@@ -227,10 +234,15 @@ class AgentManager {
 
   // ─── Health Monitor ─────────────────────────────────
   private async healthCheck(): Promise<void> {
-    for (const [id, provider] of this.providers) {
+    for (const [id] of this.providers) {
       const alive = await sharedState.isAgentAlive(id);
       if (!alive) {
         await sharedState.setAgentState(id, { status: 'offline' });
+      } else {
+        const st = await sharedState.getAgentState(id);
+        if (st?.status === 'offline') {
+          await sharedState.setAgentState(id, { status: 'idle' });
+        }
       }
       await sharedState.heartbeat(id);
     }

@@ -49,7 +49,7 @@ NCO는 CLI를 오케스트레이션하여 API 대비 5~20배 비용 절감하면
 
 백엔드 필수 지원:
   - CLI subprocess 관리 (프로세스 풀, 헬스체크, 자동 재시작)
-  - API 폴백 (CLI 실패 시 OpenRouter 무료 API → vLLM 로컬)
+  - API 폴백 (CLI 실패 시 OpenRouter 무료 API → Ollama 로컬)
   - 비용 추적 (CLI=무료, API=유료 토큰 카운팅)
   - Rate Limit 지능적 회피 (키 롤링, 프로바이더 전환)
 ```
@@ -135,7 +135,7 @@ POST /api/commander
 │ 🎨 Designer (gemini): UI/UX 디자인          │
 ├─ Quality Layer ─────────────────────────────┤
 │ 📝 Reviewer (cursor-agent): 코드 리뷰       │
-│ ✅ Validator (vllm): 로컬 검증              │
+│ ✅ Validator (ollama): 로컬 검증              │
 └─────────────────────────────────────────────┘
 
 위임 규칙:
@@ -472,7 +472,7 @@ parallel과 차이: parallel은 2-3개, broadcast는 전체 9개.
 추가 필요:
   - Rate Limit 실시간 상태 반영 (제한 중인 AI 제외)
   - 이전 작업 성과 반영 (성공률 높은 AI 우선)
-  - 비용 최적화 (무료 AI 우선: vllm → openrouter → 유료)
+  - 비용 최적화 (무료 AI 우선: ollama → openrouter → 유료)
 ```
 
 ### 6.4 NCO Learn (지식 베이스)

@@ -5,6 +5,7 @@ import { agentManager } from '../agent/agent-manager.js';
 import { getDb } from '../storage/database.js';
 import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
+import { sortProvidersByCostOrder } from './smart-router.js';
 
 const log = createLogger('discussion-engine');
 
@@ -194,14 +195,14 @@ class DiscussionEngine {
     });
 
     // ─── Round 2: 순차 평가 (이전 응답 참조) ──────────────
-    {
+    if (participants.length > 1 && maxRounds >= 2) {
       const round = 2;
       await eventBus.publish({
         type: 'discussion:round_started', sessionId, round, totalRounds: maxRounds,
       });
 
-      const allProposals = this.formatProposals(proposals);
-      const evalPrompt = `다른 AI들의 제안을 평가하세요:\n\n${allProposals}\n\n각 제안의 장점/단점을 분석하고 1-10점으로 평가하세요. 가장 좋은 제안을 선택하고 이유를 설명하세요.\n\nIMPORTANT: 평가 끝에 반드시 JSON 블록을 포함하세요:\n\`\`\`json\n{"scores": {"agentId": 점수}, "winner": "agentId", "reason": "이유"}\n\`\`\``;
+      const allProposals = this.formatProposals(proposals, 1200); // 1200자 제한
+      const evalPrompt = `Evaluate other agents' proposals:\n\n${allProposals}\n\nAnalyze pros/cons, score 1-10. Pick winner & reason.\n\nJSON block:\n\`\`\`json\n{"scores": {"agentId": score}, "winner": "agentId", "reason": "why"}\n\`\`\``;
 
       // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음
       const nonClaude = participants.filter(p => p !== 'claude-code');
@@ -227,18 +228,18 @@ class DiscussionEngine {
 
     // ─── Final: claude-code 최종 결론 생성 ───────────
     {
-      const finalRound = 3;
+      const finalRound = maxRounds;
       await eventBus.publish({
         type: 'discussion:round_started', sessionId, round: finalRound, totalRounds: maxRounds,
       });
 
-      const r1Summary = this.formatProposals(rounds[0]?.responses || {});
-      const r2Summary = this.formatProposals(rounds[1]?.responses || {});
-      const synthPrompt = `너는 Commander다. 팀 토론 결과를 종합하여 최종 결론을 생성하라.\n\n=== 라운드 1: 독립 제안 (병렬) ===\n${r1Summary}\n\n=== 라운드 2: 상호 평가 (순차) ===\n${r2Summary}\n\n위 토론을 바탕으로:\n1. 핵심 합의 사항 정리\n2. 주요 쟁점과 해결 방향\n3. 최종 결론 (팀 합의안)\n\n간결하고 명확하게 작성하라.`;
+      const r1Summary = this.formatProposals(rounds[0]?.responses || {}, 1500);
+      const r2Summary = this.formatProposals(rounds[1]?.responses || {}, 1500);
+      const synthPrompt = `Synthesize team discussion results into a final conclusion.\n\n=== R1 Proposals ===\n${r1Summary}\n\n=== R2 Evaluations ===\n${r2Summary}\n\nConclusion should be concise and clear.`;
 
       try {
         const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
-          systemPrompt: `Discussion session: ${sessionId}. You are synthesizing team discussion results.`,
+          systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
           signal: AbortSignal.timeout(90_000),
         });
 
@@ -466,7 +467,8 @@ class DiscussionEngine {
         });
 
         const result = await agentManager.executeTask(pid, prompt, {
-          systemPrompt: `You are participating in a team discussion (round ${round}). Session: ${sessionId}`,
+          systemPrompt: `Discussion R${round}. Session: ${sessionId}`,
+          compact: true,
           signal: AbortSignal.timeout(30_000),
         });
 
@@ -526,17 +528,18 @@ class DiscussionEngine {
       // 이전 에이전트들의 평가를 컨텍스트에 추가
       let prompt = basePrompt;
       if (accumulated.length > 0) {
-        prompt += `\n\n=== 이전 에이전트 평가 ===\n${accumulated.join('\n\n')}`;
+        prompt += `\n\n=== Prev Eval (summarized) ===\n${accumulated.join('\n\n')}`;
       }
 
       try {
         const result = await agentManager.executeTask(pid, prompt, {
-          systemPrompt: `You are participating in a team discussion (round ${round}, sequential). Session: ${sessionId}. Review previous evaluations and build on them.`,
+          systemPrompt: `R${round} (seq). Concisely build on evals.`,
+          compact: true,
           signal: AbortSignal.timeout(60_000),
         });
 
         responses[pid] = result.output;
-        accumulated.push(`[${pid}]\n${result.output.slice(0, 800)}`);
+        accumulated.push(`[${pid}]: ${result.output.slice(0, 400)}`);
 
         const db = getDb();
         db.prepare(`
@@ -597,7 +600,7 @@ class DiscussionEngine {
 
   // ─── Internal: Select participants by mode ──────────
   private selectParticipants(mode: DiscussionMode): string[] {
-    const all = agentManager.listEnabledIds();
+    const all = sortProvidersByCostOrder(agentManager.listEnabledIds());
 
     switch (mode) {
       case 'task': return [all[0] || 'claude-code'];
@@ -611,10 +614,15 @@ class DiscussionEngine {
     }
   }
 
-  // ─── Internal: Format proposals for evaluation ──────
-  private formatProposals(proposals: Record<string, string>): string {
+  // ─── Internal: Format proposals for evaluation (truncated for efficiency) ──
+  private formatProposals(proposals: Record<string, string>, maxLength = 2000): string {
     return Object.entries(proposals)
-      .map(([pid, content]) => `### ${pid}의 제안:\n${content}`)
+      .map(([pid, content]) => {
+        const truncated = content.length > maxLength 
+          ? content.slice(0, maxLength) + '... (truncated)' 
+          : content;
+        return `### ${pid}:\n${truncated}`;
+      })
       .join('\n\n---\n\n');
   }
 

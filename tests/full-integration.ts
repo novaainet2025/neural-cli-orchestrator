@@ -91,8 +91,8 @@ async function main() {
     const cc = r.data.providers.find((p: any) => p.id === 'claude-code');
     assert(cc.role === 'Commander', `role: ${cc.role}`);
     assert(cc.score === 95, `score: ${cc.score}`);
-    const vl = r.data.providers.find((p: any) => p.id === 'vllm');
-    assert(vl.role === 'Validator', `vllm role: ${vl.role}`);
+    const vl = r.data.providers.find((p: any) => p.id === 'ollama');
+    assert(vl.role === 'Validator', `ollama role: ${vl.role}`);
   });
 
   await test('프로바이더', 'enabled 필터', async () => {
@@ -122,19 +122,19 @@ async function main() {
   });
 
   await test('데몬', '개별 stop → offline', async () => {
-    await post('/api/daemons/vllm/stop', {});
+    await post('/api/daemons/ollama/stop', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'vllm');
-    assert(vllm.status === 'offline', `vllm: ${vllm.status}`);
+    const vllm = r.data.daemons.find((d: any) => d.id === 'ollama');
+    assert(vllm.status === 'offline', `ollama: ${vllm.status}`);
   });
 
   await test('데몬', '개별 start → idle', async () => {
-    await post('/api/daemons/vllm/start', {});
+    await post('/api/daemons/ollama/start', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'vllm');
-    assert(vllm.status === 'idle', `vllm: ${vllm.status}`);
+    const vllm = r.data.daemons.find((d: any) => d.id === 'ollama');
+    assert(vllm.status === 'idle', `ollama: ${vllm.status}`);
   });
 
   await test('데몬', 'by-workspace', async () => {
@@ -245,7 +245,7 @@ async function main() {
   console.log('\n=== 7. 토론 (Discussion) ===');
 
   await test('토론', 'POST /api/discussion/create → session', async () => {
-    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'vllm'] });
+    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'ollama'] });
     assert(!!r.data.session, 'no session');
     assert(!!r.data.session.wsUrl, 'no wsUrl');
   });

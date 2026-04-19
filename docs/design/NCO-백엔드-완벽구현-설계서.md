@@ -63,7 +63,7 @@ NCO는 **9개 AI가 하나의 팀으로 일하는 시스템**이다.
 | 도구 형식 미정의 | JSON 형식 언급 | **NCO Tool Protocol 표준** |
 | 상태 전이 미정의 | pending → completed | **7단계 상태 머신** |
 | gemini-api 포함 (10개) | gemini-api 포함 | **gemini-api 제거 (9개)** |
-| vLLM: Qwen3-4B | Qwen3-4B | **Gemma 4 26B (NVFP4)** |
+| Ollama: Qwen3-4B | Qwen3-4B | **Gemma 4 26B (NVFP4)** |
 
 ---
 
@@ -102,7 +102,7 @@ NCO는 **9개 AI가 하나의 팀으로 일하는 시스템**이다.
               ▼         ▼           ▼           ▼         ▼
         ┌──────────┐┌──────────┐┌──────────┐┌──────────┐┌──────────┐
         │ Agent    ││ Agent    ││ Agent    ││ Agent    ││ Agent    │
-        │ claude   ││ opencode ││ gemini   ││ aider    ││ vllm     │
+        │ claude   ││ opencode ││ gemini   ││ aider    ││ ollama     │
         │ (95)     ││ (90)     ││ (85)     ││ (82)     ││ (75)     │
         │ Type A   ││ Type B   ││ Type B   ││ Type B   ││ Type C   │
         │          ││          ││          ││          ││          │
@@ -268,9 +268,9 @@ interface SandboxPolicy {
 | **cursor-agent** (78) | Reviewer | read, search, run | 코드 리뷰, 버그 탐지, 품질 분석 |
 | **copilot** (75) | Researcher | read, search | 정보 수집, 문서 조사, 코드 완성 |
 | **openrouter** (75) | Generalist | read, search, run | 무료 LLM 활용, 범용 작업, 비용 0 |
-| **vllm** (75) | Validator | read, run, test | 로컬 검증, 테스트 실행, 결과 확인 (Gemma 4 26B) |
+| **ollama** (75) | Validator | read, run, test | 로컬 검증, 테스트 실행, 결과 확인 (Gemma 4 26B) |
 
-### 2.3 vLLM — Gemma 4 로컬 추론
+### 2.3 Ollama — Gemma 4 로컬 추론
 
 ```
 모델:     gemma-4-26B-A4B-it-NVFP4
@@ -278,17 +278,17 @@ interface SandboxPolicy {
 양자화:   NVFP4 (NVIDIA FP4, modelopt)
 GPU:     RTX 4090 24GB
 VRAM:    ~16GB 사용 (모델) + ~8GB KV cache
-포트:    http://localhost:8000/v1 (OpenAI 호환)
-모델경로: /mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4
+포트:    http://localhost:11434/v1 (OpenAI 호환)
+모델경로: /mnt/d/llm-models/ollama/gemma-4-26B-A4B-it-NVFP4
 
 설치 과정:
-  1. python3 -m venv ~/vllm-env
-  2. pip install vllm + transformers>=5.5.3 업그레이드
-  3. gemma4_patched.py → vllm/model_executor/models/gemma4.py 덮어씌움
+  1. python3 -m venv ~/ollama-env
+  2. pip install ollama + transformers>=5.5.3 업그레이드
+  3. gemma4_patched.py → ollama/model_executor/models/gemma4.py 덮어씌움
   4. 실행:
-     source ~/vllm-env/bin/activate
-     VLLM_NVFP4_GEMM_BACKEND=marlin vllm serve \
-       /mnt/d/llm-models/vllm/gemma-4-26B-A4B-it-NVFP4 \
+     source ~/ollama-env/bin/activate
+     VLLM_NVFP4_GEMM_BACKEND=marlin ollama serve \
+       /mnt/d/llm-models/ollama/gemma-4-26B-A4B-it-NVFP4 \
        --quantization modelopt \
        --dtype auto \
        --kv-cache-dtype fp8 \
@@ -1100,7 +1100,7 @@ wsServer.on('discussion:user_message', (data) => {
 ├─────────────────────────────────────────────────────────┤
 │ Type C: API Agent (OpenAI 호환 API, 멀티턴 가능)          │
 │                                                          │
-│ 대상: vllm (Gemma 4), openrouter                          │
+│ 대상: ollama (Gemma 4), openrouter                          │
 │                                                          │
 │ OpenAI 호환 chat completions API를 직접 호출.              │
 │ messages 배열에 히스토리를 누적하여 멀티턴 대화 가능.        │
@@ -1373,7 +1373,7 @@ class NativeAgentExecutor {
 }
 ```
 
-### 6.5 API Agent 실행 (Type C — vLLM, OpenRouter)
+### 6.5 API Agent 실행 (Type C — Ollama, OpenRouter)
 
 ```typescript
 class APIAgentExecutor {
@@ -1516,11 +1516,11 @@ class APIAgentExecutor {
     const now = Date.now();
     const allCooling = [...this.keyCooldowns.values()].every(t => t > now);
     if (allCooling) {
-      // 전체 제한 → vLLM 로컬 폴백 이벤트 발행
+      // 전체 제한 → Ollama 로컬 폴백 이벤트 발행
       eventBus.publish({
         type: 'system:fallback',
-        from: 'openrouter', to: 'vllm',
-        reason: 'All API keys rate-limited, falling back to local vLLM'
+        from: 'openrouter', to: 'ollama',
+        reason: 'All API keys rate-limited, falling back to local Ollama'
       });
     }
   }
@@ -1545,7 +1545,7 @@ class AgentManager {
     'cursor-agent':  'single-shot',
     'copilot':       'single-shot',
     'openrouter':    'api',           // Type C: API 멀티턴
-    'vllm':          'api',
+    'ollama':          'api',
   };
 
   async executeTask(agent: Agent, task: AgentTask): Promise<AgentResult> {
@@ -1795,7 +1795,7 @@ class ResourceLimiter {
     'cursor-agent':  { maxMemMB: 512,  maxTimeSec: 300, maxFileSizeMB: 2,  maxConcurrent: 4 },
     'copilot':       { maxMemMB: 512,  maxTimeSec: 180, maxFileSizeMB: 2,  maxConcurrent: 2 },
     'openrouter':    { maxMemMB: 256,  maxTimeSec: 120, maxFileSizeMB: 2,  maxConcurrent: 2 },
-    'vllm':          { maxMemMB: 256,  maxTimeSec: 120, maxFileSizeMB: 2,  maxConcurrent: 1 },
+    'ollama':          { maxMemMB: 256,  maxTimeSec: 120, maxFileSizeMB: 2,  maxConcurrent: 1 },
   };
 
   // subprocess 실행 시 리소스 제한 적용
@@ -2474,7 +2474,7 @@ class SmartRouter {
   루프 주체: NCO OrchestratedLoop
   NCO 역할:  프롬프트 조립 + CLI 호출 + 도구 실행 + 루프 관리
 
-═══ Type C: API Agent (vllm, openrouter) ═══
+═══ Type C: API Agent (ollama, openrouter) ═══
 
   사용자 요청 → NCO → OpenAI 호환 API 호출
                         │
@@ -2545,7 +2545,7 @@ class SmartRouter {
 │   │   ├── agent-tools.ts          # 에이전트 도구 (read/write/edit/delete/create/run)
 │   │   ├── native-executor.ts      # Type A: Claude Code 네이티브  ★ v4
 │   │   ├── orchestrated-loop.ts    # Type B: NCO 외부 루프 (핵심)  ★ v4
-│   │   ├── api-executor.ts         # Type C: API 멀티턴 (vLLM, OpenRouter)
+│   │   ├── api-executor.ts         # Type C: API 멀티턴 (Ollama, OpenRouter)
 │   │   ├── tool-parser.ts          # NCO Tool Protocol 파서       ★ v4
 │   │   ├── smart-router.ts         # 복잡도→에이전트 자동 선택     ★ v4
 │   │   ├── message-queue.ts        # 에이전트별 메시지 대기열      ★ v4
@@ -2558,7 +2558,7 @@ class SmartRouter {
 │   │       ├── cursor-agent.ts
 │   │       ├── copilot.ts
 │   │       ├── openrouter.ts
-│   │       └── vllm.ts
+│   │       └── ollama.ts
 │   │
 │   ├── security/                   # ★ 보안 & 격리                ★ v4
 │   │   ├── sandbox-manager.ts      # 통합 샌드박스 관리
@@ -2862,7 +2862,7 @@ Phase 2: 에이전트 시스템 + 보안 격리
   ├── agent/tool-parser.ts       ★ v4: NCO Tool Protocol + 폴백 파서
   ├── agent/native-executor.ts   ★ v4: Type A (claude-code)
   ├── agent/orchestrated-loop.ts ★ v4: Type B (NCO 외부 루프 — 핵심)
-  ├── agent/api-executor.ts      ★ v4: Type C (vLLM, OpenRouter + 키 롤링)
+  ├── agent/api-executor.ts      ★ v4: Type C (Ollama, OpenRouter + 키 롤링)
   ├── agent/agent-manager.ts     ★ v4: 유형별 실행 분배
   ├── agent/smart-router.ts      ★ v4: 복잡도→에이전트 선택
   ├── agent/message-queue.ts     ★ v4: 메시지 대기열
@@ -2928,7 +2928,7 @@ Phase 6: MCP + Claude Code 통합
 ═══════════════════════════════════════════════════════
 Phase 7: 완성
 ═══════════════════════════════════════════════════════
-  ├── ecosystem.config.cjs (PM2: gateway + worker + vllm)
+  ├── ecosystem.config.cjs (PM2: gateway + worker + ollama)
   ├── 테스트 (vitest)
   ├── 모니터링/알림
   └── 문서화
@@ -3004,7 +3004,7 @@ POST /api/realtime/discussion
   better-sqlite3   — SQLite (영속 저장)
   bullmq           — 작업 큐
   execa            — subprocess (CLI AI)
-  openai           — API AI (vLLM Gemma 4, OpenRouter)
+  openai           — API AI (Ollama Gemma 4, OpenRouter)
   zod              — 검증
   pino             — 로거
   nanoid           — ID 생성
@@ -3053,8 +3053,8 @@ npx tsc --init --target ES2022 --module NodeNext --moduleResolution NodeNext \
 > **작업 상태 머신**: 7단계 (pending→assigned→running→reviewing→completed/failed/cancelled)
 > **Smart Router**: 복잡도 분석 + 능력 매칭 + 비용 최적화
 > **합의 알고리즘**: 가중 투표 (에이전트 점수 기반 가중치, 80% 임계값)
-> **API 키 롤링**: 쿨다운 관리 + 전체 제한 시 vLLM 폴백 자동 전환
-> **vLLM**: Gemma 4 26B (NVFP4, Active 4B MoE, RTX 4090)
+> **API 키 롤링**: 쿨다운 관리 + 전체 제한 시 Ollama 폴백 자동 전환
+> **Ollama**: Gemma 4 26B (NVFP4, Active 4B MoE, RTX 4090)
 > **gemini-api 제거**: 9개 에이전트로 통일
 >
 > 승인 시 Phase 1부터 구현 시작.

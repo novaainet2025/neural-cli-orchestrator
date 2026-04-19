@@ -117,9 +117,35 @@ cat > "$NCO_SESSION_FILE" <<SESSIONJSON
 SESSIONJSON
 
 # ========================================
-# Header
+# Header (COMPACT)
 # ========================================
-echo -e "${CYAN}═══════════════════════════════════════${NC}" >&2
+echo -e "${CYAN}[NCO:${NCO_NAME}]${NC}" >&2
+
+# Compact status (single line each)
+NCO_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/health 2>/dev/null)
+NCO_STATE="OFFLINE"
+[ -n "$NCO_HEALTH" ] && NCO_STATE="ONLINE"
+
+VLLM_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/health 2>/dev/null)
+VLLM_STATE="OFFLINE"
+[ -n "$VLLM_HEALTH" ] && VLLM_STATE="ONLINE"
+
+echo "NCO:${NCO_STATE} vLLM:${VLLM_STATE}" >&2
+
+# Register to mesh (if NCO online)
+BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+if [ -n "$NCO_HEALTH" ]; then
+    MESH_RESULT=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+      -H "Content-Type: application/json" \
+      -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$NCO_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"idle\",\"currentWork\":\"세션 시작\",\"branch\":\"$BRANCH\"}" 2>/dev/null)
+
+    MESH_SESSIONS=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/api/mesh/sessions 2>/dev/null)
+    MESH_COUNT=$(echo "$MESH_SESSIONS" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('count',0))" 2>/dev/null || echo "0")
+
+    echo "mesh:${NCO_NAME}(${MESH_COUNT})" >&2
+fi
+
+echo "session:${NCO_SESSION_FILE}" >&2
 echo -e "${CYAN}  NCO Session — ${BOLD}${YELLOW}${NCO_NAME}${NC}${CYAN}              ${NC}" >&2
 echo -e "${CYAN}═══════════════════════════════════════${NC}" >&2
 

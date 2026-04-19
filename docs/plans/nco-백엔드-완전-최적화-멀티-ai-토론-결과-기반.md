@@ -2,7 +2,7 @@
 
 > **Plan ID:** plan_Qfhe66MTkgggljoY
 > **상태:** in-progress
-> **근거:** 4개 AI (vllm, opencode, openrouter, gemini) 멀티 토론 합의 결과 (2026-04-10)
+> **근거:** 4개 AI (ollama, opencode, openrouter, gemini) 멀티 토론 합의 결과 (2026-04-10)
 > **세션:** sess_liEDltDZ0d4Z7dbw (completed)
 
 ---
@@ -51,7 +51,7 @@
 
 - [x] [P0-1a] discussion-engine.ts: collectResponses에 AbortSignal.timeout(30s) 추가 @codex
 - [x] [P0-1b] discussion-engine.ts: extractScores를 Structured JSON 파싱으로 교체 @codex
-- [x] [P0-1c] build 검증 및 타임아웃 단위 테스트 @vllm
+- [x] [P0-1c] build 검증 및 타임아웃 단위 테스트 @ollama
 
 ### Task 2: Circuit Breaker 동적 임계치
 - **파일:** `src/agent/agent-manager.ts`
@@ -235,5 +235,5 @@
 
 ## 참조
 - 토론 세션: `sess_liEDltDZ0d4Z7dbw` (completed, 4 agents)
-- 참여 AI: vllm(Gemma4), opencode, openrouter, gemini
+- 참여 AI: ollama(Gemma4), opencode, openrouter, gemini
 - 생성일: 2026-04-10

@@ -561,6 +561,21 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 ::-webkit-scrollbar-thumb{background:rgba(100,116,139,.25);border-radius:10px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.4)}
 *{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.25) transparent}
+
+/* ── Notes tab ─────────────────────────────────────── */
+.notes-section{background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:12px;overflow:hidden}
+.notes-section-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0f1525;border-bottom:1px solid var(--border-subtle);font-size:11px;font-weight:700;color:var(--text-secondary)}
+.notes-section-body{padding:10px 12px;font-size:11px;line-height:1.6}
+.notes-pre{white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);background:#0d1117;border-radius:4px;padding:8px;max-height:220px;overflow-y:auto}
+.notes-table{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}
+.notes-table th{background:#161b22;color:#8b949e;text-align:left;padding:4px 8px;border-bottom:1px solid #21262d}
+.notes-table td{padding:4px 8px;border-bottom:1px solid #21262d;color:var(--text-secondary);vertical-align:top}
+.notes-table tr:last-child td{border-bottom:none}
+.notes-score{display:inline-block;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;background:#21262d}
+.notes-mtime{color:var(--text-muted);font-size:10px;margin-left:auto}
+.notes-filename{color:#58a6ff;font-size:10px;font-family:var(--font-mono)}
+.notes-empty{color:var(--text-muted);font-size:11px;padding:16px;text-align:center}
+.notes-list-item{transition:background .15s,border-color .15s}
 /* ── Debug tab ─────────────────────────────────────────── */
 .dbg-layout{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;box-sizing:border-box}
 .dbg-full{grid-column:1/-1}
@@ -778,6 +793,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
       <div class="tab" data-tab="flow" onclick="switchTab('flow')">⇄ Flow</div>
       <div class="tab" data-tab="debug" onclick="switchTab('debug')">⚙ Debug</div>
+      <div class="tab" data-tab="notes" onclick="switchTab('notes')">📝 Notes</div>
     </div>
     <div class="tab-content" id="tabContent"></div>
   </div>
@@ -1250,7 +1266,7 @@ let _topoSelected=null; // agentId
 const AGENT_COLORS_MAP={
   opencode:'#2da44e', gemini:'#d29922', codex:'#1f6feb',
   aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
-  openrouter:'#d4773a', mlx:'#da3633',
+  openrouter:'#d4773a', ollama:'#da3633', mlx:'#a855f7', vllm:'#e879f9',
 };
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
 
@@ -1301,7 +1317,7 @@ function renderTopology(){
 
   // NCO node
   const ncoX=W/2, ncoY=Y0;
-  const ncoR=20;
+  const ncoR=30;
 
   // CLI session positions
   const cliSpacing=Math.min(130, (W-PAD*2)/Math.max(sessions.length,1));
@@ -1472,8 +1488,8 @@ function renderTopology(){
     if(!dst)return;
     const color=meshColors[e.msgs[0]?.msgType]||meshColors[e.msgType]||'#3fb950';
     const fresh=Date.now()-e.lastTime<30000;
-    const op=fresh?'0.85':'0.3';
-    const w=fresh?2:1;
+    const op=fresh?'1.0':'0.55';
+    const w=fresh?5:2;
     const mx=(src.x+dst.x)/2;
     const my=Math.min(src.y,dst.y)-40;
     _edgeParts.push(
@@ -1488,7 +1504,7 @@ function renderTopology(){
         const t=p.t;
         const px=(1-t)*(1-t)*src.x+2*(1-t)*t*mx+t*t*dst.x;
         const py=(1-t)*(1-t)*src.y+2*(1-t)*t*my+t*t*dst.y;
-        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="2" fill="'+color+'" opacity="0.9"/>');
+        _particleParts.push('<circle cx="'+px+'" cy="'+py+'" r="4" fill="'+color+'" opacity="0.95"/>');
       });
     }
   });
@@ -1505,14 +1521,15 @@ function renderTopology(){
   }
   _nodeParts.push(
     '<g class="topo-node" data-tid="nco" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+glowFilter+'>'+
-    '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?2.5:1.5)+'"/>'+
-    '<text x="'+ncoX+'" y="'+(ncoY-5)+'" text-anchor="middle" font-size="10" fill="#e9d5ff" font-weight="700">NCO</text>'+
-    '<text x="'+ncoX+'" y="'+(ncoY+6)+'" text-anchor="middle" font-size="6.5" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
+    '<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+ncoR+'" fill="#1a0a2e" stroke="'+(isSelected?'#a78bfa':ncoHasActive?'#c4b5fd':'#7c3aed')+'" stroke-width="'+(isSelected||ncoHasActive?4:2.5)+'"/>'+
+    (ncoHasActive?'<circle cx="'+ncoX+'" cy="'+ncoY+'" r="'+(ncoR+8)+'" fill="none" stroke="#c4b5fd" stroke-width="2" opacity="0.4" stroke-dasharray="6 4"/>':'')+
+    '<text x="'+ncoX+'" y="'+(ncoY-7)+'" text-anchor="middle" font-size="14" fill="#e9d5ff" font-weight="700">NCO</text>'+
+    '<text x="'+ncoX+'" y="'+(ncoY+10)+'" text-anchor="middle" font-size="10" fill="'+(ncoHasActive?'#e3b341':'#a78bfa')+'">'+
     (ncoHasActive?'ROUTING':'ROUTER')+'</text>'+
     '</g>');
 
   // 5b. CLI Session nodes — ③ heartbeat ripple + ② file count display
-  const nodeW=86, nodeH=38;
+  const nodeW=114, nodeH=52;
   cliNodes.forEach(c=>{
     const s=c.session;
     const color=topoAgentColor(c.agentId)||'#1f6feb';
@@ -1543,8 +1560,8 @@ function renderTopology(){
       '<rect x="'+(c.x-nodeW/2)+'" y="'+(c.y-nodeH/2)+'" width="'+nodeW+'" height="'+nodeH+'"'+
       ' rx="5" fill="#0a1628" stroke="'+bc+'" stroke-width="'+bw+'"/>'+
       '<circle cx="'+(c.x-nodeW/2+9)+'" cy="'+(c.y-nodeH/2+9)+'" r="3" fill="'+dotColor+'"/>'+
-      '<text x="'+c.x+'" y="'+(c.y-6)+'" text-anchor="middle" font-size="9" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
-      '<text x="'+c.x+'" y="'+(c.y+5)+'" text-anchor="middle" font-size="7" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y-8)+'" text-anchor="middle" font-size="13" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y+8)+'" text-anchor="middle" font-size="10" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
       // ② File count badge (bottom-right) — shows count + first filename hint
       (fileCount>0?
         '<rect x="'+(c.x+nodeW/2-22)+'" y="'+(c.y+nodeH/2-13)+'" width="21" height="12" rx="2" fill="#0d2137" stroke="#1f6feb44" stroke-width="0.5"/>'+
@@ -1571,7 +1588,7 @@ function renderTopology(){
   });
 
   // 6. Agent nodes — ③ active pulse ring + C 품질 메트릭
-  const agR=14;
+  const agR=22;
   agNodes.forEach(a=>{
     const color=topoAgentColor(a.name);
     const sel=_topoSelected===a.name;
@@ -1595,7 +1612,7 @@ function renderTopology(){
       '<g class="topo-node" data-tid="'+escHtml(a.name)+'" onclick="topoSelect(this.dataset.tid)" style="cursor:pointer"'+gf+'>'+
       '<circle cx="'+a.x+'" cy="'+a.y+'" r="'+agR+'" fill="#050810" stroke="'+stroke+'" stroke-width="'+bw+'"/>'+
       (isActive?'<circle cx="'+a.x+'" cy="'+a.y+'" r="'+(agR+5)+'" fill="none" stroke="'+color+'" stroke-width="0.8" opacity="0.25" stroke-dasharray="3 3"/>':'')+
-      '<text x="'+a.x+'" y="'+(a.y+3)+'" text-anchor="middle" font-size="7" fill="'+color+'" font-weight="700">'+escHtml(a.name.slice(0,8))+'</text>'+
+      '<text x="'+a.x+'" y="'+(a.y+5)+'" text-anchor="middle" font-size="11" fill="'+color+'" font-weight="700">'+escHtml(a.name.slice(0,10))+'</text>'+
       // C: Success rate mini-bar below node name
       (stats&&stats.total>0?
         '<rect x="'+(a.x-agR)+'" y="'+(a.y+agR+2)+'" width="'+barW+'" height="3" rx="1.5" fill="#1a2535"/>'+
@@ -2323,6 +2340,8 @@ function renderTab(){
     content.innerHTML=renderOverviewTab();
   }else if(activeTab==='debug'){
     content.innerHTML=renderDebugTab();
+  }else if(activeTab==='notes'){
+    renderNotesTab();
   }
 }
 
@@ -3076,6 +3095,229 @@ function renderFlowTab(){
     '<div class="flow-log">'+logHtml+'</div>';
 }
 
+
+// ── Notes tab ─────────────────────────────────────────
+let _notesData = null;
+let _notesFetching = false;
+
+async function fetchNotes() {
+  if (_notesFetching) return;
+  _notesFetching = true;
+  try {
+    const r = await fetch(API + '/api/notes');
+    _notesData = await r.json();
+  } catch(e) { _notesData = null; }
+  _notesFetching = false;
+}
+
+function parseMdTable(md) {
+  if (!md) return null;
+  const rows = md.trim().split('\\n').filter(l => l.startsWith('|'));
+  if (rows.length < 2) return null;
+  const headers = rows[0].split('|').map(s=>s.trim()).filter(Boolean);
+  const body = rows.slice(2).map(r => r.split('|').map(s=>s.trim()).filter(Boolean));
+  return { headers, body };
+}
+
+let _historyIdx = -1;
+function historySelect(i) {
+  _historyIdx = i;
+  const { contextHistory = [] } = _notesData || {};
+  const hist = contextHistory[i];
+  if (!hist) return;
+  // 모든 항목 비활성화
+  document.querySelectorAll('.notes-list-item').forEach(el => {
+    el.style.borderColor = '#21262d';
+    el.style.background = 'transparent';
+  });
+  const item = document.getElementById('nh-' + i);
+  if (item) { item.style.borderColor = '#e3b34144'; item.style.background = '#1a1505'; }
+
+  const detail = document.getElementById('notes-detail');
+  if (!detail) return;
+
+  const dt = new Date(hist.mtime).toLocaleString('ko-KR');
+  const sesNum = hist.filename.match(/_s(\\d+)\\.md$/);
+  const sesLabel = sesNum ? '세션 S' + sesNum[1] : hist.filename;
+  const sizeKB = (hist.size / 1024).toFixed(1);
+
+  let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #21262d">';
+  html += '<span style="font-size:13px;font-weight:700;color:#e3b341">🕐 ' + escHtml(sesLabel) + '</span>';
+  html += '<span style="color:#484f58;font-size:10px">' + dt + '</span>';
+  html += '<span style="color:#484f58;font-size:10px;margin-left:auto">' + escHtml(hist.filename) + ' (' + sizeKB + 'KB)</span>';
+  html += '</div>';
+
+  // SESSION_START 블록 파싱
+  const sessions = (hist.content || '').split(/<!-- SESSION_START -->/).slice(1);
+  if (sessions.length > 0) {
+    sessions.forEach((blk, bi) => {
+      const body = blk.replace(/<!-- SESSION_END -->[\\s\\S]*/, '').trim();
+      const lines = body.split('\\n');
+      const header = lines[0] || ('세션 ' + (bi+1));
+      const rest = lines.slice(1).join('\\n').trim();
+      html += '<div style="background:#0d1b36;border:1px solid #1f6feb22;border-radius:5px;padding:8px 10px;margin-bottom:8px">';
+      html += '<div style="color:#58a6ff;font-size:10px;font-weight:700;margin-bottom:5px">' + escHtml(header.replace(/^#+\\s*/,'')) + '</div>';
+      if (rest) html += '<pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:9px;color:#8b949e;margin:0;max-height:300px;overflow-y:auto">' + escHtml(rest.slice(0,3000)) + (rest.length>3000?'\\n...(잘림)':'') + '</pre>';
+      html += '</div>';
+    });
+  } else {
+    // SESSION_START 없으면 전체 마크다운 표시
+    html += '<pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:9px;color:#8b949e;margin:0;max-height:calc(100vh-300px);overflow-y:auto">' + escHtml((hist.content||'').slice(0,5000)) + '</pre>';
+  }
+  detail.innerHTML = html;
+}
+
+function renderNotesTab() {
+  const content = el('tabContent');
+  if (!_notesData) {
+    content.innerHTML = '<div class="notes-empty">⟳ 노트 로드 중...</div>';
+    fetchNotes().then(() => { if(activeTab==='notes') renderNotesTab(); });
+    return;
+  }
+  const { contextNote, improvementNotes, contextHistory = [] } = _notesData;
+
+  // ── 레이아웃: 좌(목록) + 우(상세) ──────────────────────────────
+  let html = '<div style="display:flex;gap:8px;height:calc(100vh - 180px);min-height:400px">';
+
+  // 좌 패널 — 노트 목록
+  html += '<div style="width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">';
+
+  // 맥락노트 항목
+  html += '<div class="notes-list-item active" id="nl--1" onclick="notesSelect(-1)" style="cursor:pointer;padding:8px 10px;border-radius:5px;border:1px solid #1f6feb44;background:#0d1b36">';
+  html += '<div style="color:#58a6ff;font-size:10px;font-weight:700;margin-bottom:2px">◆ 맥락노트</div>';
+  html += '<div style="color:#8b949e;font-size:9px;font-family:var(--font-mono)">context_note.md</div>';
+  if (contextNote.exists) {
+    html += '<div style="color:#3fb950;font-size:9px;margin-top:2px">' + new Date(contextNote.mtime).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</div>';
+  } else {
+    html += '<div style="color:#484f58;font-size:9px;margin-top:2px">미생성</div>';
+  }
+  html += '</div>';
+
+  // 개선노트 목록
+  html += '<div style="color:#bc8cff;font-size:10px;font-weight:700;padding:4px 4px 2px;border-bottom:1px solid #21262d">◆ 개선노트 ' + improvementNotes.length + '개</div>';
+  improvementNotes.forEach((note, i) => {
+    const scoreNum = parseFloat(note.score);
+    const scoreColor = isNaN(scoreNum) ? '#484f58' : scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
+    const isActive = i === 0;
+    const fname = note.filename.replace(/^projects-/, '').replace(/\.md$/, '');
+    html += '<div class="notes-list-item' + (isActive?' active':'') + '" id="nl-' + i + '" onclick="notesSelect(' + i + ')" style="cursor:pointer;padding:8px 10px;border-radius:5px;border:1px solid ' + (isActive?'#bc8cff44':'#21262d') + ';background:' + (isActive?'#1a1040':'transparent') + '">';
+    html += '<div style="color:#c9d1d9;font-size:10px;font-family:var(--font-mono);word-break:break-all">' + escHtml(fname) + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:3px;align-items:center">';
+    html += '<span style="color:#484f58;font-size:9px">' + new Date(note.mtime).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
+    html += '<span style="color:' + scoreColor + ';font-size:9px;font-weight:700">' + escHtml(note.score) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
+
+  html += '<div style="text-align:center;padding:6px"><button class="dbg-btn" onclick="fetchNotes().then(()=>renderNotesTab())" style="font-size:9px;width:100%">⟳ 새로고침</button></div>';
+
+  // 이전 세션 히스토리 목록
+  if (contextHistory.length > 0) {
+    html += '<div style="color:#e3b341;font-size:10px;font-weight:700;padding:8px 4px 2px;border-bottom:1px solid #21262d;margin-top:6px">🕐 이전 세션 ' + contextHistory.length + '개</div>';
+    contextHistory.forEach((hist, i) => {
+      const dt = new Date(hist.mtime);
+      const dtStr = dt.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const sesNum = hist.filename.match(/_s(\d+)\.md$/);
+      const sesLabel = sesNum ? 'S' + sesNum[1] : hist.filename;
+      const sizeKB = (hist.size / 1024).toFixed(1);
+      html += '<div class="notes-list-item" id="nh-' + i + '" onclick="historySelect(' + i + ')" style="cursor:pointer;padding:6px 10px;border-radius:5px;border:1px solid #21262d;background:transparent;margin-bottom:2px">';
+      html += '<div style="display:flex;align-items:center;gap:4px">';
+      html += '<span style="color:#e3b341;font-size:10px;font-weight:700;min-width:28px">' + escHtml(sesLabel) + '</span>';
+      html += '<span style="color:#484f58;font-size:9px">' + dtStr + '</span>';
+      html += '<span style="color:#484f58;font-size:9px;margin-left:auto">' + sizeKB + 'K</span>';
+      html += '</div>';
+      const preview = (hist.title || '').slice(0, 28);
+      if (preview) html += '<div style="color:#8b949e;font-size:9px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(preview) + '</div>';
+      html += '</div>';
+    });
+  }
+
+  html += '</div>'; // 좌 패널 끝
+
+  // 우 패널 — 상세 뷰
+  html += '<div id="notes-detail" style="flex:1;overflow-y:auto;background:#0d1117;border:1px solid var(--border-subtle);border-radius:6px;padding:12px;font-size:10px">';
+  // 초기: 최신 개선노트 표시
+  if (improvementNotes.length) {
+    html += renderNoteDetail(improvementNotes[0]);
+  } else if (contextNote.exists) {
+    html += renderContextDetail(contextNote);
+  } else {
+    html += '<div class="notes-empty">세션 종료 시 자동 생성됩니다</div>';
+  }
+  html += '</div>'; // 우 패널 끝
+
+  html += '</div>'; // 전체 flex 끝
+  content.innerHTML = html;
+
+  // 전역 데이터 저장 (클릭 핸들러용)
+  window._notesCtx = contextNote;
+  window._notesImp = improvementNotes;
+}
+
+function renderContextDetail(note) {
+  if (!note.exists) return '<div class="notes-empty">맥락노트 없음</div>';
+  let h = '<div style="color:#58a6ff;font-weight:700;font-size:11px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #21262d">◆ 맥락노트</div>';
+  h += '<div style="color:#484f58;font-size:9px;margin-bottom:8px">' + new Date(note.mtime).toLocaleString('ko-KR') + '</div>';
+  h += '<pre class="notes-pre" style="max-height:none;background:transparent;padding:0">' + escHtml(note.content) + '</pre>';
+  return h;
+}
+
+function renderNoteDetail(note) {
+  if (!note) return '<div class="notes-empty">노트 없음</div>';
+  const scoreNum = parseFloat(note.score);
+  const scoreColor = isNaN(scoreNum) ? '#484f58' : scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
+
+  let h = '<div style="color:#bc8cff;font-weight:700;font-size:11px;margin-bottom:4px">' + escHtml(note.filename) + '</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #21262d">';
+  h += '<span style="color:#484f58;font-size:9px">' + new Date(note.mtime).toLocaleString('ko-KR') + '</span>';
+  h += '<span style="color:' + scoreColor + ';font-size:10px;font-weight:700;background:#21262d;padding:1px 8px;border-radius:10px">' + escHtml(note.score) + '</span>';
+  h += '</div>';
+
+  // Before→After 테이블
+  if (note.baTable) {
+    const parsed = parseMdTable(note.baTable);
+    if (parsed && parsed.body.some(r => r.length > 1)) {
+      h += '<div style="color:#58a6ff;font-weight:600;font-size:10px;margin-bottom:4px">🔄 Before → After</div>';
+      h += '<table class="notes-table" style="margin-bottom:10px"><thead><tr>';
+      parsed.headers.forEach(hd => { h += '<th>' + escHtml(hd) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      parsed.body.forEach(row => {
+        if (!row.length || row.every(c => /^[-:]+$/.test(c))) return;
+        h += '<tr>' + row.map(c => '<td>' + escHtml(c) + '</td>').join('') + '</tr>';
+      });
+      h += '</tbody></table>';
+    }
+  }
+
+  // 전체 내용 (마크다운 그대로)
+  h += '<div style="color:#8b949e;font-size:10px;font-weight:600;margin-bottom:4px">전체 내용</div>';
+  h += '<pre class="notes-pre" style="max-height:none;background:transparent;padding:0">' + escHtml(note.content) + '</pre>';
+  return h;
+}
+
+function notesSelect(id) {
+  // 목록 활성 표시 업데이트
+  document.querySelectorAll('.notes-list-item').forEach(el => {
+    el.style.background = 'transparent';
+    el.style.borderColor = '#21262d';
+    el.classList.remove('active');
+  });
+  const detail = el('notes-detail');
+  if (!detail) return;
+
+  if (id === -1) {
+    const item = document.getElementById('nl--1');
+    if (item) { item.style.background='#0d1b36'; item.style.borderColor='#1f6feb44'; }
+    detail.innerHTML = renderContextDetail(window._notesCtx || {exists:false});
+  } else {
+    const item = document.getElementById('nl-'+id);
+    if (item) { item.style.background='#1a1040'; item.style.borderColor='#bc8cff44'; }
+    const note = (window._notesImp || [])[id];
+    detail.innerHTML = note ? renderNoteDetail(note) : '<div class="notes-empty">없음</div>';
+  }
+}
+
+
 function renderDebugTab(){
   const bufStats=[
     {label:'Event Ring',val:events.length,max:EVENT_RING_CAP,color:'#58a6ff'},
@@ -3231,7 +3473,8 @@ function agentColor(id){
   const c={'claude-code':'#58a6ff','claude-3':'#79c0ff','claude-4':'#79c0ff','claude-5':'#79c0ff',
     'opencode':'#a5b4fc','gemini':'#3fb950','codex':'#d2a8ff','aider':'#d29922',
     'cursor-agent':'#f0883e','copilot':'#8b949e','openrouter':'#79c0ff',
-    'mlx':'#56d364','system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
+    'ollama':'#56d364','mlx':'#c084fc','vllm':'#e879f9',
+    'system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
   return c[id]||'#8b949e';
 }
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -3541,6 +3784,8 @@ async function init(){
   const _meshTimer=setInterval(pollMesh,15000);
   const _taskTimer=setInterval(pollTasks,10000);
   const _heartbeatTimer=setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions'||activeTab==='overview')renderTab(); }, 10000);
+  // Notes auto-refresh: 60초마다 캐시 무효화 후 탭 활성 시 재렌더
+  const _notesTimer=setInterval(()=>{ _notesData=null; if(activeTab==='notes') renderNotesTab(); }, 60000);
 
   // Animation loops via requestAnimationFrame — aligned to vsync, skips hidden tabs
   let _lastTopoRender=0, _lastGraphRender=0;

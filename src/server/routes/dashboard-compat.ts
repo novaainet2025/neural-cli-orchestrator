@@ -319,6 +319,86 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return { nodes };
   });
 
+  // ═══ Session Notes (맥락노트 + 개선노트) ══════════════
+  app.get('/api/notes', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+    const home = os.homedir();
+
+    // 맥락노트 읽기
+    const ctxPath = path.join(home, 'projects', 'context_note.md');
+    let contextNote = { exists: false, content: '', mtime: '' };
+    try {
+      const stat = fs.statSync(ctxPath);
+      contextNote = {
+        exists: true,
+        content: fs.readFileSync(ctxPath, 'utf-8'),
+        mtime: stat.mtime.toISOString(),
+      };
+    } catch {}
+
+    // 개선노트 목록 읽기 (최근 20개)
+    const impDir = path.join(home, '.claude', 'improvements');
+    const improvementNotes: any[] = [];
+    try {
+      const files = fs.readdirSync(impDir)
+        .filter((f: string) => f.endsWith('.md') && !f.includes('INDEX'))
+        .sort()
+        .reverse()
+        .slice(0, 20);
+      for (const f of files) {
+        const fpath = path.join(impDir, f);
+        const stat = fs.statSync(fpath);
+        const content = fs.readFileSync(fpath, 'utf-8');
+        // before→after 테이블 추출
+        const baMatch = content.match(/Before\s*→\s*After.*?\n(\|[\s\S]*?)(?=\n###|$)/);
+        const baTable = baMatch ? baMatch[1].trim() : '';
+        // 권장 개선사항 추출
+        const nextMatch = content.match(/권장 개선사항[^\n]*\n((?:\d+\..*\n?){1,5})/);
+        const nextItems = nextMatch ? nextMatch[1].trim() : '';
+        // 점수 추출
+        const scoreMatch = content.match(/점수:\s*(\S+)/);
+        improvementNotes.push({
+          filename: f,
+          mtime: stat.mtime.toISOString(),
+          content,
+          baTable,
+          nextItems,
+          score: scoreMatch ? scoreMatch[1] : '-',
+        });
+      }
+    } catch {}
+
+    // 맥락노트 이전 세션 히스토리 읽기
+    const histDir = path.join(home, 'projects', 'context_history');
+    const contextHistory: any[] = [];
+    try {
+      const files = fs.readdirSync(histDir)
+        .filter((f: string) => f.endsWith('.md'))
+        .sort()
+        .reverse()
+        .slice(0, 50);
+      for (const f of files) {
+        const fpath = path.join(histDir, f);
+        const stat = fs.statSync(fpath);
+        const content = fs.readFileSync(fpath, 'utf-8');
+        // 세션 제목 추출 (첫 줄 또는 SESSION_START 이후)
+        const titleMatch = content.match(/##\s*(.+)/);
+        const title = titleMatch ? titleMatch[1].trim() : f;
+        contextHistory.push({
+          filename: f,
+          mtime: stat.mtime.toISOString(),
+          size: stat.size,
+          content,
+          title,
+        });
+      }
+    } catch {}
+
+    return { contextNote, improvementNotes, contextHistory };
+  });
+
   // ═══ Catch-all for unimplemented routes ═════════════
   // Note: This must be the LAST route registered. Routes added in gateway.ts
   // before registerDashboardRoutes() take priority via Fastify's route matching.
