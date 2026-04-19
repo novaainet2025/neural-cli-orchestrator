@@ -575,6 +575,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 .notes-mtime{color:var(--text-muted);font-size:10px;margin-left:auto}
 .notes-filename{color:#58a6ff;font-size:10px;font-family:var(--font-mono)}
 .notes-empty{color:var(--text-muted);font-size:11px;padding:16px;text-align:center}
+.notes-list-item{transition:background .15s,border-color .15s}
 /* ── Debug tab ─────────────────────────────────────────── */
 .dbg-layout{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;box-sizing:border-box}
 .dbg-full{grid-column:1/-1}
@@ -3125,74 +3126,126 @@ function renderNotesTab() {
     return;
   }
   const { contextNote, improvementNotes } = _notesData;
-  let html = '';
 
-  // 맥락노트
-  html += '<div class="notes-section">';
-  html += '<div class="notes-section-hdr">';
-  html += '<span style="color:#58a6ff">◆ 맥락노트</span>';
-  html += '<span style="color:#8b949e;font-weight:400;font-family:var(--font-mono);font-size:10px">~/projects/context_note.md</span>';
-  if (contextNote.exists) html += '<span class="notes-mtime">' + new Date(contextNote.mtime).toLocaleString('ko-KR') + '</span>';
-  html += '</div><div class="notes-section-body">';
+  // ── 레이아웃: 좌(목록) + 우(상세) ──────────────────────────────
+  let html = '<div style="display:flex;gap:8px;height:calc(100vh - 180px);min-height:400px">';
+
+  // 좌 패널 — 노트 목록
+  html += '<div style="width:220px;flex-shrink:0;display:flex;flex-direction:column;gap:6px;overflow-y:auto">';
+
+  // 맥락노트 항목
+  html += '<div class="notes-list-item active" id="nl--1" onclick="notesSelect(-1)" style="cursor:pointer;padding:8px 10px;border-radius:5px;border:1px solid #1f6feb44;background:#0d1b36">';
+  html += '<div style="color:#58a6ff;font-size:10px;font-weight:700;margin-bottom:2px">◆ 맥락노트</div>';
+  html += '<div style="color:#8b949e;font-size:9px;font-family:var(--font-mono)">context_note.md</div>';
   if (contextNote.exists) {
-    const lines = contextNote.content.split('\\n').slice(0, 30).join('\\n');
-    html += '<pre class="notes-pre">' + escHtml(lines) + '</pre>';
-    const total = contextNote.content.split('\\n').length;
-    if (total > 30) html += '<div style="color:var(--text-muted);font-size:10px;margin-top:4px">... 전체 ' + total + '줄</div>';
+    html += '<div style="color:#3fb950;font-size:9px;margin-top:2px">' + new Date(contextNote.mtime).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</div>';
   } else {
-    html += '<div class="notes-empty">아직 없음 — 세션 종료 시 자동 생성</div>';
+    html += '<div style="color:#484f58;font-size:9px;margin-top:2px">미생성</div>';
   }
-  html += '</div></div>';
+  html += '</div>';
 
-  // 개선노트
-  html += '<div class="notes-section">';
-  html += '<div class="notes-section-hdr">';
-  html += '<span style="color:#bc8cff">◆ 개선노트</span>';
-  html += '<span style="color:#8b949e;font-weight:400;font-family:var(--font-mono);font-size:10px">~/.claude/improvements/</span>';
-  html += '<span class="notes-mtime">' + improvementNotes.length + '개</span>';
-  html += '</div><div class="notes-section-body">';
+  // 개선노트 목록
+  html += '<div style="color:#bc8cff;font-size:10px;font-weight:700;padding:4px 4px 2px;border-bottom:1px solid #21262d">◆ 개선노트 ' + improvementNotes.length + '개</div>';
+  improvementNotes.forEach((note, i) => {
+    const scoreNum = parseFloat(note.score);
+    const scoreColor = isNaN(scoreNum) ? '#484f58' : scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
+    const isActive = i === 0;
+    const fname = note.filename.replace(/^projects-/, '').replace(/\.md$/, '');
+    html += '<div class="notes-list-item' + (isActive?' active':'') + '" id="nl-' + i + '" onclick="notesSelect(' + i + ')" style="cursor:pointer;padding:8px 10px;border-radius:5px;border:1px solid ' + (isActive?'#bc8cff44':'#21262d') + ';background:' + (isActive?'#1a1040':'transparent') + '">';
+    html += '<div style="color:#c9d1d9;font-size:10px;font-family:var(--font-mono);word-break:break-all">' + escHtml(fname) + '</div>';
+    html += '<div style="display:flex;gap:6px;margin-top:3px;align-items:center">';
+    html += '<span style="color:#484f58;font-size:9px">' + new Date(note.mtime).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) + '</span>';
+    html += '<span style="color:' + scoreColor + ';font-size:9px;font-weight:700">' + escHtml(note.score) + '</span>';
+    html += '</div>';
+    html += '</div>';
+  });
 
-  if (!improvementNotes.length) {
-    html += '<div class="notes-empty">아직 없음 — 변경파일 3개+ 세션 종료 시 자동 생성</div>';
+  html += '<div style="text-align:center;padding:6px"><button class="dbg-btn" onclick="fetchNotes().then(()=>renderNotesTab())" style="font-size:9px;width:100%">⟳ 새로고침</button></div>';
+  html += '</div>'; // 좌 패널 끝
+
+  // 우 패널 — 상세 뷰
+  html += '<div id="notes-detail" style="flex:1;overflow-y:auto;background:#0d1117;border:1px solid var(--border-subtle);border-radius:6px;padding:12px;font-size:10px">';
+  // 초기: 최신 개선노트 표시
+  if (improvementNotes.length) {
+    html += renderNoteDetail(improvementNotes[0]);
+  } else if (contextNote.exists) {
+    html += renderContextDetail(contextNote);
   } else {
-    for (const note of improvementNotes) {
-      html += '<div style="margin-bottom:14px;border-bottom:1px solid var(--border-subtle);padding-bottom:10px">';
-      const scoreNum = parseFloat(note.score);
-      const scoreColor = scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
-      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
-      html += '<span class="notes-filename">' + escHtml(note.filename) + '</span>';
-      html += '<span class="notes-mtime">' + new Date(note.mtime).toLocaleString('ko-KR') + '</span>';
-      html += '<span class="notes-score" style="color:' + scoreColor + '">' + escHtml(note.score) + '</span>';
-      html += '</div>';
-      if (note.baTable) {
-        const parsed = parseMdTable(note.baTable);
-        if (parsed && parsed.body.some(r => r.length > 1)) {
-          html += '<div style="font-size:10px;color:#58a6ff;margin-bottom:4px;font-weight:600">🔄 Before → After</div>';
-          html += '<table class="notes-table"><thead><tr>';
-          parsed.headers.forEach(h => { html += '<th>' + escHtml(h) + '</th>'; });
-          html += '</tr></thead><tbody>';
-          parsed.body.forEach(row => {
-            if (!row.length || row.every(c => /^[-:]+$/.test(c))) return;
-            html += '<tr>' + row.map(c => '<td>' + escHtml(c) + '</td>').join('') + '</tr>';
-          });
-          html += '</tbody></table>';
-        }
-      }
-      if (note.nextItems) {
-        html += '<div style="font-size:10px;color:#3fb950;margin:6px 0 3px;font-weight:600">💡 다음 권장사항</div>';
-        html += '<ul style="margin:0;padding-left:16px;color:var(--text-secondary);font-size:10px">';
-        note.nextItems.split('\\n').filter(Boolean).forEach(item => {
-          html += '<li style="margin:1px 0">' + escHtml(item.replace(/^\d+\.\s*/, '')) + '</li>';
-        });
-        html += '</ul>';
-      }
-      html += '</div>';
+    html += '<div class="notes-empty">세션 종료 시 자동 생성됩니다</div>';
+  }
+  html += '</div>'; // 우 패널 끝
+
+  html += '</div>'; // 전체 flex 끝
+  content.innerHTML = html;
+
+  // 전역 데이터 저장 (클릭 핸들러용)
+  window._notesCtx = contextNote;
+  window._notesImp = improvementNotes;
+}
+
+function renderContextDetail(note) {
+  if (!note.exists) return '<div class="notes-empty">맥락노트 없음</div>';
+  let h = '<div style="color:#58a6ff;font-weight:700;font-size:11px;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid #21262d">◆ 맥락노트</div>';
+  h += '<div style="color:#484f58;font-size:9px;margin-bottom:8px">' + new Date(note.mtime).toLocaleString('ko-KR') + '</div>';
+  h += '<pre class="notes-pre" style="max-height:none;background:transparent;padding:0">' + escHtml(note.content) + '</pre>';
+  return h;
+}
+
+function renderNoteDetail(note) {
+  if (!note) return '<div class="notes-empty">노트 없음</div>';
+  const scoreNum = parseFloat(note.score);
+  const scoreColor = isNaN(scoreNum) ? '#484f58' : scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
+
+  let h = '<div style="color:#bc8cff;font-weight:700;font-size:11px;margin-bottom:4px">' + escHtml(note.filename) + '</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #21262d">';
+  h += '<span style="color:#484f58;font-size:9px">' + new Date(note.mtime).toLocaleString('ko-KR') + '</span>';
+  h += '<span style="color:' + scoreColor + ';font-size:10px;font-weight:700;background:#21262d;padding:1px 8px;border-radius:10px">' + escHtml(note.score) + '</span>';
+  h += '</div>';
+
+  // Before→After 테이블
+  if (note.baTable) {
+    const parsed = parseMdTable(note.baTable);
+    if (parsed && parsed.body.some(r => r.length > 1)) {
+      h += '<div style="color:#58a6ff;font-weight:600;font-size:10px;margin-bottom:4px">🔄 Before → After</div>';
+      h += '<table class="notes-table" style="margin-bottom:10px"><thead><tr>';
+      parsed.headers.forEach(hd => { h += '<th>' + escHtml(hd) + '</th>'; });
+      h += '</tr></thead><tbody>';
+      parsed.body.forEach(row => {
+        if (!row.length || row.every(c => /^[-:]+$/.test(c))) return;
+        h += '<tr>' + row.map(c => '<td>' + escHtml(c) + '</td>').join('') + '</tr>';
+      });
+      h += '</tbody></table>';
     }
   }
-  html += '</div></div>';
-  html += '<div style="text-align:right;margin-top:4px"><button class="dbg-btn" onclick="fetchNotes().then(()=>renderNotesTab())" style="font-size:10px">⟳ 새로고침</button></div>';
-  content.innerHTML = html;
+
+  // 전체 내용 (마크다운 그대로)
+  h += '<div style="color:#8b949e;font-size:10px;font-weight:600;margin-bottom:4px">전체 내용</div>';
+  h += '<pre class="notes-pre" style="max-height:none;background:transparent;padding:0">' + escHtml(note.content) + '</pre>';
+  return h;
 }
+
+function notesSelect(id) {
+  // 목록 활성 표시 업데이트
+  document.querySelectorAll('.notes-list-item').forEach(el => {
+    el.style.background = 'transparent';
+    el.style.borderColor = '#21262d';
+    el.classList.remove('active');
+  });
+  const detail = el('notes-detail');
+  if (!detail) return;
+
+  if (id === -1) {
+    const item = document.getElementById('nl--1');
+    if (item) { item.style.background='#0d1b36'; item.style.borderColor='#1f6feb44'; }
+    detail.innerHTML = renderContextDetail(window._notesCtx || {exists:false});
+  } else {
+    const item = document.getElementById('nl-'+id);
+    if (item) { item.style.background='#1a1040'; item.style.borderColor='#bc8cff44'; }
+    const note = (window._notesImp || [])[id];
+    detail.innerHTML = note ? renderNoteDetail(note) : '<div class="notes-empty">없음</div>';
+  }
+}
+
 
 function renderDebugTab(){
   const bufStats=[
