@@ -2,8 +2,8 @@ module.exports = {
   apps: [
     {
       name: 'nco-backend',
-      script: 'npx',
-      args: 'tsx src/index.ts',
+      script: './node_modules/.bin/tsx',
+      args: 'src/index.ts',
       cwd: '/Users/nova-ai/project/nco',
       instances: 1,
       autorestart: true,
@@ -18,7 +18,7 @@ module.exports = {
       },
     },
     {
-      // macOS Apple Silicon — MLX server (Gemma 4 26B 4-bit)
+      // macOS Apple Silicon — MLX server (Gemma 4 26B A4B 4-bit)
       // Enabled via: pm2 start ecosystem.config.cjs --only mlx-server
       name: 'mlx-server',
       interpreter: 'none',
