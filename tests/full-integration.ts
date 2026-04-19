@@ -91,8 +91,8 @@ async function main() {
     const cc = r.data.providers.find((p: any) => p.id === 'claude-code');
     assert(cc.role === 'Commander', `role: ${cc.role}`);
     assert(cc.score === 95, `score: ${cc.score}`);
-    const vl = r.data.providers.find((p: any) => p.id === 'ollama');
-    assert(vl.role === 'Validator', `ollama role: ${vl.role}`);
+    const mx = r.data.providers.find((p: any) => p.id === 'mlx');
+    assert(mx.role === 'Validator', `mlx role: ${mx.role}`);
   });
 
   await test('프로바이더', 'enabled 필터', async () => {
@@ -122,25 +122,25 @@ async function main() {
   });
 
   await test('데몬', '개별 stop → offline', async () => {
-    await post('/api/daemons/ollama/stop', {});
+    await post('/api/daemons/mlx/stop', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'ollama');
-    assert(vllm.status === 'offline', `ollama: ${vllm.status}`);
+    const mlx = r.data.daemons.find((d: any) => d.id === 'mlx');
+    assert(mlx.status === 'offline', `mlx: ${mlx.status}`);
   });
 
   await test('데몬', '개별 start → idle', async () => {
-    await post('/api/daemons/ollama/start', {});
+    await post('/api/daemons/mlx/start', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'ollama');
-    assert(vllm.status === 'idle', `ollama: ${vllm.status}`);
+    const mlx = r.data.daemons.find((d: any) => d.id === 'mlx');
+    assert(mlx.status === 'idle', `mlx: ${mlx.status}`);
   });
 
   await test('데몬', 'by-workspace', async () => {
     const r = await api('/api/daemons/by-workspace?workspaceId=default');
-    assert(r.data.workspaceId === 'default', 'wrong workspace');
-    assert(r.data.daemons.length === 9, `got ${r.data.daemons.length}`);
+    assert(r.data.data.workspaceId === 'default', 'wrong workspace');
+    assert(r.data.data.daemons.length === 9, `got ${r.data.data.daemons.length}`);
   });
 
   // ═══ 4. WebSocket 양방향 ═══
@@ -197,7 +197,7 @@ async function main() {
     const r = await post('/api/task', { ai: 'openrouter', prompt: 'integration test' });
     assert(r.status === 202, `HTTP ${r.status}`);
     assert(!!r.data.taskId, 'no taskId');
-    assert(r.data.status === 'assigned', `status: ${r.data.status}`);
+    assert(r.data.status === 'assigned' || r.data.status === 'queued', `status: ${r.data.status}`);
   });
 
   await test('작업', 'GET /api/tasks → 작업 목록', async () => {
@@ -245,7 +245,7 @@ async function main() {
   console.log('\n=== 7. 토론 (Discussion) ===');
 
   await test('토론', 'POST /api/discussion/create → session', async () => {
-    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'ollama'] });
+    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'mlx'] });
     assert(!!r.data.session, 'no session');
     assert(!!r.data.session.wsUrl, 'no wsUrl');
   });

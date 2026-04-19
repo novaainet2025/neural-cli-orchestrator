@@ -205,6 +205,20 @@ else
 fi
 
 # ========================================
+# Claude-Gemma (Anthropic→MLX 프록시 4100) — 워크플로 안내
+# ========================================
+GEMMA_HINT=0
+if echo "${ANTHROPIC_BASE_URL:-}" | grep -q '4100'; then
+    GEMMA_HINT=1
+elif curl -sf --connect-timeout 1 --max-time 2 http://127.0.0.1:4100/health >/dev/null 2>&1; then
+    GEMMA_HINT=1
+fi
+if [ "$GEMMA_HINT" -eq 1 ]; then
+    echo "" >&2
+    echo -e "${CYAN}Claude-Gemma:${NC} 토큰 절약 규칙은 ${BOLD}첫 프롬프트부터 자동 적용${NC} (훅). 상세만 ${BOLD}/claude-gemma-pipeline${NC}${NC}" >&2
+fi
+
+# ========================================
 # Advisor 모델 설정 표시
 # ========================================
 SETTINGS_FILE="$HOME/.claude/settings.json"

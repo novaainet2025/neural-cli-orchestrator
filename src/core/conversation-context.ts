@@ -16,6 +16,8 @@ const log = createLogger('conversation-context');
 
 // How many previous turns to include (keeps prompt size reasonable)
 const MAX_HISTORY_TURNS = 5;
+const MAX_TOTAL_HISTORY_CHARS = 4000;
+const MAX_TURN_RESPONSE_CHARS = 600;
 
 export interface HistoryTurn {
   prompt: string;
@@ -62,24 +64,29 @@ export function buildConversationContext(
     const turns = rows.reverse();
 
     const lines: string[] = [
-      `## Conversation History (workspace: ${workspaceId})`,
-      `The following are previous exchanges in this workspace session.`,
-      `Use this context to understand what has been done so far.`,
+      `## Context (${workspaceId})`,
       '',
     ];
 
+    let totalChars = 0;
     for (const t of turns) {
+      const promptSnippet = t.prompt.length > 200 ? t.prompt.slice(0, 200) + '...' : t.prompt;
       // Truncate long responses to keep prompt size bounded
-      const truncated = t.response.length > 800
-        ? t.response.slice(0, 800) + '... [truncated]'
+      const truncated = t.response.length > MAX_TURN_RESPONSE_CHARS
+        ? t.response.slice(0, MAX_TURN_RESPONSE_CHARS) + '... [truncated]'
         : t.response;
 
-      lines.push(`**User:** ${t.prompt}`);
-      lines.push(`**${t.assigned_to}:** ${truncated}`);
-      lines.push('');
+      const turnText = `User: ${promptSnippet}\n${t.assigned_to}: ${truncated}\n\n`;
+      
+      if (totalChars + turnText.length > MAX_TOTAL_HISTORY_CHARS) {
+        break;
+      }
+      
+      lines.push(turnText);
+      totalChars += turnText.length;
     }
 
-    lines.push('## Current Task');
+    lines.push('---');
     return lines.join('\n');
   } catch (err: any) {
     log.warn({ err: err.message, workspaceId }, 'Failed to load conversation context');

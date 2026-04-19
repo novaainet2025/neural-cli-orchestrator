@@ -57,7 +57,7 @@ async function main() {
     const ids = r.data.providers.map((p: any) => p.id).sort();
     assert(ids.includes('claude-code'), 'missing claude-code');
     assert(ids.includes('openrouter'), 'missing openrouter');
-    assert(ids.includes('ollama'), 'missing ollama');
+    assert(ids.includes('mlx'), 'missing mlx');
   });
 
   await test('AM', '에이전트 유형 분류 (Commander/Architect/Engineer/...)', async () => {

@@ -5,7 +5,8 @@
 
 INPUT=$(cat)
 
-PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/home/nova/projects/neural-cli-orchestrator}"
+PROJECT_DIR="${CLAUDE_PROJECT_DIR:-/Users/nova-ai/project/nco}"
+
 # Resolve NCO_SESSION_ID: env var > process tree walk
 if [ -z "$NCO_SESSION_ID" ]; then
   _CK=$$
@@ -34,10 +35,24 @@ if [ -z "$NCO_NAME" ]; then
 fi
 MY_NAME="${NCO_NAME:-cli}"
 
-# Simple TTL cache for health/state (30s)
-NCO_CACHE_TTL=30
-NCO_CACHE_DIR="/tmp/nco-hook-cache"
-mkdir -p "$NCO_CACHE_DIR" 2>/dev/null
+# ─── Claude-Gemma (MLX 프록시 4100): 토큰 절약 규칙 자동 주입 (세션당 1회, 슬래시 명령 불필요)
+GEMMA_MODE=0
+if echo "${ANTHROPIC_BASE_URL:-}" | grep -q '4100'; then GEMMA_MODE=1; fi
+if [ "$GEMMA_MODE" -eq 0 ]; then
+  curl -sf --connect-timeout 1 --max-time 2 http://127.0.0.1:4100/health >/dev/null 2>&1 && GEMMA_MODE=1
+fi
+GEMMA_APPEND=""
+if [ "$GEMMA_MODE" -eq 1 ]; then
+  _SID="${NCO_SESSION_ID:-${PPID:-$$}}"
+  _GTOK="/tmp/nco-gemma-tok-${_SID}"
+  if [ ! -f "$_GTOK" ]; then
+    GEMMA_APPEND=" [AUTO_GEMMA:mlx] 슬래시명령 없이 적용. 검증=bash ${PROJECT_DIR}/cli-installs/gemma-gate-check.sh . (--no-plan|--plan 파일). 장문리뷰·전체재탐색 금지. 출력 최소. 설계난해시 advisor 1회."
+    touch "$_GTOK" 2>/dev/null || true
+  fi
+fi
+
+# NCO health check (2s max)
+NCO_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:6200/health 2>/dev/null)
 
 _cached_health() {
     local key="$1"
@@ -142,20 +157,22 @@ else:
     [ -n "$MESH_CONFLICTS" ] && CONTEXT="${CONTEXT}|C=${MESH_CONFLICTS}"
     [ -n "$MESH_MSG_TEXT" ] && CONTEXT="${CONTEXT}|M=${MESH_MSG_TEXT}"
 
+    FINAL_CTX="${CONTEXT}${GEMMA_APPEND}"
     cat <<ENDJSON
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[${CONTEXT}]"
+    "additionalContext": "$( echo "$FINAL_CTX" | sed 's/"/\\"/g' | tr '\n' ' ' )"
   }
 }
 ENDJSON
 else
+    OFF_CTX="[NCO:${MY_NAME}] Offline. Run /nco-start if needed.${GEMMA_APPEND}"
     cat <<ENDJSON
 {
   "hookSpecificOutput": {
     "hookEventName": "UserPromptSubmit",
-    "additionalContext": "[N=${MY_NAME} OFFLINE]"
+    "additionalContext": "$( echo "$OFF_CTX" | sed 's/"/\\"/g' | tr '\n' ' ' )"
   }
 }
 ENDJSON

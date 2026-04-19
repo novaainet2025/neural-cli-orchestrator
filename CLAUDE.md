@@ -125,3 +125,15 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 - [ ] 이벤트 버스 타입 일치 (src/core/types.ts)
 - [ ] 새 마이그레이션 파일 필요 여부 확인 (db/migrations/)
 - [ ] monitor.ts UI 업데이트 필요 여부 확인
+
+---
+
+## Claude-Gemma (로컬 MLX, 포트 4100 프록시) — **자동 적용 (슬래시 명령 불필요)**
+
+다음 중 하나이면 **별도 `/…` 명령 없이** 아래 규칙을 따른다: `ANTHROPIC_BASE_URL`에 `4100` 포함, 또는 `http://127.0.0.1:4100/health` 가 살아 있음.
+
+- **UserPromptSubmit 훅**이 세션 **첫 사용자 메시지**에 토큰 절약 지시를 `additionalContext`로 한 번 붙인다.
+- **필수 동작**: 검증은 **`cli-installs/gemma-gate-check.sh`** 만 사용 (`--no-plan` 또는 `--plan <파일>`). 장문 리뷰·전체 재탐색으로 빌드/린트를 대체하지 않는다. 출력·중간 보고는 최소화. 설계가 매우 어려울 때만 **Advisor** 1회.
+- **`/claude-gemma-pipeline`** 은 긴 템플릿·예시가 필요할 때만 참고(선택).
+
+게이트 예: `bash cli-installs/gemma-gate-check.sh . --no-plan` 또는 `--plan docs/plans/<이번작업>.md`.
