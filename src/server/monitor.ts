@@ -3119,6 +3119,54 @@ function parseMdTable(md) {
   return { headers, body };
 }
 
+let _historyIdx = -1;
+function historySelect(i) {
+  _historyIdx = i;
+  const { contextHistory = [] } = _notesData || {};
+  const hist = contextHistory[i];
+  if (!hist) return;
+  // 모든 항목 비활성화
+  document.querySelectorAll('.notes-list-item').forEach(el => {
+    el.style.borderColor = '#21262d';
+    el.style.background = 'transparent';
+  });
+  const item = document.getElementById('nh-' + i);
+  if (item) { item.style.borderColor = '#e3b34144'; item.style.background = '#1a1505'; }
+
+  const detail = document.getElementById('notes-detail');
+  if (!detail) return;
+
+  const dt = new Date(hist.mtime).toLocaleString('ko-KR');
+  const sesNum = hist.filename.match(/_s(\\d+)\\.md$/);
+  const sesLabel = sesNum ? '세션 S' + sesNum[1] : hist.filename;
+  const sizeKB = (hist.size / 1024).toFixed(1);
+
+  let html = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid #21262d">';
+  html += '<span style="font-size:13px;font-weight:700;color:#e3b341">🕐 ' + escHtml(sesLabel) + '</span>';
+  html += '<span style="color:#484f58;font-size:10px">' + dt + '</span>';
+  html += '<span style="color:#484f58;font-size:10px;margin-left:auto">' + escHtml(hist.filename) + ' (' + sizeKB + 'KB)</span>';
+  html += '</div>';
+
+  // SESSION_START 블록 파싱
+  const sessions = (hist.content || '').split(/<!-- SESSION_START -->/).slice(1);
+  if (sessions.length > 0) {
+    sessions.forEach((blk, bi) => {
+      const body = blk.replace(/<!-- SESSION_END -->[\\s\\S]*/, '').trim();
+      const lines = body.split('\\n');
+      const header = lines[0] || ('세션 ' + (bi+1));
+      const rest = lines.slice(1).join('\\n').trim();
+      html += '<div style="background:#0d1b36;border:1px solid #1f6feb22;border-radius:5px;padding:8px 10px;margin-bottom:8px">';
+      html += '<div style="color:#58a6ff;font-size:10px;font-weight:700;margin-bottom:5px">' + escHtml(header.replace(/^#+\\s*/,'')) + '</div>';
+      if (rest) html += '<pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:9px;color:#8b949e;margin:0;max-height:300px;overflow-y:auto">' + escHtml(rest.slice(0,3000)) + (rest.length>3000?'\\n...(잘림)':'') + '</pre>';
+      html += '</div>';
+    });
+  } else {
+    // SESSION_START 없으면 전체 마크다운 표시
+    html += '<pre style="white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:9px;color:#8b949e;margin:0;max-height:calc(100vh-300px);overflow-y:auto">' + escHtml((hist.content||'').slice(0,5000)) + '</pre>';
+  }
+  detail.innerHTML = html;
+}
+
 function renderNotesTab() {
   const content = el('tabContent');
   if (!_notesData) {
@@ -3126,7 +3174,7 @@ function renderNotesTab() {
     fetchNotes().then(() => { if(activeTab==='notes') renderNotesTab(); });
     return;
   }
-  const { contextNote, improvementNotes } = _notesData;
+  const { contextNote, improvementNotes, contextHistory = [] } = _notesData;
 
   // ── 레이아웃: 좌(목록) + 우(상세) ──────────────────────────────
   let html = '<div style="display:flex;gap:8px;height:calc(100vh - 180px);min-height:400px">';
@@ -3162,6 +3210,28 @@ function renderNotesTab() {
   });
 
   html += '<div style="text-align:center;padding:6px"><button class="dbg-btn" onclick="fetchNotes().then(()=>renderNotesTab())" style="font-size:9px;width:100%">⟳ 새로고침</button></div>';
+
+  // 이전 세션 히스토리 목록
+  if (contextHistory.length > 0) {
+    html += '<div style="color:#e3b341;font-size:10px;font-weight:700;padding:8px 4px 2px;border-bottom:1px solid #21262d;margin-top:6px">🕐 이전 세션 ' + contextHistory.length + '개</div>';
+    contextHistory.forEach((hist, i) => {
+      const dt = new Date(hist.mtime);
+      const dtStr = dt.toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+      const sesNum = hist.filename.match(/_s(\d+)\.md$/);
+      const sesLabel = sesNum ? 'S' + sesNum[1] : hist.filename;
+      const sizeKB = (hist.size / 1024).toFixed(1);
+      html += '<div class="notes-list-item" id="nh-' + i + '" onclick="historySelect(' + i + ')" style="cursor:pointer;padding:6px 10px;border-radius:5px;border:1px solid #21262d;background:transparent;margin-bottom:2px">';
+      html += '<div style="display:flex;align-items:center;gap:4px">';
+      html += '<span style="color:#e3b341;font-size:10px;font-weight:700;min-width:28px">' + escHtml(sesLabel) + '</span>';
+      html += '<span style="color:#484f58;font-size:9px">' + dtStr + '</span>';
+      html += '<span style="color:#484f58;font-size:9px;margin-left:auto">' + sizeKB + 'K</span>';
+      html += '</div>';
+      const preview = (hist.title || '').slice(0, 28);
+      if (preview) html += '<div style="color:#8b949e;font-size:9px;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escHtml(preview) + '</div>';
+      html += '</div>';
+    });
+  }
+
   html += '</div>'; // 좌 패널 끝
 
   // 우 패널 — 상세 뷰
