@@ -561,6 +561,20 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 ::-webkit-scrollbar-thumb{background:rgba(100,116,139,.25);border-radius:10px}
 ::-webkit-scrollbar-thumb:hover{background:rgba(100,116,139,.4)}
 *{scrollbar-width:thin;scrollbar-color:rgba(100,116,139,.25) transparent}
+
+/* ── Notes tab ─────────────────────────────────────── */
+.notes-section{background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:6px;margin-bottom:12px;overflow:hidden}
+.notes-section-hdr{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0f1525;border-bottom:1px solid var(--border-subtle);font-size:11px;font-weight:700;color:var(--text-secondary)}
+.notes-section-body{padding:10px 12px;font-size:11px;line-height:1.6}
+.notes-pre{white-space:pre-wrap;word-break:break-word;font-family:var(--font-mono);font-size:10px;color:var(--text-secondary);background:#0d1117;border-radius:4px;padding:8px;max-height:220px;overflow-y:auto}
+.notes-table{width:100%;border-collapse:collapse;font-size:10px;margin:4px 0}
+.notes-table th{background:#161b22;color:#8b949e;text-align:left;padding:4px 8px;border-bottom:1px solid #21262d}
+.notes-table td{padding:4px 8px;border-bottom:1px solid #21262d;color:var(--text-secondary);vertical-align:top}
+.notes-table tr:last-child td{border-bottom:none}
+.notes-score{display:inline-block;padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;background:#21262d}
+.notes-mtime{color:var(--text-muted);font-size:10px;margin-left:auto}
+.notes-filename{color:#58a6ff;font-size:10px;font-family:var(--font-mono)}
+.notes-empty{color:var(--text-muted);font-size:11px;padding:16px;text-align:center}
 /* ── Debug tab ─────────────────────────────────────────── */
 .dbg-layout{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;box-sizing:border-box}
 .dbg-full{grid-column:1/-1}
@@ -778,6 +792,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
       <div class="tab" data-tab="flow" onclick="switchTab('flow')">⇄ Flow</div>
       <div class="tab" data-tab="debug" onclick="switchTab('debug')">⚙ Debug</div>
+      <div class="tab" data-tab="notes" onclick="switchTab('notes')">📝 Notes</div>
     </div>
     <div class="tab-content" id="tabContent"></div>
   </div>
@@ -1250,7 +1265,7 @@ let _topoSelected=null; // agentId
 const AGENT_COLORS_MAP={
   opencode:'#2da44e', gemini:'#d29922', codex:'#1f6feb',
   aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
-  openrouter:'#d4773a', vllm:'#da3633',
+  openrouter:'#d4773a', ollama:'#da3633',
 };
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
 
@@ -2323,6 +2338,8 @@ function renderTab(){
     content.innerHTML=renderOverviewTab();
   }else if(activeTab==='debug'){
     content.innerHTML=renderDebugTab();
+  }else if(activeTab==='notes'){
+    renderNotesTab();
   }
 }
 
@@ -3076,6 +3093,107 @@ function renderFlowTab(){
     '<div class="flow-log">'+logHtml+'</div>';
 }
 
+
+// ── Notes tab ─────────────────────────────────────────
+let _notesData = null;
+let _notesFetching = false;
+
+async function fetchNotes() {
+  if (_notesFetching) return;
+  _notesFetching = true;
+  try {
+    const r = await fetch(API + '/api/notes');
+    _notesData = await r.json();
+  } catch(e) { _notesData = null; }
+  _notesFetching = false;
+}
+
+function parseMdTable(md) {
+  if (!md) return null;
+  const rows = md.trim().split('\n').filter(l => l.startsWith('|'));
+  if (rows.length < 2) return null;
+  const headers = rows[0].split('|').map(s=>s.trim()).filter(Boolean);
+  const body = rows.slice(2).map(r => r.split('|').map(s=>s.trim()).filter(Boolean));
+  return { headers, body };
+}
+
+function renderNotesTab() {
+  const content = el('tabContent');
+  if (!_notesData) {
+    content.innerHTML = '<div class="notes-empty">⟳ 노트 로드 중...</div>';
+    fetchNotes().then(() => { if(activeTab==='notes') renderNotesTab(); });
+    return;
+  }
+  const { contextNote, improvementNotes } = _notesData;
+  let html = '';
+
+  // 맥락노트
+  html += '<div class="notes-section">';
+  html += '<div class="notes-section-hdr">';
+  html += '<span style="color:#58a6ff">◆ 맥락노트</span>';
+  html += '<span style="color:#8b949e;font-weight:400;font-family:var(--font-mono);font-size:10px">~/projects/context_note.md</span>';
+  if (contextNote.exists) html += '<span class="notes-mtime">' + new Date(contextNote.mtime).toLocaleString('ko-KR') + '</span>';
+  html += '</div><div class="notes-section-body">';
+  if (contextNote.exists) {
+    const lines = contextNote.content.split('\n').slice(0, 30).join('\n');
+    html += '<pre class="notes-pre">' + escHtml(lines) + '</pre>';
+    const total = contextNote.content.split('\n').length;
+    if (total > 30) html += '<div style="color:var(--text-muted);font-size:10px;margin-top:4px">... 전체 ' + total + '줄</div>';
+  } else {
+    html += '<div class="notes-empty">아직 없음 — 세션 종료 시 자동 생성</div>';
+  }
+  html += '</div></div>';
+
+  // 개선노트
+  html += '<div class="notes-section">';
+  html += '<div class="notes-section-hdr">';
+  html += '<span style="color:#bc8cff">◆ 개선노트</span>';
+  html += '<span style="color:#8b949e;font-weight:400;font-family:var(--font-mono);font-size:10px">~/.claude/improvements/</span>';
+  html += '<span class="notes-mtime">' + improvementNotes.length + '개</span>';
+  html += '</div><div class="notes-section-body">';
+
+  if (!improvementNotes.length) {
+    html += '<div class="notes-empty">아직 없음 — 변경파일 3개+ 세션 종료 시 자동 생성</div>';
+  } else {
+    for (const note of improvementNotes) {
+      html += '<div style="margin-bottom:14px;border-bottom:1px solid var(--border-subtle);padding-bottom:10px">';
+      const scoreNum = parseFloat(note.score);
+      const scoreColor = scoreNum >= 8 ? '#3fb950' : scoreNum >= 6 ? '#d29922' : '#f85149';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
+      html += '<span class="notes-filename">' + escHtml(note.filename) + '</span>';
+      html += '<span class="notes-mtime">' + new Date(note.mtime).toLocaleString('ko-KR') + '</span>';
+      html += '<span class="notes-score" style="color:' + scoreColor + '">' + escHtml(note.score) + '</span>';
+      html += '</div>';
+      if (note.baTable) {
+        const parsed = parseMdTable(note.baTable);
+        if (parsed && parsed.body.some(r => r.length > 1)) {
+          html += '<div style="font-size:10px;color:#58a6ff;margin-bottom:4px;font-weight:600">🔄 Before → After</div>';
+          html += '<table class="notes-table"><thead><tr>';
+          parsed.headers.forEach(h => { html += '<th>' + escHtml(h) + '</th>'; });
+          html += '</tr></thead><tbody>';
+          parsed.body.forEach(row => {
+            if (!row.length || row.every(c => /^[-:]+$/.test(c))) return;
+            html += '<tr>' + row.map(c => '<td>' + escHtml(c) + '</td>').join('') + '</tr>';
+          });
+          html += '</tbody></table>';
+        }
+      }
+      if (note.nextItems) {
+        html += '<div style="font-size:10px;color:#3fb950;margin:6px 0 3px;font-weight:600">💡 다음 권장사항</div>';
+        html += '<ul style="margin:0;padding-left:16px;color:var(--text-secondary);font-size:10px">';
+        note.nextItems.split('\n').filter(Boolean).forEach(item => {
+          html += '<li style="margin:1px 0">' + escHtml(item.replace(/^\d+\.\s*/, '')) + '</li>';
+        });
+        html += '</ul>';
+      }
+      html += '</div>';
+    }
+  }
+  html += '</div></div>';
+  html += '<div style="text-align:right;margin-top:4px"><button class="dbg-btn" onclick="fetchNotes().then(()=>renderNotesTab())" style="font-size:10px">⟳ 새로고침</button></div>';
+  content.innerHTML = html;
+}
+
 function renderDebugTab(){
   const bufStats=[
     {label:'Event Ring',val:events.length,max:EVENT_RING_CAP,color:'#58a6ff'},
@@ -3231,7 +3349,7 @@ function agentColor(id){
   const c={'claude-code':'#58a6ff','claude-3':'#79c0ff','claude-4':'#79c0ff','claude-5':'#79c0ff',
     'opencode':'#a5b4fc','gemini':'#3fb950','codex':'#d2a8ff','aider':'#d29922',
     'cursor-agent':'#f0883e','copilot':'#8b949e','openrouter':'#79c0ff',
-    'vllm':'#56d364','system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
+    'ollama':'#56d364','system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
   return c[id]||'#8b949e';
 }
 function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
