@@ -338,7 +338,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       };
     } catch {}
 
-    // 개선노트 목록 읽기 (최근 5개)
+    // 개선노트 목록 읽기 (최근 20개)
     const impDir = path.join(home, '.claude', 'improvements');
     const improvementNotes: any[] = [];
     try {
@@ -346,7 +346,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         .filter((f: string) => f.endsWith('.md') && !f.includes('INDEX'))
         .sort()
         .reverse()
-        .slice(0, 5);
+        .slice(0, 20);
       for (const f of files) {
         const fpath = path.join(impDir, f);
         const stat = fs.statSync(fpath);
