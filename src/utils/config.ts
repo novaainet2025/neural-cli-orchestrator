@@ -15,7 +15,7 @@ interface Topology {
     websocket: number;
     dashboard: number;
     redis: number;
-    vllm: number;
+    ollama: number;
   };
   paths: {
     backend: string;
@@ -82,8 +82,32 @@ export function loadProviders(): ProviderConfig[] {
   return loadJSON<ProvidersFile>('ai-providers.json').providers;
 }
 
+/** WSL + Windows Ollama: localhost:11434 는 NCO에서 안 붙음 — OLLAMA_BASE_URL 또는 OLLAMA_HOST 로 덮어씀 (VLLM_BASE_URL deprecated) */
+function applyOllamaEnvOverride(providers: ProviderConfig[]): ProviderConfig[] {
+  let base: string | null = null;
+  const raw = process.env.OLLAMA_BASE_URL;
+  if (raw) {
+    base = raw.replace(/\/$/, '').replace(/\/v1$/, '');
+  } else if (process.env.OLLAMA_HOST) {
+    const port = process.env.OLLAMA_PORT || '11434';
+    base = `http://${process.env.OLLAMA_HOST}:${port}`;
+  }
+  if (!base) return providers;
+  return providers.map((p) => {
+    if (p.id !== 'ollama') return p;
+    return {
+      ...p,
+      endpoint: `${base}/v1`,
+      healthCheck: {
+        ...p.healthCheck,
+        url: `${base}/api/tags`,
+      },
+    };
+  });
+}
+
 export function loadEnabledProviders(): ProviderConfig[] {
-  return loadProviders().filter(p => p.enabled);
+  return applyOllamaEnvOverride(loadProviders().filter(p => p.enabled));
 }
 
 export function getProvider(id: string): ProviderConfig | undefined {

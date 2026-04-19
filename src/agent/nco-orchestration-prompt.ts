@@ -2,27 +2,17 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
 
 /** Shared NCO tool protocol (XML) — Type B orchestrated loop and Type C API agents must stay aligned. */
 export const NCO_TOOL_XML_INSTRUCTIONS = [
-  '## Available Tools',
-  'Use XML tags or natural language commands to call tools:',
-  '<nco-tool name="readFile"><arg name="path">/path/to/file</arg></nco-tool>',
+  '## Tools (XML)',
+  '<nco-tool name="readFile"><arg name="path">/path</arg></nco-tool>',
   '<nco-tool name="writeFile"><arg name="path">/path</arg><arg name="content">...</arg></nco-tool>',
-  '<nco-tool name="editFile"><arg name="path">/path</arg><arg name="old">old text</arg><arg name="new">new text</arg></nco-tool>',
-  '<nco-tool name="runCommand"><arg name="command">cmd here</arg></nco-tool>',
-  '',
-  '### Natural Language Fallback (Claude Code Style)',
-  'You can also use simple natural language commands (English or Korean) on a single line:',
-  '- "Read file src/index.ts" or "파일 읽기 src/index.ts"',
-  '- "ls src" or "파일 목록 src"',
-  '- "grep search_term" or "코드 검색 search_term"',
-  '- "bash npm test" or "실행 npm test"',
-  '- "git status"',
+  '<nco-tool name="editFile"><arg name="path">/path</arg><arg name="old">text</arg><arg name="new">text</arg></nco-tool>',
+  '<nco-tool name="runCommand"><arg name="command">cmd</arg></nco-tool>',
   '',
   '## Rules',
-  '- Read files before modifying them',
-  '- Run tests after changes',
-  '- Report important decisions to Commander (claude-code)',
-  '- When done, respond WITHOUT any tool calls',
+  '- Read before edit. Run tests after changes.',
+  '- No tool calls in final response.',
 ].join('\n');
+
 
 export function buildOrchestrationSystemPrompt(
   baseSystem: string,
@@ -31,28 +21,36 @@ export function buildOrchestrationSystemPrompt(
   return [
     baseSystem,
     '',
-    '## Current Team State',
-    teamStateLines || 'No agents online',
+    '## Team',
+    teamStateLines || 'None',
     '',
     NCO_TOOL_XML_INSTRUCTIONS,
   ].join('\n');
 }
 
-/** Extra line for OpenAI-compatible APIs that register `tools` (vLLM, OpenRouter): prefer native tool_calls over XML. */
+/** Extremely minified prompt for simple tasks or high-volume turns. */
+export function buildCompactSystemPrompt(baseSystem: string): string {
+  return [
+    baseSystem,
+    '',
+    '## Tools (XML)',
+    '<nco-tool name="readFile"><arg name="path"/></nco-tool>',
+    '<nco-tool name="writeFile"><arg name="path"/><arg name="content"/></nco-tool>',
+    '<nco-tool name="runCommand"><arg name="command"/></nco-tool>',
+    'Rules: Read before edit. No tool calls in final response.',
+  ].join('\n');
+}
+
+/** Extra line for OpenAI-compatible APIs that register `tools` (OpenRouter): prefer native tool_calls over XML. */
 export const NCO_API_NATIVE_TOOLS_HINT = [
-  '# Tool Use Guidelines',
-  '- When this request includes function tools in the API, call those functions for file, shell, search, and git actions.',
-  '- Do not embed <nco-tool> XML when functions are available.',
-  '- **Plan before acting**: You MUST wrap your reasoning and plan for the current step in `<thinking>` tags before making any tool calls.',
-  '- **Sequential Execution**: Perform tools in the logical order (e.g., readFile before editFile).',
-  '- **Robust Error Handling**: If a tool fails (e.g., file not found), do not give up. Use other tools to investigate (e.g., listFiles) and then retry.',
-  '- **Verifiable Work**: After making changes, run relevant tests (runTest) or verification commands (runCommand) to ensure correctness.',
+  '# Tool Use',
+  '- Use API functions for workspace actions. No <nco-tool> XML if functions exist.',
+  '- **Plan**: Wrap thoughts in `<thinking>` tags before tools.',
+  '- **Verify**: Run tests/validation after changes.',
   '',
-  '## Workspace Best Practices',
-  '- Always use `readFile` to check the current content of a file before attempting an `editFile`.',
-  '- If you need to explore a directory, use `listFiles` recursively if needed.',
-  '- For large-scale changes, prefer `writeFile` with the full content to ensure consistency.',
-  '- When using `runCommand`, prioritize non-interactive and verifiable commands.',
+  '## Best Practices',
+  '- Read file before `editFile`. List before deep dive.',
+  '- Prefer full `writeFile` for multi-file changes.',
 ].join('\n');
 
 export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: string): string {
@@ -61,7 +59,7 @@ export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: st
 
 /**
  * OpenAI-compatible tool definitions (structured tool_use), matching AgentToolExecutor.dispatch.
- * Mirrors Claude-style function calling so vLLM / OpenRouter can emit native tool_calls.
+ * Mirrors Claude-style function calling so OpenRouter can emit native tool_calls.
  */
 export function getNcoOpenAiTools(): ChatCompletionTool[] {
   const str = { type: 'string' as const };
@@ -70,10 +68,10 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'readFile',
-        description: 'Read a file from the workspace (sandboxed).',
+        description: 'Read file content.',
         parameters: {
           type: 'object',
-          properties: { path: { ...str, description: 'File path' } },
+          properties: { path: { ...str } },
           required: ['path'],
         },
       },
@@ -82,12 +80,12 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'writeFile',
-        description: 'Write or overwrite a file.',
+        description: 'Write/overwrite file.',
         parameters: {
           type: 'object',
           properties: {
-            path: { ...str, description: 'File path' },
-            content: { ...str, description: 'Full file content' },
+            path: { ...str },
+            content: { ...str },
           },
           required: ['path', 'content'],
         },
@@ -97,7 +95,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'createFile',
-        description: 'Create a new file (fails if exists).',
+        description: 'Create new file.',
         parameters: {
           type: 'object',
           properties: {
@@ -112,13 +110,13 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'editFile',
-        description: 'Replace a unique substring in a file. TIP: Ensure the "old" string is a unique, contiguous block of text from the file to avoid ambiguity.',
+        description: 'Search & replace unique string.',
         parameters: {
           type: 'object',
           properties: {
-            path: { ...str, description: 'File path' },
-            old: { ...str, description: 'Exact unique text to find' },
-            new: { ...str, description: 'Replacement text' },
+            path: { ...str },
+            old: { ...str, description: 'Text to find' },
+            new: { ...str, description: 'Replacement' },
           },
           required: ['path', 'old', 'new'],
         },
@@ -128,31 +126,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'runCommand',
-        description: 'Run a shell command in the project sandbox. TIP: Prefer non-interactive commands. For multi-line commands, use && or ; to chain them.',
-        parameters: {
-          type: 'object',
-          properties: { command: { ...str, description: 'The shell command to execute' } },
-          required: ['command'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'listFiles',
-        description: 'List files in a directory.',
-        parameters: {
-          type: 'object',
-          properties: { path: { ...str, description: 'Directory path' } },
-          required: ['path'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'runCommand',
-        description: 'Run a shell command in the project sandbox.',
+        description: 'Run shell command.',
         parameters: {
           type: 'object',
           properties: { command: { ...str } },
@@ -163,11 +137,23 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
     {
       type: 'function',
       function: {
-        name: 'runTest',
-        description: 'Run npm test with an optional file path filter.',
+        name: 'listFiles',
+        description: 'List directory.',
         parameters: {
           type: 'object',
-          properties: { path: { ...str, description: 'Optional vitest file path' } },
+          properties: { path: { ...str } },
+          required: ['path'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'runTest',
+        description: 'Run tests.',
+        parameters: {
+          type: 'object',
+          properties: { path: { ...str } },
           required: [],
         },
       },
@@ -176,7 +162,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'searchCode',
-        description: 'Search source files for a query (grep).',
+        description: 'Search code (grep).',
         parameters: {
           type: 'object',
           properties: { query: { ...str } },
@@ -188,7 +174,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'searchFiles',
-        description: 'Find files by name pattern (excludes node_modules).',
+        description: 'Find files by name.',
         parameters: {
           type: 'object',
           properties: { pattern: { ...str } },
@@ -200,7 +186,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'gitDiff',
-        description: 'Show git diff for the workspace.',
+        description: 'Show git diff.',
         parameters: { type: 'object', properties: {} },
       },
     },
@@ -208,7 +194,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'gitStatus',
-        description: 'Show short git status.',
+        description: 'Show git status.',
         parameters: { type: 'object', properties: {} },
       },
     },
@@ -216,7 +202,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'gitCommit',
-        description: 'Stage all changes and commit with a message.',
+        description: 'Stage & commit.',
         parameters: {
           type: 'object',
           properties: { message: { ...str } },
@@ -228,11 +214,11 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'sendMessage',
-        description: 'Send a message to another NCO agent.',
+        description: 'Send message to agent.',
         parameters: {
           type: 'object',
           properties: {
-            to: { ...str, description: 'Agent id' },
+            to: { ...str },
             content: { ...str },
           },
           required: ['to', 'content'],
@@ -243,7 +229,7 @@ export function getNcoOpenAiTools(): ChatCompletionTool[] {
       type: 'function',
       function: {
         name: 'broadcast',
-        description: 'Broadcast a message to all agents.',
+        description: 'Broadcast to all agents.',
         parameters: {
           type: 'object',
           properties: { content: { ...str } },

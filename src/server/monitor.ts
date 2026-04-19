@@ -3110,7 +3110,7 @@ async function fetchNotes() {
 
 function parseMdTable(md) {
   if (!md) return null;
-  const rows = md.trim().split('\n').filter(l => l.startsWith('|'));
+  const rows = md.trim().split('\\n').filter(l => l.startsWith('|'));
   if (rows.length < 2) return null;
   const headers = rows[0].split('|').map(s=>s.trim()).filter(Boolean);
   const body = rows.slice(2).map(r => r.split('|').map(s=>s.trim()).filter(Boolean));
@@ -3135,9 +3135,9 @@ function renderNotesTab() {
   if (contextNote.exists) html += '<span class="notes-mtime">' + new Date(contextNote.mtime).toLocaleString('ko-KR') + '</span>';
   html += '</div><div class="notes-section-body">';
   if (contextNote.exists) {
-    const lines = contextNote.content.split('\n').slice(0, 30).join('\n');
+    const lines = contextNote.content.split('\\n').slice(0, 30).join('\n');
     html += '<pre class="notes-pre">' + escHtml(lines) + '</pre>';
-    const total = contextNote.content.split('\n').length;
+    const total = contextNote.content.split('\\n').length;
     if (total > 30) html += '<div style="color:var(--text-muted);font-size:10px;margin-top:4px">... 전체 ' + total + '줄</div>';
   } else {
     html += '<div class="notes-empty">아직 없음 — 세션 종료 시 자동 생성</div>';
@@ -3181,7 +3181,7 @@ function renderNotesTab() {
       if (note.nextItems) {
         html += '<div style="font-size:10px;color:#3fb950;margin:6px 0 3px;font-weight:600">💡 다음 권장사항</div>';
         html += '<ul style="margin:0;padding-left:16px;color:var(--text-secondary);font-size:10px">';
-        note.nextItems.split('\n').filter(Boolean).forEach(item => {
+        note.nextItems.split('\\n').filter(Boolean).forEach(item => {
           html += '<li style="margin:1px 0">' + escHtml(item.replace(/^\d+\.\s*/, '')) + '</li>';
         });
         html += '</ul>';

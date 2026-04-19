@@ -6,14 +6,13 @@ import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
-import { buildOrchestrationSystemPrompt } from './nco-orchestration-prompt.js';
+import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
 
 const log = createLogger('orchestrated-loop');
 
-const MAX_ITERATIONS = 15;
-
-/** Keep initial user message + up to this many assistant/user exchanges (each adds 2 entries). */
-const MAX_HISTORY_TURNS = 20;
+const MAX_ITERATIONS = 10;
+const MAX_HISTORY_TURNS = 10;
+const MAX_OUTPUT_LEN = 2500;
 
 // Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
@@ -47,7 +46,7 @@ export class OrchestratedLoop {
     this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
   }
 
-  async run(taskId: string, prompt: string, systemPrompt?: string): Promise<LoopResult> {
+  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean }): Promise<LoopResult> {
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
@@ -61,10 +60,11 @@ export class OrchestratedLoop {
     });
 
     const teamState = await this.buildTeamContext();
-    const fullSystem = buildOrchestrationSystemPrompt(
-      systemPrompt || this.provider.persona.systemPrompt,
-      teamState,
-    );
+    const systemBase = options?.systemPrompt || this.provider.persona.systemPrompt;
+    
+    const fullSystem = options?.compact
+      ? buildCompactSystemPrompt(systemBase)
+      : buildOrchestrationSystemPrompt(systemBase, teamState);
 
     history.push({ role: 'user', content: prompt });
 
@@ -116,7 +116,11 @@ export class OrchestratedLoop {
         log.debug({ agentId, tool: call.tool, args: call.args }, 'Executing tool');
 
         const result = await this.toolExecutor.execute(call);
-        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`);
+        const outRaw = result.output || result.error || '';
+        const truncated = outRaw.length > MAX_OUTPUT_LEN 
+          ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
+          : outRaw;
+        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`);
 
         if (call.tool === 'writeFile' || call.tool === 'createFile') {
           artifacts.push(call.args.path);

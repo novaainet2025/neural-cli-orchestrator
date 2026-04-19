@@ -18,14 +18,14 @@ ACTION=$(echo "$ARGUMENTS" | cut -d' ' -f1)
 # ── 자연어 감지: 다양한 한국어 패턴 → "send" 액션으로 변환 ──
 
 # 1순위: "claude-N + 조사" 패턴 (claude-3과 인사해)
-if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)(과|에게|한테|에|와|,)'; then
+if echo "$ACTION" | grep -qE '^(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|ollama|ollama)(과|에게|한테|에|와|,)'; then
   _NL_TARGET=$(echo "$ACTION" | sed -E 's/(과|에게|한테|에|와|,)$//')
   _NL_MSG=$(echo "$ARGUMENTS" | cut -d' ' -f2-)
   ARGUMENTS="send @${_NL_TARGET} ${_NL_MSG}"
   ACTION="send"
 
 # 2순위: "@claude-N 메시지" 패턴
-elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|vllm)' && [ "$ACTION" != "send" ]; then
+elif echo "$ARGUMENTS" | grep -qE '@(claude-[0-9]+|opencode|gemini|codex|aider|cursor-agent|copilot|ollama|ollama)' && [ "$ACTION" != "send" ]; then
   ARGUMENTS="send $ARGUMENTS"
   ACTION="send"
 

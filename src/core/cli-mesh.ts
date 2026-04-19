@@ -187,7 +187,8 @@ class CliMesh {
       const redis = await getRedis();
       const key = `${MESH_PREFIX}${session.sessionId}`;
 
-      // Evict stale sessions with the same agentId but different sessionId (zombie prevention)
+      // Evict ALL sessions with the same agentId but different sessionId (hard uniqueness per agentId)
+      // Previously only evicted dead PIDs — this allowed burst-spawned hooks to create dozens of ghost sessions
       if (session.agentId) {
         const allKeys = await redis.keys(`${MESH_PREFIX}*`);
         for (const k of allKeys) {
@@ -197,11 +198,10 @@ class CliMesh {
           try {
             const prev: MeshSession = JSON.parse(raw);
             if (prev.agentId === session.agentId && prev.sessionId !== session.sessionId) {
-              if (!isPidAlive(prev.pid)) {
-                log.info({ oldSession: prev.sessionId, newSession: session.sessionId, agentId: session.agentId }, 'Evicting stale same-agent session');
-                await redis.del(k);
-                this.markSessionDisconnected(prev.sessionId);
-              }
+              // Always evict: agentId uniqueness is enforced regardless of PID liveness
+              log.info({ oldSession: prev.sessionId, newSession: session.sessionId, agentId: session.agentId, prevPidAlive: isPidAlive(prev.pid) }, 'Evicting duplicate same-agent session');
+              await redis.del(k);
+              this.markSessionDisconnected(prev.sessionId);
             }
           } catch { /* skip malformed */ }
         }

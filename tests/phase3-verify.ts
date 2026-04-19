@@ -60,7 +60,7 @@ async function main() {
     const ids = agentManager.listEnabledIds();
     assert(ids.length === 9, `Expected 9, got ${ids.length}`);
     assert(ids.includes('claude-code'), 'Missing claude-code');
-    assert(ids.includes('vllm'), 'Missing vllm');
+    assert(ids.includes('ollama'), 'Missing ollama');
     assert(ids.includes('openrouter'), 'Missing openrouter');
   });
 

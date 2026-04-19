@@ -22,7 +22,7 @@
 ### 토큰 예산 계산
 ```python
 MAX_OUTPUT_TOKENS = 4096
-VLLM_MAX_CTX = 16384  # vLLM /v1/models에서 자동 감지
+VLLM_MAX_CTX = 16384  # Ollama /v1/models에서 자동 감지
 effective_budget = VLLM_MAX_CTX - MAX_OUTPUT_TOKENS - 256  # 안전 마진
 
 # 트리밍 임계값: 시스템 토큰 제외 후 70%
@@ -56,7 +56,7 @@ ASCII: 3.5 글자/토큰
 ```
 
 ### 정확 카운팅 (Line 806)
-- vLLM `/tokenize` 엔드포인트 호출
+- Ollama `/tokenize` 엔드포인트 호출
 - 실패 시 추정치로 폴백
 - `/v1/messages/count_tokens` (Lines 2415-2429): 메시지+도구를 JSON으로 평탄화 후 토큰화
 

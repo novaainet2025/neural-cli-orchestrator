@@ -3,7 +3,7 @@
 # AI CLI Tools Installer & Updater (no sudo required)
 # All tools installed to ~/.local (user-local)
 #
-# Installs: gemini-cli, codex, cursor-agent, aider, copilot, vllm,
+# Installs: gemini-cli, codex, cursor-agent, aider, copilot, ollama (CLI check),
 #           claude-code, opencode, gemini-api (google-genai)
 #
 # Usage:
@@ -171,17 +171,14 @@ install_copilot() {
     log "GitHub Copilot CLI installed"
 }
 
-install_vllm() {
-    info "Installing vLLM (replaces ollama)..."
-    uv tool install --force vllm 2>/dev/null || \
-    pipx install vllm --force 2>/dev/null || \
-    python3 -m pip install --user --break-system-packages vllm 2>/dev/null || {
-        warn "vLLM GPU install failed, trying CPU-only..."
-        python3 -m pip install --user --break-system-packages vllm \
-            --extra-index-url https://download.pytorch.org/whl/cpu 2>/dev/null || \
-        err "vLLM install failed - may need CUDA drivers or more RAM"
-    }
-    log "vLLM install attempted"
+install_ollama() {
+    info "Checking Ollama (https://ollama.com)..."
+    if command -v ollama &>/dev/null; then
+        log "Ollama CLI: $(ollama --version 2>/dev/null || echo present)"
+        return 0
+    fi
+    warn "Ollama CLI not in PATH — install from https://ollama.com then: ollama pull gemma4:26b"
+    return 0
 }
 
 install_claude_code() {
@@ -247,11 +244,9 @@ update_all() {
     if command -v uv &>/dev/null; then
         uv tool upgrade aider-chat 2>/dev/null || true
         uv tool upgrade google-genai 2>/dev/null || true
-        uv tool upgrade vllm 2>/dev/null || true
     else
         pipx upgrade aider-chat 2>/dev/null || true
         pipx upgrade google-genai 2>/dev/null || true
-        pipx upgrade vllm 2>/dev/null || true
     fi
 
     # cursor
@@ -308,7 +303,7 @@ show_status() {
 
     check_tool "Copilot CLI"    github-copilot-cli
 
-    check_tool "vLLM"           vllm
+    check_tool "Ollama"         ollama
     check_tool "Claude Code"    claude
     check_tool "OpenCode"       opencode
 
@@ -373,7 +368,7 @@ main() {
         cursor-agent)   install_prereqs; install_cursor_agent ;;
         aider)          install_prereqs; install_aider ;;
         copilot)        install_prereqs; install_copilot ;;
-        vllm)           install_prereqs; install_vllm ;;
+        ollama|vllm)   install_prereqs; install_ollama ;;
         claude-code)    install_prereqs; install_claude_code ;;
         opencode)       install_prereqs; install_opencode ;;
         gemini-api)     install_prereqs; install_gemini_api ;;
@@ -391,7 +386,7 @@ main() {
             install_cursor_agent || err "Cursor Agent failed"
             install_aider        || err "Aider failed"
             install_copilot      || err "Copilot CLI failed"
-            install_vllm         || err "vLLM failed"
+            install_ollama       || err "Ollama check failed"
             install_claude_code  || err "Claude Code failed"
             install_opencode     || err "OpenCode failed"
             install_gemini_api   || err "GenAI SDK failed"
@@ -404,7 +399,7 @@ main() {
             echo "Usage: $0 {install|update|status|<tool-name>}"
             echo ""
             echo "Tools: redis, gemini-cli, codex, cursor-agent, aider, copilot,"
-            echo "       vllm, claude-code, opencode, gemini-api"
+            echo "       ollama, claude-code, opencode, gemini-api"
             exit 1
             ;;
     esac

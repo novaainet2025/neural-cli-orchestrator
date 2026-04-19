@@ -5,7 +5,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import { AgentToolExecutor } from './agent-tools.js';
 import { parseToolCalls, extractThinking } from './tool-parser.js';
-import { buildApiAgentSystemPrompt, getNcoOpenAiTools } from './nco-orchestration-prompt.js';
+import { buildApiAgentSystemPrompt, getNcoOpenAiTools, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
@@ -14,7 +14,9 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('api-executor');
 
-const MAX_ITERATIONS = 15;
+const MAX_ITERATIONS = 10;
+const MAX_HISTORY = 12;
+const MAX_OUTPUT_LEN = 2500;
 
 interface ApiResult {
   output: string;
@@ -55,7 +57,7 @@ function isLikelyToolsUnsupportedError(err: unknown): boolean {
 }
 
 /**
- * Type C Executor: API-based agents (vLLM, OpenRouter, Gemini API).
+ * Type C Executor: API-based agents (OpenRouter, Gemini API).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
  */
 export class ApiExecutor {
@@ -76,7 +78,7 @@ export class ApiExecutor {
     }
   }
 
-  async run(taskId: string, prompt: string, systemPrompt?: string): Promise<ApiResult> {
+  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean }): Promise<ApiResult> {
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
@@ -85,7 +87,7 @@ export class ApiExecutor {
 
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
 
-    const systemContent = await this.buildSystemPrompt(systemPrompt);
+    const systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemContent },
       { role: 'user', content: prompt },
@@ -98,6 +100,15 @@ export class ApiExecutor {
     try {
       while (iterations < MAX_ITERATIONS) {
         iterations++;
+
+        // Token optimization: Trim conversation history (keeping system + first user + last N)
+        if (messages.length > MAX_HISTORY + 2) {
+          const sys = messages[0] as ChatCompletionMessageParam;
+          const initialUser = messages[1] as ChatCompletionMessageParam;
+          const recent = messages.slice(-MAX_HISTORY);
+          messages.length = 0;
+          messages.push(sys, initialUser, ...recent);
+        }
 
         if (!this.sandbox.canExecute()) break;
 
@@ -146,7 +157,11 @@ export class ApiExecutor {
                 tool: tc.function.name,
                 args,
               });
-              const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`;
+              const outRaw = result.output || result.error || '';
+              const truncated = outRaw.length > MAX_OUTPUT_LEN 
+                ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
+                : outRaw;
+              const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`;
               messages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
@@ -163,7 +178,11 @@ export class ApiExecutor {
             for (const call of fromText) {
               totalToolCalls++;
               const result = await toolExecutor.execute(call);
-              results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`);
+              const outRaw = result.output || result.error || '';
+              const truncated = outRaw.length > MAX_OUTPUT_LEN 
+                ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
+                : outRaw;
+              results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`);
             }
             messages.push({
               role: 'user',
@@ -224,8 +243,9 @@ export class ApiExecutor {
     };
   }
 
-  private async buildSystemPrompt(override?: string): Promise<string> {
+  private async buildSystemPrompt(override?: string, compact?: boolean): Promise<string> {
     const base = override || this.provider.persona.systemPrompt;
+    if (compact) return buildCompactSystemPrompt(base);
     const teamState = await this.buildTeamContext();
     return buildApiAgentSystemPrompt(base, teamState);
   }

@@ -177,10 +177,10 @@ async function testProviders() {
     assert(r.data.providers.length === 9, `got ${r.data.providers.length}`);
   });
 
-  await test('T02', '필수 프로바이더 존재 (claude-code, vllm, openrouter)', async () => {
+  await test('T02', '필수 프로바이더 존재 (claude-code, ollama, openrouter)', async () => {
     const r = await api('/api/ai-providers');
     const ids = r.data.providers.map((p: any) => p.id);
-    for (const id of ['claude-code', 'vllm', 'openrouter']) {
+    for (const id of ['claude-code', 'ollama', 'openrouter']) {
       assert(ids.includes(id), `프로바이더 없음: ${id}`);
     }
   });
@@ -189,8 +189,8 @@ async function testProviders() {
     const r = await api('/api/ai-providers');
     const cc = r.data.providers.find((p: any) => p.id === 'claude-code');
     assert(cc?.role === 'Commander', `claude-code role: ${cc?.role}`);
-    const vl = r.data.providers.find((p: any) => p.id === 'vllm');
-    assert(vl?.role === 'Validator', `vllm role: ${vl?.role}`);
+    const vl = r.data.providers.find((p: any) => p.id === 'ollama');
+    assert(vl?.role === 'Validator', `ollama role: ${vl?.role}`);
   });
 
   await test('T02', 'enabled 프로바이더 필터', async () => {
@@ -235,7 +235,7 @@ async function testIndividualComm() {
 
   await test('T03', 'POST /api/task — 단일 에이전트 작업 요청', async () => {
     const r = await post('/api/task', {
-      agentId: 'vllm',
+      agentId: 'ollama',
       prompt: 'say: hello NCO test',
     });
     // 응답이 오면 성공 (오프라인 시 에러 메시지 포함 가능)
@@ -258,7 +258,7 @@ async function testIndividualComm() {
     // API는 body.message 필드를 사용 (content 아님)
     const r = await post('/api/collaboration/message', {
       from: 'claude-code',
-      to: 'vllm',
+      to: 'ollama',
       message: 'ping test',  // 올바른 필드명
       type: 'request',
     });
@@ -327,7 +327,7 @@ async function testBidirectional() {
     const r = await post('/api/discussion/create', {
       topic: '[TEST] 양방향 통신 테스트',
       mode: 'task',
-      providers: ['vllm'],
+      providers: ['ollama'],
     });
     assert(r.status === 200 || r.status === 201 || r.status === 202, `HTTP ${r.status}`);
     if (r.data?.sessionId || r.data?.discussionId || r.data?.id) {
@@ -378,7 +378,7 @@ async function testParallel() {
   await test('T06', 'POST /api/realtime/parallel — 병렬 실행 요청', async () => {
     const r = await post('/api/realtime/parallel', {
       prompt: '[TEST] 병렬 실행 테스트: 1+1=?',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
     assert(typeof r.data === 'object', '병렬 응답 객체 아님');
@@ -387,7 +387,7 @@ async function testParallel() {
   await test('T06', 'POST /api/realtime/parallel — 비동기 시작 응답 구조', async () => {
     const r = await post('/api/realtime/parallel', {
       prompt: '[TEST] 간단한 질문',
-      providers: ['vllm'],
+      providers: ['ollama'],
     });
     // 병렬 실행은 비동기 — 즉시 {status:"started", providers:[...]} 반환
     assert(typeof r.data === 'object', '응답 구조 오류');
@@ -398,9 +398,9 @@ async function testParallel() {
   await test('T06', '병렬 실행 - 동시 여러 작업 독립성 확인 (API 레벨)', async () => {
     // 3개의 독립 요청을 동시 발사
     const tasks = await Promise.allSettled([
-      post('/api/task', { agentId: 'vllm', prompt: 'task-A' }),
+      post('/api/task', { agentId: 'ollama', prompt: 'task-A' }),
       post('/api/task', { agentId: 'openrouter', prompt: 'task-B' }),
-      post('/api/task', { agentId: 'vllm', prompt: 'task-C' }),
+      post('/api/task', { agentId: 'ollama', prompt: 'task-C' }),
     ]);
     // 모든 요청이 응답(성공/실패 무관)했으면 병렬 처리 확인
     assert(tasks.length === 3, `요청 수 오류: ${tasks.length}`);
@@ -411,7 +411,7 @@ async function testParallel() {
   await test('T06', 'POST /api/hive — Hive 모드 (전체 병렬)', async () => {
     const r = await post('/api/hive', {
       prompt: '[TEST] Hive 병렬 테스트',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
   });
@@ -492,7 +492,7 @@ async function testDiscussion() {
     const r = await post('/api/discussion/create', {
       topic: '[TEST] 아키텍처 토론: 마이크로서비스 vs 모노리스',
       mode: 'discussion',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
       maxRounds: 2,
     });
     assert(r.status === 200 || r.status === 201 || r.status === 202, `HTTP ${r.status}`);
@@ -503,7 +503,7 @@ async function testDiscussion() {
     // API는 topic 아닌 prompt 필드 사용, providers 최소 2명 필요
     const r = await post('/api/realtime/discussion', {
       prompt: '[TEST] 실시간 토론 테스트',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
       maxRounds: 1,
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
@@ -522,7 +522,7 @@ async function testDiscussion() {
       const r = await post('/api/discussion/create', {
         topic: `[TEST] mode=${mode}`,
         mode,
-        providers: ['vllm'],
+        providers: ['ollama'],
         maxRounds: 1,
       });
       // 모드 자체는 수용해야 함 (에이전트 오프라인은 503/500 허용)
@@ -542,7 +542,7 @@ async function testConsensus() {
     // API는 topic 아닌 prompt 필드 사용
     const r = await post('/api/realtime/consensus', {
       prompt: '[TEST] 합의 테스트: TypeScript 사용 여부',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
       consensusThreshold: 0.6,
       maxRounds: 2,
     });
@@ -554,7 +554,7 @@ async function testConsensus() {
     const r = await post('/api/discussion/create', {
       topic: '[TEST] 합의 모드 토론',
       mode: 'consensus',
-      providers: ['vllm', 'openrouter'],
+      providers: ['ollama', 'openrouter'],
       consensusThreshold: 0.7,
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
@@ -565,7 +565,7 @@ async function testConsensus() {
     const r = await post('/api/discussion/create', {
       topic: '[TEST] 임계값 테스트',
       mode: 'consensus',
-      providers: ['vllm'],
+      providers: ['ollama'],
       consensusThreshold: 0.9,
     });
     // 필드가 수용되어야 함
@@ -606,7 +606,7 @@ async function testAgentExecution() {
 
   await test('T10', 'POST /api/agent/start — 에이전트 시작', async () => {
     const r = await post('/api/agent/start', {
-      agentId: 'vllm',
+      agentId: 'ollama',
       prompt: '[TEST] 에이전트 시작 테스트',
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
@@ -644,9 +644,9 @@ async function testAgentExecution() {
   await test('T10', '에이전트 타입 분류 (A/B/C) — 설정 검증', async () => {
     const r = await api('/api/ai-providers');
     const cc = r.data.providers.find((p: any) => p.id === 'claude-code');
-    const vl = r.data.providers.find((p: any) => p.id === 'vllm');
+    const vl = r.data.providers.find((p: any) => p.id === 'ollama');
     const cd = r.data.providers.find((p: any) => p.id === 'codex');
-    // Type A: claude-code (native), Type C: vllm (api), Type B: codex (orchestrated)
+    // Type A: claude-code (native), Type C: ollama (api), Type B: codex (orchestrated)
     assert(cc.type !== vl.type || vl.type === 'api', `타입 혼동: cc=${cc.type}, vl=${vl.type}`);
   });
 }
@@ -687,7 +687,7 @@ async function testTeamWork() {
     const providers = r.data.providers;
     const management = providers.filter((p: any) => ['claude-code', 'opencode'].includes(p.id));
     const execution = providers.filter((p: any) => ['codex', 'aider', 'gemini'].includes(p.id));
-    const quality = providers.filter((p: any) => ['cursor-agent', 'vllm'].includes(p.id));
+    const quality = providers.filter((p: any) => ['cursor-agent', 'ollama'].includes(p.id));
     const info = providers.filter((p: any) => ['copilot', 'openrouter'].includes(p.id));
     assert(management.length === 2, `Management 에이전트: ${management.length}`);
     assert(execution.length === 3, `Execution 에이전트: ${execution.length}`);
@@ -699,7 +699,7 @@ async function testTeamWork() {
     const r = await post('/api/discussion/create', {
       topic: '[TEST] Commander 모드 팀 토론',
       mode: 'commander',
-      providers: ['claude-code', 'vllm'],
+      providers: ['claude-code', 'ollama'],
     });
     assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
   });
@@ -1059,7 +1059,7 @@ async function testRequest() {
   await test('T17', 'POST /api/collaboration/message — 요청 타입 메시지 (message 필드)', async () => {
     const r = await post('/api/collaboration/message', {
       from: 'claude-code',
-      to: 'vllm',
+      to: 'ollama',
       message: '[TEST] 코드 검증 요청',  // 올바른 필드명
       type: 'request',
     });
@@ -1068,7 +1068,7 @@ async function testRequest() {
 
   await test('T17', 'POST /api/collaboration/message — 응답 타입 메시지 (message 필드)', async () => {
     const r = await post('/api/collaboration/message', {
-      from: 'vllm',
+      from: 'ollama',
       to: 'claude-code',
       message: '[TEST] 검증 결과 응답',  // 올바른 필드명
       type: 'response',
@@ -1123,7 +1123,7 @@ async function testKanbanPlan() {
     const r = await post('/api/kanban/tasks', {
       title: '[TEST] Kanban 태스크 생성',
       description: '테스트용 태스크',
-      assignedTo: 'vllm',
+      assignedTo: 'ollama',
       column: 'todo',
     });
     assert(r.status === 200 || r.status === 201, `HTTP ${r.status}`);
@@ -1367,7 +1367,7 @@ async function testWebSocket() {
     await post('/api/discussion/create', {
       topic: '[WS-TEST] 실시간 이벤트 확인',
       mode: 'task',
-      providers: ['vllm'],
+      providers: ['ollama'],
     });
     await sleep(800);
     const eventTypes = messages.map((m: any) => m.type || m.event);
