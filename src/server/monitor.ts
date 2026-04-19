@@ -3135,7 +3135,7 @@ function renderNotesTab() {
   if (contextNote.exists) html += '<span class="notes-mtime">' + new Date(contextNote.mtime).toLocaleString('ko-KR') + '</span>';
   html += '</div><div class="notes-section-body">';
   if (contextNote.exists) {
-    const lines = contextNote.content.split('\\n').slice(0, 30).join('\n');
+    const lines = contextNote.content.split('\\n').slice(0, 30).join('\\n');
     html += '<pre class="notes-pre">' + escHtml(lines) + '</pre>';
     const total = contextNote.content.split('\\n').length;
     if (total > 30) html += '<div style="color:var(--text-muted);font-size:10px;margin-top:4px">... 전체 ' + total + '줄</div>';
