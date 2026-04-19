@@ -409,12 +409,14 @@
         "gpu": "RTX 4090 24GB",
         "maxModelLen": 8192
       },
-      "note": "Windows Ollama (포트 11434). 프록시: localhost:4100 → 172.28.112.1:11434",
+      "note": "Gemma 4 26B MLX 4-bit. MLX server: pm2 mlx-server — NCO picks mlx first when auto-participants apply (PROVIDER_COST_ORDER). Proxy: python3 /Users/nova-ai/project/nco/cli-installs/anthropic-mlx-proxy.py 4100",
       "healthCheck": {
         "type": "api",
         "url": "http://172.28.112.1:11434/api/tags",
         "timeout": 5000
-      }
+      },
+      "proxy_endpoint": "http://localhost:4100",
+      "updated": "2026-04-19"
     }
   ]
 }

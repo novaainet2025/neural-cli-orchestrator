@@ -10,9 +10,11 @@ import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-
 
 const log = createLogger('orchestrated-loop');
 
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 15;
+
+/** Keep initial user message + up to this many assistant/user exchanges (each adds 2 entries). */
 const MAX_HISTORY_TURNS = 10;
-const MAX_OUTPUT_LEN = 2500;
+const MAX_TOOL_RESULT_CHARS = 1500;
 
 // Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
@@ -116,11 +118,11 @@ export class OrchestratedLoop {
         log.debug({ agentId, tool: call.tool, args: call.args }, 'Executing tool');
 
         const result = await this.toolExecutor.execute(call);
-        const outRaw = result.output || result.error || '';
-        const truncated = outRaw.length > MAX_OUTPUT_LEN 
-          ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
-          : outRaw;
-        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`);
+        let output = result.output || result.error || '';
+        if (output.length > MAX_TOOL_RESULT_CHARS) {
+          output = output.slice(0, MAX_TOOL_RESULT_CHARS) + '... [truncated]';
+        }
+        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${output}`);
 
         if (call.tool === 'writeFile' || call.tool === 'createFile') {
           artifacts.push(call.args.path);
@@ -233,9 +235,8 @@ export class OrchestratedLoop {
 
   private async buildTeamContext(): Promise<string> {
     const states = await sharedState.getAllAgentStates();
-    const lines = Object.values(states).map(s =>
-      `- ${s.id}: ${s.status}${s.currentTask ? ` (working on: ${s.currentTask})` : ''}`
-    );
-    return lines.join('\n') || 'No agents online';
+    const busy = Object.values(states).filter(s => s.status !== 'idle');
+    if (busy.length === 0) return 'All idle';
+    return busy.map(s => `${s.id}:${s.status}`).join(', ');
   }
 }

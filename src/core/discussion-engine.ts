@@ -6,6 +6,7 @@ import { getDb } from '../storage/database.js';
 import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { sortProvidersByCostOrder } from './smart-router.js';
+import { summarizeText } from '../utils/summarizer.js';
 
 const log = createLogger('discussion-engine');
 
@@ -151,7 +152,7 @@ class DiscussionEngine {
 
     const sessionId = options.sessionId || createSessionId();
     const startTime = Date.now();
-    const maxRounds = options.maxRounds || 3;
+    let maxRounds = options.maxRounds || 3;
     let threshold = options.consensusThreshold || 0.8;
     const participants = options.providers || this.selectParticipants(options.mode);
     this.pid.reset();
@@ -201,8 +202,8 @@ class DiscussionEngine {
         type: 'discussion:round_started', sessionId, round, totalRounds: maxRounds,
       });
 
-      const allProposals = this.formatProposals(proposals, 1200); // 1200자 제한
-      const evalPrompt = `Evaluate other agents' proposals:\n\n${allProposals}\n\nAnalyze pros/cons, score 1-10. Pick winner & reason.\n\nJSON block:\n\`\`\`json\n{"scores": {"agentId": score}, "winner": "agentId", "reason": "why"}\n\`\`\``;
+      const allProposals = this.formatProposals(proposals);
+      const evalPrompt = `Review these proposals:\n\n${allProposals}\n\nScore 1-10, pick winner, and explain briefly.\n\nJSON:\n\`\`\`json\n{"scores": {"agentId": 1-10}, "winner": "agentId", "reason": "why"}\n\`\`\``;
 
       // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음
       const nonClaude = participants.filter(p => p !== 'claude-code');
@@ -224,22 +225,32 @@ class DiscussionEngine {
         type: 'discussion:round_completed', sessionId, round, consensusRate,
       });
       log.info({ sessionId, round, consensusRate, threshold }, 'Round 2 (sequential) completed');
+
+      // Early exit if consensus is very high
+      if (consensusRate >= 0.9) {
+        log.info({ sessionId, consensusRate }, 'Early exit: High consensus reached in round 2');
+        maxRounds = 2; // skip round 3 synthesis or use a very fast synthesis
+      }
     }
 
     // ─── Final: claude-code 최종 결론 생성 ───────────
-    {
-      const finalRound = maxRounds;
+    if (maxRounds >= 3) {
+      const finalRound = 3;
       await eventBus.publish({
         type: 'discussion:round_started', sessionId, round: finalRound, totalRounds: maxRounds,
       });
 
-      const r1Summary = this.formatProposals(rounds[0]?.responses || {}, 1500);
-      const r2Summary = this.formatProposals(rounds[1]?.responses || {}, 1500);
-      const synthPrompt = `Synthesize team discussion results into a final conclusion.\n\n=== R1 Proposals ===\n${r1Summary}\n\n=== R2 Evaluations ===\n${r2Summary}\n\nConclusion should be concise and clear.`;
+      const r1SummaryText = this.formatProposals(rounds[0]?.responses || {}, 300);
+      const r2SummaryText = this.formatProposals(rounds[1]?.responses || {}, 300);
+      
+      const r1Summary = await summarizeText(r1SummaryText, 1500);
+      const r2Summary = await summarizeText(r2SummaryText, 1500);
+
+      const synthPrompt = `Synthesize results. Round 1:\n${r1Summary}\n\nRound 2:\n${r2Summary}\n\nFinal conclusion:`;
 
       try {
         const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
-          systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
+          systemPrompt: `Synthesize session: ${sessionId}. You are the Commander. Be concise.`,
           signal: AbortSignal.timeout(90_000),
         });
 
@@ -528,7 +539,11 @@ class DiscussionEngine {
       // 이전 에이전트들의 평가를 컨텍스트에 추가
       let prompt = basePrompt;
       if (accumulated.length > 0) {
-        prompt += `\n\n=== Prev Eval (summarized) ===\n${accumulated.join('\n\n')}`;
+        let context = accumulated.join('\n\n');
+        if (accumulated.length > 3) {
+          context = await summarizeText(context, 1200);
+        }
+        prompt += `\n\n=== 이전 에이전트 평가 ===\n${context}`;
       }
 
       try {
@@ -608,21 +623,16 @@ class DiscussionEngine {
       case 'discussion': return all.slice(0, 3);
       case 'realtime': return all.slice(0, 4);
       case 'consensus': return all.slice(0, 5);
-      case 'hive': return all; // all agents
+      case 'hive': return all; // all agents (mlx included when enabled)
       case 'broadcast': return all;
       default: return all.slice(0, 3);
     }
   }
 
-  // ─── Internal: Format proposals for evaluation (truncated for efficiency) ──
-  private formatProposals(proposals: Record<string, string>, maxLength = 2000): string {
+  // ─── Internal: Format proposals for evaluation ──────
+  private formatProposals(proposals: Record<string, string>, maxChars = 800): string {
     return Object.entries(proposals)
-      .map(([pid, content]) => {
-        const truncated = content.length > maxLength 
-          ? content.slice(0, maxLength) + '... (truncated)' 
-          : content;
-        return `### ${pid}:\n${truncated}`;
-      })
+      .map(([pid, content]) => `### ${pid}:\n${content.length > maxChars ? content.slice(0, maxChars) + '...' : content}`)
       .join('\n\n---\n\n');
   }
 

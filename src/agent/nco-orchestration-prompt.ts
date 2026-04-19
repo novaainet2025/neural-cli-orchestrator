@@ -2,26 +2,16 @@ import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
 
 /** Shared NCO tool protocol (XML) — Type B orchestrated loop and Type C API agents must stay aligned. */
 export const NCO_TOOL_XML_INSTRUCTIONS = [
-  '## Available Tools',
-  'Use XML tags or natural language commands to call tools:',
-  '<nco-tool name="readFile"><arg name="path">/path/to/file</arg></nco-tool>',
-  '<nco-tool name="writeFile"><arg name="path">/path</arg><arg name="content">...</arg></nco-tool>',
-  '<nco-tool name="editFile"><arg name="path">/path</arg><arg name="old">old text</arg><arg name="new">new text</arg></nco-tool>',
-  '<nco-tool name="runCommand"><arg name="command">cmd here</arg></nco-tool>',
+  '## Tools',
+  'XML: <nco-tool name="tool"><arg name="a">val</arg></nco-tool>',
+  'Tools: readFile, writeFile(path, content), editFile(path, old, new), runCommand(command), listFiles(path), searchCode(query), runTest(path)',
   '',
-  '### Natural Language Fallback (Claude Code Style)',
-  'You can also use simple natural language commands (English or Korean) on a single line:',
-  '- "Read file src/index.ts" or "파일 읽기 src/index.ts"',
-  '- "ls src" or "파일 목록 src"',
-  '- "grep search_term" or "코드 검색 search_term"',
-  '- "bash npm test" or "실행 npm test"',
-  '- "git status"',
+  '### Natural Language',
+  '- "Read file src/index.ts"',
+  '- "ls src", "grep search_term", "bash npm test", "git status"',
   '',
   '## Rules',
-  '- Read files before modifying them',
-  '- Run tests after changes',
-  '- Report important decisions to Commander (claude-code)',
-  '- When done, respond WITHOUT any tool calls',
+  '1. Read before editing. 2. Test after changes. 3. Be concise. 4. Respond with text ONLY when done.',
 ].join('\n');
 
 export function buildOrchestrationSystemPrompt(
@@ -31,28 +21,23 @@ export function buildOrchestrationSystemPrompt(
   return [
     baseSystem,
     '',
-    '## Current Team State',
-    teamStateLines || 'No agents online',
+    '## Team: ' + (teamStateLines || 'None'),
     '',
     NCO_TOOL_XML_INSTRUCTIONS,
   ].join('\n');
 }
 
+/** Compact version — omits team state for short/turbo runs. */
+export function buildCompactSystemPrompt(baseSystem: string): string {
+  return [baseSystem, '', NCO_TOOL_XML_INSTRUCTIONS].join('\n');
+}
+
 /** Extra line for OpenAI-compatible APIs that register `tools` (MLX, OpenRouter): prefer native tool_calls over XML. */
 export const NCO_API_NATIVE_TOOLS_HINT = [
-  '# Tool Use Guidelines',
-  '- When this request includes function tools in the API, call those functions for file, shell, search, and git actions.',
-  '- Do not embed <nco-tool> XML when functions are available.',
-  '- **Plan before acting**: You MUST wrap your reasoning and plan for the current step in `<thinking>` tags before making any tool calls.',
-  '- **Sequential Execution**: Perform tools in the logical order (e.g., readFile before editFile).',
-  '- **Robust Error Handling**: If a tool fails (e.g., file not found), do not give up. Use other tools to investigate (e.g., listFiles) and then retry.',
-  '- **Verifiable Work**: After making changes, run relevant tests (runTest) or verification commands (runCommand) to ensure correctness.',
-  '',
-  '## Workspace Best Practices',
-  '- Always use `readFile` to check the current content of a file before attempting an `editFile`.',
-  '- If you need to explore a directory, use `listFiles` recursively if needed.',
-  '- For large-scale changes, prefer `writeFile` with the full content to ensure consistency.',
-  '- When using `runCommand`, prioritize non-interactive and verifiable commands.',
+  '# Guidelines',
+  '- Use native function tools. <thinking> first. Plan steps.',
+  '- Robust: investigate failure (listFiles). Verify: runTest/runCommand.',
+  '- Edit: Use `editFile` with unique `old` text block.',
 ].join('\n');
 
 export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: string): string {

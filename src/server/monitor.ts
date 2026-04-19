@@ -597,6 +597,49 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 .dbg-grid{display:grid;grid-template-columns:130px 1fr;gap:1px 0;padding:6px 8px;font-size:10px}
 .dbg-k{color:#484f58;padding:2px 0}
 .dbg-v{color:#8b949e;font-family:monospace;padding:2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ── Context tab ──────────────────────────────────── */
+.ctx-layout{display:flex;flex-direction:column;gap:8px;padding:8px;box-sizing:border-box;height:100%;overflow-y:auto}
+.ctx-section{background:#0d1117;border:1px solid #21262d;border-radius:6px;overflow:hidden}
+.ctx-ph{font-size:9px;font-weight:700;color:#484f58;letter-spacing:1px;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid #21262d}
+.ctx-row{display:flex;align-items:baseline;gap:8px;padding:4px 8px;border-bottom:1px solid #0d1117;font-size:11px}
+.ctx-label{color:#484f58;font-size:10px;min-width:90px;flex-shrink:0}
+.ctx-val{color:#c9d1d9;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.ctx-badge{font-size:9px;padding:1px 6px;border-radius:20px;font-weight:600;white-space:nowrap}
+.ctx-badge.active{background:#3fb95020;color:#3fb950;border:1px solid #3fb95040}
+.ctx-badge.idle{background:#48505830;color:#8b949e;border:1px solid #48505840}
+/* ── Improvements tab ─────────────────────────────── */
+.imp-layout{display:flex;flex-direction:column;gap:6px;padding:8px;box-sizing:border-box;height:100%;overflow-y:auto}
+.imp-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;flex-shrink:0}
+.imp-filter{font-size:10px;padding:2px 6px;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#8b949e;cursor:pointer}
+.imp-card{background:#0d1117;border:1px solid #21262d;border-radius:6px;overflow:hidden}
+.imp-card-hdr{display:flex;align-items:center;gap:6px;padding:6px 10px;background:#0f1525;border-bottom:1px solid #21262d;font-size:11px;font-weight:700}
+.imp-sev{font-size:9px;padding:1px 6px;border-radius:20px;font-weight:600}
+.imp-sev.critical{background:#f8514920;color:#f85149;border:1px solid #f8514940}
+.imp-sev.high{background:#d2992220;color:#d29922;border:1px solid #d2992240}
+.imp-sev.medium{background:#58a6ff20;color:#58a6ff;border:1px solid #58a6ff40}
+.imp-sev.low{background:#3fb95020;color:#3fb950;border:1px solid #3fb95040}
+.imp-body{padding:8px 10px;font-size:11px;display:flex;flex-direction:column;gap:4px}
+.imp-field{display:flex;gap:6px}
+.imp-field-lbl{color:#484f58;font-size:10px;min-width:80px;flex-shrink:0}
+.imp-field-val{color:#8b949e;line-height:1.5;flex:1}
+.imp-empty{color:#484f58;text-align:center;padding:24px 0;font-size:12px}
+/* ── All Records tab ──────────────────────────────── */
+.rec-layout{display:flex;flex-direction:column;height:100%;box-sizing:border-box}
+.rec-toolbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 8px;flex-shrink:0;border-bottom:1px solid #21262d}
+.rec-type-btn{font-size:10px;padding:2px 8px;background:#161b22;border:1px solid #30363d;border-radius:20px;color:#8b949e;cursor:pointer;transition:all .15s}
+.rec-type-btn.active{background:#1f6feb22;border-color:#1f6feb;color:#58a6ff}
+.rec-feed{flex:1;overflow-y:auto;min-height:0}
+.rec-item{display:flex;align-items:baseline;gap:6px;padding:4px 8px;border-bottom:1px solid #0d1117;font-size:10px}
+.rec-item:hover{background:#161b22}
+.rec-time{color:#30363d;font-size:9px;font-family:monospace;flex-shrink:0;min-width:55px}
+.rec-type-tag{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:700;flex-shrink:0}
+.rec-type-tag.event{background:#1f6feb22;color:#58a6ff}
+.rec-type-tag.task{background:#d2992222;color:#d29922}
+.rec-type-tag.message{background:#3fb95022;color:#3fb950}
+.rec-type-tag.discussion{background:#a78bfa22;color:#a78bfa}
+.rec-type-tag.improvement{background:#f8514922;color:#f85149}
+.rec-agent{color:#484f58;font-size:9px;flex-shrink:0;max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rec-summary{color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 </style>
 </head>
 <body>
@@ -793,7 +836,9 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
       <div class="tab" data-tab="tasks" onclick="switchTab('tasks')">Tasks</div>
       <div class="tab" data-tab="flow" onclick="switchTab('flow')">⇄ Flow</div>
       <div class="tab" data-tab="debug" onclick="switchTab('debug')">⚙ Debug</div>
-      <div class="tab" data-tab="notes" onclick="switchTab('notes')">📝 Notes</div>
+      <div class="tab" data-tab="context" onclick="switchTab('context')">◎ Context</div>
+      <div class="tab" data-tab="improvements" onclick="switchTab('improvements')">✦ Improvements</div>
+      <div class="tab" data-tab="allrecords" onclick="switchTab('allrecords')">≡ All Records</div>
     </div>
     <div class="tab-content" id="tabContent"></div>
   </div>
@@ -863,6 +908,18 @@ const LIVE_FEED=[];
 // Anomaly Detection state
 let ANOMALY_ALERTS=[];
 const _dismissedAlerts=new Set();
+// Context tab state
+let contextData=null;
+// Improvements tab state
+let improvementsData=[];
+let improvementsTotal=0;
+let improvementsFetched=false;
+let _impFilter={severity:'',category:'',search:''};
+// All Records tab state
+let allRecords=[];
+let allRecordsTotal=0;
+let allRecordsFetched=false;
+let _arFilter={type:'',search:''};
 let meshMessages=[];
 // Swimlane state
 const LANE_EVENTS={}; // agentId → [{start,end,type,label}]
@@ -2340,8 +2397,12 @@ function renderTab(){
     content.innerHTML=renderOverviewTab();
   }else if(activeTab==='debug'){
     content.innerHTML=renderDebugTab();
-  }else if(activeTab==='notes'){
-    renderNotesTab();
+  }else if(activeTab==='context'){
+    content.innerHTML=renderContextTab();
+  }else if(activeTab==='improvements'){
+    content.innerHTML=renderImprovementsTab();
+  }else if(activeTab==='allrecords'){
+    content.innerHTML=renderAllRecordsTab();
   }
 }
 
@@ -3411,12 +3472,180 @@ function dbgExportState(){
   a.click();
 }
 
+// ── Context Tab ───────────────────────────────────────────
+function renderContextTab(){
+  if(!contextData){
+    return '<div class="empty">맥락 로딩 중…<br><span style="font-size:10px;margin-top:4px;display:block">잠시 기다려 주세요</span></div>';
+  }
+  const {plan,discussions:ctxDiscs,tasks:ctxTasks,agents:ctxAgents,capturedAt}=contextData;
+
+  // Active Plan section
+  const planHtml=plan
+    ?'<div class="ctx-row">'+
+        '<span class="ctx-label">플랜</span>'+
+        '<span class="ctx-val" style="color:var(--text-primary);font-weight:600">'+escHtml(plan.title||'(제목 없음)')+'</span>'+
+        '<span class="ctx-badge active">'+escHtml(plan.status||'active')+'</span>'+
+        (plan.created_at?'<span style="color:var(--text-muted);font-size:10px;flex-shrink:0">'+timeAgo(plan.created_at)+'</span>':'')+
+      '</div>'
+    :'<div class="ctx-row"><span class="ctx-label" style="font-style:italic">활성 플랜 없음</span></div>';
+
+  // Agents section
+  const ctxAgentEntries=ctxAgents&&typeof ctxAgents==='object'?Object.entries(ctxAgents):[];
+  const ctxAgentHtml=ctxAgentEntries.length
+    ?ctxAgentEntries.slice(0,12).map(([id,ag])=>{
+        const a=ag;
+        const st=(a&&a.status)||'idle';
+        const isActive=st==='working'||st==='coding'||st==='thinking'||st==='discussing'||st==='streaming';
+        return '<div class="ctx-row">'+
+          '<span class="ctx-label" style="color:'+agentColor(id)+'">'+escHtml(id)+'</span>'+
+          '<span class="ctx-badge '+(isActive?'active':'idle')+'">'+escHtml(st)+'</span>'+
+          (a&&a.currentTask?'<span style="color:var(--accent-blue);font-size:10px;background:var(--accent-blue-soft);padding:1px 5px;border-radius:var(--radius-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px">'+escHtml(String(a.currentTask).slice(0,20))+'</span>':'')+
+        '</div>';
+      }).join('')
+    :'<div class="ctx-row"><span class="ctx-label" style="font-style:italic">에이전트 정보 없음</span></div>';
+
+  // Active Tasks section
+  const ctxTaskHtml=(ctxTasks||[]).slice(0,8).map(t=>{
+    const c=({running:'#58a6ff',streaming:'#a5b4fc',pending:'#d29922'})[t.status]||'#8b949e';
+    return '<div class="ctx-row" style="flex-direction:column;align-items:flex-start;gap:2px">'+
+      '<div style="display:flex;gap:6px;align-items:center;width:100%">'+
+        '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+c+'22;color:'+c+';border:1px solid '+c+'44;font-weight:700">'+escHtml(t.status)+'</span>'+
+        '<span style="color:'+agentColor(t.assigned_to||'')+'">'+escHtml(t.assigned_to||'?')+'</span>'+
+        '<span style="color:var(--text-muted);font-size:10px;margin-left:auto">'+escHtml(String(t.id||'').slice(0,12))+'</span>'+
+      '</div>'+
+      '<div style="color:var(--text-secondary);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">'+escHtml((t.prompt||'').slice(0,80))+'</div>'+
+    '</div>';
+  }).join('')||'<div class="ctx-row"><span class="ctx-label" style="font-style:italic">실행 중인 태스크 없음</span></div>';
+
+  // Active Discussions section
+  const ctxDiscHtml=(ctxDiscs||[]).slice(0,5).map(d=>{
+    return '<div class="ctx-row">'+
+      '<span class="ctx-val" style="color:var(--accent-purple);font-weight:600;flex:1">'+escHtml((d.topic||'').slice(0,60))+'</span>'+
+      '<span class="ctx-badge '+(d.status==='active'?'active':'idle')+'">'+escHtml(d.status||'')+'</span>'+
+    '</div>';
+  }).join('')||'<div class="ctx-row"><span class="ctx-label" style="font-style:italic">활성 토론 없음</span></div>';
+
+  const capturedStr=capturedAt?new Date(capturedAt).toLocaleTimeString('ko',{hour12:false}):'–';
+
+  return '<div class="ctx-layout">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0">'+
+      '<span style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:600">실시간 맥락</span>'+
+      '<span style="font-size:10px;color:var(--text-muted)">업데이트: '+escHtml(capturedStr)+'</span>'+
+      '<button class="ef-btn" onclick="pollContext()" style="font-size:10px;padding:2px 8px">↻ 새로고침</button>'+
+    '</div>'+
+    '<div class="ctx-section">'+
+      '<div class="ctx-ph">◈ 활성 Plan</div>'+
+      '<div style="background:var(--bg-glass);border:1px solid var(--border-subtle);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm)">'+planHtml+'</div>'+
+    '</div>'+
+    '<div class="ctx-section">'+
+      '<div class="ctx-ph">에이전트 상태 <span style="color:var(--accent-blue);margin-left:4px">'+ctxAgentEntries.length+'</span></div>'+
+      '<div style="background:var(--bg-glass);border:1px solid var(--border-subtle);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);max-height:180px;overflow-y:auto">'+ctxAgentHtml+'</div>'+
+    '</div>'+
+    '<div class="ctx-section">'+
+      '<div class="ctx-ph">활성 태스크 <span style="color:var(--accent-blue);margin-left:4px">'+(ctxTasks||[]).length+'</span></div>'+
+      '<div style="background:var(--bg-glass);border:1px solid var(--border-subtle);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);max-height:200px;overflow-y:auto">'+ctxTaskHtml+'</div>'+
+    '</div>'+
+    '<div class="ctx-section">'+
+      '<div class="ctx-ph">활성 토론 <span style="color:var(--accent-purple);margin-left:4px">'+(ctxDiscs||[]).length+'</span></div>'+
+      '<div style="background:var(--bg-glass);border:1px solid var(--border-subtle);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm)">'+ctxDiscHtml+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+// ── Improvements Tab ──────────────────────────────────────
+function renderImprovementsTab(){
+  if(!improvementsFetched)return '<div class="empty">개선노트 로딩 중…<br><span style="font-size:10px;margin-top:4px;display:block">잠시 기다려 주세요</span></div>';
+  let filtered=improvementsData;
+  if(_impFilter.search){
+    const q=_impFilter.search.toLowerCase();
+    filtered=filtered.filter(n=>(n.problem||'').toLowerCase().includes(q)||(n.root_cause||'').toLowerCase().includes(q)||(n.fix||'').toLowerCase().includes(q)||(n.agent||'').toLowerCase().includes(q));
+  }
+
+  const mkSevBtn=(sev,label)=>'<button class="ef-btn'+(_impFilter.severity===sev?' active':'')+'" onclick="_impFilter.severity='+JSON.stringify(sev)+';pollImprovements()">'+label+'</button>';
+
+  const filterBar='<div class="imp-toolbar" style="flex-shrink:0;border-bottom:1px solid var(--border-subtle);padding:6px 10px;gap:4px;display:flex;flex-wrap:wrap;align-items:center;background:var(--bg-secondary)">'+
+    '<input class="imp-filter" style="flex:1;min-width:80px;background:var(--bg-primary);border:1px solid var(--border-subtle);color:var(--text-primary);padding:4px 8px;border-radius:var(--radius-sm);font-family:inherit;font-size:11px;user-select:auto" placeholder="검색 (문제·원인·수정·에이전트)…" value="'+escHtml(_impFilter.search)+'" oninput="_impFilter.search=this.value;el(\\'tabContent\\').innerHTML=renderImprovementsTab()" />'+
+    mkSevBtn('','All')+mkSevBtn('critical','Critical')+mkSevBtn('high','High')+mkSevBtn('medium','Medium')+mkSevBtn('low','Low')+
+    '<span style="font-size:10px;color:var(--text-muted);margin-left:auto">'+filtered.length+' / '+improvementsTotal+'</span>'+
+  '</div>';
+
+  const listHtml=filtered.length
+    ?filtered.map(n=>{
+        const sev=n.severity||'medium';
+        let tagsArr=[];
+        try{tagsArr=JSON.parse(n.tags||'[]');}catch{}
+        const verifiedStr=n.verified_at?new Date(n.verified_at).toLocaleString('ko',{hour12:false,dateStyle:'short',timeStyle:'short'}):'미검증';
+        return '<div class="imp-card">'+
+          '<div class="imp-card-hdr">'+
+            '<span class="imp-sev '+sev+'">'+escHtml(sev.toUpperCase())+'</span>'+
+            '<span style="font-size:9px;padding:1px 6px;border-radius:20px;background:var(--accent-blue-soft);color:var(--accent-blue);border:1px solid rgba(59,130,246,.2)">'+escHtml(n.category||'general')+'</span>'+
+            '<span style="color:'+agentColor(n.agent||'')+';font-size:11px">'+escHtml(n.agent||'?')+'</span>'+
+            tagsArr.slice(0,3).map(t=>'<span style="font-size:9px;padding:1px 5px;border-radius:20px;background:rgba(100,116,139,.1);color:var(--text-muted)">'+escHtml(String(t))+'</span>').join('')+
+          '</div>'+
+          '<div class="imp-body">'+
+            '<div style="color:var(--text-primary);font-size:12px;font-weight:500;user-select:text">'+escHtml(n.problem||'')+'</div>'+
+            (n.root_cause?'<div class="imp-field"><span class="imp-field-lbl">원인:</span><span class="imp-field-val">'+escHtml((n.root_cause||'').slice(0,150))+'</span></div>':'')+
+            (n.fix?'<div class="imp-field"><span class="imp-field-lbl">수정방법:</span><span class="imp-field-val">'+escHtml((n.fix||'').slice(0,150))+'</span></div>':'')+
+            '<div style="display:flex;gap:8px;font-size:10px;color:var(--text-muted);margin-top:2px;flex-wrap:wrap">'+
+              '<span>검증: '+escHtml(verifiedStr)+'</span>'+
+              (n.timestamp?'<span>'+timeAgo(n.timestamp)+'</span>':'')+
+              '<span style="margin-left:auto;opacity:.5">'+escHtml(String(n.id||'').slice(0,16))+'</span>'+
+            '</div>'+
+          '</div>'+
+        '</div>';
+      }).join('')
+    :'<div class="imp-empty">개선노트 없음<br><span style="font-size:10px;margin-top:4px;display:block">POST /api/improvements 로 추가</span></div>';
+
+  return '<div class="imp-layout">'+filterBar+'<div style="flex:1;overflow-y:auto;min-height:0">'+listHtml+'</div></div>';
+}
+
+// ── All Records Tab ───────────────────────────────────────
+function renderAllRecordsTab(){
+  if(!allRecordsFetched)return '<div class="empty">전체 기록 로딩 중…<br><span style="font-size:10px;margin-top:4px;display:block">잠시 기다려 주세요</span></div>';
+  const TYPE_ICON={event:'◈',task:'→',message:'✉',discussion:'💬',improvement:'⚡'};
+  const fmtTs3=(ts)=>{if(!ts)return '–';const d=new Date(ts);return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+
+  let filtered=allRecords;
+  if(_arFilter.type)filtered=filtered.filter(r=>r.record_type===_arFilter.type);
+  if(_arFilter.search){
+    const q=_arFilter.search.toLowerCase();
+    filtered=filtered.filter(r=>(r.summary||'').toLowerCase().includes(q)||(r.agent||'').toLowerCase().includes(q));
+  }
+
+  const mkTypeBtn=(type,label)=>'<button class="rec-type-btn'+(_arFilter.type===type?' active':'')+'" onclick="_arFilter.type='+JSON.stringify(type)+';el(\\'tabContent\\').innerHTML=renderAllRecordsTab()">'+label+'</button>';
+
+  const filterBar='<div class="rec-toolbar">'+
+    '<input style="flex:1;min-width:80px;background:var(--bg-primary);border:1px solid var(--border-subtle);color:var(--text-primary);padding:4px 8px;border-radius:var(--radius-sm);font-family:inherit;font-size:11px;user-select:auto" placeholder="요약·에이전트 검색…" value="'+escHtml(_arFilter.search)+'" oninput="_arFilter.search=this.value;el(\\'tabContent\\').innerHTML=renderAllRecordsTab()" />'+
+    mkTypeBtn('','All')+mkTypeBtn('event','이벤트')+mkTypeBtn('task','태스크')+mkTypeBtn('message','메시지')+mkTypeBtn('discussion','토론')+mkTypeBtn('improvement','개선')+
+    '<span style="font-size:10px;color:var(--text-muted);margin-left:4px">'+filtered.length+'/'+allRecordsTotal+'</span>'+
+    '<button class="ef-btn" onclick="pollAllRecords()" style="font-size:10px;padding:2px 8px">↻</button>'+
+  '</div>';
+
+  const listHtml=filtered.length
+    ?filtered.slice(0,200).map(r=>{
+        const rt=r.record_type||'event';
+        const icon=TYPE_ICON[rt]||'·';
+        return '<div class="rec-item">'+
+          '<span class="rec-time">'+fmtTs3(r.timestamp)+'</span>'+
+          '<span class="rec-type-tag '+rt+'">'+icon+' '+escHtml(rt)+'</span>'+
+          '<span class="rec-agent" style="color:'+agentColor(r.agent||'')+'" title="'+escHtml(r.agent||'')+'">'+escHtml((r.agent||'system').slice(0,12))+'</span>'+
+          '<span class="rec-summary">'+escHtml((r.summary||'').slice(0,120))+'</span>'+
+        '</div>';
+      }).join('')
+    :'<div class="empty">기록 없음<br><span style="font-size:10px;margin-top:4px;display:block">이벤트·태스크·토론이 쌓이면 여기에 표시됩니다</span></div>';
+
+  return '<div class="rec-layout">'+filterBar+'<div class="rec-feed">'+listHtml+'</div></div>';
+}
+
 function render(){ renderAgents(); renderEvents(); renderTab(); updateCounts(); }
 
 function switchTab(tab){
   activeTab=tab;
   document.querySelectorAll('.tab').forEach(t=>{t.classList.remove('active');t.style.color='';});
   document.querySelector('.tab[data-tab="'+tab+'"]').classList.add('active');
+  if(tab==='context'&&!contextData)pollContext();
+  else if(tab==='improvements'&&!improvementsFetched)pollImprovements();
+  else if(tab==='allrecords'&&!allRecordsFetched)pollAllRecords();
   renderTab();
   localStorage.setItem('nco-active-tab',tab);
 }
@@ -3536,6 +3765,37 @@ async function pollMesh(){
     console.warn('[NCO Monitor] pollMesh failed',err);
     el('apiDot').className='dot off';
   }
+}
+
+// ── Context / Improvements / AllRecords polling ───────
+async function pollContext(){
+  try{
+    const d=await(await fetch(API+'/api/context/current')).json();
+    contextData=d;
+    if(activeTab==='context')renderTab();
+  }catch(err){console.warn('[NCO Monitor] pollContext failed',err);}
+}
+async function pollImprovements(){
+  try{
+    const params=new URLSearchParams({limit:'80',offset:'0'});
+    if(_impFilter.severity)params.set('severity',_impFilter.severity);
+    const d=await(await fetch(API+'/api/improvements?'+params)).json();
+    improvementsData=d.notes||[];
+    improvementsTotal=d.total||improvementsData.length;
+    improvementsFetched=true;
+    if(activeTab==='improvements')renderTab();
+  }catch(err){console.warn('[NCO Monitor] pollImprovements failed',err);}
+}
+async function pollAllRecords(){
+  try{
+    const params=new URLSearchParams({limit:'200',offset:'0'});
+    if(_arFilter.type)params.set('type',_arFilter.type);
+    const d=await(await fetch(API+'/api/records/all?'+params)).json();
+    allRecords=d.records||[];
+    allRecordsTotal=d.total||allRecords.length;
+    allRecordsFetched=true;
+    if(activeTab==='allrecords')renderTab();
+  }catch(err){console.warn('[NCO Monitor] pollAllRecords failed',err);}
 }
 
 /** Load recent mesh messages into COMM_MATRIX on init (so graph is populated immediately) */
@@ -3760,6 +4020,9 @@ async function init(){
   await pollMesh();
   await loadRecentMessages();
   await pollTasks();
+  pollContext();
+  pollImprovements();
+  pollAllRecords();
   render();
   connect();
 
@@ -3783,6 +4046,9 @@ async function init(){
   const _healthTimer=setInterval(checkHealth,10000);
   const _meshTimer=setInterval(pollMesh,15000);
   const _taskTimer=setInterval(pollTasks,10000);
+  const _contextTimer=setInterval(()=>{if(activeTab==='context')pollContext();},15000);
+  const _improvementsTimer=setInterval(()=>{if(activeTab==='improvements')pollImprovements();},20000);
+  const _allRecordsTimer=setInterval(()=>{if(activeTab==='allrecords')pollAllRecords();},15000);
   const _heartbeatTimer=setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions'||activeTab==='overview')renderTab(); }, 10000);
   // Notes auto-refresh: 60초마다 캐시 무효화 후 탭 활성 시 재렌더
   const _notesTimer=setInterval(()=>{ _notesData=null; if(activeTab==='notes') renderNotesTab(); }, 60000);
