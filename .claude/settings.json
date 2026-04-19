@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash /Users/nova-ai/.claude/hooks/nco-statusline.sh"
+    "command": "NCO_STATUSLINE_BACKEND=MLX bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/nco-statusline.sh"
   },
   "hooks": {
     "UserPromptSubmit": [
