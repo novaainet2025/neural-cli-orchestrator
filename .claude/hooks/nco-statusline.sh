@@ -146,7 +146,8 @@ fmt_reset() {
 make_bar() {
   local pct=${1:-0} w=8
   pct=${pct%.*}; [ "$pct" -gt 100 ] 2>/dev/null && pct=100
-  local filled=$(( pct * w / 100 )) empty=$(( w - filled ))
+  local filled=$(( pct * w / 100 ))
+  local empty=$(( w - filled ))
   local bar=""
   for ((i=0;i<filled;i++)); do bar+="█"; done
   for ((i=0;i<empty;i++));  do bar+="░"; done
