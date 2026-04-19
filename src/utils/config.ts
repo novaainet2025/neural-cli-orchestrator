@@ -82,15 +82,19 @@ export function loadProviders(): ProviderConfig[] {
   return loadJSON<ProvidersFile>('ai-providers.json').providers;
 }
 
-/** WSL + Windows Ollama: localhost:11434 는 NCO에서 안 붙음 — OLLAMA_BASE_URL 또는 OLLAMA_HOST 로 덮어씀 (VLLM_BASE_URL deprecated) */
+/** WSL + Windows Ollama: OLLAMA_BASE_URL 우선, OLLAMA_HOST 폴백 (포트 중복 방지) */
 function applyOllamaEnvOverride(providers: ProviderConfig[]): ProviderConfig[] {
   let base: string | null = null;
-  const raw = process.env.OLLAMA_BASE_URL;
-  if (raw) {
-    base = raw.replace(/\/$/, '').replace(/\/v1$/, '');
+  const rawUrl = process.env.OLLAMA_BASE_URL || process.env.OLLAMA_BASE;
+  if (rawUrl) {
+    // strip trailing /v1 or / — base should end without path
+    base = rawUrl.replace(/\/$/, '').replace(/\/v1$/, '');
   } else if (process.env.OLLAMA_HOST) {
+    const host = process.env.OLLAMA_HOST;
+    // OLLAMA_HOST may already contain port (e.g. "172.28.112.1:11434") — don't append again
+    const hasPort = /:\d+$/.test(host);
     const port = process.env.OLLAMA_PORT || '11434';
-    base = `http://${process.env.OLLAMA_HOST}:${port}`;
+    base = `http://${host}${hasPort ? '' : `:${port}`}`;
   }
   if (!base) return providers;
   return providers.map((p) => {
