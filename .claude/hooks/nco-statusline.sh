@@ -49,6 +49,7 @@ else
 fi
 
 # ── NCO 세션 이름 ────────────────────────────────────────────────────────────
+_CLAUDE_PID=""
 if [ -z "$NCO_NAME" ]; then
   _CK=$$
   for _i in 1 2 3 4 5; do
@@ -56,6 +57,7 @@ if [ -z "$NCO_NAME" ]; then
     [ -z "$_CK" ] && break
     _CM=$(ps -o comm= -p "$_CK" 2>/dev/null)
     if echo "$_CM" | grep -qE '^(claude|node)$'; then
+      _CLAUDE_PID="$_CK"
       for _pf in /tmp/nco-names/claude-*.pid; do
         [ -f "$_pf" ] || continue
         _rp=$(cat "$_pf" 2>/dev/null | tr -d '[:space:]')
@@ -79,6 +81,27 @@ if [ -z "$NCO_NAME" ]; then
   done
 fi
 MY_NAME="${NCO_NAME:-cli}"
+
+# ── NCO 세션 사용량 (nco-track 파일) ─────────────────────────────────────────
+NCO_CALLS=0; DIRECT_EDITS=0
+_TRACK_FILE=""
+if [ -n "$_CLAUDE_PID" ]; then
+  _TRACK_FILE="/tmp/nco-track-${_CLAUDE_PID}.json"
+elif [ -n "$NCO_SESSION_ID" ]; then
+  _TRACK_FILE="/tmp/nco-track-${NCO_SESSION_ID}.json"
+fi
+if [ -n "$_TRACK_FILE" ] && [ -f "$_TRACK_FILE" ]; then
+  _nco_u=$(python3 -c "
+import json, sys
+try:
+  d=json.load(open('$_TRACK_FILE'))
+  print(int(d.get('nco_calls',0) or 0), int(d.get('direct_edits',0) or 0))
+except: print('0 0')
+" 2>/dev/null)
+  read -r NCO_CALLS DIRECT_EDITS <<< "$_nco_u"
+fi
+_TOTAL_ACTS=$(( NCO_CALLS + DIRECT_EDITS ))
+[ "$_TOTAL_ACTS" -gt 0 ] && NCO_PCT=$(( NCO_CALLS * 100 / _TOTAL_ACTS )) || NCO_PCT=0
 
 # ── Anthropic OAuth 사용량 (캐시 기반, 3분 TTL) ──────────────────────────────
 USAGE_CACHE="${HOME}/.claude/usage-statusline-cache.json"
@@ -172,15 +195,9 @@ echo -e "${YELLOW}${BOLD}${MY_NAME}${RESET} ${BRACKET_COLOR}[${BRACKET}]${RESET}
 # 줄 2: API · WS · AI 에이전트
 echo -e " ${API_C} ${WS_C} [${AI_DISPLAY}]${ONLINE}/${#ORDER[@]}"
 
-# 줄 3: 플랫폼 정보 (MLX 모드 시 Apple Silicon 라인)
-if [ -n "$BACKEND" ] && [ "$BACKEND" = "MLX" ]; then
-  MLX_PORT="${MLX_SERVER_PORT:-8000}"
-  PROXY_PORT="${MLX_PROXY_PORT:-4100}"
-  echo -e " ${MAGENTA}MLX · Apple Silicon · localhost:${MLX_PORT} · proxy:${PROXY_PORT}${RESET}"
-else
-  # NCO 없을 때도 3번 줄 유지
-  echo -e " ${GRAY}macOS · $(uname -m 2>/dev/null || echo Darwin)${RESET}"
-fi
+# 줄 3: NCO 사용량 막대
+NCO_BAR=$(make_bar "$NCO_PCT")
+echo -e " ${CYAN}NCO${RESET} ${GREEN}${NCO_BAR}${RESET} ${NCO_PCT}% ${GRAY}(NCO:${NCO_CALLS}↑ 직접:${DIRECT_EDITS}↓)${RESET}"
 
 # 줄 4: Anthropic 사용량 막대 | Ctx | $비용
 DAY_BAR=$(make_bar "$DAY_PCT")
