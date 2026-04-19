@@ -1,22 +1,22 @@
-# claude-6: NCO 명령어 + vLLM 통합 워크플로우 검증
+# claude-6: NCO 명령어 + Ollama 통합 워크플로우 검증
 
 > 분석 대상: 프록시 Conductor 릴레이 + NCO 명령어 체계
 > 분석일: 2026-04-14
 
-## 1. nco-vllm-* 명령어 동작 검증
+## 1. nco-ollama-* 명령어 동작 검증
 
 | 명령어 | 상태 | 기능 |
 |--------|------|------|
-| `/nco-vllm-status` | 정상 | PID, 헬스체크, VRAM, 업타임, 로드된 모델 |
-| `/nco-vllm-start` | 정상 | 서버 시작 (모델 로딩 ~3분) |
-| `/nco-vllm-stop` | 정상 | 서버 중지 + VRAM 해제 |
-| `/nco-vllm-restart` | 정상 | 중지 → 3초 대기 → 시작 |
-| `/nco-vllm-metrics` | 정상 | 처리량, 지연, VRAM 현황 |
-| `/nco-vllm-config` | 정상 | 프로바이더 설정 출력 |
-| `/nco-vllm-models` | 정상 | 설치/활성/로드 모델 목록 |
-| `/nco-vllm-proxy-start` | 정상 | 프록시 시작 (포트 4100) |
-| `/nco-vllm-proxy-status` | 정상 | 프록시 실행/로그 확인 |
-| `/nco-vllm-proxy-stop` | 정상 | 프록시 종료 |
+| `/nco-ollama-status` | 정상 | PID, 헬스체크, VRAM, 업타임, 로드된 모델 |
+| `/nco-ollama-start` | 정상 | 서버 시작 (모델 로딩 ~3분) |
+| `/nco-ollama-stop` | 정상 | 서버 중지 + VRAM 해제 |
+| `/nco-ollama-restart` | 정상 | 중지 → 3초 대기 → 시작 |
+| `/nco-ollama-metrics` | 정상 | 처리량, 지연, VRAM 현황 |
+| `/nco-ollama-config` | 정상 | 프로바이더 설정 출력 |
+| `/nco-ollama-models` | 정상 | 설치/활성/로드 모델 목록 |
+| `/nco-ollama-proxy-start` | 정상 | 프록시 시작 (포트 4100) |
+| `/nco-ollama-proxy-status` | 정상 | 프록시 실행/로그 확인 |
+| `/nco-ollama-proxy-stop` | 정상 | 프록시 종료 |
 
 > 모든 10개 명령어 정상 동작 확인
 
@@ -29,7 +29,7 @@
     ↓
 IntentClassifier.classify() (Line 2202)
     ↓
-┌─ intent="answer" → vLLM 직접 추론
+┌─ intent="answer" → Ollama 직접 추론
 ├─ intent="skill" → 스킬 실행 (nco-*, /slash)
 └─ intent="exec" → _execute_conductor_relay() (Line 2235)
     ↓
@@ -76,7 +76,7 @@ taskId 수신 → 60초 폴링 (5초 간격)
 - NCO 연결 오류 catch → `[TASK 실패] NCO 연결 오류: {message}`
 - 폴링 타임아웃 → `[NCO] 작업 진행 중 (taskId: ...) — /nco-kanban 으로 확인`
 
-## 4. vLLM-NCO 통합 개선 제안
+## 4. Ollama-NCO 통합 개선 제안
 
 ### 제안 1: Intent 기반 라우팅 캐시
 동일 패턴 반복 시 IntentClassifier 호출 생략:
@@ -97,7 +97,7 @@ NCO → 완료 이벤트 → 프록시 즉시 수신 (폴링 지연 제거)
 
 ### 제안 3: 하이브리드 실행 모드
 ```
-단순 작업 (파일 읽기/검색) → vLLM 직접 처리 (비용 0)
+단순 작업 (파일 읽기/검색) → Ollama 직접 처리 (비용 0)
 복잡 작업 (설계/분석) → Conductor → 최적 에이전트
-혼합 작업 → vLLM 초안 + Conductor 검증
+혼합 작업 → Ollama 초안 + Conductor 검증
 ```

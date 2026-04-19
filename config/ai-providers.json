@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "updated": "2026-04-09",
+  "version": 7,
+  "updated": "2026-04-19",
   "providers": [
     {
       "id": "claude-code",
@@ -52,12 +52,10 @@
       "type": "cli",
       "role": "Architect",
       "score": 90,
-      "model": "openrouter/openai/gpt-oss-120b:free",
+      "model": "multi-llm",
       "command": "opencode",
       "args": [
-        "run",
-        "--model",
-        "openrouter/openai/gpt-oss-120b:free"
+        "run"
       ],
       "env": {},
       "concurrency": 4,
@@ -175,13 +173,13 @@
       "type": "cli",
       "role": "Engineer",
       "score": 82,
-      "model": "openrouter/openai/gpt-oss-120b:free",
+      "model": "openrouter/meta-llama/llama-4-maverick:free",
       "command": "aider",
       "args": [
         "--yes",
         "--no-auto-commits",
         "--model",
-        "openrouter/openai/gpt-oss-120b:free"
+        "openrouter/meta-llama/llama-4-maverick:free"
       ],
       "env": {
         "OPENROUTER_API_KEY": "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"
@@ -212,13 +210,13 @@
           "provider": "openrouter",
           "baseUrl": "https://openrouter.ai/api/v1",
           "apiKeyRef": "OPENROUTER_API_KEYS",
-          "model": "openrouter/openai/gpt-oss-120b:free"
+          "model": "openrouter/meta-llama/llama-4-maverick:free"
         },
         "fallback": {
-          "provider": "mlx",
-          "baseUrl": "http://localhost:8000/v1",
+          "provider": "ollama",
+          "baseUrl": "http://172.28.112.1:11434/v1",
           "apiKeyRef": null,
-          "model": "local-model"
+          "model": "gemma4:26b-a4b-it-q4_K_M"
         }
       },
       "healthCheck": {
@@ -369,16 +367,16 @@
       }
     },
     {
-      "id": "mlx",
-      "name": "MLX (Local)",
+      "id": "ollama",
+      "name": "Ollama",
       "enabled": true,
       "type": "api",
       "role": "Validator",
       "score": 75,
-      "model": "/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit",
+      "model": "gemma4:26b-a4b-it-q4_K_M",
       "command": null,
       "args": [],
-      "endpoint": "http://localhost:8000/v1",
+      "endpoint": "http://172.28.112.1:11434/v1",
       "apiKeyRef": null,
       "env": {},
       "concurrency": 1,
@@ -402,22 +400,26 @@
         "style": "rigorous"
       },
       "modelSpec": {
-        "name": "Gemma 4 (MLX)",
+        "name": "Gemma 4 26B A4B (Ollama)",
         "developer": "Google DeepMind",
-        "parameters": "26B (Active 4B, MoE)",
-        "quantization": "MLX 4-bit",
-        "gpu": "Apple M-series (Metal)",
-        "vram": "~15GB unified memory",
-        "maxModelLen": 8192
+        "parameters": "26B MoE (active ~4B)",
+        "quantization": "Ollama 라이브러리 기본 (NVFP4/Q4 등 태그별 상이)",
+        "gpu": "RTX 4090 24GB",
+        "vram": "가중치 ~14GiB대+KV(컨텍스트·동시성에 비례)",
+        "maxModelLen": 8192,
+        "recommendedEnv": {
+          "OLLAMA_MODEL": "gemma4:26b-a4b-it-q4_K_M",
+          "OLLAMA_MAX_MODEL_LEN": "8192",
+          "OLLAMA_KEEP_ALIVE": "15m",
+          "OLLAMA_NUM_PARALLEL": "1"
+        }
       },
-      "note": "Gemma 4 26B MLX 4-bit on Apple Silicon. MLX server: pm2 start mlx-server  Proxy: python3 /Users/nova-ai/project/nco/cli-installs/anthropic-mlx-proxy.py 4100  Use as Claude Code: claude-gemma (alias) = ANTHROPIC_BASE_URL=http://localhost:4100 claude",
+      "note": "Validator용 로컬 추론. `ollama pull gemma4:26b` 후 `claude-gemma`(프록시 :4100→:11434). WSL+Windows Ollama: OLLAMA_BASE_URL 또는 OLLAMA_HOST. 프록시/Claude Code는 `claude-ollama-gemma`가 OLLAMA_MODEL·컨텍스트·keep_alive 기본값을 설정.",
       "healthCheck": {
         "type": "api",
-        "url": "http://localhost:8000/health",
+        "url": "http://localhost:11434/api/tags",
         "timeout": 5000
-      },
-      "proxy_endpoint": "http://localhost:4100",
-      "updated": "2026-04-15"
+      }
     }
   ]
 }

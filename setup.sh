@@ -9,7 +9,7 @@
 # ║    bash setup.sh                          # 전체 설치 (에이전트 포함)     ║
 # ║    bash setup.sh --no-interactive         # 자동 전체 설치               ║
 # ║    bash setup.sh --skip-agents            # 에이전트 설치 스킵            ║
-# ║    bash setup.sh --skip-vllm             # vLLM 안내 스킵                ║
+# ║    bash setup.sh --skip-ollama           # Ollama 안내 스킵              ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 set -euo pipefail
 IFS=$'\n\t'
@@ -26,11 +26,12 @@ step() { echo -e "\n${BOLD}[${1}/${TOTAL}] ${2}${NC}"; }
 TOTAL=13
 
 # ── 인수 ──────────────────────────────────────────────────────────────────
-INTERACTIVE=true; SKIP_VLLM=false; DEV_MODE=false; SKIP_AGENTS=false
+INTERACTIVE=true; SKIP_OLLAMA=false; DEV_MODE=false; SKIP_AGENTS=false
 for arg in "${@:-}"; do
   case "$arg" in
     --no-interactive) INTERACTIVE=false ;;
-    --skip-vllm)      SKIP_VLLM=true ;;
+    --skip-ollama)    SKIP_OLLAMA=true ;;
+    --skip-vllm)      SKIP_OLLAMA=true ;;
     --skip-agents)    SKIP_AGENTS=true ;;
     --dev)            DEV_MODE=true ;;
   esac
@@ -427,10 +428,10 @@ export NVM_DIR="\$HOME/.nvm"
 [ -s "\$NVM_DIR/nvm.sh" ] && source "\$NVM_DIR/nvm.sh"
 export PATH="\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH"
 
-# vLLM 자동 기동 (주석 해제 시 활성화)
-# pgrep -f 'vllm serve' >/dev/null 2>&1 || nohup vllm-gemma start >> /tmp/vllm-gemma.log 2>&1 &
+# Ollama 로컬 LLM (Windows: Ollama 앱 · WSL: 호스트 연동 시 OLLAMA_HOST 검토)
+# ollama pull gemma4:26b
 
-# Claude vLLM alias
+# Claude + 로컬 OpenAI 호환(레거시 런처 이름 유지)
 alias claude-gemma='claude-vllm-gemma --dangerously-skip-permissions'
 alias claude-qwen='claude-vllm-qwen --dangerously-skip-permissions'
 # ── NCO end ────────────────────────────────────────────────────────────────
@@ -459,7 +460,7 @@ setup_agents() {
   echo ""
   echo -e "  설치 대상 에이전트 (9개):"
   echo -e "  ${CYAN}claude-code · opencode · gemini-cli · codex · aider${NC}"
-  echo -e "  ${CYAN}cursor-agent · copilot · vllm-env · gemini-api(SDK)${NC}"
+  echo -e "  ${CYAN}cursor-agent · copilot · ollama · gemini-api(SDK)${NC}"
   echo ""
 
   if [[ "$INTERACTIVE" == "true" ]]; then
@@ -479,21 +480,19 @@ setup_agents() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-# vLLM 안내
+# Ollama 로컬 LLM 안내
 # ══════════════════════════════════════════════════════════════════════════
-vllm_notice() {
-  [[ "$SKIP_VLLM" == "true" ]] && return
+ollama_notice() {
+  [[ "$SKIP_OLLAMA" == "true" ]] && return
   echo ""
-  hdr "vLLM 로컬 AI (선택 — GPU 필요)"
-  echo "  RTX 3090+ 권장. 없어도 NCO는 정상 작동합니다."
+  hdr "Ollama 로컬 AI (선택 — GPU 권장)"
+  echo "  RTX 12GB+ 권장 (gemma4:26b 기준). 없어도 NCO는 정상 작동합니다."
   echo ""
-  echo "  설치:"
-  echo "    python3 -m venv ~/vllm-env && source ~/vllm-env/bin/activate"
-  echo "    pip install 'vllm[modelopt]' torch transformers"
+  echo "  설치: https://ollama.com"
   echo ""
   echo "  사용:"
-  echo "    vllm-gemma start    # Gemma 4 26B 기동 (약 3분)"
-  echo "    claude-gemma        # Gemma로 Claude Code 실행"
+  echo "    ollama pull gemma4:26b"
+  echo "    claude-gemma   # ANTHROPIC_BASE_URL=로컬 프록시 사용 시"
 }
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -549,9 +548,9 @@ print_done() {
   echo -e "  ${CYAN}3.${NC} /nco-start  (NCO 백엔드 시작)"
   echo -e "  ${CYAN}4.${NC} /nco-status (상태 확인)"
   echo ""
-  echo -e "  ${BOLD}vLLM 사용 시:${NC}"
-  echo -e "  ${CYAN}5.${NC} vllm-gemma start   (약 3분 대기)"
-  echo -e "  ${CYAN}6.${NC} claude-gemma       (로컬 AI 사용)"
+  echo -e "  ${BOLD}Ollama 사용 시:${NC}"
+  echo -e "  ${CYAN}5.${NC} ollama pull gemma4:26b"
+  echo -e "  ${CYAN}6.${NC} NCO Validator 프로바이더는 :11434/v1 (설정: neural-cli-orchestrator/config/ai-providers.json)"
   echo ""
   echo -e "  API 키 설정: ${CYAN}$NCO_DIR/.env${NC}"
   echo ""
@@ -575,7 +574,7 @@ main() {
   setup_bin_scripts
   setup_shell_rc
   setup_agents
-  vllm_notice
+  ollama_notice
   verify
   print_done
 }

@@ -13,6 +13,7 @@
 
 param(
     [switch]$SkipWSL,
+    [switch]$SkipOllama,
     [switch]$SkipVLLM,
     [switch]$NoInteractive
 )
@@ -189,7 +190,7 @@ function Install-NCOinWSL {
 
     $ExtraArgs = ""
     if ($NoInteractive) { $ExtraArgs += " --no-interactive" }
-    if ($SkipVLLM)      { $ExtraArgs += " --skip-vllm" }
+    if ($SkipOllama -or $SkipVLLM) { $ExtraArgs += " --skip-ollama" }
 
     $WslCmd = "chmod +x '$WslPath/setup.sh' && bash '$WslPath/setup.sh'$ExtraArgs"
 
@@ -227,7 +228,7 @@ wsl claude --dangerously-skip-permissions
     # Claude Gemma
     @"
 @echo off
-title Claude Gemma (vLLM)
+title Claude Gemma (Ollama)
 wsl claude-gemma --dangerously-skip-permissions
 "@ | Set-Content -Path "$Desktop\Claude Gemma.bat" -Encoding UTF8
     Write-Ok "바로가기: Claude Gemma.bat"
@@ -242,21 +243,15 @@ wsl claude --dangerously-skip-permissions
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. vLLM 안내
+# 6. Ollama 안내
 # ═══════════════════════════════════════════════════════════════════════════
-function Show-VLLMNotice {
-    if ($SkipVLLM) { return }
+function Show-OllamaNotice {
+    if ($SkipOllama -or $SkipVLLM) { return }
 
-    Write-Host "`n  ── vLLM 로컬 AI (선택 — GPU 필요) ──" -ForegroundColor Cyan
-    Write-Host "  RTX 3090+ 권장. 없어도 NCO는 정상 작동합니다."
-    Write-Host ""
-    Write-Host "  WSL에서 설치:"
-    Write-Host "    python3 -m venv ~/vllm-env && source ~/vllm-env/bin/activate"
-    Write-Host "    pip install 'vllm[modelopt]' torch transformers"
-    Write-Host ""
-    Write-Host "  WSL에서 실행:"
-    Write-Host "    vllm-gemma start   # Gemma 4 26B 기동"
-    Write-Host "    claude-gemma       # 로컬 AI로 Claude Code"
+    Write-Host "`n  ── Ollama 로컬 AI (선택 — GPU 권장) ──" -ForegroundColor Cyan
+    Write-Host "  Windows: https://ollama.com 에서 설치 후:"
+    Write-Host "    ollama pull gemma4:26b"
+    Write-Host "  NCO Validator는 http://localhost:11434/v1 (ai-providers.json) 을 사용합니다."
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -276,7 +271,7 @@ function Write-Done {
 
   바탕화면 바로가기:
   - NCO Start.bat    : NCO + Claude Code 시작
-  - Claude Gemma.bat : Gemma vLLM + Claude Code
+  - Claude Gemma.bat : Gemma(Ollama) + Claude Code
   - Claude Code.bat  : 일반 Claude Code
 
   API 키 설정 (WSL에서):
@@ -295,5 +290,5 @@ Install-Ubuntu
 Install-WindowsTools
 Install-NCOinWSL
 Create-Shortcuts
-Show-VLLMNotice
+Show-OllamaNotice
 Write-Done

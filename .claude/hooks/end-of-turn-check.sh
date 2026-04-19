@@ -77,85 +77,72 @@ TURN_COUNT=$(to_int "$TURN_COUNT")
 TURN_COUNT=$((TURN_COUNT + 1))
 
 # ═══════════════════════════════════════════════════════════
-# STEP 2: 작업 결과 수집
+# STEP 2: 작업 결과 수집 (OPTIMIZED: cache + single call)
 # ═══════════════════════════════════════════════════════════
 
-CHANGED_FILES_LIST=$(git diff --name-only 2>/dev/null)
-STAGED_FILES_LIST=$(git diff --cached --name-only 2>/dev/null)
-ALL_CHANGED=$(printf "%s\n%s" "$CHANGED_FILES_LIST" "$STAGED_FILES_LIST" | sort -u | grep -v '^$')
+# Cache TTL: 60s for tsc/lint (expensive)
+CHECK_CACHE_TTL=60
+CHECK_CACHE_DIR="/tmp/nco-check-cache"
+mkdir -p "$CHECK_CACHE_DIR" 2>/dev/null
+CACHE_KEY="check-$(date +%Y%m%d%H)"
+CACHE_FILE="$CHECK_CACHE_DIR/$CACHE_KEY.cache"
 
-CHANGED_COUNT=$(echo "$ALL_CHANGED" | grep -c '.' 2>/dev/null || echo 0)
-CHANGED_COUNT=$(to_int "$CHANGED_COUNT")
-
-# 변경 파일 요약 (확장자별 카운트)
-FILE_SUMMARY=""
-if [ "$CHANGED_COUNT" -gt 0 ]; then
-    FILE_SUMMARY=$(echo "$ALL_CHANGED" | sed 's/.*\.//' | sort | uniq -c | sort -rn | head -5 | awk '{printf "%s(%d) ", $2, $1}')
-fi
-
-# 추가/삭제 라인 수
-DIFF_STAT=$(git diff --stat 2>/dev/null | tail -1)
-ADDITIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= insertion)' || echo "0")
-DELETIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= deletion)' || echo "0")
-ADDITIONS=$(to_int "$ADDITIONS")
-DELETIONS=$(to_int "$DELETIONS")
-
-# TypeScript 에러 — lock으로 중복 실행 방지
-TSC_ERRORS=0
-TSC_ERROR_LINES=""
-TSC_LOCK="/tmp/nco-tsc.lock"
-TSC_CACHE="/tmp/nco-tsc-cache.txt"
-_tsc_run=0
-
-if command -v npx &>/dev/null && [ -f "tsconfig.json" ]; then
-    # 이미 tsc가 돌고 있으면 캐시 결과 사용 (누적 방지)
-    if [ -f "$TSC_LOCK" ]; then
-        _LOCK_PID=$(cat "$TSC_LOCK" 2>/dev/null)
-        if kill -0 "$_LOCK_PID" 2>/dev/null; then
-            # 살아있는 tsc → 캐시된 결과 사용
-            if [ -f "$TSC_CACHE" ]; then
-                TSC_OUTPUT=$(cat "$TSC_CACHE")
-                TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -c "error TS" 2>/dev/null || echo 0)
-                TSC_ERRORS=$(to_int "$TSC_ERRORS")
-            fi
-        else
-            # 죽은 lock → 삭제 후 실행
-            rm -f "$TSC_LOCK"
-            _tsc_run=1
+_cached_check() {
+    if [ -f "$CACHE_FILE" ]; then
+        local age=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
+        if [ "$age" -lt "$CHECK_CACHE_TTL" ]; then
+            cat "$CACHE_FILE"
+            return 0
         fi
-    else
-        _tsc_run=1
     fi
+    return 1
+}
 
-    if [ "$_tsc_run" = "1" ]; then
-        echo $$ > "$TSC_LOCK"
+# Try cache first
+if _cached_check; then
+    eval "$(cat "$CACHE_FILE")"
+else
+    CHANGED_FILES_LIST=$(git diff --name-only 2>/dev/null)
+    STAGED_FILES_LIST=$(git diff --cached --name-only 2>/dev/null)
+    ALL_CHANGED=$(printf "%s\n%s" "$CHANGED_FILES_LIST" "$STAGED_FILES_LIST" | sort -u | grep -v '^$')
+
+    CHANGED_COUNT=$(echo "$ALL_CHANGED" | grep -c '.' 2>/dev/null || echo 0)
+    CHANGED_COUNT=$(to_int "$CHANGED_COUNT")
+
+    DIFF_STAT=$(git diff --stat 2>/dev/null | tail -1)
+    ADDITIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= insertion)' || echo "0")
+    DELETIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= deletion)' || echo "0")
+    ADDITIONS=$(to_int "$ADDITIONS")
+    DELETIONS=$(to_int "$DELETIONS")
+
+    # Only run tsc if files changed (skip for read-only)
+    TSC_ERRORS=0
+    if command -v npx &>/dev/null && [ -f "tsconfig.json" ] && [ "$CHANGED_COUNT" -gt 0 ]; then
         TSC_OUTPUT=$(npx tsc --noEmit 2>&1)
-        echo "$TSC_OUTPUT" > "$TSC_CACHE"
-        rm -f "$TSC_LOCK"
         TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -c "error TS" | tr -d '[:space:]' || true)
         TSC_ERRORS=$(to_int "$TSC_ERRORS")
-        if [ "$TSC_ERRORS" -gt 0 ]; then
-            TSC_ERROR_LINES=$(echo "$TSC_OUTPUT" | grep "error TS" | head -10)
-        fi
     fi
-fi
 
-# ESLint 에러 (변경 파일만)
-LINT_ERRORS=0
-LINT_ERROR_LINES=""
-LINT_TARGET_FILES=""
-if command -v npx &>/dev/null; then
-    if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ] || [ -f "eslint.config.mjs" ]; then
-        LINT_TARGET_FILES=$(echo "$ALL_CHANGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -20)
-        if [ -n "$LINT_TARGET_FILES" ]; then
-            LINT_OUTPUT=$(echo "$LINT_TARGET_FILES" | xargs npx eslint --no-warn 2>/dev/null)
-            LINT_ERRORS=$(echo "$LINT_OUTPUT" | grep -c "error" | tr -d '[:space:]' || true)
-            LINT_ERRORS=$(to_int "$LINT_ERRORS")
-            if [ "$LINT_ERRORS" -gt 0 ]; then
-                LINT_ERROR_LINES=$(echo "$LINT_OUTPUT" | grep "error" | head -10)
+    LINT_ERRORS=0
+    if command -v npx &>/dev/null && [ -f "tsconfig.json" ] && [ "$CHANGED_COUNT" -gt 0 ]; then
+        if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+            LINT_TARGET_FILES=$(echo "$ALL_CHANGED" | grep -E '\.(ts|tsx|js|jsx)$' | head -10)
+            if [ -n "$LINT_TARGET_FILES" ]; then
+                LINT_OUTPUT=$(echo "$LINT_TARGET_FILES" | xargs npx eslint --no-warn 2>/dev/null)
+                LINT_ERRORS=$(echo "$LINT_OUTPUT" | grep -c "error" | tr -d '[:space:]' || true)
+                LINT_ERRORS=$(to_int "$LINT_ERRORS")
             fi
         fi
     fi
+
+    # Write cache
+    cat > "$CACHE_FILE" <<EOF
+CHANGED_COUNT=$CHANGED_COUNT
+ADDITIONS=$ADDITIONS
+DELETIONS=$DELETIONS
+TSC_ERRORS=$TSC_ERRORS
+LINT_ERRORS=$LINT_ERRORS
+EOF
 fi
 
 # ═══════════════════════════════════════════════════════════
@@ -308,170 +295,88 @@ EVALEOF
 )
 
 if [ "$GAP_RATE" -ge "$THRESHOLD" ]; then
-    # ═══ PASS ═══
-
-    # 다음 작업 후보 (최대 5개)
-    NEXT_TASKS=""
-    for plan_file in docs/plans/*.md .llm/todo.md; do
-        if [ -f "$plan_file" ]; then
-            NEXT=$(grep -m 5 '^\s*-\s*\[ \]' "$plan_file" 2>/dev/null | sed 's/^\s*-\s*\[ \]\s*//' | head -5)
-            if [ -n "$NEXT" ]; then
-                NEXT_TASKS="${NEXT_TASKS}${NEXT}\n"
-            fi
-        fi
-    done
-
-    # NCO 추천 작업 (API 가능 시)
-    NCO_RECOMMEND=""
-    if (echo > /dev/tcp/localhost/6200) 2>/dev/null; then
-        NCO_RECOMMEND=$(curl -s -m 2 http://localhost:6200/api/tasks/recommend 2>/dev/null | python3 -c "
-import sys,json
-try:
-    d=json.load(sys.stdin)
-    if d.get('task'):
-        print(d['task'].get('description','')[:80])
-except: pass
-" 2>/dev/null)
-    fi
+# ═══ PASS ═══ (COMPACT OUTPUT)
 
     cat >&2 <<PASSEOF
-${HEADER}
-${EVAL_BLOCK}
-
-[다음 작업]
+[NCO:${MY_NAME}] ${SESSION_TITLE}
+turn=${TURN_COUNT} gap=${GAP_RATE}% grade=${GRADE} files=${CHANGED_COUNT} +${ADDITIONS}/-${DELETIONS} tsc=${TSC_ERRORS} lint=${LINT_ERRORS}
 PASSEOF
 
-    if [ -n "$NEXT_TASKS" ]; then
-        echo -e "$NEXT_TASKS" | head -5 | nl -ba >&2
-    else
-        echo "  (Plan 파일에 미완료 태스크 없음)" >&2
-    fi
-
-    if [ -n "$NCO_RECOMMEND" ]; then
-        echo "" >&2
-        echo "  NCO 추천: ${NCO_RECOMMEND}" >&2
-    fi
-
-    # ─── Check for mesh messages (all types) ───
+    # Check for mesh messages (compact)
     MESH_MSGS=""
-    MESH_HB_RESULT=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
-      -H "Content-Type: application/json" \
-      -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"idle\"}" 2>/dev/null)
+    if (echo > /dev/tcp/localhost/6200) 2>/dev/null; then
+        MESH_HB_RESULT=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+          -H "Content-Type: application/json" \
+          -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"idle\"}" 2>/dev/null)
 
-    if [ -n "$MESH_HB_RESULT" ]; then
-        MESH_MSGS=$(echo "$MESH_HB_RESULT" | python3 -c "
+        if [ -n "$MESH_HB_RESULT" ]; then
+            MESH_MSGS=$(echo "$MESH_HB_RESULT" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 msgs=d.get('messages',[])
 if msgs:
-    for m in msgs:
-        t=m.get('type','info').upper()
-        f=m.get('fromAgent','?')
-        c=m.get('content','')
-        print(f'  [{t}] {f}: {c}')
+    for m in msgs[:3]:
+        t=m.get('type','info')[:4]
+        f=m.get('fromAgent','?')[:8]
+        c=m.get('content','')[:40]
+        print(f'{t}:{f}:{c}')
 " 2>/dev/null)
+        fi
     fi
 
-    cat >&2 <<MENUEOF
-
-[액션]
-  /nco-next          — 다음 순차 작업
-  /nco-next-parallel  — 독립 태스크 병렬 실행
-  /nco-task <설명> — NCO에 작업 위임
-  /nco-mesh          — CLI Mesh 상태
-  /nco-gap           — gap 재분석
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-MENUEOF
-
-    # Auto-reply to mesh messages (with loop prevention: max 5 consecutive)
     if [ -n "$MESH_MSGS" ]; then
         MESH_COUNTER_FILE="/tmp/nco-mesh-auto-${NCO_SESSION_ID}.count"
         MESH_COUNT=$(cat "$MESH_COUNTER_FILE" 2>/dev/null || echo "0")
         MESH_COUNT=$((MESH_COUNT + 1))
 
-        if [ "$MESH_COUNT" -le 5 ]; then
+        if [ "$MESH_COUNT" -le 3 ]; then
             echo "$MESH_COUNT" > "$MESH_COUNTER_FILE"
-            echo "" >&2
-            echo "[MESH 메시지 수신 — 자동 응답 ${MESH_COUNT}/5]" >&2
-            echo "$MESH_MSGS" >&2
-            echo "" >&2
-            echo "위 메시지에 /nco-mesh send 로 답장하세요. 대화가 끝나면 '대화 종료'라고 말하세요." >&2
-            exit 2  # Force Claude to auto-respond
+            echo "[MESH] ${MESH_MSGS}" >&2
+            exit 2
         else
-            echo "" >&2
-            echo "[MESH 메시지 수신 — 자동 응답 한도 초과 (5/5)]" >&2
-            echo "$MESH_MSGS" >&2
-            echo "" >&2
-            echo "수동으로 /nco-mesh send 로 응답하거나, 한도 리셋: rm $MESH_COUNTER_FILE" >&2
             rm -f "$MESH_COUNTER_FILE"
         fi
     else
-        # No messages — reset counter (conversation paused)
         rm -f "/tmp/nco-mesh-auto-${NCO_SESSION_ID}.count" 2>/dev/null
     fi
 
+    echo "act: /nco-next | /nco-parallel | /nco-task | /nco-mesh | /nco-gap" >&2
     exit 0
 
 else
-    # ═══ FAIL: 자동 재수정 ═══
+    # ═══ FAIL: 자동 재수정 (COMPACT) ═══
 
     cat >&2 <<FAILEOF
-${HEADER}
-${EVAL_BLOCK}
-
-[자동 수정 모드] Gap ${GAP_RATE}% < ${THRESHOLD}% — 계속 진행합니다.
+[NCO:${MY_NAME}] Gap ${GAP_RATE}% < ${THRESHOLD}% (auto-fix mode)
+turn=${TURN_COUNT} files=${CHANGED_COUNT} +${ADDITIONS}/-${DELETIONS} tsc=${TSC_ERRORS} lint=${LINT_ERRORS}
 FAILEOF
 
-    # 미완료 태스크
-    if [ -n "$PENDING_TASKS" ]; then
-        echo "" >&2
-        echo "미완료 항목:" >&2
-        echo -e "$PENDING_TASKS" >&2
-    fi
+    [ "$TSC_ERRORS" -gt 0 ] && echo "tsc: $TSC_ERRORS err" >&2
+    [ "$LINT_ERRORS" -gt 0 ] && echo "lint: $LINT_ERRORS err" >&2
 
-    # tsc 에러 상세
-    if [ "$TSC_ERRORS" -gt 0 ]; then
-        echo "" >&2
-        echo "TypeScript 에러 (수정 필요):" >&2
-        echo "$TSC_ERROR_LINES" >&2
-    fi
+    [ "$GAP_RATE" -lt "$THRESHOLD" ] && echo "gap: need ${THRESHOLD}%+" >&2
 
-    # lint 에러 상세
-    if [ "$LINT_ERRORS" -gt 0 ]; then
-        echo "" >&2
-        echo "ESLint 에러 (수정 필요):" >&2
-        echo "$LINT_ERROR_LINES" >&2
-    fi
+    # Check mesh messages even in fail
+    if (echo > /dev/tcp/localhost/6200) 2>/dev/null; then
+        MESH_HB_FAIL=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
+          -H "Content-Type: application/json" \
+          -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"coding\"}" 2>/dev/null)
 
-    echo "" >&2
-    echo "위 항목을 수정하여 gap ${THRESHOLD}% 이상을 달성하세요." >&2
-
-    # ─── Check for mesh messages even in fail path ───
-    MESH_HB_FAIL=$(curl -s --connect-timeout 1 --max-time 2 -X POST http://localhost:6200/api/mesh/heartbeat \
-      -H "Content-Type: application/json" \
-      -d "{\"sessionId\":\"$NCO_SESSION_ID\",\"agentId\":\"$MY_NAME\",\"pid\":$NCO_SESSION_ID,\"status\":\"coding\"}" 2>/dev/null)
-
-    if [ -n "$MESH_HB_FAIL" ]; then
-        MESH_MSGS_FAIL=$(echo "$MESH_HB_FAIL" | python3 -c "
+        if [ -n "$MESH_HB_FAIL" ]; then
+            MESH_MSGS_FAIL=$(echo "$MESH_HB_FAIL" | python3 -c "
 import sys,json
 d=json.load(sys.stdin)
 msgs=d.get('messages',[])
 if msgs:
-    for m in msgs:
-        t=m.get('type','info').upper()
-        f=m.get('fromAgent','?')
-        c=m.get('content','')
-        print(f'  [{t}] {f}: {c}')
+    for m in msgs[:2]:
+        t=m.get('type','info')[:4]
+        f=m.get('fromAgent','?')[:8]
+        c=m.get('content','')[:40]
+        print(f'{t}:{f}:{c}')
 " 2>/dev/null)
-
-        if [ -n "$MESH_MSGS_FAIL" ]; then
-            echo "" >&2
-            echo "[MESH 메시지 수신]" >&2
-            echo "$MESH_MSGS_FAIL" >&2
+            [ -n "$MESH_MSGS_FAIL" ] && echo "[MESH] ${MESH_MSGS_FAIL}" >&2
         fi
     fi
 
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-
-    exit 2
+exit 2
 fi

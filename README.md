@@ -46,7 +46,7 @@ Claude Code (Commander)
     │  9개 AI 에이전트                     │
     │  claude-code · opencode · gemini    │
     │  codex · aider · cursor-agent       │
-    │  copilot · openrouter · vllm        │
+    │  copilot · openrouter · ollama      │
     └─────────────────────────────────────┘
            │
     Redis (:6379) + SQLite
@@ -77,7 +77,7 @@ Claude Code (Commander)
 | 6200 | NCO REST API |
 | 6201 | WebSocket 실시간 스트림 |
 | 6379 | Redis |
-| 8000 | vLLM (선택) |
+| 11434 | Ollama (선택) |
 | 4100 | Anthropic 호환 프록시 (선택) |
 
 ---
@@ -110,7 +110,7 @@ claude
 - **Claude Code** CLI
 - **OS**: macOS 12+ / Ubuntu 20.04+ / Windows 10 WSL2
 
-vLLM(로컬 AI)은 선택사항 — RTX 3090+ 필요.
+Ollama(로컬 AI)은 선택사항 — RTX 3090+ 필요.
 
 ---
 
@@ -126,7 +126,7 @@ neural-cli-orchestrator/
 ├── db/migrations/        # SQLite 스키마
 └── cli-installs/
     ├── install-all.sh    # AI 에이전트 설치
-    └── vllm-ctl.sh       # vLLM 제어
+    └── ollama-ctl.sh     # Ollama 로컬 LLM 제어
 ```
 
 ---

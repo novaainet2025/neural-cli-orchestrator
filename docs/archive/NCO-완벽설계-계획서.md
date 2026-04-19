@@ -96,7 +96,7 @@ SSD TRIM으로 복구 불가. **6개월간의 백엔드 소스 전량 소실.**
 | **6201** | NCO WebSocket | WS | 핵심 |
 | **6260** | Dashboard Dev Server | HTTP | 프론트 |
 | **6379** | Redis | TCP | 큐/캐시 |
-| **8000** | vLLM Server (OpenAI 호환) | HTTP | AI |
+| **8000** | Ollama Server (OpenAI 호환) | HTTP | AI |
 
 ---
 
@@ -165,7 +165,7 @@ SSD TRIM으로 복구 불가. **6개월간의 백엔드 소스 전량 소실.**
 │   │       ├── aider.ts           # 82점 Engineer (대규모 리팩토링)
 │   │       ├── cursor-agent.ts    # 78점 Reviewer
 │   │       ├── copilot.ts         # 75점 Researcher
-│   │       └── vllm.ts             # 70점 Validator (vLLM OpenAI 호환 API)
+│   │       └── ollama.ts             # 70점 Validator (Ollama OpenAI 호환 API)
 │   │
 │   ├── discussion/                # 토론/합의 엔진
 │   │   ├── engine.ts              # 토론 진행 엔진 (라운드 관리)
@@ -276,7 +276,7 @@ SSD TRIM으로 복구 불가. **6개월간의 백엔드 소스 전량 소실.**
 ```typescript
 // config/ai-providers.json 형식 (복구됨)
 interface ProviderConfig {
-  id: string;           // "claude-code", "vllm", etc.
+  id: string;           // "claude-code", "ollama", etc.
   name: string;         // 표시 이름
   enabled: boolean;     // 활성화 여부
   type: 'cli' | 'api' | 'local';
@@ -314,7 +314,7 @@ interface AIProvider extends ProviderConfig {
 | `aider` | 82 | Engineer | CLI | 코드 편집, 대규모 리팩토링 | paid |
 | `cursor-agent` | 78 | Reviewer | CLI | 코드 리뷰, IDE 통합 | paid |
 | `copilot` | 75 | Researcher | CLI | 코드 완성, 정보 수집 | paid |
-| `vllm` | 70 | Validator | api | 로컬 vLLM 서버, 고속 추론, **무료** | **free** |
+| `ollama` | 70 | Validator | api | 로컬 Ollama 서버, 고속 추론, **무료** | **free** |
 
 ### 3.3 동적 등록/삭제 시스템
 
@@ -806,7 +806,7 @@ CREATE TABLE checkpoints (
 | `execa` | CLI AI subprocess 관리 (stdin/stdout 파이프) |
 | `@anthropic-ai/sdk` | Claude API 직접 호출 |
 | `@google/generative-ai` | Gemini API 직접 호출 (14-key rotation) |
-| `openai` | OpenAI 호환 API (Codex, vLLM) |
+| `openai` | OpenAI 호환 API (Codex, Ollama) |
 
 ### 7.3 MCP & Claude Code
 

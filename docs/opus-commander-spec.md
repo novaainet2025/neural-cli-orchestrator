@@ -99,7 +99,7 @@ UI/스키마 설계     → gemini
 코드 리뷰          → cursor-agent
 리서치/문서        → copilot
 범용 추론          → openrouter
-로컬 검증          → vllm
+로컬 검증          → ollama
 ```
 
 ### 2.3 Phase 3: 계획 (PLAN)
@@ -185,7 +185,7 @@ UI/스키마 설계     → gemini
 
 ```
 검증 파이프라인:
-1. /nco-task vllm "변경 파일 로직 검증 + 엣지케이스 확인"
+1. /nco-task ollama "변경 파일 로직 검증 + 엣지케이스 확인"
 2. /nco-task cursor-agent "코드 리뷰: 보안·성능·품질"
 3. /nco-gap → Gap Rate 산출
 4. E2E 검증 (tsc --noEmit + eslint + 기존 테스트 실행)
@@ -245,12 +245,12 @@ Gap Rate = (미완료 태스크 + tsc 에러 + lint 에러) / 전체 단위 * 10
 | 에이전트 | 최적 작업 | 비용 | 컨텍스트 | 동시성 |
 |---------|----------|------|---------|--------|
 | **cursor-agent** | PR 리뷰, 보안 검토, 버그 탐지 | 유료 | 대형 | 1 |
-| **vllm** | 로컬 검증, 엣지케이스, 포맷 확인 | 무료 | 소형(4K) | 2 |
+| **ollama** | 로컬 검증, 엣지케이스, 포맷 확인 | 무료 | 소형(4K) | 2 |
 
 ### 3.4 비용 최적화 원칙
 ```
-무료 우선: vllm → openrouter → aider
-단순 검증: vllm (비용 0, 빠름)
+무료 우선: ollama → openrouter → aider
+단순 검증: ollama (비용 0, 빠름)
 복잡 구현: codex (정확도 우선)
 대형 리팩토링: aider (다중 파일 무료)
 최종 리뷰: cursor-agent (심층 분석)
@@ -274,7 +274,7 @@ Gap Rate = (미완료 태스크 + tsc 에러 + lint 에러) / 전체 단위 * 10
 ```
 세션 8개 활성 시:
 - 2개: 구현 작업 (codex/aider 역할)
-- 2개: 검증 작업 (vllm/cursor-agent 역할)  
+- 2개: 검증 작업 (ollama/cursor-agent 역할)  
 - 2개: 리서치/분석 (copilot/opencode 역할)
 - 1개: 에러 수정 대기 (핫스왑용)
 - 1개: Opus 본인 (지휘·감독)
@@ -308,11 +308,11 @@ Gap Rate = (미완료 태스크 + tsc 에러 + lint 에러) / 전체 단위 * 10
 codex 실패     → aider 또는 openrouter
 aider 실패     → codex
 opencode 실패  → gemini + copilot 병렬
-cursor-agent 실패 → vllm + openrouter 병렬
-vllm 실패      → openrouter
+cursor-agent 실패 → ollama + openrouter 병렬
+ollama 실패      → openrouter
 copilot 실패   → openrouter
 gemini 실패    → opencode
-openrouter 실패 → vllm (단순) 또는 codex (복잡)
+openrouter 실패 → ollama (단순) 또는 codex (복잡)
 ```
 
 ---
@@ -357,7 +357,7 @@ openrouter 실패 → vllm (단순) 또는 codex (복잡)
 
 ### 8.2 Mesh 세션 활용 팁
 - API 파라미터: `fromSessionId` + `content` + `to` (not `from`/`message`)
-- Gemma vLLM 세션은 read-only → 파일 수정 불가, 분석/검증만 가능
+- Gemma Ollama 세션은 read-only → 파일 수정 불가, 분석/검증만 가능
 - Claude API 세션만 파일 수정 가능
 - 브로드캐스트(`to:"*"`)보다 특정 세션 지정이 효과적
 

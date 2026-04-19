@@ -213,7 +213,7 @@ class ModuleLoader {
 src/modules/
 ├── executor-native/       # Type A: Claude Code 실행
 ├── executor-cli/          # Type B: CLI 단발 실행 + OrchestratedLoop
-├── executor-api/          # Type C: API 멀티턴 (vLLM, OpenRouter)
+├── executor-api/          # Type C: API 멀티턴 (Ollama, OpenRouter)
 ├── mode-task/             # /api/task — 단일 AI 위임
 ├── mode-parallel/         # /api/parallel — 병렬 비교
 ├── mode-discussion/       # /api/discussion — 턴제 토론
@@ -276,7 +276,7 @@ src/modules/
 |------|------------|-------------------|
 | **executor-native** | claude-code 실행 불가 | mode-* 에서 claude-code 선택 시 → 폴백 또는 에러 |
 | **executor-cli** | 6개 CLI AI 실행 불가 | mode-* 에서 해당 AI 선택 시 → 폴백 |
-| **executor-api** | vLLM/OpenRouter 실행 불가 | mode-* 에서 해당 AI 선택 시 → 폴백 |
+| **executor-api** | Ollama/OpenRouter 실행 불가 | mode-* 에서 해당 AI 선택 시 → 폴백 |
 | **mode-task** | `/api/task` 404 | conductor가 task 모드 선택 시 → 다음 모드로 |
 | **mode-parallel** | `/api/parallel` 404 | conductor가 건너뜀 |
 | **mode-discussion** | `/api/discussion` 404 | consensus 불가 (discussion 기반이므로) |
@@ -497,7 +497,7 @@ src/
 │   │   ├── index.ts
 │   │   ├── orchestrated-loop.ts
 │   │   └── tool-parser.ts        # NCO Tool Protocol 파서
-│   ├── executor-api/              # Type C: vLLM + OpenRouter
+│   ├── executor-api/              # Type C: Ollama + OpenRouter
 │   │   ├── index.ts
 │   │   └── key-rotation.ts       # API 키 롤링
 │   │
@@ -649,7 +649,7 @@ Phase 1: 코어
 Phase 2: 실행 기반
   modules/tool-executor
   modules/executor-cli        (OrchestratedLoop)
-  modules/executor-api        (vLLM/OpenRouter + 키 롤링)
+  modules/executor-api        (Ollama/OpenRouter + 키 롤링)
   modules/executor-native     (claude-code)
   modules/sandbox             (PathGuard + CommandGate)
   modules/file-guard          (변경률 보호)

@@ -48,7 +48,7 @@ const AGENT_KEYWORDS: Record<string, string[]> = {
   'cursor-agent': ['cursor', 'review', 'fix'],
   copilot: ['copilot', 'research', 'lookup'],
   openrouter: ['openrouter', 'reason', 'think'],
-  vllm: ['vllm', 'validate', 'test'],
+  ollama: ['ollama', 'validate', 'test', 'local'],
 };
 
 function normalize(text: string): string {
