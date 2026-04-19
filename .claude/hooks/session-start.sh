@@ -167,7 +167,51 @@ VLLM_HEALTH=$(curl -s --connect-timeout 1 --max-time 2 http://localhost:8000/hea
 if [ -n "$VLLM_HEALTH" ]; then
     echo -e "${GREEN}vLLM: Online${NC}" >&2
 else
-    echo -e "${YELLOW}vLLM: Offline${NC}" >&2
+    echo -e "${YELLOW}MLX: Offline${NC}" >&2
+fi
+
+# ========================================
+# Claude-Gemma (Anthropic→MLX 프록시 4100) — 워크플로 안내
+# ========================================
+GEMMA_HINT=0
+if echo "${ANTHROPIC_BASE_URL:-}" | grep -q '4100'; then
+    GEMMA_HINT=1
+elif curl -sf --connect-timeout 1 --max-time 2 http://127.0.0.1:4100/health >/dev/null 2>&1; then
+    GEMMA_HINT=1
+fi
+if [ "$GEMMA_HINT" -eq 1 ]; then
+    echo "" >&2
+    echo -e "${CYAN}Claude-Gemma:${NC} 토큰 절약 규칙은 ${BOLD}첫 프롬프트부터 자동 적용${NC} (훅). 상세만 ${BOLD}/claude-gemma-pipeline${NC}${NC}" >&2
+fi
+
+# ========================================
+# Advisor 모델 설정 표시
+# ========================================
+SETTINGS_FILE="$HOME/.claude/settings.json"
+ADVISOR_MODEL=""
+MAIN_MODEL=""
+if [ -f "$SETTINGS_FILE" ]; then
+    ADVISOR_MODEL=$(python3 -c "
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print(d.get('advisorModel', ''))
+except: print('')
+" 2>/dev/null)
+    MAIN_MODEL=$(python3 -c "
+import json
+try:
+    d = json.load(open('$SETTINGS_FILE'))
+    print(d.get('model', 'sonnet'))
+except: print('sonnet')
+" 2>/dev/null)
+fi
+echo "" >&2
+if [ -n "$ADVISOR_MODEL" ]; then
+    echo -e "${MAGENTA}Advisor: ${BOLD}${ADVISOR_MODEL}${NC}${MAGENTA} (메인: ${MAIN_MODEL}) — 복잡·설계 작업 전 /advisor 호출 권장${NC}" >&2
+    echo -e "${MAGENTA}  사용: 복잡한 구현 전 | Grade C/D 발생 시 | 아키텍처 결정 시${NC}" >&2
+else
+    echo -e "${YELLOW}Advisor: 미설정 — settings.json에 advisorModel 추가 권장${NC}" >&2
 fi
 
 # ========================================

@@ -1435,6 +1435,129 @@ export async function createGateway() {
     return report;
   });
 
+  // ═══ Context (맥락노트) ════════════════════════════
+  app.get('/api/context/current', async () => {
+    const db = getDb();
+    const activePlan = db.prepare(`
+      SELECT id, title, status, created_at FROM plans WHERE status != 'archived' ORDER BY created_at DESC LIMIT 1
+    `).get() as any;
+    const activeDiscussions = db.prepare(`
+      SELECT id, topic, status, created_at FROM discussions WHERE status = 'active' LIMIT 5
+    `).all();
+    const activeTasks = db.prepare(`
+      SELECT id, prompt, status, assigned_to, created_at FROM tasks WHERE status IN ('running','streaming','pending') ORDER BY created_at DESC LIMIT 10
+    `).all();
+    let recentEvents: any[] = [];
+    try {
+      recentEvents = db.prepare(`
+        SELECT id, message_type AS type, content AS data, created_at AS timestamp FROM agent_messages ORDER BY created_at DESC LIMIT 10
+      `).all() as any[];
+    } catch { /* table may not exist yet */ }
+    const agentStatuses = await sharedState.getAllAgentStates();
+    return {
+      plan: activePlan || null,
+      discussions: activeDiscussions,
+      tasks: activeTasks,
+      recentEvents: recentEvents,
+      agents: agentStatuses,
+      capturedAt: new Date().toISOString(),
+    };
+  });
+
+  // ═══ Improvements (개선노트) ══════════════════════
+  app.get('/api/improvements', async (req) => {
+    const db = getDb();
+    const { limit = '50', offset = '0', severity, category } = req.query as any;
+    let sql = 'SELECT * FROM improvement_notes';
+    const params: any[] = [];
+    const where: string[] = [];
+    if (severity) { where.push('severity = ?'); params.push(severity); }
+    if (category) { where.push('category = ?'); params.push(category); }
+    if (where.length) sql += ' WHERE ' + where.join(' AND ');
+    sql += ' ORDER BY timestamp DESC LIMIT ? OFFSET ?';
+    params.push(Number(limit), Number(offset));
+    const rows = db.prepare(sql).all(...params);
+    const total = (db.prepare('SELECT COUNT(*) as n FROM improvement_notes' + (where.length ? ' WHERE ' + where.join(' AND ') : '')).get(...params.slice(0, -2)) as any)?.n ?? 0;
+    return { notes: rows, total };
+  });
+
+  app.post('/api/improvements', async (req) => {
+    const db = getDb();
+    const body = req.body as any;
+    if (!body.problem) return { error: 'problem is required' };
+    const id = `imp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    db.prepare(`
+      INSERT INTO improvement_notes (id, category, problem, root_cause, fix, verified_at, agent, severity, tags)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      body.category || 'general',
+      body.problem,
+      body.root_cause || '',
+      body.fix || '',
+      body.verified_at || null,
+      body.agent || 'unknown',
+      body.severity || 'medium',
+      JSON.stringify(body.tags || []),
+    );
+    return { id };
+  });
+
+  app.get('/api/improvements/:id', async (req) => {
+    const db = getDb();
+    const { id } = req.params as any;
+    const note = db.prepare('SELECT * FROM improvement_notes WHERE id = ?').get(id);
+    if (!note) return { error: 'Not found' };
+    return note;
+  });
+
+  // ═══ All Records (전체기록 통합 타임라인) ════════
+  app.get('/api/records/all', async (req) => {
+    const db = getDb();
+    const { limit = '100', offset = '0', type, agent, since } = req.query as any;
+    const lim = Math.min(Number(limit), 500);
+    const off = Number(offset);
+
+    // Each source table → unified shape: {id, record_type, summary, agent, timestamp}
+    const sources: { sql: string; params: any[] }[] = [];
+    const timeFilter = since ? `AND timestamp >= '${since}'` : '';
+    const agentFilter = agent ? `AND '${agent}' IN (assigned_to, '')` : '';
+
+    sources.push({
+      sql: `SELECT id, 'event' AS record_type, type AS summary, '' AS agent, timestamp FROM events WHERE 1=1 ${timeFilter} ORDER BY timestamp DESC LIMIT ?`,
+      params: [lim],
+    });
+    sources.push({
+      sql: `SELECT id, 'task' AS record_type, SUBSTR(prompt,1,120) AS summary, COALESCE(assigned_to,'') AS agent, created_at AS timestamp FROM tasks WHERE 1=1 ORDER BY created_at DESC LIMIT ?`,
+      params: [lim],
+    });
+    sources.push({
+      sql: `SELECT id, 'message' AS record_type, SUBSTR(content,1,120) AS summary, COALESCE(from_agent,'') AS agent, created_at AS timestamp FROM messages WHERE 1=1 ORDER BY created_at DESC LIMIT ?`,
+      params: [lim],
+    });
+    sources.push({
+      sql: `SELECT id, 'discussion' AS record_type, SUBSTR(topic,1,120) AS summary, '' AS agent, created_at AS timestamp FROM discussions WHERE 1=1 ORDER BY created_at DESC LIMIT ?`,
+      params: [lim],
+    });
+    sources.push({
+      sql: `SELECT id, 'improvement' AS record_type, SUBSTR(problem,1,120) AS summary, agent, timestamp FROM improvement_notes WHERE 1=1 ${timeFilter} ORDER BY timestamp DESC LIMIT ?`,
+      params: [lim],
+    });
+
+    const all: any[] = [];
+    for (const src of sources) {
+      try {
+        const rows = db.prepare(src.sql).all(...src.params) as any[];
+        if (!type || rows[0]?.record_type === type) all.push(...rows);
+      } catch { /* table may not exist yet */ }
+    }
+
+    // Sort combined results by timestamp desc
+    all.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+    const paginated = all.slice(off, off + lim);
+    return { records: paginated, total: all.length };
+  });
+
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);
 

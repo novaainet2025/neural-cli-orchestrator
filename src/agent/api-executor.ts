@@ -146,13 +146,18 @@ export class ApiExecutor {
                 tool: tc.function.name,
                 args,
               });
-              const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`;
+              let output = result.output || result.error || '';
+              if (output.length > 1500) {
+                output = output.slice(0, 1500) + '... [truncated]';
+              }
+              const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${output}`;
               messages.push({
                 role: 'tool',
                 tool_call_id: tc.id,
                 content: summary,
               });
             }
+            this.trimHistory(messages);
             continue;
           }
 
@@ -163,12 +168,17 @@ export class ApiExecutor {
             for (const call of fromText) {
               totalToolCalls++;
               const result = await toolExecutor.execute(call);
-              results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${result.output || result.error}`);
+              let output = result.output || result.error || '';
+              if (output.length > 1500) {
+                output = output.slice(0, 1500) + '... [truncated]';
+              }
+              results.push(`[${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${output}`);
             }
             messages.push({
               role: 'user',
               content: `Tool results:\n${results.join('\n')}\n\nContinue.`,
             });
+            this.trimHistory(messages);
             continue;
           }
 
@@ -232,10 +242,17 @@ export class ApiExecutor {
 
   private async buildTeamContext(): Promise<string> {
     const states = await sharedState.getAllAgentStates();
-    const lines = Object.values(states).map(s =>
-      `- ${s.id}: ${s.status}${s.currentTask ? ` (working on: ${s.currentTask})` : ''}`,
-    );
-    return lines.join('\n') || 'No agents online';
+    const busy = Object.values(states).filter(s => s.status !== 'idle');
+    if (busy.length === 0) return 'All idle';
+    return busy.map(s => `${s.id}:${s.status}`).join(', ');
+  }
+
+  private trimHistory(messages: ChatCompletionMessageParam[]): void {
+    // system(0) + user(1) + 20 exchanges (40 entries)
+    const maxLen = 42;
+    while (messages.length > maxLen && messages.length >= 4) {
+      messages.splice(2, 2);
+    }
   }
 
   private createClient(): OpenAI {
