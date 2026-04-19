@@ -103,8 +103,43 @@ fi
 _TOTAL_ACTS=$(( NCO_CALLS + DIRECT_EDITS ))
 [ "$_TOTAL_ACTS" -gt 0 ] && NCO_PCT=$(( NCO_CALLS * 100 / _TOTAL_ACTS )) || NCO_PCT=0
 
-# ── Anthropic OAuth 사용량 (캐시 기반, 3분 TTL) ──────────────────────────────
+# ── Anthropic OAuth 사용량 (캐시 기반, 3분 TTL, 자동 갱신) ──────────────────
 USAGE_CACHE="${HOME}/.claude/usage-statusline-cache.json"
+USAGE_CACHE_MAX_AGE=180
+
+# 캐시 만료 시 백그라운드로 갱신
+_refresh_usage_cache() {
+  local now age
+  if [ -f "$USAGE_CACHE" ]; then
+    now=$(date +%s)
+    age=$((now - $(stat -f %m "$USAGE_CACHE" 2>/dev/null || stat -c %Y "$USAGE_CACHE" 2>/dev/null || echo 0)))
+    [ "$age" -lt "$USAGE_CACHE_MAX_AGE" ] && return 0
+  fi
+  # source 가능하면 inc.sh 사용, 아니면 직접 fetch
+  local INC_SH="${HOME}/.claude/hooks/anthropic-usage-bars.inc.sh"
+  if [ -f "$INC_SH" ]; then
+    ( source "$INC_SH"; _anthropic_usage_fetch ) &>/dev/null &
+  else
+    # inline fetch
+    local creds token resp
+    if [ -f "${HOME}/.claude/.credentials.json" ]; then
+      creds=$(<"${HOME}/.claude/.credentials.json")
+    fi
+    if [ -z "$creds" ] && command -v security >/dev/null 2>&1; then
+      creds=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null)
+    fi
+    token=$(printf '%s' "$creds" | jq -r '.claudeAiOauth.accessToken // empty' 2>/dev/null)
+    [ -n "$token" ] || return 1
+    resp=$(curl -sS --max-time 4 \
+      "https://api.anthropic.com/api/oauth/usage" \
+      -H "Authorization: Bearer ${token}" \
+      -H "anthropic-beta: oauth-2025-04-20" \
+      -H "Content-Type: application/json" 2>/dev/null) || return 1
+    echo "$resp" | jq -e '.five_hour.utilization' >/dev/null 2>&1 && printf '%s\n' "$resp" >"$USAGE_CACHE"
+  fi
+}
+_refresh_usage_cache
+
 DAY_PCT=0; WEEK_PCT=0; DAY_RESET=""; WEEK_RESET=""
 if [ -f "$USAGE_CACHE" ]; then
   _u=$(python3 -c "
@@ -112,8 +147,8 @@ import json, sys
 try:
   d=json.load(open('$USAGE_CACHE'))
   fh=d.get('five_hour') or {}; sd=d.get('seven_day') or {}
-  print(int(fh.get('utilization',0) or 0),
-        int(sd.get('utilization',0) or 0),
+  print(int(round(fh.get('utilization',0) or 0)),
+        int(round(sd.get('utilization',0) or 0)),
         fh.get('resets_at','') or '',
         sd.get('resets_at','') or '')
 except: print('0 0  ')
@@ -145,13 +180,24 @@ fmt_reset() {
 # ── 막대 그래프 ──────────────────────────────────────────────────────────────
 make_bar() {
   local pct=${1:-0} w=8
-  pct=${pct%.*}; [ "$pct" -gt 100 ] 2>/dev/null && pct=100
-  local filled=$(( pct * w / 100 ))
+  pct=${pct%.*}; [ "$pct" -lt 0 ] 2>/dev/null && pct=0
+  [ "$pct" -gt 100 ] 2>/dev/null && pct=100
+  local filled=$(( (pct * w + 99) / 100 ))  # 올림: 1%라도 최소 1칸
+  [ "$filled" -gt "$w" ] && filled=$w
   local empty=$(( w - filled ))
   local bar=""
   for ((i=0;i<filled;i++)); do bar+="█"; done
   for ((i=0;i<empty;i++));  do bar+="░"; done
   echo "$bar"
+}
+
+# 퍼센트에 따른 색상 (0-49: 초록, 50-79: 노랑, 80+: 빨강)
+color_for_pct() {
+  local pct=${1:-0}
+  pct=${pct%.*}
+  [ "$pct" -lt 50 ] 2>/dev/null && echo "$GREEN" && return
+  [ "$pct" -lt 80 ] 2>/dev/null && echo "$YELLOW" && return
+  echo "$RED"
 }
 
 # ── NCO API/WS + AI 에이전트 상태 ───────────────────────────────────────────
@@ -203,7 +249,9 @@ echo -e " ${CYAN}NCO${RESET} ${GREEN}${NCO_BAR}${RESET} ${NCO_PCT}% ${GRAY}(NCO:
 # 줄 4: Anthropic 사용량 막대 | Ctx | $비용
 DAY_BAR=$(make_bar "$DAY_PCT")
 WEEK_BAR=$(make_bar "$WEEK_PCT")
-echo -e " ${GRAY}1일${RESET} ${GREEN}${DAY_BAR}${RESET} ${DAY_PCT}% ${GRAY}·${RESET} ${GRAY}주별${RESET} ${BLUE}${WEEK_BAR}${RESET} ${WEEK_PCT}% | Ctx:${PCT}% | \$${COST}"
+DAY_COLOR=$(color_for_pct "$DAY_PCT")
+WEEK_COLOR=$(color_for_pct "$WEEK_PCT")
+echo -e " ${GRAY}1일${RESET} ${DAY_COLOR}${DAY_BAR}${RESET} ${DAY_PCT}% ${GRAY}·${RESET} ${GRAY}주별${RESET} ${WEEK_COLOR}${WEEK_BAR}${RESET} ${WEEK_PCT}% | Ctx:${PCT}% | \$${COST}"
 
 # 줄 5: 리셋 시각
 DAY_RESET_FMT=$(fmt_reset "$DAY_RESET")
