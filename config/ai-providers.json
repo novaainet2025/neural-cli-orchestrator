@@ -173,16 +173,18 @@
       "type": "cli",
       "role": "Engineer",
       "score": 82,
-      "model": "openrouter/meta-llama/llama-4-maverick:free",
+      "model": "openrouter/openai/gpt-oss-120b:free",
       "command": "aider",
       "args": [
         "--yes",
         "--no-auto-commits",
+        "--no-show-model-warnings",
         "--model",
-        "openrouter/meta-llama/llama-4-maverick:free"
+        "openrouter/openai/gpt-oss-120b:free"
       ],
       "env": {
-        "OPENROUTER_API_KEY": "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"
+        "OPENROUTER_API_KEY": "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",
+        "TERM": "xterm-256color"
       },
       "concurrency": 4,
       "rateLimitRpm": 20,
@@ -210,7 +212,7 @@
           "provider": "openrouter",
           "baseUrl": "https://openrouter.ai/api/v1",
           "apiKeyRef": "OPENROUTER_API_KEYS",
-          "model": "openrouter/meta-llama/llama-4-maverick:free"
+          "model": "openrouter/openai/gpt-oss-120b:free"
         },
         "fallback": {
           "provider": "ollama",
@@ -363,6 +365,57 @@
       "healthCheck": {
         "type": "api",
         "url": "https://openrouter.ai/api/v1/models",
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "mlx",
+      "name": "MLX Local (Gemma 4 26B)",
+      "enabled": true,
+      "type": "api",
+      "role": "Engineer",
+      "score": 82,
+      "model": "/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit",
+      "command": null,
+      "args": [],
+      "endpoint": "http://localhost:8000",
+      "apiKeyRef": null,
+      "env": {},
+      "concurrency": 1,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "code",
+        "analysis",
+        "local-inference",
+        "reasoning",
+        "korean",
+        "privacy"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are a local AI running on Apple Silicon (MLX). You are privacy-first, free to run, and specialize in code, reasoning, and Korean language tasks using Gemma 4 26B.",
+        "tone": "efficient",
+        "style": "practical"
+      },
+      "modelSpec": {
+        "name": "Gemma 4 26B A4B IT (MLX 4-bit)",
+        "developer": "Google DeepMind",
+        "parameters": "26B MoE (active ~4B)",
+        "hardware": "Apple Silicon (unified memory)",
+        "inferenceEngine": "mlx-lm",
+        "serverPort": 8000,
+        "proxyPort": 4100
+      },
+      "note": "로컬 추론 (인터넷 불필요). 서버: pm2 mlx-server. 프록시: anthropic-mlx-proxy.py:4100. 자동시작: pm2 startup",
+      "healthCheck": {
+        "type": "api",
+        "url": "http://localhost:8000/v1/models",
         "timeout": 5000
       }
     },
