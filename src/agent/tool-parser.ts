@@ -11,8 +11,11 @@ export interface ToolCall {
 // Primary: <nco-tool name="readFile"><arg name="path">/src/index.ts</arg></nco-tool>
 // Fallback 1: ```json {"tool":"readFile","args":{"path":"/src/index.ts"}} ```
 // Fallback 2: [TOOL: readFile(path="/src/index.ts")]
+// Fallback 3: Aider SEARCH/REPLACE block format (native aider whole-edit format)
 
 const NCO_TOOL_REGEX = /<nco-tool\s+name="([^"]+)">([\s\S]*?)<\/nco-tool>/g;
+// Aider: path\n<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE
+const AIDER_SEARCH_REPLACE_REGEX = /^([^\n]+)\n<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
 const ARG_REGEX = /<arg\s+name="([^"]+)">([\s\S]*?)<\/arg>/g;
 const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*```/g;
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
@@ -73,7 +76,49 @@ export function parseToolCalls(text: string): ToolCall[] {
 
   if (calls.length > 0) return calls;
 
-  // 3. Fallback: Bracket notation [TOOL: name(args)]
+  // 3. Fallback: Gemma style <|tool_call|>call:name{args}<|tool_call|>
+  const gemmaRegex = new RegExp(GEMMA_TOOL_REGEX.source, 'g');
+  while ((match = gemmaRegex.exec(text)) !== null) {
+    const tool = match[1];
+    let rawArgs = match[2].trim();
+    
+    try {
+      // Try parsing as JSON first
+      const args = JSON.parse(rawArgs);
+      calls.push({ tool, args });
+    } catch {
+      // Fallback: simple key-value extraction if JSON fails
+      const args: Record<string, string> = {};
+      const pairs = rawArgs.match(/"([^"]+)":\s*"([^"]+)"/g);
+      if (pairs) {
+        for (const p of pairs) {
+          const [k, v] = p.split(/:\s*/);
+          args[k.replace(/"/g, '')] = v.replace(/"/g, '');
+        }
+      }
+      calls.push({ tool, args: Object.keys(args).length > 0 ? args : { _raw: rawArgs } });
+    }
+  }
+
+  if (calls.length > 0) return calls;
+
+  // 4. Fallback: Aider SEARCH/REPLACE block (native whole-edit format)
+  const aiderRegex = new RegExp(AIDER_SEARCH_REPLACE_REGEX.source, 'gm');
+  while ((match = aiderRegex.exec(text)) !== null) {
+    const path = match[1].trim();
+    const searchText = match[2]; // empty string = new file
+    const replaceText = match[3];
+    if (searchText.trim() === '') {
+      // Empty SEARCH = create/overwrite file
+      calls.push({ tool: 'writeFile', args: { path, content: replaceText } });
+    } else {
+      calls.push({ tool: 'editFile', args: { path, old: searchText, new: replaceText } });
+    }
+  }
+
+  if (calls.length > 0) return calls;
+
+  // 5. Fallback: Bracket notation [TOOL: name(args)]
   const bracketRegex = new RegExp(BRACKET_REGEX.source, 'g');
   while ((match = bracketRegex.exec(text)) !== null) {
     const tool = match[1];
@@ -117,7 +162,7 @@ export function parseToolCalls(text: string): ToolCall[] {
 
 // Check if text contains any tool calls
 export function hasToolCalls(text: string): boolean {
-  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text)) return true;
+  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text) || GEMMA_TOOL_REGEX.test(text) || AIDER_SEARCH_REPLACE_REGEX.test(text)) return true;
   
   // Also check NL patterns
   const lines = text.split('\n');
@@ -134,7 +179,9 @@ export function extractThinking(text: string): string {
   let output = text
     .replace(new RegExp(NCO_TOOL_REGEX.source, 'g'), '')
     .replace(new RegExp(JSON_TOOL_REGEX.source, 'g'), '')
-    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '');
+    .replace(new RegExp(BRACKET_REGEX.source, 'g'), '')
+    .replace(new RegExp(GEMMA_TOOL_REGEX.source, 'g'), '')
+    .replace(new RegExp(AIDER_SEARCH_REPLACE_REGEX.source, 'gm'), '');
     
   // Also strip NL pattern lines
   const lines = output.split('\n');

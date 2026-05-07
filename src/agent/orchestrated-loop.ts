@@ -22,7 +22,7 @@ function stripAnsi(str: string): string {
 }
 
 // Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot']);
+const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'aider']);
 
 interface LoopResult {
   output: string;
