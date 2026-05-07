@@ -202,15 +202,15 @@ export class OrchestratedLoop {
   private buildArgs(baseArgs: string[], prompt: string): string[] {
     switch (this.provider.id) {
       case 'codex':
-        // codex exec <prompt> — non-interactive; skip git trust check outside workdir
-        return ['exec', '--skip-git-repo-check', prompt];
+        // codex exec <prompt> — non-interactive; workspace-write sandbox allows file I/O
+        return ['exec', '--full-auto', '--skip-git-repo-check', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
       case 'aider':
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];
       case 'opencode': {
-        // opencode run <message> — non-interactive. Honor provider.args (e.g. --model) from config.
+        // opencode run [flags] <message> — all flags are subcommand-level
         const extra = baseArgs.filter(a => a !== 'run');
         return ['run', ...extra, prompt];
       }
@@ -218,8 +218,8 @@ export class OrchestratedLoop {
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];
       case 'copilot':
-        // copilot CLI v1.0.22: non-interactive mode via --prompt flag
-        return ['--prompt', prompt];
+        // copilot CLI 1.0.43: --allow-all enables file/shell permissions; --prompt for non-interactive
+        return [...baseArgs, '--prompt', prompt];
       default:
         return [...baseArgs, prompt];
     }

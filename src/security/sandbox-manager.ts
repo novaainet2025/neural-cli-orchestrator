@@ -95,20 +95,24 @@ export function createSandbox(
 ): SandboxManager {
   const isCommander = role === 'Commander';
 
-  const ncoRoot = '/home/nova/projects/neural-cli-orchestrator';
+  const ncoRoot = process.env.NCO_DIR || '/Users/nova-ai/project/nco';
+  const homeDir = process.env.HOME || '/Users/nova-ai';
   return new SandboxManager({
     agentId,
     paths: {
       allowedPaths: [
-        projectDir,
-        ncoRoot,
-        '/tmp',
-        ...(isCommander ? ['/home'] : []),
+        '/',  // 모든 경로 허용 — 에이전트가 어느 프로젝트에서도 파일 작업 가능
       ],
       deniedPaths: [
-        '/etc', '/var', '/usr',
-        `${projectDir}/node_modules`,
+        // NCO 자체 소스코드 보호 — 에이전트가 NCO 코드를 수정하면 안 됨
+        `${ncoRoot}/src`,
         `${ncoRoot}/node_modules`,
+        // 시스템 보안 파일
+        '/etc/passwd', '/etc/shadow', '/etc/sudoers',
+        '/private/etc/passwd', '/private/etc/shadow',
+        `${homeDir}/.ssh`,
+        `${homeDir}/.aws`,
+        `${homeDir}/.gnupg`,
       ],
     },
     commands: {

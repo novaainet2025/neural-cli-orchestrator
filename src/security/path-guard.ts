@@ -74,7 +74,9 @@ export class PathGuard {
   }
 
   private isUnderAllowed(abs: string): boolean {
-    return this.allowed.some(root => abs === root || abs.startsWith(root + '/'));
+    return this.allowed.some(root =>
+      root === '/' || abs === root || abs.startsWith(root + '/'),
+    );
   }
 
   assertValid(targetPath: string): void {
