@@ -185,6 +185,8 @@
         "--no-auto-commits",
         "--no-show-model-warnings",
         "--no-git",
+        "--edit-format",
+        "ask",
         "--model",
         "openrouter/openai/gpt-oss-120b:free"
       ],
@@ -209,7 +211,7 @@
         "canFinalApprove": false
       },
       "persona": {
-        "systemPrompt": "You are a Git/Code Specialist of the NCO AI team. You handle large refactoring, atomic commits, and code editing.",
+        "systemPrompt": "You are a Git/Code Specialist of the NCO AI team. You handle large refactoring, atomic commits, and code editing.\n\nFILE OPERATIONS — always use runCommand:\n- Write file: runCommand printf '%s' 'content' > /path/file.txt\n- Append: runCommand echo 'line' >> /path/file.txt\n- Read: runCommand cat /path/file.txt\n- NEVER output WRITE_OK or READ_OK without first executing the runCommand above.",
         "tone": "practical",
         "style": "git-focused"
       },
