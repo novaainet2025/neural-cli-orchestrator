@@ -221,7 +221,7 @@ export async function createGateway() {
     );
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId, projectDir: input.projectDir } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
         try {
@@ -368,7 +368,13 @@ export async function createGateway() {
 
   app.post('/api/realtime/parallel', async (req, reply) => {
     const body = req.body as any;
-    const providers = body.providers || agentManager.listEnabledIds().slice(0, 3);
+    // providers may arrive as a comma-separated string from MCP tools — normalise to array
+    const rawProviders = body.providers;
+    const providers: string[] = Array.isArray(rawProviders)
+      ? rawProviders
+      : typeof rawProviders === 'string'
+        ? rawProviders.split(',').map((s: string) => s.trim()).filter(Boolean)
+        : sortProvidersByCostOrder(agentManager.listEnabledIds()).slice(0, 3);
     reply.code(202);
 
     const db = getDb();
@@ -1188,7 +1194,7 @@ export async function createGateway() {
   // ═══ Conductor (Smart Router Auto-Dispatch) ════════
   app.post('/api/conductor', async (req) => {
     const smartRouter = await getSmartRouter();
-    const { prompt } = req.body as any;
+    const { prompt, projectDir: reqProjectDir } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
 
     const decision = await smartRouter.dispatch(prompt);
@@ -1211,11 +1217,11 @@ export async function createGateway() {
     // Execute via discussion engine for multi-agent modes, or taskQueue for single
     const sessionId = createSessionId();
     if (decision.mode === 'task' && decision.providers.length === 1) {
-      taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
+      taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt, metadata: { projectDir: reqProjectDir } })
         .then(result => {
           try {
             db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-              .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+              .run(result.success ? 'completed' : 'failed', result.output ?? result.error ?? '(응답 없음)', taskId);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {

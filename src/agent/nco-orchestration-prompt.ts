@@ -28,11 +28,13 @@ export function buildOrchestrationSystemPrompt(
   baseSystem: string,
   teamStateLines: string,
 ): string {
+  const dateStr = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   return [
     baseSystem,
     '',
-    '## Current Team State',
-    teamStateLines || 'No agents online',
+    `## Current DateTime: ${dateStr}`,
+    '',
+    '## Team: ' + (teamStateLines || 'None'),
     '',
     NCO_TOOL_XML_INSTRUCTIONS,
   ].join('\n');

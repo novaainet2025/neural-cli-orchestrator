@@ -52,14 +52,17 @@
       "type": "cli",
       "role": "Architect",
       "score": 90,
-      "model": "opencode/nemotron-3-super-free",
+      "model": "openrouter/openai/gpt-oss-120b:free",
       "command": "opencode",
       "args": [
         "run",
+        "--dangerously-skip-permissions",
         "-m",
-        "opencode/nemotron-3-super-free"
+        "openrouter/openai/gpt-oss-120b:free"
       ],
-      "env": {},
+      "env": {
+        "OPENROUTER_API_KEY": "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"
+      },
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
@@ -183,6 +186,8 @@
       "args": [
         "--yes",
         "--no-auto-commits",
+        "--no-show-model-warnings",
+        "--no-git",
         "--model",
         "openrouter/meta-llama/llama-4-maverick:free"
       ],
@@ -276,7 +281,7 @@
       "model": "claude-haiku-4.5",
       "command": "copilot",
       "args": [
-        "--prompt"
+        "--allow-all"
       ],
       "env": {},
       "concurrency": 4,
@@ -435,8 +440,8 @@
     },
     {
       "id": "ollama",
-      "name": "Ollama Local",
-      "enabled": true,
+      "name": "Ollama",
+      "enabled": false,
       "type": "api",
       "role": "Validator",
       "score": 72,
