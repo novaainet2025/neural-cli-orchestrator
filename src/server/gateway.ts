@@ -334,7 +334,19 @@ export async function createGateway() {
 
   // ═══ Discussions / Realtime ═══════════════════════
   app.post('/api/realtime/discussion', async (req, reply) => {
-    const input = CreateDiscussionInput.parse(req.body);
+    // Normalize MCP inputs: providers comma-string → array, maxRounds string → number
+    const raw = req.body as any;
+    const normalized = {
+      ...raw,
+      providers: Array.isArray(raw.providers)
+        ? raw.providers
+        : typeof raw.providers === 'string'
+          ? raw.providers.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : raw.providers,
+      maxRounds: raw.maxRounds !== undefined ? Number(raw.maxRounds) : undefined,
+      consensusThreshold: raw.consensusThreshold !== undefined ? Number(raw.consensusThreshold) : undefined,
+    };
+    const input = CreateDiscussionInput.parse(normalized);
     reply.code(202);
 
     // Pre-create sessionId and inject it — both client and DB use the same ID
@@ -398,7 +410,17 @@ export async function createGateway() {
   });
 
   app.post('/api/realtime/consensus', async (req, reply) => {
-    const input = CreateDiscussionInput.parse(req.body);
+    const raw = req.body as any;
+    const normalized = {
+      ...raw,
+      providers: Array.isArray(raw.providers)
+        ? raw.providers
+        : typeof raw.providers === 'string'
+          ? raw.providers.split(',').map((s: string) => s.trim()).filter(Boolean)
+          : raw.providers,
+      consensusThreshold: raw.consensusThreshold !== undefined ? Number(raw.consensusThreshold) : undefined,
+    };
+    const input = CreateDiscussionInput.parse(normalized);
     reply.code(202);
 
     const sessionId = createSessionId();
