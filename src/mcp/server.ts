@@ -64,6 +64,8 @@ const TOOLS = [
   { name: 'nco_mesh_sessions', description: 'List active CLI sessions in mesh', params: [] },
   { name: 'nco_mesh_summary', description: 'Get work summary of all active CLIs', params: [] },
   { name: 'nco_mesh_send', description: 'Send message to CLI sessions', params: ['content', 'toSessionId'] },
+  // Harness (1)
+  { name: 'nco_harness', description: '자율 실행 하네스 — 요구사항을 100%까지 자동 반복 실행 (gap분석→계획→Commander→검증→품질점수 95점+ 루프)', params: ['requirement', 'maxIterations', 'scoreThreshold'] },
   // Natural Language (1)
   { name: 'nco_natural', description: 'Parse natural language to intent and execute appropriate tool', params: ['query', 'context'] },
   // Invocations (2)
@@ -122,6 +124,12 @@ case 'nco_mesh_send': {
       const myName = process.env.NCO_NAME || 'claude-code';
       return JSON.stringify(await ncoPost('/api/mesh/send', { fromSessionId: mySessionId, fromAgent: myName, toSessionId: args.toSessionId || '*', content: args.content }));
     }
+    // Harness
+    case 'nco_harness': return JSON.stringify(await ncoPost('/api/harness', {
+      requirement: args.requirement,
+      maxIterations: args.maxIterations ? Number(args.maxIterations) : undefined,
+      scoreThreshold: args.scoreThreshold ? Number(args.scoreThreshold) : undefined,
+    }));
     // Natural Language
     case 'nco_natural': return JSON.stringify(await ncoPost('/api/nlp/intent', { query: args.query, context: args.context }));
     // Invocations

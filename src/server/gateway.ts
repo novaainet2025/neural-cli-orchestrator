@@ -1354,6 +1354,55 @@ export async function createGateway() {
     return { invocations: rows };
   });
 
+  // ═══ Harness Engine ═══════════════════════════════
+  app.post('/api/harness', async (req, reply) => {
+    const { harnessEngine } = await import('../core/harness-engine.js');
+    const body = req.body as any;
+    if (!body?.requirement || typeof body.requirement !== 'string' || body.requirement.trim().length === 0) {
+      return reply.code(400).send({ error: 'requirement must be a non-empty string' });
+    }
+    const maxIterations = body.maxIterations ? Number(body.maxIterations) : undefined;
+    const scoreThreshold = body.scoreThreshold ? Number(body.scoreThreshold) : undefined;
+    if (maxIterations !== undefined && (!isFinite(maxIterations) || maxIterations < 1)) {
+      return reply.code(400).send({ error: 'maxIterations must be a positive integer' });
+    }
+    if (scoreThreshold !== undefined && (!isFinite(scoreThreshold) || scoreThreshold < 0 || scoreThreshold > 100)) {
+      return reply.code(400).send({ error: 'scoreThreshold must be between 0 and 100' });
+    }
+    // providers 유효성: 문자열 배열만 허용
+    let providers: string[] | undefined;
+    if (Array.isArray(body.providers)) {
+      const filtered = (body.providers as unknown[]).filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+      providers = filtered.length > 0 ? filtered : undefined;
+    }
+    try {
+      const report = await harnessEngine.run({
+        requirement: body.requirement.trim(),
+        providers,
+        maxIterations,
+        scoreThreshold,
+      });
+      return report;
+    } catch (err: any) {
+      return reply.code(400).send({ error: err.message });
+    }
+  });
+
+  app.get('/api/harness', async (req) => {
+    const { harnessEngine } = await import('../core/harness-engine.js');
+    const query = req.query as any;
+    const limit = Math.min(Number(query.limit || 20), 100);
+    return { reports: harnessEngine.listReports(limit) };
+  });
+
+  app.get('/api/harness/:harnessId', async (req, reply) => {
+    const { harnessEngine } = await import('../core/harness-engine.js');
+    const { harnessId } = req.params as any;
+    const report = harnessEngine.getReport(harnessId);
+    if (!report) return reply.code(404).send({ error: 'Harness report not found' });
+    return report;
+  });
+
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);
 
