@@ -50,10 +50,25 @@ class AgentManager {
       this.sandboxes.set(p.id, createSandbox(p.id, p.role, projectDir));
     }
 
+    this.injectDerivedKeys();
+
     // Start health monitor (30s)
     this.healthTimer = setInterval(() => this.healthCheck(), 30_000);
 
     log.info({ count: providers.length }, 'Agent Manager initialized');
+  }
+
+  // Inject derived API keys for CLIs whose native env var naming differs from
+  // NCO's rotation convention. Aider reads OPENROUTER_API_KEY (singular); we
+  // store OPENROUTER_API_KEYS (plural, comma-separated). Pick the first key.
+  private injectDerivedKeys(): void {
+    const aider = this.providers.get('aider');
+    if (aider && !aider.env?.OPENROUTER_API_KEY) {
+      const keys = process.env.OPENROUTER_API_KEYS;
+      if (keys) {
+        aider.env = { ...aider.env, OPENROUTER_API_KEY: keys.split(',')[0].trim() };
+      }
+    }
   }
 
   async executeTask(agentId: string, prompt: string, options?: {

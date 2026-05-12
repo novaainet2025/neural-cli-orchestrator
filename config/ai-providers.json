@@ -181,9 +181,7 @@
         "--model",
         "openrouter/meta-llama/llama-4-maverick:free"
       ],
-      "env": {
-        "OPENROUTER_API_KEY": "***REDACTED-OPENROUTER-KEY***"
-      },
+      "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "free",
@@ -225,7 +223,8 @@
           "--version"
         ],
         "timeout": 5000
-      }
+      },
+      "note": "API key resolution: NCO injects OPENROUTER_API_KEY (singular) at startup from first OPENROUTER_API_KEYS env var (plural, comma-separated). See agent-manager.ts injectDerivedKeys()."
     },
     {
       "id": "cursor-agent",
