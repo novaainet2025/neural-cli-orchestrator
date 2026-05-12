@@ -234,7 +234,11 @@ class AgentManager {
 
   // ─── Health Monitor ─────────────────────────────────
   private async healthCheck(): Promise<void> {
-    for (const [id] of this.providers) {
+    for (const [id, provider] of this.providers) {
+      if (provider.type === 'api') {
+        await this.healthCheckApiProvider(id, provider);
+        continue;
+      }
       const alive = await sharedState.isAgentAlive(id);
       if (!alive) {
         await sharedState.setAgentState(id, { status: 'offline' });
@@ -245,6 +249,39 @@ class AgentManager {
         }
       }
       await sharedState.heartbeat(id);
+    }
+  }
+
+  private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<void> {
+    const url = typeof provider.healthCheck.url === 'string' ? provider.healthCheck.url : null;
+    if (!url) {
+      await sharedState.setAgentState(id, { status: 'offline' });
+      return;
+    }
+    const timeout = typeof provider.healthCheck.timeout === 'number'
+      ? provider.healthCheck.timeout
+      : 5000;
+    const headers: Record<string, string> = {};
+    const apiKey = provider.apiKeyRef
+      ? process.env[provider.apiKeyRef]?.split(',')[0]?.trim()
+      : undefined;
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+    try {
+      await fetch(url, {
+        method: 'GET',
+        headers,
+        signal: AbortSignal.timeout(timeout),
+      });
+      await sharedState.setAgentState(id, { status: 'idle' });
+      await sharedState.heartbeat(id);
+    } catch (e) {
+      await sharedState.setAgentState(id, { status: 'offline' });
+      log.debug({
+        id,
+        error: e instanceof Error ? e.message : String(e),
+      }, 'API health probe failed');
     }
   }
 
