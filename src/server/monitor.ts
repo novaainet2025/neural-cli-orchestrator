@@ -1323,7 +1323,7 @@ let _topoSelected=null; // agentId
 const AGENT_COLORS_MAP={
   opencode:'#2da44e', gemini:'#d29922', codex:'#1f6feb',
   aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
-  openrouter:'#d4773a', ollama:'#da3633', mlx:'#a855f7', vllm:'#e879f9',
+  openrouter:'#d4773a', mlx:'#a855f7', vllm:'#e879f9',
 };
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
 
@@ -3702,7 +3702,7 @@ function agentColor(id){
   const c={'claude-code':'#58a6ff','claude-3':'#79c0ff','claude-4':'#79c0ff','claude-5':'#79c0ff',
     'opencode':'#a5b4fc','gemini':'#3fb950','codex':'#d2a8ff','aider':'#d29922',
     'cursor-agent':'#f0883e','copilot':'#8b949e','openrouter':'#79c0ff',
-    'ollama':'#56d364','mlx':'#c084fc','vllm':'#e879f9',
+    'mlx':'#c084fc','vllm':'#e879f9',
     'system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
   return c[id]||'#8b949e';
 }

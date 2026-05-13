@@ -208,7 +208,7 @@ API="✗"; WS="✗"
 declare -A SHORT=(
   ["claude-code"]="Cla" ["opencode"]="Opn" ["gemini"]="Gem"
   ["codex"]="Cdx"       ["aider"]="Aid"    ["cursor-agent"]="Cur"
-  ["copilot"]="Cop"     ["openrouter"]="ORT" ["mlx"]="MLX" ["ollama"]="OlM"
+  ["copilot"]="Cop"     ["openrouter"]="ORT" ["mlx"]="MLX"
 )
 ORDER=("claude-code" "opencode" "gemini" "codex" "aider" "cursor-agent" "copilot" "openrouter" "mlx")
 

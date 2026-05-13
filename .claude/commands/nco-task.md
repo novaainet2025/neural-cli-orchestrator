@@ -14,7 +14,7 @@ NCO_URL="http://localhost:6200"
 if [ -z "$AI" ] || [ -z "$PROMPT" ]; then
     echo "사용법: /nco-task <AI이름> <작업내용>"
     echo "예: /nco-task codex JWT 검증 추가"
-    echo "AI 목록: opencode codex aider cursor-agent gemini copilot ollama"
+    echo "AI 목록: opencode codex aider cursor-agent gemini copilot"
     exit 1
 fi
 
