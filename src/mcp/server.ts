@@ -71,8 +71,6 @@ const TOOLS = [
   // Invocations (2)
   { name: 'nco_my_invocations', description: '내가 호출한 에이전트들의 현재 상태 조회', params: [] },
   { name: 'nco_invocations', description: '전체 에이전트 호출 현황 조회', params: ['limit'] },
-  // Ollama / Anthropic proxy debug (1)
-  { name: 'nco_ollama_debug', description: 'Anthropic proxy (4100) debug against Ollama upstream: status|errors|recover|test|recover:*. Requires proxy + OLLAMA_BASE_URL.', params: ['action'] },
 ];
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -140,42 +138,6 @@ case 'nco_mesh_send': {
     case 'nco_invocations': {
       const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : '';
       return JSON.stringify(await ncoFetch(`/api/invocations/overview${limit}`));
-    }
-    // Ollama / proxy debug
-    case 'nco_ollama_debug': {
-      const PROXY = process.env.OLLAMA_PROXY_URL || process.env.VLLM_PROXY_URL || 'http://localhost:4100';
-      const action = (args.action || 'status').toLowerCase();
-      try {
-        if (action === 'status' || action === 'errors') {
-          const res = await fetch(`${PROXY}/debug/status`, { signal: AbortSignal.timeout(10_000) });
-          const data = await res.json();
-          if (action === 'errors') {
-            return JSON.stringify({ recent_errors: data.errors?.recent ?? [], by_type: data.errors?.by_type ?? {} });
-          }
-          return JSON.stringify(data);
-        }
-        if (action === 'test') {
-          const res = await fetch(`${PROXY}/v1/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'anthropic-version': '2023-06-01', 'x-api-key': 'dummy' },
-            body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 30, messages: [{ role: 'user', content: 'Say OK' }] }),
-            signal: AbortSignal.timeout(30_000),
-          });
-          const data = await res.json();
-          return JSON.stringify({ ok: res.ok, response: data.content?.[0]?.text ?? data });
-        }
-        // recover actions: recover | recover:model_refresh | recover:health_check | recover:ctx_refresh | recover:error_clear
-        const recoverAction = action.startsWith('recover:') ? action.slice(8) : 'auto';
-        const res = await fetch(`${PROXY}/debug/recover`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: recoverAction }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        return JSON.stringify(await res.json());
-      } catch (err: any) {
-        return JSON.stringify({ error: `Anthropic proxy unreachable at ${PROXY}: ${err.message}` });
-      }
     }
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });
   }

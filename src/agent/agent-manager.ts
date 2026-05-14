@@ -13,7 +13,7 @@ const log = createLogger('agent-manager');
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
 // Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
-// Type C: API (ollama, openrouter) — OpenAI-compatible API
+// Type C: API (openrouter, mlx) — OpenAI-compatible API
 
 type AgentType = 'A' | 'B' | 'C';
 
@@ -130,10 +130,7 @@ class AgentManager {
         case 'C': {
           // Type C: API executor
           const executor = new ApiExecutor(provider, sandbox);
-          const result = await executor.run(taskId, prompt, {
-            systemPrompt: options?.systemPrompt,
-            compact: options?.compact,
-          });
+          const result = await executor.run(taskId, prompt, options?.systemPrompt);
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
