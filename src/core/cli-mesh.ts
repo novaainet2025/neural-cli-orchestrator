@@ -1,4 +1,5 @@
-import { existsSync } from 'fs';
+import { existsSync, appendFileSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
+import { execFile } from 'child_process';
 import { getRedis, isRedisConnected } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
@@ -90,6 +91,10 @@ export interface MeshSession {
   messageQueue: MeshMessage[];
   /** Active conflicts detected at last heartbeat */
   activeConflicts?: ConflictReport[];
+  /** tmux pane ID (e.g. %3) — set when session runs inside tmux */
+  tmuxPane?: string;
+  /** tmux server socket path — required for cross-process tmux delivery */
+  tmuxSocket?: string;
 }
 
 export interface MeshMessage {
@@ -150,6 +155,10 @@ class CliMesh {
     branch?: string;
     taskId?: string;
     collaborators?: string[];
+    /** tmux pane ID (e.g. %3) — enables real-time tmux delivery */
+    tmuxPane?: string;
+    /** tmux server socket path — required for cross-process tmux delivery */
+    tmuxSocket?: string;
   }): Promise<{ conflicts: string[]; conflictReports: ConflictReport[]; messages: MeshMessage[] }> {
     const now = new Date().toISOString();
 
@@ -180,6 +189,8 @@ class CliMesh {
       startedAt: now,
       lastHeartbeat: now,
       messageQueue: [],
+      tmuxPane: session.tmuxPane,
+      tmuxSocket: session.tmuxSocket,
     };
 
     // Register in Redis FIRST (before conflict check, so session is visible)
@@ -213,6 +224,8 @@ class CliMesh {
         const prev: MeshSession = JSON.parse(existing);
         meshSession.startedAt = prev.startedAt;
         meshSession.messageQueue = prev.messageQueue || [];
+        meshSession.tmuxPane = session.tmuxPane || prev.tmuxPane;
+        meshSession.tmuxSocket = session.tmuxSocket || prev.tmuxSocket;
 
         // Auto-detect work completion: had work before, now idle with no work
         if (
@@ -221,15 +234,19 @@ class CliMesh {
           (session.status === 'idle' || !session.status) &&
           resolvedWorkMode !== 'done'
         ) {
+          const queueMessages = meshSession.messageQueue;
+          const inboxMessages = this.drainInbox(session.sessionId);
+          const messages = this.mergePendingMessages(queueMessages, inboxMessages);
           meshSession.workMode = 'done';
           meshSession.status = 'done';
           meshSession.completedWork = prev.currentWork;
           meshSession.completedAt = now;
+          meshSession.messageQueue = [];
           // Done sessions expire faster (60s display window)
           await redis.set(key, JSON.stringify(meshSession), 'EX', 60);
           this.persistSession(meshSession);
           await eventBus.publish({ type: 'mesh:heartbeat', sessionId: session.sessionId, agentId: session.agentId, status: 'done', currentWork: '' });
-          return { conflicts: [], conflictReports: [], messages: meshSession.messageQueue };
+          return { conflicts: [], conflictReports: [], messages };
         }
 
         // Explicit done state
@@ -289,9 +306,12 @@ class CliMesh {
       });
     }
 
-    // Drain pending messages
-    const messages = meshSession.messageQueue;
-    if (messages.length > 0) {
+    // Drain pending messages from Redis queue + file inbox fallback
+    const queueMessages = meshSession.messageQueue;
+    const inboxMessages = this.drainInbox(session.sessionId);
+    const messages = this.mergePendingMessages(queueMessages, inboxMessages);
+
+    if (queueMessages.length > 0) {
       meshSession.messageQueue = [];
       if (isRedisConnected()) {
         const redis = await getRedis();
@@ -335,6 +355,120 @@ class CliMesh {
   }
 
   /**
+   * Deliver message to session via best available channel:
+   * 1. Warp osascript (instant — types into Claude Code input + Enter)
+   * 2. tmux send-keys (instant — for tmux sessions)
+   * 3. File inbox (universal fallback — heartbeat hook picks up on next prompt)
+   */
+  private deliverRealtime(session: MeshSession, fromAgent: string, content: string): void {
+    this.writeToInbox(session.sessionId, fromAgent, content);
+
+    if (session.tmuxPane && session.tmuxSocket) {
+      const safe = content.replace(/['\r\n]/g, ' ').slice(0, 400);
+      const cmd = `echo '📨 ${fromAgent} → ${session.agentId}: ${safe}'`;
+      execFile('tmux', ['-S', session.tmuxSocket, 'send-keys', '-t', session.tmuxPane, cmd, 'Enter'], { timeout: 2000 }, () => {});
+    } else {
+      this.deliverViaWarp(session, fromAgent, content);
+    }
+    log.debug({ pane: session.tmuxPane || 'warp', from: fromAgent, to: session.agentId }, 'realtime delivery');
+  }
+
+  /** Inject message directly into Warp tab via AppleScript keystroke */
+  private deliverViaWarp(session: MeshSession, fromAgent: string, content: string): void {
+    try {
+      const mappingPath = '/tmp/nco-warp-tabs.json';
+      if (!existsSync(mappingPath)) return;
+      const mapping = JSON.parse(readFileSync(mappingPath, 'utf-8'));
+      const entry = mapping[session.agentId];
+      if (!entry?.tab) return;
+
+      const tabKey = String(entry.tab).trim();
+      const msg = `[MESH:${fromAgent}] ${content.replace(/\s+/g, ' ').trim().slice(0, 300)}`;
+      const script = [
+        'on run argv',
+        'set tabKey to item 1 of argv',
+        'set msgText to item 2 of argv',
+        'tell application "Warp" to activate',
+        'delay 0.2',
+        'tell application "System Events"',
+        'tell process "Warp"',
+        'if tabKey is not "" then',
+        'keystroke tabKey using command down',
+        'delay 0.25',
+        'end if',
+        'keystroke msgText',
+        'delay 0.1',
+        'key code 36',
+        'end tell',
+        'end tell',
+        'end run',
+      ].join('\n');
+      execFile('osascript', ['-e', script, tabKey, msg], { timeout: 5000 }, (error) => {
+        if (error) {
+          log.warn({ err: error.message, tab: tabKey, to: session.agentId }, 'Warp injection failed');
+          return;
+        }
+        log.info({ tab: tabKey, from: fromAgent, to: session.agentId }, 'Warp injection sent');
+      });
+    } catch { /* non-critical */ }
+  }
+
+  /** Merge Redis queue + file inbox messages, deduplicated for heartbeat-hook pickup */
+  private mergePendingMessages(queueMessages: MeshMessage[], inboxMessages: MeshMessage[]): MeshMessage[] {
+    const seen = new Set<string>();
+    return [...queueMessages, ...inboxMessages].filter((msg) => {
+      const key = `${msg.fromAgent}\u0000${msg.content}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  /** Write a message to the session's file-based inbox at /tmp/nco-inbox/ */
+  private writeToInbox(sessionId: string, fromAgent: string, content: string): void {
+    try {
+      const dir = '/tmp/nco-inbox';
+      mkdirSync(dir, { recursive: true });
+      const ts = new Date().toISOString().slice(11, 19);
+      const line = `[${ts}] ${fromAgent}: ${content.replace(/\n/g, ' ').slice(0, 500)}\n`;
+      appendFileSync(`${dir}/${sessionId}.msg`, line);
+    } catch { /* non-critical */ }
+  }
+
+  /** Drain file-based inbox messages written for heartbeat-hook pickup */
+  private drainInbox(sessionId: string): MeshMessage[] {
+    try {
+      const path = `/tmp/nco-inbox/${sessionId}.msg`;
+      if (!existsSync(path)) return [];
+
+      const raw = readFileSync(path, 'utf8');
+      unlinkSync(path);
+
+      return raw
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map((line, i) => {
+          const match = line.match(/^\[(\d{2}:\d{2}:\d{2})\]\s+([^:]+):\s*(.*)$/);
+          const fromAgent = match?.[2]?.trim() || 'unknown';
+          const content = match?.[3]?.trim() || line;
+          return {
+            id: createId(`inbox_${i}`),
+            from: 'file-inbox',
+            fromAgent,
+            to: sessionId,
+            content,
+            type: 'info' as const,
+            createdAt: new Date().toISOString(),
+            read: false,
+          };
+        });
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Send a message to a specific session or broadcast to all.
    */
   async sendMessage(
@@ -374,6 +508,8 @@ class CliMesh {
         if (session.sessionId === fromSessionId && session.agentId === fromAgent) continue;
         session.messageQueue.push(message);
         await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
+        // Real-time tmux delivery for each broadcast recipient
+        this.deliverRealtime(session, fromAgent, content);
         delivered++;
       }
     } else {
@@ -389,6 +525,8 @@ class CliMesh {
         const session: MeshSession = JSON.parse(raw);
         session.messageQueue.push(message);
         await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
+        // Real-time tmux delivery
+        this.deliverRealtime(session, fromAgent, content);
         delivered = 1;
       }
     }
