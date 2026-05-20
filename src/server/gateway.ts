@@ -18,6 +18,7 @@ import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
+import { sortProvidersByCostOrder } from '../core/smart-router.js';
 
 const log = createLogger('gateway');
 

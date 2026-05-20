@@ -19,6 +19,7 @@ const AIDER_SEARCH_REPLACE_REGEX = /^([^\n]+)\n<<<<<<< SEARCH\n([\s\S]*?)\n=====
 const ARG_REGEX = /<arg\s+name="([^"]+)">([\s\S]*?)<\/arg>/g;
 const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*```/g;
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
+const GEMMA_TOOL_REGEX = /<\|?tool_call\|?>\s*call:(\w+)\s*(\{[\s\S]*?\})\s*<\|?\/?[a-z_]*tool_call\|?>/g;
 
 // 4. Fallback: Natural language commands (Claude Code style — English & Korean)
 const NL_PATTERNS = [

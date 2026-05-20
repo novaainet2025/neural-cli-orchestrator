@@ -42,6 +42,7 @@ export const CreateTaskInput = z.object({
   timeout: z.number().positive().optional(),
   systemPrompt: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  projectDir: z.string().optional(),
 });
 
 export const CreateDiscussionInput = z.object({
