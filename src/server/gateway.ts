@@ -237,7 +237,7 @@ export async function createGateway() {
       });
 
     reply.code(202);
-    return { taskId, status: 'queued', agentId, invocationId };
+    return { taskId, status: 'assigned', agentId, invocationId };
   });
 
   app.post('/api/tasks', async (req, reply) => {
@@ -1355,6 +1355,10 @@ export async function createGateway() {
   });
 
   // ═══ Harness Engine ═══════════════════════════════
+  app.get('/api/harness/ok', async () => {
+    return { ok: true };
+  });
+
   app.post('/api/harness', async (req, reply) => {
     const { harnessEngine } = await import('../core/harness-engine.js');
     const body = req.body as any;

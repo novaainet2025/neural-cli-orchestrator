@@ -180,7 +180,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         tasks: { active: countMap[p.id] || 0 },
       };
     });
-    return { success: true, data: { workspaceId, daemons } };
+    return { workspaceId, daemons };
   });
 
   app.post('/api/daemons/:name/start', async (req) => {

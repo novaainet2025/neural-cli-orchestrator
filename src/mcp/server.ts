@@ -71,8 +71,8 @@ const TOOLS = [
   // Invocations (2)
   { name: 'nco_my_invocations', description: '내가 호출한 에이전트들의 현재 상태 조회', params: [] },
   { name: 'nco_invocations', description: '전체 에이전트 호출 현황 조회', params: ['limit'] },
-  // vLLM Debug (1)
-  { name: 'nco_vllm_debug', description: 'vLLM proxy debug: check errors, health, trigger self-recovery. action: status|errors|recover|test|recover:model_refresh|recover:health_check|recover:ctx_refresh|recover:error_clear', params: ['action'] },
+  // Proxy Debug (1)
+  { name: 'nco_proxy_debug', description: 'Anthropic-Ollama proxy debug: check errors, health, trigger self-recovery. action: status|errors|recover|test|recover:model_refresh|recover:health_check|recover:ctx_refresh|recover:error_clear', params: ['action'] },
 ];
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -141,9 +141,9 @@ case 'nco_mesh_send': {
       const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : '';
       return JSON.stringify(await ncoFetch(`/api/invocations/overview${limit}`));
     }
-    // vLLM Debug
-    case 'nco_vllm_debug': {
-      const PROXY = process.env.VLLM_PROXY_URL || 'http://localhost:4100';
+    // Proxy Debug
+    case 'nco_proxy_debug': {
+      const PROXY = process.env.PROXY_URL || process.env.VLLM_PROXY_URL || 'http://localhost:4100';
       const action = (args.action || 'status').toLowerCase();
       try {
         if (action === 'status' || action === 'errors') {
@@ -174,7 +174,7 @@ case 'nco_mesh_send': {
         });
         return JSON.stringify(await res.json());
       } catch (err: any) {
-        return JSON.stringify({ error: `vLLM proxy unreachable at ${PROXY}: ${err.message}` });
+        return JSON.stringify({ error: `Proxy unreachable at ${PROXY}: ${err.message}` });
       }
     }
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });

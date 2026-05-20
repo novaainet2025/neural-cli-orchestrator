@@ -12,7 +12,7 @@ const log = createLogger('commander');
  * Management Layer: Strategic decisions (claude-code, opencode)
  * Information Layer: Research & analysis (copilot, openrouter)
  * Execution Layer: Code implementation (codex, aider, gemini)
- * Quality Layer: Review & validation (cursor-agent, vllm)
+ * Quality Layer: Review & validation (cursor-agent)
  */
 
 const LAYERS = {
@@ -36,7 +36,7 @@ const LAYERS = {
   },
   quality: {
     name: 'Quality',
-    agents: ['cursor-agent', 'vllm'],
+    agents: ['cursor-agent'],
     role: 'Code review, validation, testing',
     canDelegateTo: ['execution'], // Can send back to execution for fixes
   },

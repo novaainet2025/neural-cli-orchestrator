@@ -33,11 +33,11 @@ const ROLE_MAP: Record<string, string[]> = {
   management: ['claude-code', 'opencode'],
   information: ['copilot', 'openrouter'],
   execution: ['codex', 'aider', 'gemini'],
-  quality: ['cursor-agent', 'vllm'],
+  quality: ['cursor-agent'],
 };
 
 // Cost preference order (free first)
-const COST_ORDER = ['vllm', 'openrouter', 'aider', 'copilot', 'codex', 'gemini', 'cursor-agent', 'opencode', 'claude-code'];
+const COST_ORDER = ['openrouter', 'nvidia', 'aider', 'copilot', 'codex', 'gemini', 'cursor-agent', 'opencode', 'claude-code'];
 
 class SmartRouter {
   /**

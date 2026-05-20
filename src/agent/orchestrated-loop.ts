@@ -205,7 +205,8 @@ export class OrchestratedLoop {
         return ['--message', prompt, ...baseArgs];
       case 'opencode':
         // opencode run <message> — non-interactive; 'chat' opens TUI
-        return ['run', prompt];
+        // Use baseArgs from config (includes "-m <model>") instead of hardcoded ['run']
+        return [...baseArgs, prompt];
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];

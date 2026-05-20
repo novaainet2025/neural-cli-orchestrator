@@ -57,7 +57,7 @@ async function main() {
     const ids = r.data.providers.map((p: any) => p.id).sort();
     assert(ids.includes('claude-code'), 'missing claude-code');
     assert(ids.includes('openrouter'), 'missing openrouter');
-    assert(ids.includes('vllm'), 'missing vllm');
+    assert(ids.includes('nvidia'), 'missing nvidia');
   });
 
   await test('AM', '에이전트 유형 분류 (Commander/Architect/Engineer/...)', async () => {
@@ -72,7 +72,7 @@ async function main() {
     assert(roles['cursor-agent'] === 'Reviewer', `cursor: ${roles['cursor-agent']}`);
     assert(roles['copilot'] === 'Researcher', `copilot: ${roles['copilot']}`);
     assert(roles['openrouter'] === 'Generalist', `openrouter: ${roles['openrouter']}`);
-    assert(roles['vllm'] === 'Validator', `vllm: ${roles['vllm']}`);
+    assert(roles['nvidia'] === 'Reasoner', `nvidia: ${roles['nvidia']}`);
   });
 
   await test('AM', '에이전트 점수 순서 정확성', async () => {

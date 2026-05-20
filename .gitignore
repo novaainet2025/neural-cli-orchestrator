@@ -8,3 +8,8 @@ db/worker-state.json
 *.log
 .pm2/
 .aider*
+
+# Runtime/local artifacts
+context_history/
+context_note.md
+gem.txt

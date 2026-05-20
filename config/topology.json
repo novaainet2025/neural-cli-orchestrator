@@ -3,8 +3,7 @@
     "apiGateway": 6200,
     "websocket": 6201,
     "dashboard": 6260,
-    "redis": 6379,
-    "vllm": 8000
+    "redis": 6379
   },
   "paths": {
     "backend": "/mnt/d/neural-cli-orchestrator",

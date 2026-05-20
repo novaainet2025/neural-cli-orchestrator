@@ -193,7 +193,7 @@ const AGENT_COLORS = {
   'cursor-agent': { bg:'#150b28', border:'#8957e5', dot:'#bc8cff', role:'Reviewer' },
   copilot:        { bg:'#0a1414', border:'#20b2aa', dot:'#39d353', role:'Researcher' },
   openrouter:     { bg:'#1a0f00', border:'#d4773a', dot:'#f0883e', role:'Generalist' },
-  vllm:           { bg:'#140014', border:'#da3633', dot:'#f85149', role:'Validator' },
+  nvidia:         { bg:'#0a1a00', border:'#76b900', dot:'#a3e635', role:'Reasoner' },
   default:        { bg:'#111820', border:'#30363d', dot:'#8b949e', role:'Agent' },
 };
 

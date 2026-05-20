@@ -81,7 +81,7 @@ async function main() {
   // ═══ 2. AI 프로바이더 ═══
   console.log('\n=== 2. AI 프로바이더 ===');
 
-  await test('프로바이더', '9개 프로바이더 등록', async () => {
+  await test('프로바이더', '10개 프로바이더 등록', async () => {
     const r = await api('/api/ai-providers');
     assert(r.data.providers.length === 9, `got ${r.data.providers.length}`);
   });
@@ -91,8 +91,8 @@ async function main() {
     const cc = r.data.providers.find((p: any) => p.id === 'claude-code');
     assert(cc.role === 'Commander', `role: ${cc.role}`);
     assert(cc.score === 95, `score: ${cc.score}`);
-    const vl = r.data.providers.find((p: any) => p.id === 'vllm');
-    assert(vl.role === 'Validator', `vllm role: ${vl.role}`);
+    const nv = r.data.providers.find((p: any) => p.id === 'nvidia');
+    assert(nv.role === 'Reasoner', `nvidia role: ${nv.role}`);
   });
 
   await test('프로바이더', 'enabled 필터', async () => {
@@ -122,19 +122,19 @@ async function main() {
   });
 
   await test('데몬', '개별 stop → offline', async () => {
-    await post('/api/daemons/vllm/stop', {});
+    await post('/api/daemons/nvidia/stop', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'vllm');
-    assert(vllm.status === 'offline', `vllm: ${vllm.status}`);
+    const nv = r.data.daemons.find((d: any) => d.id === 'nvidia');
+    assert(nv.status === 'offline', `nvidia: ${nv.status}`);
   });
 
   await test('데몬', '개별 start → idle', async () => {
-    await post('/api/daemons/vllm/start', {});
+    await post('/api/daemons/nvidia/start', {});
     await new Promise(r => setTimeout(r, 500));
     const r = await api('/api/daemons');
-    const vllm = r.data.daemons.find((d: any) => d.id === 'vllm');
-    assert(vllm.status === 'idle', `vllm: ${vllm.status}`);
+    const nv = r.data.daemons.find((d: any) => d.id === 'nvidia');
+    assert(nv.status === 'idle', `nvidia: ${nv.status}`);
   });
 
   await test('데몬', 'by-workspace', async () => {
@@ -233,7 +233,7 @@ async function main() {
 
   await test('채팅', 'GET /api/chat/ais', async () => {
     const r = await api('/api/chat/ais');
-    assert(r.data.ais.length === 9, `ais: ${r.data.ais.length}`);
+    assert(r.data.ais.length === 10, `ais: ${r.data.ais.length}`);
   });
 
   await test('채팅', 'GET /api/chat/workspaces', async () => {
@@ -245,7 +245,7 @@ async function main() {
   console.log('\n=== 7. 토론 (Discussion) ===');
 
   await test('토론', 'POST /api/discussion/create → session', async () => {
-    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'vllm'] });
+    const r = await post('/api/discussion/create', { mode: 'discussion', providers: ['openrouter', 'nvidia'] });
     assert(!!r.data.session, 'no session');
     assert(!!r.data.session.wsUrl, 'no wsUrl');
   });
