@@ -12,7 +12,7 @@ const log = createLogger('agent-manager');
 
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
-// Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
+// Type B: Orchestrated (codex, agy, opencode, cursor-agent, copilot) — NCO external loop
 // Type C: API (openrouter, mlx) — OpenAI-compatible API
 
 type AgentType = 'A' | 'B' | 'C';
@@ -21,6 +21,37 @@ function classifyAgent(provider: ProviderConfig): AgentType {
   if (provider.id === 'claude-code') return 'A';
   if (provider.type === 'api') return 'C';
   return 'B';
+}
+
+export function resolveApiHealthCheckUrl(provider: Pick<ProviderConfig, 'healthCheck'>): string | null {
+  const health = provider.healthCheck as Record<string, unknown> | undefined;
+  if (!health || typeof health !== 'object') return null;
+
+  if (typeof health.url === 'string' && health.url.trim()) {
+    return health.url;
+  }
+
+  // Some providers declare a curl-style probe instead of a direct URL field.
+  if (health.command === 'curl' && Array.isArray(health.args)) {
+    for (const rawArg of health.args) {
+      if (typeof rawArg !== 'string') continue;
+      const arg = rawArg.trim();
+      if (/^https?:\/\//i.test(arg)) return arg;
+    }
+  }
+
+  return null;
+}
+
+function isCliFailureOutput(output: string): boolean {
+  const normalized = output.trim();
+  if (!normalized) return false;
+
+  return (
+    /^error:/i.test(normalized) ||
+    /^reached max turns/i.test(normalized) ||
+    /reached max turns \(\d+\)/i.test(normalized)
+  );
 }
 
 interface TaskResult {
@@ -61,6 +92,7 @@ class AgentManager {
     systemPrompt?: string;
     compact?: boolean;
     signal?: AbortSignal;
+    projectDir?: string;  // Override PROJECT_DIR for this task (e.g. nova-voice vs nco)
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
@@ -92,19 +124,37 @@ class AgentManager {
             : wallClock;
           // provider.args: extra Claude CLI flags (e.g. --dangerously-skip-permissions) so
           // headless NCO runs can use tools without an interactive permission prompt.
+          // claude-code 전용 cwd: /tmp 사용 → CLAUDE.md 자동 로드 방지
+          // (NCO PROJECT_DIR 에 CLAUDE.md가 있으면 NCO tool 호출 시도 → max-turns 소진)
+          const claudeCwd = options?.projectDir === env.PROJECT_DIR || !options?.projectDir
+            ? '/tmp'
+            : options.projectDir;
           const result = await execa(provider.command!, [
             ...(provider.args ?? []),
             '-p', prompt,
             '--output-format', 'text',
+            '--max-turns', '3',
           ], {
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
-            env: { ...process.env, ...provider.env },
+            env: {
+              ...process.env,
+              ...provider.env,
+              // Claude CLI 연결 안정화: 홈 디렉토리와 인증 경로 명시
+              HOME: process.env.HOME || '/Users/nova-ai',
+              CLAUDE_CODE_MAX_OUTPUT_TOKENS: '8192',
+              // 하위 세션에서 NCO 훅 비활성화 (재귀 호출 방지)
+              NCO_HOOK_DISABLED: '1',
+            },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
+            cwd: claudeCwd,
           });
           output = result.stdout || result.stderr || '';
           iterations = 1;
+          if (result.exitCode !== 0 || isCliFailureOutput(output)) {
+            throw new Error(output || `${agentId} CLI exited with code ${result.exitCode}`);
+          }
           sandbox.recordSuccess();
           break;
         }
@@ -143,12 +193,14 @@ class AgentManager {
 
       // Triple Verification Gate — run L1/L2/L3 checks
       try {
+        const taskProjectDir = options?.projectDir || env.PROJECT_DIR;
         const { stdout: diffOutput } = await (await import('execa')).execa(
-          'git', ['diff', '--name-only'], { cwd: env.PROJECT_DIR, reject: false }
+          'git', ['diff', '--name-only'], { cwd: taskProjectDir, reject: false }
         );
         const changedFiles = diffOutput.split('\n').filter(Boolean);
 
         if (changedFiles.length > 0) {
+          // Use task-level projectDir override if provided (e.g. nova-voice work via NCO)
           const vResult = await verificationGate.verify(taskId, changedFiles);
           if (!vResult.passed) {
             log.warn({ taskId, agentId, results: vResult.results }, 'Verification gate failed');
@@ -236,21 +288,50 @@ class AgentManager {
         await this.healthCheckApiProvider(id, provider);
         continue;
       }
-      const alive = await sharedState.isAgentAlive(id);
-      if (!alive) {
-        await sharedState.setAgentState(id, { status: 'offline' });
+      // For CLI (oneshot) providers, try the healthCheck.command if defined.
+      // Oneshot agents don't maintain Redis heartbeats between tasks, so
+      // isAgentAlive() would always return false — marking them wrongly as offline.
+      const hc = provider.healthCheck as Record<string, unknown> | undefined;
+      if (hc && typeof hc.command === 'string') {
+        await this.healthCheckCliProvider(id, provider);
       } else {
-        const st = await sharedState.getAgentState(id);
-        if (st?.status === 'offline') {
-          await sharedState.setAgentState(id, { status: 'idle' });
+        // Persistent CLI agent: fall back to heartbeat-based check
+        const alive = await sharedState.isAgentAlive(id);
+        if (!alive) {
+          await sharedState.setAgentState(id, { status: 'offline' });
+        } else {
+          const st = await sharedState.getAgentState(id);
+          if (st?.status === 'offline') {
+            await sharedState.setAgentState(id, { status: 'idle' });
+          }
         }
+        await sharedState.heartbeat(id);
       }
+    }
+  }
+
+  private async healthCheckCliProvider(id: string, provider: ProviderConfig): Promise<void> {
+    const hc = provider.healthCheck as Record<string, unknown>;
+    const cmd = hc.command as string;
+    const args = Array.isArray(hc.args) ? hc.args as string[] : [];
+    const timeout = typeof hc.timeout === 'number' ? hc.timeout : 5000;
+    try {
+      const { execa } = await import('execa');
+      await execa(cmd, args, {
+        timeout,
+        reject: false,
+        env: { ...process.env, ...(provider.env as Record<string, string> || {}) },
+      });
+      await sharedState.setAgentState(id, { status: 'idle' });
       await sharedState.heartbeat(id);
+    } catch (e) {
+      await sharedState.setAgentState(id, { status: 'offline' });
+      log.debug({ id, error: e instanceof Error ? e.message : String(e) }, 'CLI health probe failed');
     }
   }
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<void> {
-    const url = typeof provider.healthCheck.url === 'string' ? provider.healthCheck.url : null;
+    const url = resolveApiHealthCheckUrl(provider);
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });
       return;

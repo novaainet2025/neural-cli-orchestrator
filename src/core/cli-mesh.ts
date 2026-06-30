@@ -28,7 +28,7 @@ const MESH_TTL = 300; // 5min — sessions expire if no heartbeat
 /**
  * CLI Mesh — Real-time awareness between running CLI sessions.
  *
- * Each CLI (claude-code, codex, gemini, etc.) registers with the mesh:
+ * Each CLI (claude-code, codex, agy, etc.) registers with the mesh:
  *   - Who am I (agent id, PID)
  *   - What am I working on (current task description, files being edited)
  *   - Status (thinking, coding, idle, reviewing)
@@ -95,6 +95,8 @@ export interface MeshSession {
   tmuxPane?: string;
   /** tmux server socket path — required for cross-process tmux delivery */
   tmuxSocket?: string;
+  /** inter-session name (e.g. nova-macui-macstudio-claude-1) — injected by heartbeat hook */
+  interSessionName?: string;
 }
 
 export interface MeshMessage {
@@ -159,6 +161,8 @@ class CliMesh {
     tmuxPane?: string;
     /** tmux server socket path — required for cross-process tmux delivery */
     tmuxSocket?: string;
+    /** inter-session name (e.g. nova-macui-macstudio-claude-1) */
+    interSessionName?: string;
   }): Promise<{ conflicts: string[]; conflictReports: ConflictReport[]; messages: MeshMessage[] }> {
     const now = new Date().toISOString();
 
@@ -191,6 +195,7 @@ class CliMesh {
       messageQueue: [],
       tmuxPane: session.tmuxPane,
       tmuxSocket: session.tmuxSocket,
+      interSessionName: session.interSessionName,
     };
 
     // Register in Redis FIRST (before conflict check, so session is visible)
@@ -857,6 +862,11 @@ class CliMesh {
     } catch {
       return [];
     }
+  }
+
+  /** Alias for getActiveSessions — backward compatibility */
+  listSessions(): Promise<MeshSession[]> {
+    return this.getActiveSessions();
   }
 }
 

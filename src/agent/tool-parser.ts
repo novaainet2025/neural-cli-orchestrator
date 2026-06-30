@@ -11,15 +11,17 @@ export interface ToolCall {
 // Primary: <nco-tool name="readFile"><arg name="path">/src/index.ts</arg></nco-tool>
 // Fallback 1: ```json {"tool":"readFile","args":{"path":"/src/index.ts"}} ```
 // Fallback 2: [TOOL: readFile(path="/src/index.ts")]
-// Fallback 3: Aider SEARCH/REPLACE block format (native aider whole-edit format)
+// Fallback 3: SEARCH/REPLACE block format
 
 const NCO_TOOL_REGEX = /<nco-tool\s+name="([^"]+)">([\s\S]*?)<\/nco-tool>/g;
-// Aider: path\n<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE
-const AIDER_SEARCH_REPLACE_REGEX = /^([^\n]+)\n<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
+// path\n<<<<<<< SEARCH\nold\n=======\nnew\n>>>>>>> REPLACE
+const SEARCH_REPLACE_REGEX = /^([^\n]+)\n<<<<<<< SEARCH\n([\s\S]*?)\n=======\n([\s\S]*?)\n>>>>>>> REPLACE/gm;
 const ARG_REGEX = /<arg\s+name="([^"]+)">([\s\S]*?)<\/arg>/g;
 const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*```/g;
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
 const GEMMA_TOOL_REGEX = /<\|?tool_call\|?>\s*call:(\w+)\s*(\{[\s\S]*?\})\s*<\|?\/?[a-z_]*tool_call\|?>/g;
+// Gemma 4 실제 출력: call:name{args}<tool_call|> (opening tag 없음, <|"|> 토큰 사용)
+const GEMMA_BARE_REGEX = /(?:^|\n)\s*call:(\w+)\s*(\{[\s\S]*?\})\s*(?:<\|?\/?[a-z_]*tool_call\|?>|$)/g;
 
 // 4. Fallback: Natural language commands (Claude Code style — English & Korean)
 const NL_PATTERNS = [
@@ -78,34 +80,48 @@ export function parseToolCalls(text: string): ToolCall[] {
   if (calls.length > 0) return calls;
 
   // 3. Fallback: Gemma style <|tool_call|>call:name{args}<|tool_call|>
-  const gemmaRegex = new RegExp(GEMMA_TOOL_REGEX.source, 'g');
-  while ((match = gemmaRegex.exec(text)) !== null) {
-    const tool = match[1];
-    let rawArgs = match[2].trim();
-    
-    try {
-      // Try parsing as JSON first
-      const args = JSON.parse(rawArgs);
-      calls.push({ tool, args });
-    } catch {
-      // Fallback: simple key-value extraction if JSON fails
-      const args: Record<string, string> = {};
-      const pairs = rawArgs.match(/"([^"]+)":\s*"([^"]+)"/g);
-      if (pairs) {
-        for (const p of pairs) {
-          const [k, v] = p.split(/:\s*/);
-          args[k.replace(/"/g, '')] = v.replace(/"/g, '');
+  //    Also handles bare format: call:name{args}<tool_call|> (no opening tag)
+  for (const regex of [GEMMA_TOOL_REGEX, GEMMA_BARE_REGEX]) {
+    const gemmaRegex = new RegExp(regex.source, 'g');
+    while ((match = gemmaRegex.exec(text)) !== null) {
+      const tool = match[1];
+      let rawArgs = match[2].trim();
+
+      // Gemma 4 uses <|"|> token instead of actual quotes — normalize
+      rawArgs = rawArgs.replace(/<\|"\|>/g, '"');
+      // Also handle <|'|> variant
+      rawArgs = rawArgs.replace(/<\|'\|>/g, "'");
+
+      try {
+        // Try parsing as JSON first
+        const args = JSON.parse(rawArgs);
+        calls.push({ tool, args });
+      } catch {
+        // Fallback: simple key-value extraction if JSON fails
+        const args: Record<string, string> = {};
+        const pairs = rawArgs.match(/"([^"]+)":\s*"([^"]+)"/g);
+        if (pairs) {
+          for (const p of pairs) {
+            const [k, v] = p.split(/:\s*/);
+            args[k.replace(/"/g, '')] = v.replace(/"/g, '');
+          }
         }
+        // Last resort: if single key:value without quotes (e.g. {command:grep ...})
+        if (Object.keys(args).length === 0) {
+          const simpleMatch = rawArgs.match(/^\{(\w+):\s*(.+)\}$/s);
+          if (simpleMatch) {
+            args[simpleMatch[1]] = simpleMatch[2].trim();
+          }
+        }
+        calls.push({ tool, args: Object.keys(args).length > 0 ? args : { _raw: rawArgs } });
       }
-      calls.push({ tool, args: Object.keys(args).length > 0 ? args : { _raw: rawArgs } });
     }
+    if (calls.length > 0) return calls;
   }
 
-  if (calls.length > 0) return calls;
-
-  // 4. Fallback: Aider SEARCH/REPLACE block (native whole-edit format)
-  const aiderRegex = new RegExp(AIDER_SEARCH_REPLACE_REGEX.source, 'gm');
-  while ((match = aiderRegex.exec(text)) !== null) {
+  // 4. Fallback: SEARCH/REPLACE block format
+  const searchReplaceRegex = new RegExp(SEARCH_REPLACE_REGEX.source, 'gm');
+  while ((match = searchReplaceRegex.exec(text)) !== null) {
     const path = match[1].trim();
     const searchText = match[2]; // empty string = new file
     const replaceText = match[3];
@@ -161,9 +177,22 @@ export function parseToolCalls(text: string): ToolCall[] {
   return calls;
 }
 
+/** Stateless regex test — module-level /g patterns must not reuse lastIndex across calls. */
+function regexMatches(pattern: RegExp, text: string): boolean {
+  const flags = pattern.flags.replace(/g/g, '');
+  return new RegExp(pattern.source, flags).test(text);
+}
+
 // Check if text contains any tool calls
 export function hasToolCalls(text: string): boolean {
-  if (NCO_TOOL_REGEX.test(text) || JSON_TOOL_REGEX.test(text) || BRACKET_REGEX.test(text) || GEMMA_TOOL_REGEX.test(text) || AIDER_SEARCH_REPLACE_REGEX.test(text)) return true;
+  if (
+    regexMatches(NCO_TOOL_REGEX, text)
+    || regexMatches(JSON_TOOL_REGEX, text)
+    || regexMatches(BRACKET_REGEX, text)
+    || regexMatches(GEMMA_TOOL_REGEX, text)
+    || regexMatches(GEMMA_BARE_REGEX, text)
+    || regexMatches(SEARCH_REPLACE_REGEX, text)
+  ) return true;
   
   // Also check NL patterns
   const lines = text.split('\n');
@@ -182,7 +211,8 @@ export function extractThinking(text: string): string {
     .replace(new RegExp(JSON_TOOL_REGEX.source, 'g'), '')
     .replace(new RegExp(BRACKET_REGEX.source, 'g'), '')
     .replace(new RegExp(GEMMA_TOOL_REGEX.source, 'g'), '')
-    .replace(new RegExp(AIDER_SEARCH_REPLACE_REGEX.source, 'gm'), '');
+    .replace(new RegExp(GEMMA_BARE_REGEX.source, 'g'), '')
+    .replace(new RegExp(SEARCH_REPLACE_REGEX.source, 'gm'), '');
     
   // Also strip NL pattern lines
   const lines = output.split('\n');

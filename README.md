@@ -103,6 +103,21 @@ claude
 
 ---
 
+## Add 함수 사용 예시
+
+```ts
+import { add } from './src/utils/math.js';
+
+const result = add(2, 3);
+console.log(result); // 5
+```
+
+- `add(a, b)`는 두 `number` 값을 더해 결과를 반환한다.
+- `null`, `undefined`, `NaN` 입력은 `Error`를 발생시킨다.
+- `number`가 아닌 입력은 `TypeError`를 발생시킨다.
+
+---
+
 ## 요구사항
 
 - **Node.js** 22+

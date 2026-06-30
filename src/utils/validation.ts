@@ -34,6 +34,7 @@ export const MessageTypeSchema = z.enum([
 // ─── API Input ────────────────────────────────────────
 export const CreateTaskInput = z.object({
   ai: z.string().optional(),
+  agentId: z.string().optional(),  // alias for 'ai' — both accepted
   prompt: z.string().min(1),
   mode: TaskModeSchema.optional().default('task'),
   providers: z.array(z.string()).optional(),
@@ -41,6 +42,7 @@ export const CreateTaskInput = z.object({
   priority: z.number().int().min(0).max(10).optional().default(0),
   timeout: z.number().positive().optional(),
   systemPrompt: z.string().optional(),
+  projectDir: z.string().optional(),   // Override working directory for the agent
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 

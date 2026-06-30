@@ -123,7 +123,11 @@ class InvocationTracker {
 
     let durationMs: number | null = null;
     if (row?.created_at) {
-      durationMs = Date.now() - new Date(row.created_at).getTime();
+      // SQLite datetime('now') stores UTC without 'Z' suffix.
+      // Appending 'Z' forces correct UTC parsing; without it Node.js
+      // treats the string as local time, causing a ~9-hour offset on KST.
+      const createdUtc = row.created_at.endsWith('Z') ? row.created_at : row.created_at + 'Z';
+      durationMs = Date.now() - new Date(createdUtc).getTime();
     }
 
     const pT = usage?.promptTokens ?? 0;
@@ -192,13 +196,12 @@ class InvocationTracker {
         'info',
       );
       log.debug(`Notified caller session ${inv.callerSessionId} for invocation ${invocationId}`);
+      db.prepare(
+        `UPDATE agent_invocations SET notified = 1 WHERE id = ?`
+      ).run(invocationId);
     } catch (err) {
       log.warn(`Failed to notify caller for invocation ${invocationId}: ${err}`);
     }
-
-    db.prepare(
-      `UPDATE agent_invocations SET notified = 1 WHERE id = ?`
-    ).run(invocationId);
   }
 
   /**

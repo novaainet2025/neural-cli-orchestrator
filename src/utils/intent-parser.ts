@@ -43,11 +43,10 @@ const TOOL_KEYWORDS: Record<string, string[]> = {
 const AGENT_KEYWORDS: Record<string, string[]> = {
   codex: ['codex', 'implement', 'write code'],
   opencode: ['opencode', 'architect', 'design'],
-  gemini: ['gemini', 'design', 'ui', 'ux'],
-  aider: ['aider', 'edit', 'modify'],
-  'cursor-agent': ['cursor', 'review', 'fix'],
+  agy: ['agy', 'antigravity', 'anti-gravity', 'design', 'ui', 'ux'],
+  'cursor-agent': ['cursor', 'review', 'fix', 'edit', 'modify'],
   copilot: ['copilot', 'research', 'lookup'],
-  openrouter: ['openrouter', 'reason', 'think'],
+  nvidia: ['nvidia', 'reason', 'think', 'openrouter'],
   mlx: ['mlx', 'validate', 'test'],
 };
 

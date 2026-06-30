@@ -29,6 +29,7 @@ const PERSIST_TYPES = new Set([
 
 export class EventBus {
   private local = new EventEmitter();
+  // Max listeners not needed for EventEmitter3
   private ready = false;
   private sequence = 0;
   // Track locally-emitted event IDs to prevent Redis echo causing double-emit

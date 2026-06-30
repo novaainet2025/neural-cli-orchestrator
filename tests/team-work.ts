@@ -136,18 +136,18 @@ async function main() {
   // ═══ 4. 에이전트 간 메시지 교환 ═══
   console.log('\n=== 4. 에이전트 간 메시지 교환 ===');
 
-  await test('메시지', 'codex → gemini: 코드 리뷰 요청', async () => {
+  await test('메시지', 'codex → agy: 코드 리뷰 요청', async () => {
     const r = await post('/api/collaboration/message', {
-      from: 'codex', to: 'gemini',
+      from: 'codex', to: 'agy',
       message: '파일 src/core/event-bus.ts 리뷰 부탁합니다',
       type: 'review',
     });
     assert(r.data.ok, 'send failed');
   });
 
-  await test('메시지', 'gemini → codex: 리뷰 응답', async () => {
+  await test('메시지', 'agy → codex: 리뷰 응답', async () => {
     const r = await post('/api/collaboration/message', {
-      from: 'gemini', to: 'codex',
+      from: 'agy', to: 'codex',
       message: 'event-bus.ts 검토 완료, 이벤트 버퍼링 로직 좋습니다',
       type: 'direct',
     });
@@ -172,10 +172,10 @@ async function main() {
   await test('메시지', '메시지 이력 DB 저장 확인', async () => {
     const r = await api('/api/messages?limit=10');
     const review = r.data.messages.find((m: any) =>
-      m.from_agent === 'codex' && m.to_agent === 'gemini' && m.message_type === 'review');
+      m.from_agent === 'codex' && m.to_agent === 'agy' && m.message_type === 'review');
     assert(!!review, 'review message not in DB');
     const reply = r.data.messages.find((m: any) =>
-      m.from_agent === 'gemini' && m.to_agent === 'codex');
+      m.from_agent === 'agy' && m.to_agent === 'codex');
     assert(!!reply, 'reply not in DB');
   });
 
@@ -232,10 +232,10 @@ async function main() {
     await new Promise(r => setTimeout(r, 300));
 
     // 3개 에이전트 순차 stop/start
-    await post('/api/daemons/aider/stop', {});
+    await post('/api/daemons/codex/stop', {});
     await post('/api/daemons/cursor-agent/stop', {});
     await new Promise(r => setTimeout(r, 500));
-    await post('/api/daemons/aider/start', {});
+    await post('/api/daemons/codex/start', {});
     await post('/api/daemons/cursor-agent/start', {});
     await new Promise(r => setTimeout(r, 500));
 
@@ -282,14 +282,14 @@ async function main() {
 
   await test('RL', 'systemStatus: 절반 이상 리밋 시 degraded', async () => {
     // 5개 리밋 설정
-    for (const p of ['codex', 'aider', 'copilot', 'cursor-agent', 'openrouter']) {
+    for (const p of ['codex', 'agy', 'copilot', 'cursor-agent', 'openrouter']) {
       await post('/api/rate-limits/state', { provider: p, isLimited: true, reason: 'test' });
     }
     const r = await api('/api/rate-limits/state');
     assert(r.data.state.systemStatus === 'degraded', `status: ${r.data.state.systemStatus}`);
 
     // 복구
-    for (const p of ['codex', 'aider', 'copilot', 'cursor-agent', 'openrouter']) {
+    for (const p of ['codex', 'agy', 'copilot', 'cursor-agent', 'openrouter']) {
       await post('/api/rate-limits/state', { provider: p, isLimited: false });
     }
     const r2 = await api('/api/rate-limits/state');
@@ -302,7 +302,7 @@ async function main() {
   await test('토론', '협업 세션 생성 → ID 발급', async () => {
     const r = await post('/api/collaboration/sessions', {
       title: '팀 토론: 에러 핸들링 전략',
-      participants: ['claude-code', 'codex', 'gemini'],
+      participants: ['claude-code', 'codex', 'agy'],
     });
     assert(!!r.data.session.id, 'no session id');
   });

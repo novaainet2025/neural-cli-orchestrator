@@ -464,8 +464,8 @@ setup_agents() {
   fi
 
   echo ""
-  echo -e "  설치 대상 에이전트 (9개):"
-  echo -e "  ${CYAN}claude-code · opencode · gemini-cli · codex · aider${NC}"
+  echo -e "  설치 대상 에이전트 (8개):"
+  echo -e "  ${CYAN}claude-code · opencode · gemini-cli · codex${NC}"
   echo -e "  ${CYAN}cursor-agent · copilot · ollama · gemini-api(SDK)${NC}"
   echo ""
 
@@ -532,7 +532,7 @@ verify() {
   # 에이전트 설치 여부
   echo ""
   echo -e "  ${BOLD}에이전트 설치 상태:${NC}"
-  for agent in claude codex aider opencode gemini; do
+  for agent in claude codex opencode gemini; do
     printf "  %-28s" "$agent"
     command -v "$agent" &>/dev/null && ok "설치됨" || warn "미설치"
   done

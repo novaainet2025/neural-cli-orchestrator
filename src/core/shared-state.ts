@@ -140,6 +140,19 @@ export class SharedState {
     });
 
     seedTx(providers);
+
+    // Disable agents that are NOT in the enabled providers list (config says disabled)
+    const enabledIds = providers.map(p => p.id);
+    if (enabledIds.length > 0) {
+      const placeholders = enabledIds.map(() => '?').join(',');
+      const disableResult = db.prepare(
+        `UPDATE agents SET enabled=0, updated_at=datetime('now') WHERE id NOT IN (${placeholders})`
+      ).run(...enabledIds);
+      if (disableResult.changes > 0) {
+        log.info({ count: disableResult.changes }, 'Providers disabled (not in config enabled list)');
+      }
+    }
+
     log.info({ count: providers.length }, 'Providers seeded to DB');
 
     // Also set initial Redis state

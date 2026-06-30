@@ -1,3 +1,6 @@
+// Fix: MaxListeners memory leak — increase limit before any module loads
+process.setMaxListeners(50);
+
 import { env } from './utils/config.js';
 import { createLogger } from './utils/logger.js';
 import { getDb, runMigrations, closeDb } from './storage/database.js';
@@ -5,9 +8,16 @@ import { getRedis, closeRedis, redisHealthCheck } from './storage/redis.js';
 import { eventBus } from './core/event-bus.js';
 import { sharedState } from './core/shared-state.js';
 import { syncEngine } from './core/sync-engine.js';
+import { obsidianWatcher } from './core/obsidian-watcher.js';
+import { supervisorEngine } from './core/supervisor-engine.js';
 import { agentManager } from './agent/agent-manager.js';
 import { sessionManager } from './agent/session-manager.js';
 import { taskQueue } from './core/task-queue.js';
+import { scheduleUbi } from './economy/ubiScheduler.js';
+import { seedCivilServants, seedBuiltinPlugins } from './nova/governmentService.js';
+import { scheduleAutonomousActions, scheduleMonthlySalary } from './nova/autonomousScheduler.js';
+import { startThreatLevelScheduler } from './nova/threatLevelService.js';
+import { scheduleGradeCron } from './identity/gradeService.js';
 import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
@@ -26,8 +36,24 @@ async function boot(): Promise<void> {
   const db = getDb();
   runMigrations();
 
-  // 1b. Startup recovery: mark tasks stuck in "assigned" as failed
-  //     These are tasks that were in-flight when the server was killed/restarted.
+  // 1b. Startup recovery: re-queue tasks stuck in "assigned" (in-flight during restart)
+  //     Re-queue up to 5 recent tasks (< 10 min old); mark older ones as failed.
+  const recentZombies = db.prepare(`
+    SELECT id FROM tasks
+    WHERE status = 'assigned'
+      AND (julianday('now') - julianday(created_at)) * 86400 < 600
+    ORDER BY created_at DESC LIMIT 5
+  `).all() as { id: string }[];
+
+  if (recentZombies.length > 0) {
+    db.prepare(`
+      UPDATE tasks SET status = 'pending', updated_at = datetime('now')
+      WHERE id IN (${recentZombies.map(() => '?').join(',')})
+    `).run(...recentZombies.map(r => r.id));
+    log.warn({ count: recentZombies.length }, 'Startup recovery: re-queued recent in-flight tasks');
+  }
+
+  // Mark older stuck tasks as failed (> 10 min — likely abandoned)
   const zombieResult = db.prepare(`
     UPDATE tasks
     SET status = 'failed',
@@ -36,7 +62,7 @@ async function boot(): Promise<void> {
     WHERE status = 'assigned'
   `).run();
   if (zombieResult.changes > 0) {
-    log.warn({ count: zombieResult.changes }, 'Startup recovery: marked in-flight tasks as failed');
+    log.warn({ count: zombieResult.changes }, 'Startup recovery: marked stale in-flight tasks as failed');
   }
 
   // 2. Redis
@@ -67,13 +93,19 @@ async function boot(): Promise<void> {
   log.info('Initializing Agent Manager...');
   await agentManager.init();
 
-  // 7b. Task Queue (BullMQ per-agent, falls back to semaphore if Redis offline)
+  // 7b. Obsidian Watcher & Supervisor Engine
+  log.info('Starting Obsidian Watcher & Supervisor Engine...');
+  await obsidianWatcher.start();
+  await supervisorEngine.start();
+
+  // 7c. Task Queue (BullMQ per-agent, falls back to semaphore if Redis offline)
   log.info('Initializing Task Queue...');
   taskQueue.setExecutor(async (task, signal) => {
     const result = await agentManager.executeTask(task.agentId, task.prompt, {
       taskId: task.taskId,
       systemPrompt: task.systemPrompt,
       signal,
+      projectDir: task.metadata?.projectDir as string | undefined,
     });
     return { success: result.success, output: result.output, error: result.error };
   });
@@ -100,7 +132,16 @@ async function boot(): Promise<void> {
   log.info('Starting WebSocket Bridge...');
   await wsBridge.start();
 
-  // 10. Publish boot event
+  // 10. Load persisted Cron Jobs (Hermes/OpenClaw transplant)
+  try {
+    const { loadCronJobs } = await import('./core/cron-scheduler.js');
+    loadCronJobs();
+    log.info('Cron Scheduler loaded');
+  } catch (e: any) {
+    log.warn({ err: e.message }, 'Cron Scheduler load skipped');
+  }
+
+  // 11. Publish boot event
   await eventBus.publish({
     type: 'system:boot',
     service: 'nco-backend',
@@ -110,12 +151,25 @@ async function boot(): Promise<void> {
 
   log.info({ api: env.PORT, ws: env.WS_PORT }, 'NCO Backend fully operational');
   log.info('Monitor: http://localhost:' + env.PORT + '/monitor');
+
+  // Nova Government UBI 주간 자동 지급 스케줄러 (WELFARE-POLICY.md 13회차)
+  scheduleUbi();
+
+  // Nova Government — AI 공무원 + 플러그인 시드 + 자율 스케줄러
+  seedCivilServants();
+  seedBuiltinPlugins();
+  scheduleAutonomousActions();
+  startThreatLevelScheduler();
+  scheduleGradeCron();
+  scheduleMonthlySalary();
 }
 
 // ─── Graceful Shutdown ────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
   log.info({ signal }, 'Shutting down...');
   wsBridge.stop();
+  await obsidianWatcher.stop();
+  await supervisorEngine.stop();
   sessionManager.destroy();
   agentManager.destroy();
   await taskQueue.close();
@@ -123,6 +177,9 @@ async function shutdown(signal: string): Promise<void> {
   eventBus.destroy();
   await closeRedis();
   closeDb();
+  // Give pino sync streams time to flush before exit
+  // Prevents "sonic boom is not ready yet" crash from on-exit-leak-free
+  await new Promise(r => setTimeout(r, 200));
   process.exit(0);
 }
 

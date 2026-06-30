@@ -1321,8 +1321,8 @@ function toggleEventLog(){
 const TOPO_PARTICLES={}; // edgeKey → [{t:0..1, speed}]
 let _topoSelected=null; // agentId
 const AGENT_COLORS_MAP={
-  opencode:'#2da44e', gemini:'#d29922', codex:'#1f6feb',
-  aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
+  opencode:'#2da44e', agy:'#d29922', codex:'#1f6feb',
+  'cursor-agent':'#8957e5', copilot:'#20b2aa',
   openrouter:'#d4773a', mlx:'#a855f7', vllm:'#e879f9',
 };
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
@@ -1617,8 +1617,8 @@ function renderTopology(){
       '<rect x="'+(c.x-nodeW/2)+'" y="'+(c.y-nodeH/2)+'" width="'+nodeW+'" height="'+nodeH+'"'+
       ' rx="5" fill="#0a1628" stroke="'+bc+'" stroke-width="'+bw+'"/>'+
       '<circle cx="'+(c.x-nodeW/2+9)+'" cy="'+(c.y-nodeH/2+9)+'" r="3" fill="'+dotColor+'"/>'+
-      '<text x="'+c.x+'" y="'+(c.y-8)+'" text-anchor="middle" font-size="13" font-weight="700" fill="'+color+'">'+escHtml(c.agentId)+'</text>'+
-      '<text x="'+c.x+'" y="'+(c.y+8)+'" text-anchor="middle" font-size="10" fill="#8b949e">pid:'+escHtml(String(s.pid||'—'))+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y-8)+'" text-anchor="middle" font-size="10" font-weight="700" fill="'+color+'">'+escHtml((s.interSessionName||c.agentId).slice(0,18))+'</text>'+
+      '<text x="'+c.x+'" y="'+(c.y+8)+'" text-anchor="middle" font-size="9" fill="#8b949e">'+escHtml(s.interSessionName?c.agentId:'pid:'+String(s.pid||'—'))+'</text>'+
       // ② File count badge (bottom-right) — shows count + first filename hint
       (fileCount>0?
         '<rect x="'+(c.x+nodeW/2-22)+'" y="'+(c.y+nodeH/2-13)+'" width="21" height="12" rx="2" fill="#0d2137" stroke="#1f6feb44" stroke-width="0.5"/>'+
@@ -1978,7 +1978,7 @@ function renderMeshNodes(flashId){
       '<div class="mn-inner">'+
         '<div class="mn-row1">'+
           (isDone?'<span style="color:#3fb950;font-size:9px">✓</span>':hDot(h))+
-          '<span class="mn-agent" style="color:'+(isDone?'#3fb95088':agentColor(s.agentId))+'">'+escHtml(s.agentId)+'</span>'+
+          '<span class="mn-agent" style="color:'+(isDone?'#3fb95088':agentColor(s.agentId))+'">'+escHtml(s.interSessionName||s.agentId)+'</span>'+
           '<span class="wm-badge '+(WM_CSS[wm]||'wm-idle')+'">'+(WM_LABEL[wm]||wm)+'</span>'+
           (isDone?doneElapsed:conflictBadgeHtml(conflicts))+
           '<span class="mn-pid">'+s.pid+'</span>'+
@@ -3700,7 +3700,7 @@ function closeModal(){el('taskModal').style.display='none';}
 // ── Helpers ───────────────────────────────────────────
 function agentColor(id){
   const c={'claude-code':'#58a6ff','claude-3':'#79c0ff','claude-4':'#79c0ff','claude-5':'#79c0ff',
-    'opencode':'#a5b4fc','gemini':'#3fb950','codex':'#d2a8ff','aider':'#d29922',
+    'opencode':'#a5b4fc','agy':'#3fb950','codex':'#d2a8ff',
     'cursor-agent':'#f0883e','copilot':'#8b949e','openrouter':'#79c0ff',
     'mlx':'#c084fc','vllm':'#e879f9',
     'system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};

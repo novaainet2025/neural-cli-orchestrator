@@ -187,9 +187,8 @@ const WS_URL = 'ws://localhost:${wsPort}';
 // ──────────────────────────────────────────────────────────────
 const AGENT_COLORS = {
   opencode:       { bg:'#0f1f14', border:'#2da44e', dot:'#3fb950', role:'Architect' },
-  gemini:         { bg:'#1a1400', border:'#d29922', dot:'#e3b341', role:'Designer' },
+  agy:            { bg:'#1a1400', border:'#d29922', dot:'#e3b341', role:'Designer' },
   codex:          { bg:'#0a1628', border:'#1f6feb', dot:'#58a6ff', role:'Engineer' },
-  aider:          { bg:'#0f1628', border:'#388bfd', dot:'#79c0ff', role:'Engineer' },
   'cursor-agent': { bg:'#150b28', border:'#8957e5', dot:'#bc8cff', role:'Reviewer' },
   copilot:        { bg:'#0a1414', border:'#20b2aa', dot:'#39d353', role:'Researcher' },
   openrouter:     { bg:'#1a0f00', border:'#d4773a', dot:'#f0883e', role:'Generalist' },

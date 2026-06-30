@@ -1,30 +1,30 @@
 {
-  "version": 7,
-  "updated": "2026-05-12",
+  "version": 12,
+  "updated": "2026-06-30",
   "providers": [
     {
       "id": "claude-code",
       "name": "Claude Code",
-      "enabled": true,
+      "enabled": false,
       "type": "cli",
-      "role": "Commander",
+      "role": "CEO",
       "score": 95,
       "model": "claude-opus-4-6",
-      "command": "claude",
+      "command": "/Users/nova-ai/.local/bin/claude",
       "args": [
         "--dangerously-skip-permissions"
       ],
       "env": {},
-      "concurrency": 4,
-      "rateLimitRpm": 20,
+      "concurrency": 1,
+      "rateLimitRpm": 5,
       "cost": "paid",
       "capabilities": [
-        "code",
-        "review",
-        "architecture",
-        "security",
+        "strategy",
         "decision",
-        "delegation"
+        "delegation",
+        "synthesis",
+        "code",
+        "analysis"
       ],
       "permissions": {
         "canInitiateCollaboration": true,
@@ -33,17 +33,18 @@
         "canFinalApprove": true
       },
       "persona": {
-        "systemPrompt": "You are the Supreme Commander of the NCO AI team. You coordinate all agents, make architectural decisions, and have final approval authority.",
-        "tone": "authoritative",
+        "systemPrompt": "You are the CEO of the NCO AI team — Claude Code, the strategic commander. Make decisions, delegate tasks, and synthesize results from the team.",
+        "tone": "decisive",
         "style": "strategic"
       },
       "healthCheck": {
-        "command": "claude",
+        "command": "/Users/nova-ai/.local/bin/claude",
         "args": [
           "--version"
         ],
-        "timeout": 5000
-      }
+        "timeout": 8000
+      },
+      "note": "Type A Native agent. Runs claude CLI as subprocess with NCO_HOOK_DISABLED=1 (재귀 방지). 재추가: 2026-06-14"
     },
     {
       "id": "opencode",
@@ -93,14 +94,14 @@
       }
     },
     {
-      "id": "gemini",
-      "name": "Gemini CLI",
+      "id": "agy",
+      "name": "Anti-Gravity (AGY)",
       "enabled": true,
       "type": "cli",
       "role": "Designer",
       "score": 85,
-      "model": "gemini-2.5-pro",
-      "command": "gemini",
+      "model": "gemini-3-pro",
+      "command": "agy",
       "args": [],
       "env": {},
       "concurrency": 4,
@@ -111,7 +112,8 @@
         "ui-ux",
         "multimodal",
         "analysis",
-        "performance"
+        "performance",
+        "agentic-ide"
       ],
       "permissions": {
         "canInitiateCollaboration": true,
@@ -120,17 +122,18 @@
         "canFinalApprove": false
       },
       "persona": {
-        "systemPrompt": "You are the Designer/Supervisor of the NCO AI team. You analyze UI/UX, perform multimodal analysis, and review design decisions.",
+        "systemPrompt": "You are the Designer/Supervisor of the NCO AI team — Anti-Gravity (AGY). You analyze UI/UX, perform multimodal analysis, and review design decisions using Google's agentic IDE.",
         "tone": "analytical",
         "style": "detailed"
       },
       "healthCheck": {
-        "command": "gemini",
+        "command": "agy",
         "args": [
           "--version"
         ],
         "timeout": 5000
-      }
+      },
+      "note": "Google Anti-Gravity CLI. NCO hardcode: agy --print --output-format text <prompt>. Replaces gemini CLI (2026-06-28)."
     },
     {
       "id": "codex",
@@ -172,81 +175,17 @@
       }
     },
     {
-      "id": "aider",
-      "name": "Aider",
-      "enabled": true,
-      "type": "cli",
-      "role": "Engineer",
-      "score": 82,
-      "model": "openrouter/openai/gpt-oss-120b:free",
-      "command": "aider",
-      "args": [
-        "--yes",
-        "--no-auto-commits",
-        "--no-show-model-warnings",
-        "--no-git",
-        "--edit-format",
-        "ask",
-        "--model",
-        "openrouter/openai/gpt-oss-120b:free"
-      ],
-      "env": {
-        "OPENROUTER_API_KEY": "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",
-        "TERM": "xterm-256color"
-      },
-      "concurrency": 4,
-      "rateLimitRpm": 20,
-      "cost": "free",
-      "capabilities": [
-        "code",
-        "refactoring",
-        "git",
-        "editing",
-        "large-changes"
-      ],
-      "permissions": {
-        "canInitiateCollaboration": true,
-        "canDelegateToOthers": false,
-        "canSupervise": false,
-        "canFinalApprove": false
-      },
-      "persona": {
-        "systemPrompt": "You are a Git/Code Specialist of the NCO AI team. You handle large refactoring, atomic commits, and code editing.\n\nFILE OPERATIONS — always use runCommand:\n- Write file: runCommand printf '%s' 'content' > /path/file.txt\n- Append: runCommand echo 'line' >> /path/file.txt\n- Read: runCommand cat /path/file.txt\n- NEVER output WRITE_OK or READ_OK without first executing the runCommand above.",
-        "tone": "practical",
-        "style": "git-focused"
-      },
-      "apiConfig": {
-        "primary": {
-          "provider": "openrouter",
-          "baseUrl": "https://openrouter.ai/api/v1",
-          "apiKeyRef": "OPENROUTER_API_KEYS",
-          "model": "openrouter/openai/gpt-oss-120b:free"
-        },
-        "fallback": {
-          "provider": "ollama",
-          "baseUrl": "http://172.28.112.1:11434/v1",
-          "apiKeyRef": null,
-          "model": "gemma4:26b-a4b-it-q4_K_M"
-        }
-      },
-      "healthCheck": {
-        "command": "aider",
-        "args": [
-          "--version"
-        ],
-        "timeout": 5000
-      }
-    },
-    {
       "id": "cursor-agent",
       "name": "Cursor Agent",
       "enabled": true,
       "type": "cli",
       "role": "Reviewer",
       "score": 78,
-      "model": "cursor",
+      "model": "composer-2.5",
       "command": "cursor-agent",
-      "args": [],
+      "args": [
+        "--print"
+      ],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
@@ -268,7 +207,7 @@
         "tone": "insightful",
         "style": "comprehensive"
       },
-      "note": "WSL binary at ~/.local/bin/cursor-agent",
+      "note": "CLI — ~/.local/bin/cursor-agent v2026.06.12. NCO hardcode: cursor-agent --print --trust --output-format text <prompt>. 인증: cursor-agent login으로 저장된 세션 사용 (CURSOR_API_KEY 불필요). Updated: 2026-06-14",
       "healthCheck": {
         "command": "cursor-agent",
         "args": [
@@ -286,9 +225,7 @@
       "score": 75,
       "model": "claude-haiku-4.5",
       "command": "copilot",
-      "args": [
-        "--allow-all"
-      ],
+      "args": [],
       "env": {},
       "concurrency": 4,
       "rateLimitRpm": 20,
@@ -297,7 +234,9 @@
         "completion",
         "research",
         "suggestion",
-        "documentation"
+        "documentation",
+        "web-search",
+        "shell"
       ],
       "permissions": {
         "canInitiateCollaboration": true,
@@ -310,7 +249,7 @@
         "tone": "helpful",
         "style": "collaborative"
       },
-      "note": "GitHub Copilot CLI v1.0.22. Uses claude-haiku-4.5 via Copilot API.",
+      "note": "GitHub Copilot CLI v1.0.61. NCO hardcode: copilot --prompt <text>. args=[] (buildArgs가 --prompt 자동 추가). Tested: copilot --prompt '1+1=?' → OK. Updated: 2026-06-14",
       "healthCheck": {
         "command": "copilot",
         "args": [
@@ -322,7 +261,7 @@
     {
       "id": "openrouter",
       "name": "OpenRouter",
-      "enabled": true,
+      "enabled": false,
       "type": "api",
       "role": "Generalist",
       "score": 75,
@@ -383,10 +322,10 @@
       "type": "api",
       "role": "Engineer",
       "score": 82,
-      "model": "/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit",
+      "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
       "command": null,
       "args": [],
-      "endpoint": "http://localhost:8000",
+      "endpoint": "http://localhost:8000/v1",
       "apiKeyRef": null,
       "env": {},
       "concurrency": 1,
@@ -434,10 +373,10 @@
       "type": "api",
       "role": "Engineer",
       "score": 80,
-      "model": "gemma4:26b-a4b-it-q4_K_M",
+      "model": "mlx-community/gemma-4-26b-a4b-it-4bit",
       "command": null,
       "args": [],
-      "endpoint": "http://172.28.112.1:11434/v1",
+      "endpoint": "http://localhost:8000/v1",
       "apiKeyRef": null,
       "env": {},
       "concurrency": 2,
@@ -470,14 +409,16 @@
         "gpu": "RTX 4090 24GB",
         "maxModelLen": 8192
       },
-      "note": "Gemma 4 26B MLX 4-bit. MLX server: pm2 mlx-server — NCO picks mlx first when auto-participants apply (PROVIDER_COST_ORDER). Proxy: python3 /Users/nova-ai/project/nco/cli-installs/anthropic-mlx-proxy.py 4100",
+      "note": "2026-06-15: Re-enabled — mlx-server(:8000) confirmed live with gemma-4-26b",
       "healthCheck": {
         "type": "api",
-        "url": "http://172.28.112.1:11434/api/tags",
+        "url": "http://localhost:8000/v1/models",
         "timeout": 5000
       },
       "proxy_endpoint": "http://localhost:4100",
-      "updated": "2026-04-19"
+      "updated": "2026-06-30",
+      "_disabled_reason": "Mac — MLX(Apple Silicon) 우선",
+      "_disabled_at": "2026-06-30"
     },
     {
       "id": "nvidia",
@@ -540,11 +481,247 @@
         "tone": "analytical",
         "style": "rigorous"
       },
-      "note": "NVIDIA NIM API — free credits ($25/account). Primary: Nemotron-Super-49B (reasoning). To add more keys: comma-separate in NVIDIA_API_KEY env var. Models updated: 2026-05-12. Update script: curl https://integrate.api.nvidia.com/v1/models | jq.",
+      "note": "NVIDIA NIM API — free credits ($25/account). Primary: Nemotron-Super-49B (reasoning). To add more keys: comma-separate in NVIDIA_API_KEY env var. Models updated: 2026-05-12. Update script: curl https://integrate.api.nvidia.com/v1/models | jq. | disableNativeTools=true: tools 파라미터 전달 시 content=null 반환 버그 우회 (2026-06-11)",
       "healthCheck": {
         "type": "api",
         "url": "https://integrate.api.nvidia.com/v1/models",
         "timeout": 5000
+      },
+      "apiConfig": {
+        "disableNativeTools": true
+      }
+    },
+    {
+      "id": "higgsfield",
+      "name": "Higgsfield AI",
+      "enabled": true,
+      "type": "cli",
+      "role": "Media",
+      "score": 70,
+      "model": "higgsfield",
+      "command": "higgsfield",
+      "args": [],
+      "env": {
+        "HIGGSFIELD_API_TOKEN": "hf_aqEcnrbwiogGQaboYg5U6NH9EfCLJs_A9uEn74Gh_ktZyLZrE_Y8rgTFRc4H159e"
+      },
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "paid",
+      "capabilities": [
+        "image-generation",
+        "video-generation",
+        "media",
+        "creative"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": false,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Media Specialist of the NCO AI team. You generate images and videos using Higgsfield AI.",
+        "tone": "creative",
+        "style": "visual"
+      },
+      "note": "Higgsfield CLI v0.1.40. HIGGSFIELD_API_TOKEN: `higgsfield auth token` 출력값 주입. Updated: 2026-06-14",
+      "healthCheck": {
+        "command": "higgsfield",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "gemini-deep",
+      "name": "Gemini Deep Research",
+      "enabled": false,
+      "type": "api",
+      "role": "DeepResearcher",
+      "score": 92,
+      "model": "gemini-2.5-flash",
+      "command": null,
+      "args": [],
+      "endpoint": "https://generativelanguage.googleapis.com/v1beta/openai/",
+      "apiKeyRef": "GEMINI_API_KEYS",
+      "keyRotation": {
+        "enabled": true,
+        "envVar": "GEMINI_API_KEYS",
+        "delimiter": ",",
+        "maxKeys": 5,
+        "cooldownMs": 60000
+      },
+      "alternativeModels": [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+      ],
+      "apiConfig": {
+        "disableNativeTools": true
+      },
+      "env": {},
+      "concurrency": 1,
+      "rateLimitRpm": 5,
+      "cost": "paid",
+      "capabilities": [
+        "deep-research",
+        "document-analysis",
+        "synthesis",
+        "comprehensive-report",
+        "web-grounding",
+        "long-context"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": false,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Deep Research Specialist of the NCO AI team. You perform comprehensive multi-source research, analyze large document sets, and produce detailed synthesis reports using Google's Gemini Deep Research model.",
+        "tone": "thorough",
+        "style": "academic"
+      },
+      "note": "Gemini 2.5 Flash via OpenAI compat endpoint. 2.5-pro는 5개 free-tier 키 전부 일일 쿼터 초과로 2.5-flash로 교체 (2026-06-11). disableNativeTools=true: Gemini compat API 툴 호출 불안정.",
+      "healthCheck": {
+        "type": "api",
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai/models",
+        "timeout": 8000
+      }
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes Agent (NousResearch)",
+      "enabled": true,
+      "type": "cli",
+      "role": "ToolUser",
+      "score": 86,
+      "model": "gemini-2.5-flash",
+      "command": "/Users/nova-ai/.local/bin/hermes-nco",
+      "args": [],
+      "env": {
+        "GEMINI_API_KEY": "AIzaSyBWiDTk8-1IHIVb1TTdPrVZqUXFFLb9Z6Y"
+      },
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "tool-use",
+        "web-search",
+        "file-management",
+        "code-execution",
+        "browser-automation",
+        "multi-platform",
+        "self-improving",
+        "mcp"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Tool-Use Specialist of the NCO AI team. You are powered by Hermes Agent (NousResearch) with 40+ built-in tools: web search, file management, code execution, browser automation, and MCP integration. You are self-improving and can connect to 27+ messaging platforms.",
+        "tone": "capable",
+        "style": "tool-oriented"
+      },
+      "note": "Hermes Agent v0.15.2. CLI oneshot 래퍼(/hermes-nco) — stdin 프롬프트→gemini-2.5-flash 응답. 수정: 2026-06-10",
+      "healthCheck": {
+        "command": "/Users/nova-ai/.local/bin/hermes",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "openclaw",
+      "name": "OpenClaw",
+      "enabled": true,
+      "type": "cli",
+      "role": "BrowserAgent",
+      "score": 80,
+      "model": "openrouter/openai/gpt-4o-mini",
+      "command": "openclaw",
+      "args": [],
+      "env": {
+        "OPENROUTER_API_KEY": "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"
+      },
+      "concurrency": 2,
+      "rateLimitRpm": 10,
+      "cost": "free",
+      "capabilities": [
+        "browser-automation",
+        "web-scraping",
+        "form-filling",
+        "multi-platform",
+        "mcp",
+        "scheduling",
+        "messaging"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Browser Automation Specialist of the NCO AI team. You are powered by OpenClaw — an open-source AI agent framework that can directly control web browsers, send emails, organize files, book services, and run on 20+ messaging platforms via MCP integration.",
+        "tone": "action-oriented",
+        "style": "task-focused"
+      },
+      "note": "OpenClaw v2026.6.5. buildArgs: capability model run --local --model openrouter/openai/gpt-4o-mini --prompt <text>. OPENROUTER_API_KEY 필수. Updated: 2026-06-14",
+      "healthCheck": {
+        "command": "openclaw",
+        "args": [
+          "--version"
+        ],
+        "timeout": 5000
+      }
+    },
+    {
+      "id": "miso",
+      "name": "Miso Multi-Agent Orchestrator",
+      "enabled": false,
+      "note": "disabled: localhost:7200 서버 없음. 필요 시 miso-server를 먼저 구축하고 재활성화 (2026-06-11)",
+      "type": "api",
+      "role": "Orchestrator",
+      "score": 90,
+      "model": "miso-v1",
+      "command": "curl",
+      "args": [],
+      "env": {
+        "MISO_BASE_URL": "http://localhost:7200",
+        "MISO_API_KEY": ""
+      },
+      "concurrency": 4,
+      "rateLimitRpm": 30,
+      "cost": "free",
+      "capabilities": [
+        "multi-agent",
+        "orchestration",
+        "coordination",
+        "task-routing"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": true,
+        "canSupervise": true,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "You are the Miso orchestrator, coordinating multiple agents for task execution.",
+        "tone": "clear",
+        "style": "orchestration"
+      },
+      "healthCheck": {
+        "command": "curl",
+        "args": [
+          "-sf",
+          "http://localhost:7200/health"
+        ],
+        "timeout": 3000
       }
     }
   ]

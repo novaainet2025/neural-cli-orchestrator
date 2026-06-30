@@ -27,12 +27,13 @@ export function buildOrchestrationSystemPrompt(
     '## Team: ' + (teamStateLines || 'None'),
     '',
     NCO_TOOL_XML_INSTRUCTIONS,
+    NCO_RESPONSE_QUALITY_HINT,
   ].join('\n');
 }
 
 /** Compact version — omits team state for short/turbo runs. */
 export function buildCompactSystemPrompt(baseSystem: string): string {
-  return [baseSystem, '', NCO_TOOL_XML_INSTRUCTIONS].join('\n');
+  return [baseSystem, '', NCO_TOOL_XML_INSTRUCTIONS, NCO_RESPONSE_QUALITY_HINT].join('\n');
 }
 
 /** Extra line for OpenAI-compatible APIs that register `tools` (MLX, OpenRouter): prefer native tool_calls over XML. */
@@ -43,8 +44,20 @@ export const NCO_API_NATIVE_TOOLS_HINT = [
   '- Edit: Use `editFile` with unique `old` text block.',
 ].join('\n');
 
+/** Structured output quality rules — appended for all task responses to maximise QualityGate scores. */
+export const NCO_RESPONSE_QUALITY_HINT = [
+  '',
+  '# Response Quality Standards',
+  '- Structure: use ## markdown headers, ``` code blocks, and - bullet lists for every response.',
+  '- Depth: provide complete implementations, edge-case analysis, and usage examples.',
+  '- Confidence: state conclusions clearly — avoid "maybe", "might", "not sure".',
+  '- Code tasks: always include a runnable code block, brief explanation, and complexity note.',
+  '- Design/architecture: include headers, layered breakdown, and tradeoff list.',
+  '- Reviews: enumerate specific issues with ## header per issue and - recommended fix.',
+].join('\n');
+
 export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: string): string {
-  return `${buildOrchestrationSystemPrompt(baseSystem, teamStateLines)}\n\n${NCO_API_NATIVE_TOOLS_HINT}`;
+  return `${buildOrchestrationSystemPrompt(baseSystem, teamStateLines)}\n\n${NCO_API_NATIVE_TOOLS_HINT}${NCO_RESPONSE_QUALITY_HINT}`;
 }
 
 /**

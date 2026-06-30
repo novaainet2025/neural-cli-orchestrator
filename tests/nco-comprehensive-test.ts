@@ -686,11 +686,11 @@ async function testTeamWork() {
     const r = await api('/api/ai-providers');
     const providers = r.data.providers;
     const management = providers.filter((p: any) => ['claude-code', 'opencode'].includes(p.id));
-    const execution = providers.filter((p: any) => ['codex', 'aider', 'gemini'].includes(p.id));
+    const execution = providers.filter((p: any) => ['codex', 'agy'].includes(p.id));
     const quality = providers.filter((p: any) => ['cursor-agent', 'ollama'].includes(p.id));
     const info = providers.filter((p: any) => ['copilot', 'openrouter'].includes(p.id));
     assert(management.length === 2, `Management 에이전트: ${management.length}`);
-    assert(execution.length === 3, `Execution 에이전트: ${execution.length}`);
+    assert(execution.length === 2, `Execution 에이전트: ${execution.length}`);
     assert(quality.length === 2, `Quality 에이전트: ${quality.length}`);
     assert(info.length === 2, `Information 에이전트: ${info.length}`);
   });

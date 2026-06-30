@@ -80,6 +80,8 @@ export class ApiExecutor {
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
+    let keyRotations = 0;
+    const maxKeyRotations = this.keys.length * 2 + 1; // guard: all keys + 1 extra attempt
 
     const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId);
 
@@ -93,7 +95,9 @@ export class ApiExecutor {
 
     const tools = getNcoOpenAiTools();
     let finalOutput = '';
-    let useNativeTools = true;
+    // Some providers (e.g. nvidia nemotron) return content=null silently when tools are passed
+    // Use apiConfig.disableNativeTools to force XML-only tool protocol for those providers
+    let useNativeTools = !(this.provider.apiConfig as any)?.disableNativeTools;
 
     try {
       while (iterations < MAX_ITERATIONS) {
@@ -182,16 +186,26 @@ export class ApiExecutor {
             continue;
           }
 
-          finalOutput = extractThinking(textContent);
+          // reasoning_content is used by some models (nvidia nemotron, deepseek-r1)
+          const reasoning = typeof (msg as any).reasoning === 'string' ? (msg as any).reasoning
+            : typeof (msg as any).reasoning_content === 'string' ? (msg as any).reasoning_content : '';
+          finalOutput = extractThinking(textContent || reasoning);
           break;
         } catch (err: unknown) {
           const status = err && typeof err === 'object' && 'status' in err
             ? (err as { status?: number }).status
             : undefined;
           if (status === 429 && this.keys.length > 1) {
+            keyRotations++;
+            if (keyRotations > maxKeyRotations) {
+              const message = `All ${this.keys.length} API keys exhausted (429 rate limit). Giving up after ${keyRotations} rotations.`;
+              log.error({ agentId }, message);
+              this.sandbox.recordFailure(message);
+              throw new Error(message);
+            }
             this.cooldowns.set(this.keyIndex, Date.now() + (this.provider.keyRotation?.cooldownMs || 60000));
             this.keyIndex = (this.keyIndex + 1) % this.keys.length;
-            log.warn({ agentId, keyIndex: this.keyIndex }, 'Rate limited, rotating key');
+            log.warn({ agentId, keyIndex: this.keyIndex, keyRotations }, 'Rate limited, rotating key');
             iterations--;
             continue;
           }
@@ -224,6 +238,17 @@ export class ApiExecutor {
       }
     } finally {
       await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
+    }
+
+    // Fallback: if finalOutput is empty, collect last assistant text from history
+    if (!finalOutput) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+          finalOutput = extractThinking(m.content);
+          break;
+        }
+      }
     }
 
     return {

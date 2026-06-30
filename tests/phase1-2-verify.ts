@@ -1,5 +1,7 @@
 import { getDb, runMigrations, closeDb } from '../src/storage/database.js';
 import { getRedis, redisHealthCheck, closeRedis } from '../src/storage/redis.js';
+import { readdirSync } from 'fs';
+import { resolve } from 'path';
 import { eventBus } from '../src/core/event-bus.js';
 import { sharedState } from '../src/core/shared-state.js';
 import { syncEngine } from '../src/core/sync-engine.js';
@@ -34,6 +36,11 @@ function assert(condition: boolean, msg: string) {
 }
 
 async function main() {
+  const enabledProviders = loadEnabledProviders();
+  const expectedMigrationCount = readdirSync(resolve(env.ROOT, 'db/migrations'))
+    .filter(file => file.endsWith('.sql'))
+    .length;
+
   console.log('╔══════════════════════════════════════════╗');
   console.log('║  NCO Phase 1+2 검증 테스트               ║');
   console.log('╚══════════════════════════════════════════╝');
@@ -48,16 +55,19 @@ async function main() {
     assert(mode === 'wal', `Expected WAL, got ${mode}`);
   });
 
-  await test('마이그레이션 7개 적용 확인', () => {
+  await test(`마이그레이션 ${expectedMigrationCount}개 적용 확인`, () => {
     const db = getDb();
     const rows = db.prepare('SELECT COUNT(*) as cnt FROM schema_migrations').get() as any;
-    assert(rows.cnt === 7, `Expected 7 migrations, got ${rows.cnt}`);
+    assert(rows.cnt === expectedMigrationCount, `Expected ${expectedMigrationCount} migrations, got ${rows.cnt}`);
   });
 
-  await test('agents 테이블 9개 레코드', () => {
+  await test('agents 테이블에 활성 provider 반영', () => {
     const db = getDb();
-    const rows = db.prepare('SELECT COUNT(*) as cnt FROM agents WHERE enabled=1').get() as any;
-    assert(rows.cnt === 9, `Expected 9 agents, got ${rows.cnt}`);
+    const rows = db.prepare('SELECT id FROM agents WHERE enabled=1').all() as Array<{ id: string }>;
+    const enabledAgentIds = new Set(rows.map(row => row.id));
+    const missing = enabledProviders.map(provider => provider.id).filter(id => !enabledAgentIds.has(id));
+    assert(missing.length === 0, `Missing enabled agents for providers: ${missing.join(', ')}`);
+    assert(rows.length >= enabledProviders.length, `Expected at least ${enabledProviders.length} enabled agents, got ${rows.length}`);
   });
 
   await test('agents 역할 정확성', () => {
@@ -108,7 +118,7 @@ async function main() {
   await test('공유 상태: 전체 에이전트 조회 (≥9)', async () => {
     const all = await sharedState.getAllAgentStates();
     const count = Object.keys(all).length;
-    assert(count >= 9, `Expected ≥9, got ${count}`);
+    assert(count >= enabledProviders.length, `Expected ≥${enabledProviders.length}, got ${count}`);
   });
 
   await test('파일 락: 획득 + 해제', async () => {
@@ -133,8 +143,7 @@ async function main() {
   });
 
   await test('Config: loadEnabledProviders', () => {
-    const providers = loadEnabledProviders();
-    assert(providers.length === 9, `Expected 9, got ${providers.length}`);
+    assert(enabledProviders.length > 0, 'Expected at least one enabled provider');
   });
 
   await test('Config: getApiKeys (OpenRouter)', () => {

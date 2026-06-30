@@ -44,6 +44,7 @@ export interface QueuedTask {
   priority?: number;
   metadata?: {
     invocationId?: string;
+    projectDir?: string;   // Override PROJECT_DIR for this specific task
     [key: string]: unknown;
   };
 }
@@ -172,7 +173,7 @@ class TaskQueueManager {
   private async setupBullMQ(agentId: string, concurrency: number, entry: AgentQueueEntry): Promise<void> {
     const redis = await getRedis();
     const connection = { host: redis.options.host || '127.0.0.1', port: Number(redis.options.port || 6379) };
-    const queueName = `nco:agent:${agentId}`;
+    const queueName = `nco-agent-${agentId}`;  // `:` is not allowed in BullMQ queue names
 
     entry.queue = new Queue<QueuedTask>(queueName, { connection });
 
@@ -357,7 +358,7 @@ class TaskQueueManager {
     try {
       // Wait for job to complete via QueueEvents
       const result = await job.waitUntilFinished(
-        new QueueEvents(`nco:agent:${task.agentId}`, {
+        new QueueEvents(`nco-agent-${task.agentId}`, {
           connection: { host: (await getRedis()).options.host || '127.0.0.1', port: Number((await getRedis()).options.port || 6379) },
         }),
         300_000, // 5 min timeout
@@ -389,8 +390,30 @@ class TaskQueueManager {
     }
 
     try {
-      const result = await this.executor(task, controller.signal);
-      entry.completed++;
+      let attempts = 0;
+      let result: { success: boolean; output: string; error?: string } = { success: false, output: '' };
+
+      while (attempts < MAX_RETRIES) {
+        result = await this.executor(task, controller.signal);
+        if (result.success) break;
+
+        attempts++;
+        if (attempts >= MAX_RETRIES) {
+          log.error({ taskId: task.taskId, attempts }, 'Task failed after max retries');
+          break;
+        }
+
+        const backoff = BASE_BACKOFF_MS * Math.pow(2, attempts - 1);
+        log.warn({ taskId: task.taskId, attempts, backoff, error: result.error || 'Unknown error' }, 'Retrying task...');
+        await new Promise(resolve => setTimeout(resolve, backoff));
+      }
+
+      if (result.success) {
+        entry.completed++;
+      } else {
+        entry.failed++;
+      }
+
       if (invocationId) {
         const summary = (result.output || '').slice(0, 500);
         invocationTracker.completeInvocation(
@@ -445,6 +468,26 @@ class TaskQueueManager {
       }
     }
     return false;
+  }
+
+  async getActiveJobs(): Promise<Job<QueuedTask>[]> {
+    const jobs: Job<QueuedTask>[] = [];
+    for (const entry of this.agents.values()) {
+      if (entry.mode === 'bullmq' && entry.queue) {
+        jobs.push(...await entry.queue.getActive());
+      }
+    }
+    return jobs;
+  }
+
+  async getWaitingJobs(): Promise<Job<QueuedTask>[]> {
+    const jobs: Job<QueuedTask>[] = [];
+    for (const entry of this.agents.values()) {
+      if (entry.mode === 'bullmq' && entry.queue) {
+        jobs.push(...await entry.queue.getWaiting());
+      }
+    }
+    return jobs;
   }
 
   /**

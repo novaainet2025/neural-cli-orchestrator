@@ -3,14 +3,15 @@
 # AI CLI Tools Installer & Updater (no sudo required)
 # All tools installed to ~/.local (user-local)
 #
-# Installs: gemini-cli, codex, cursor-agent, aider, copilot, ollama (CLI check),
+# Installs: gemini-cli, codex, cursor-agent, copilot, ollama (CLI check),
 #           claude-code, opencode, gemini-api (google-genai)
 #
 # Usage:
-#   ./install-all.sh          # Install all tools
-#   ./install-all.sh update   # Update all tools
-#   ./install-all.sh status   # Show installed status
-#   ./install-all.sh <tool>   # Install/update specific tool
+#   ./install-all.sh                    # Install all tools
+#   ./install-all.sh update             # Update all tools
+#   ./install-all.sh status             # Show installed status
+#   ./install-all.sh cleanup-install-versions [KEEP]   # Drop old cursor-agent version dirs (default: keep newest)
+#   ./install-all.sh <tool>             # Install/update specific tool
 #
 set -eo pipefail
 
@@ -152,14 +153,6 @@ install_cursor_agent() {
     log "Cursor Agent installed"
 }
 
-install_aider() {
-    info "Installing Aider..."
-    uv tool install --force aider-chat 2>/dev/null || \
-    pipx install aider-chat --force 2>/dev/null || \
-    python3 -m pip install --user --break-system-packages aider-chat
-    log "Aider installed"
-}
-
 install_copilot() {
     info "Installing GitHub Copilot CLI..."
     npm install -g @githubnext/github-copilot-cli@latest 2>/dev/null || \
@@ -242,10 +235,8 @@ update_all() {
     # uv/pipx updates
     info "Updating Python tools..."
     if command -v uv &>/dev/null; then
-        uv tool upgrade aider-chat 2>/dev/null || true
         uv tool upgrade google-genai 2>/dev/null || true
     else
-        pipx upgrade aider-chat 2>/dev/null || true
         pipx upgrade google-genai 2>/dev/null || true
     fi
 
@@ -299,8 +290,6 @@ show_status() {
             fi
         fi
     fi
-    check_tool "Aider"          aider
-
     check_tool "Copilot CLI"    github-copilot-cli
 
     check_tool "Ollama"         ollama
@@ -320,6 +309,48 @@ show_status() {
     check_tool "pipx"           pipx
 
     echo ""
+}
+
+# ─── Cleanup old Cursor Agent version directories ────────────────────────────
+# Each release is ~/.local/share/cursor-agent/versions/YYYY.MM.DD-<hash>/
+# Passing KEEP (e.g. 2026.05.05-84a231c) retains that folder and removes the rest.
+
+cleanup_install_versions() {
+    local keep="${1:-}"
+    local ca_path="$HOME/.local/share/cursor-agent/versions"
+
+    if [ ! -d "$ca_path" ]; then
+        warn "No Cursor Agent versions directory: $ca_path"
+        return 0
+    fi
+
+    if [ -z "$keep" ]; then
+        keep=$(find "$ca_path" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sed 's|.*/||' | sort -V | tail -n 1)
+    fi
+
+    if [ -z "$keep" ] || [ ! -d "$ca_path/$keep" ]; then
+        err "Keep target missing or invalid: ${keep:-"(empty)"} (expected under $ca_path)"
+        ls -la "$ca_path" 2>/dev/null || true
+        return 1
+    fi
+
+    info "Keeping Cursor Agent version: $keep"
+    local d name removed=0
+    for d in "$ca_path"/*; do
+        [ -d "$d" ] || continue
+        name=$(basename "$d")
+        if [ "$name" = "$keep" ]; then
+            continue
+        fi
+        warn "Removing old install: $d"
+        rm -rf "$d"
+        removed=$((removed + 1))
+    done
+    if [ "$removed" -eq 0 ]; then
+        log "No extra Cursor Agent versions to remove."
+    else
+        log "Removed $removed old Cursor Agent version director(ies)."
+    fi
 }
 
 # ─── Shell Config (add paths to .bashrc) ─────────────────────────────────────
@@ -362,11 +393,13 @@ main() {
         status)
             show_status
             ;;
+        cleanup-install-versions)
+            cleanup_install_versions "${2:-}"
+            ;;
         redis)          install_redis ;;
         gemini-cli)     install_prereqs; install_gemini_cli ;;
         codex)          install_prereqs; install_codex ;;
         cursor-agent)   install_prereqs; install_cursor_agent ;;
-        aider)          install_prereqs; install_aider ;;
         copilot)        install_prereqs; install_copilot ;;
         ollama|vllm)   install_prereqs; install_ollama ;;
         claude-code)    install_prereqs; install_claude_code ;;
@@ -384,7 +417,6 @@ main() {
             install_gemini_cli   || err "Gemini CLI failed"
             install_codex        || err "Codex CLI failed"
             install_cursor_agent || err "Cursor Agent failed"
-            install_aider        || err "Aider failed"
             install_copilot      || err "Copilot CLI failed"
             install_ollama       || err "Ollama check failed"
             install_claude_code  || err "Claude Code failed"
@@ -396,9 +428,9 @@ main() {
             echo -e "${GREEN}Done! Run 'source ~/.bashrc' or open a new terminal.${NC}"
             ;;
         *)
-            echo "Usage: $0 {install|update|status|<tool-name>}"
+            echo "Usage: $0 {install|update|status|cleanup-install-versions [KEEP]|<tool-name>}"
             echo ""
-            echo "Tools: redis, gemini-cli, codex, cursor-agent, aider, copilot,"
+            echo "Tools: redis, gemini-cli, codex, cursor-agent, copilot,"
             echo "       ollama, claude-code, opencode, gemini-api"
             exit 1
             ;;

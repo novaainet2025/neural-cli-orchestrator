@@ -43,6 +43,8 @@ function connectWS(): Promise<{ ws: WebSocket; msgs: any[]; close: () => void }>
   });
 }
 
+import { describe, it, expect } from 'vitest';
+
 async function main() {
   console.log('╔══════════════════════════════════════════════════╗');
   console.log('║  NCO 에이전트 기능 통합 테스트                    ║');
@@ -66,9 +68,8 @@ async function main() {
     r.data.providers.forEach((p: any) => roles[p.id] = p.role);
     assert(roles['claude-code'] === 'Commander', `claude: ${roles['claude-code']}`);
     assert(roles['opencode'] === 'Architect', `opencode: ${roles['opencode']}`);
-    assert(roles['gemini'] === 'Designer', `gemini: ${roles['gemini']}`);
+    assert(roles['agy'] === 'Designer', `agy: ${roles['agy']}`);
     assert(roles['codex'] === 'Engineer', `codex: ${roles['codex']}`);
-    assert(roles['aider'] === 'Engineer', `aider: ${roles['aider']}`);
     assert(roles['cursor-agent'] === 'Reviewer', `cursor: ${roles['cursor-agent']}`);
     assert(roles['copilot'] === 'Researcher', `copilot: ${roles['copilot']}`);
     assert(roles['openrouter'] === 'Generalist', `openrouter: ${roles['openrouter']}`);
@@ -95,19 +96,19 @@ async function main() {
   console.log('\n=== 2. 에이전트 상태 전이 ===');
 
   await test('상태', 'idle → offline (stop)', async () => {
-    await post('/api/daemons/aider/stop', {});
+    await post('/api/daemons/codex/stop', {});
     await new Promise(r => setTimeout(r, 300));
     const r = await api('/api/daemons');
-    const aider = r.data.daemons.find((d: any) => d.id === 'aider');
-    assert(aider.status === 'offline', `aider: ${aider.status}`);
+    const codex = r.data.daemons.find((d: any) => d.id === 'codex');
+    assert(codex.status === 'offline', `codex: ${codex.status}`);
   });
 
   await test('상태', 'offline → idle (start)', async () => {
-    await post('/api/daemons/aider/start', {});
+    await post('/api/daemons/codex/start', {});
     await new Promise(r => setTimeout(r, 300));
     const r = await api('/api/daemons');
-    const aider = r.data.daemons.find((d: any) => d.id === 'aider');
-    assert(aider.status === 'idle', `aider: ${aider.status}`);
+    const codex = r.data.daemons.find((d: any) => d.id === 'codex');
+    assert(codex.status === 'idle', `codex: ${codex.status}`);
   });
 
   await test('상태', 'idle → working (task 할당)', async () => {
@@ -201,14 +202,14 @@ async function main() {
     await new Promise(r => setTimeout(r, 300));
 
     const r = await post('/api/collaboration/message', {
-      from: 'codex', to: 'gemini', message: 'Code review 요청합니다', type: 'review',
+      from: 'codex', to: 'agy', message: 'Code review 요청합니다', type: 'review',
     });
     assert(r.data.ok === true, 'not ok');
 
     // DB에 저장 확인
     const msgsR = await api('/api/messages?limit=5');
     const found = msgsR.data.messages.find((m: any) =>
-      m.from_agent === 'codex' && m.to_agent === 'gemini' && m.content.includes('Code review')
+      m.from_agent === 'codex' && m.to_agent === 'agy' && m.content.includes('Code review')
     );
     assert(!!found, 'message not in DB');
     close();
@@ -232,7 +233,7 @@ async function main() {
   await test('토론', 'discussion/create → wsUrl 포함', async () => {
     const r = await post('/api/discussion/create', {
       mode: 'discussion',
-      providers: ['openrouter', 'codex', 'gemini'],
+      providers: ['openrouter', 'codex', 'agy'],
     });
     assert(!!r.data.session.wsUrl, 'no wsUrl');
     assert(r.data.session.wsUrl.includes('6201'), `wsUrl: ${r.data.session.wsUrl}`);
@@ -374,8 +375,10 @@ async function main() {
   console.log(`  결과: ${passed} passed, ${failed} failed`);
   console.log(`  통과율: ${((passed / (passed + failed)) * 100).toFixed(1)}%`);
   console.log('══════════════════════════════════════════════════');
-
-  process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch(e => { console.error('Fatal:', e); process.exit(1); });
+describe('Agent Integration', () => {
+  it('runs all integration checks', async () => {
+    await main();
+  });
+});

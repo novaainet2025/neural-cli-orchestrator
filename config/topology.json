@@ -7,10 +7,10 @@
     "mlx": 8000
   },
   "paths": {
-    "backend": "/mnt/d/neural-cli-orchestrator",
-    "dashboard": "/mnt/d/NCO-Dashboard",
+    "backend": "/Users/nova-ai/project/nco",
+    "dashboard": "/Users/nova-ai/project/nco/dashboard",
     "database": "./db/nco.db",
     "stateFile": "./db/worker-state.json",
-    "workspace": "/mnt/d/NCO-Dashboard/.nco-workspace"
+    "workspace": "/Users/nova-ai/project/nco/.nco-workspace"
   }
 }

@@ -29,6 +29,8 @@ const ABSOLUTE_MAX_ITERATIONS = 10;
 const MAX_REQUIREMENT_LENGTH = 5000;
 const HARNESS_TIMEOUT_MS = 30 * 60 * 1000; // 30분
 const SCORE_DIMENSIONS = ['security', 'stability', 'centralization', 'isolation', 'improvement'] as const;
+const GAP_ANALYSIS_AGENT = 'cursor-agent';
+const VERIFICATION_AGENT = 'cursor-agent';
 type ScoreDimension = (typeof SCORE_DIMENSIONS)[number];
 
 /** 외부 참조용 기본값 (hardcoding 방지) */
@@ -38,6 +40,8 @@ export const HARNESS_DEFAULTS = {
   ABSOLUTE_MAX_ITERATIONS,
   MAX_REQUIREMENT_LENGTH,
   SCORE_DIMENSIONS,
+  GAP_ANALYSIS_AGENT,
+  VERIFICATION_AGENT,
 } as const;
 
 // ─── Types ────────────────────────────────────────────
@@ -296,9 +300,31 @@ class HarnessEngine {
     // Phase 4: Triple Verification Gate
     const taskId = createId('ht');
     const verifyPhase = await this.runPhase('verification', async () => {
+      const verifier = this.selectPreferredAgent(VERIFICATION_AGENT);
+      let reviewSummary = 'Verifier skipped: no enabled verification agent';
+      if (verifier) {
+        const verificationPrompt = [
+          `[VERIFICATION REVIEW — Iteration ${ctx.iteration}]`,
+          ``,
+          `Requirement:`,
+          ctx.requirement,
+          ``,
+          `Implementation Output (excerpt):`,
+          execPhase.output.slice(0, 2000),
+          ``,
+          `Review this result for correctness, regression risk, missing tests, and edge cases.`,
+          `Respond in 3 lines max with concrete findings or "No major issues found".`,
+        ].join('\n');
+        try {
+          reviewSummary = await this.executor(verifier, verificationPrompt);
+        } catch (err: any) {
+          reviewSummary = `Verifier failed: ${err.message}`;
+        }
+      }
+
       const vResult = await verificationGate.verify(taskId, []);
       const summary = vResult.results.map(r => `${r.level}: ${r.status}${r.detail ? ` (${r.detail})` : ''}`).join(', ');
-      return `Passed: ${vResult.passed} | ${summary}`;
+      return `Passed: ${vResult.passed} | ${summary}\nReviewer: ${verifier ?? 'none'}\n${reviewSummary}`;
     });
     phases.push(verifyPhase);
 
@@ -352,7 +378,7 @@ class HarnessEngine {
       return JSON.stringify({ gaps: ['No agents available'], tasks: [requirement] });
     }
 
-    const agentId = agents[0]!;
+    const agentId = this.selectPreferredAgent(GAP_ANALYSIS_AGENT) ?? agents[0]!;
     const prompt = [
       `[GAP ANALYSIS — Iteration ${iteration}]`,
       ``,
@@ -375,6 +401,12 @@ class HarnessEngine {
     } catch (err: any) {
       return JSON.stringify({ gaps: [err.message], tasks: [requirement] });
     }
+  }
+
+  private selectPreferredAgent(preferredAgentId: string): string | null {
+    const agents = agentManager.listEnabledIds();
+    if (agents.includes(preferredAgentId)) return preferredAgentId;
+    return agents[0] ?? null;
   }
 
   // ─── Quality Scoring ───────────────────────────────

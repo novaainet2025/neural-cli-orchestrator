@@ -23,6 +23,7 @@ Endpoints proxied:
 """
 
 import json
+import os
 import re
 import uuid
 import threading
@@ -36,16 +37,41 @@ PROXY_PORT   = 4100
 MLX_BASE     = "http://localhost:8000/v1"
 # Gemma 4 26B on MLX (4K safe, 8K max)
 MAX_TOKENS   = 4096
+FORCE_STREAM = os.environ.get("FORCE_STREAM", "").strip().lower() in ("1", "true", "yes", "on")
+REQUEST_TIMEOUT = 900
 
 # ── GPU 직렬화: Metal 크래시 방지 (동시 GPU 요청 1개로 제한) ──────────────────
 _gpu_semaphore = threading.Semaphore(1)
-_gpu_lock_timeout = 180  # 최대 대기 시간(초)
+_gpu_lock_timeout = REQUEST_TIMEOUT  # 최대 대기 시간(초)
 
 # Gemma/MLX 텍스트 내 도구 호출 — 시작 패턴 (JSON 은 균형 잡힌 {…} 로 추출)
 GEMMA_TOOL_HEAD = re.compile(
     r"<\|?tool_call\|?>\s*call:([\w\-\.:]+)\s*\{",
     re.IGNORECASE | re.DOTALL,
 )
+
+# Lone UTF-16 surrogates break strict JSON parsers (Anthropic API, etc.)
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+
+def _sanitize_str(value: str) -> str:
+    return _SURROGATE_RE.sub("", value)
+
+
+def _sanitize_obj(value):
+    if isinstance(value, str):
+        return _sanitize_str(value)
+    if isinstance(value, list):
+        return [_sanitize_obj(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _sanitize_obj(item) for key, item in value.items()}
+    return value
+
+
+def _parse_json_body(raw: bytes) -> dict:
+    text = raw.decode("utf-8", errors="replace")
+    text = _SURROGATE_RE.sub("", text)
+    return _sanitize_obj(json.loads(text))
 
 
 def _balanced_brace_slice(s: str, open_idx: int):
@@ -363,9 +389,22 @@ def get_mlx_model():
     try:
         r = urlopen(f"{MLX_BASE}/models", timeout=5)
         data = json.loads(r.read())
-        return data["data"][0]["id"]
+        models = [
+            m for m in data.get("data", [])
+            if isinstance(m, dict) and not is_tts_model(m.get("id", ""))
+        ]
+        return models[0]["id"] if models else None
     except Exception:
         return None
+
+
+def is_tts_model(model_id: str) -> bool:
+    name = (model_id or "").lower()
+    return any(token in name for token in ("tts", "text-to-speech", "audio"))
+
+
+def filter_text_models(models):
+    return [m for m in models if isinstance(m, dict) and not is_tts_model(m.get("id", ""))]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -407,11 +446,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
             try:
                 r = urlopen(f"{MLX_BASE}/models", timeout=5)
                 data = json.loads(r.read())
+                filtered = filter_text_models(data.get("data", []))
                 models = [
                     {"id": m["id"], "type": "model",
                      "display_name": m["id"].split("/")[-1],
                      "created_at": "2026-01-01T00:00:00Z"}
-                    for m in data.get("data", [])
+                    for m in filtered
                 ]
                 self._send_json(200, {"data": models})
             except Exception as e:
@@ -426,8 +466,8 @@ class ProxyHandler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
 
         try:
-            raw  = self._read_body()
-            body = json.loads(raw)
+            raw = self._read_body()
+            body = _parse_json_body(raw)
         except Exception:
             self._error(400, "invalid_request_error", "Invalid JSON body")
             return
@@ -480,7 +520,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
         messages  = anthropic_messages_to_openai(req.get("messages", []), system)
         tools     = anthropic_tools_to_openai(req.get("tools"))
         max_tok   = min(int(req.get("max_tokens", MAX_TOKENS)), MAX_TOKENS)
-        streaming = req.get("stream", False)
+        streaming = FORCE_STREAM or req.get("stream", False)
 
         openai_req = {
             "model":       mlx_model,
@@ -524,7 +564,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
     # ── non-streaming ─────────────────────────────────────────────────────────
 
     def _non_stream(self, mlx_req, model):
-        with urlopen(mlx_req, timeout=120) as resp:
+        with urlopen(mlx_req, timeout=REQUEST_TIMEOUT) as resp:
             openai_resp = json.loads(resp.read())
         self._send_json(200, openai_response_to_anthropic(openai_resp, model))
 
@@ -644,7 +684,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
                 emit_text_delta(safe)
 
         try:
-            with urlopen(mlx_req, timeout=180) as resp:
+            with urlopen(mlx_req, timeout=REQUEST_TIMEOUT) as resp:
                 for raw_line in resp:
                     line = raw_line.decode("utf-8", errors="replace").strip()
                     if not line.startswith("data: "):

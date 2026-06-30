@@ -173,7 +173,7 @@ async function main() {
     `).run(createMessageId(), discId2);
     db.prepare(`
       INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
-      VALUES (?, ?, 'gemini', 1, 'proposal', 'I propose solution B')
+      VALUES (?, ?, 'agy', 1, 'proposal', 'I propose solution B')
     `).run(createMessageId(), discId2);
     const msgs = db.prepare("SELECT * FROM discussion_messages WHERE discussion_id=? AND round=1").all(discId2) as any[];
     assert(msgs.length >= 2, `Expected ≥2 messages, got ${msgs.length}`);

@@ -13,6 +13,89 @@ import { env } from '../../utils/config.js';
 
 export async function registerDashboardRoutes(app: FastifyInstance) {
 
+  // ═══ Attendance / 직원 출퇴근 기록 ════════════════════
+  app.get('/api/attendance/records', async (req) => {
+    const db = getDb();
+    const query = req.query as any;
+    const rawLimit = Number(query.limit || 100);
+    const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 500);
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (query.employeeId) {
+      conditions.push('employee_id = ?');
+      params.push(String(query.employeeId));
+    }
+    if (query.employeeName) {
+      conditions.push('employee_name LIKE ?');
+      params.push(`%${String(query.employeeName)}%`);
+    }
+    if (query.department) {
+      conditions.push('department = ?');
+      params.push(String(query.department));
+    }
+    if (query.status) {
+      conditions.push('status = ?');
+      params.push(String(query.status));
+    }
+    if (query.from) {
+      conditions.push('work_date >= ?');
+      params.push(String(query.from));
+    }
+    if (query.to) {
+      conditions.push('work_date <= ?');
+      params.push(String(query.to));
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const totalRow = db.prepare(`SELECT COUNT(*) as c FROM attendance_records ${whereClause}`).get(...params) as { c: number };
+    const records = db.prepare(`
+      SELECT
+        id,
+        employee_id as employeeId,
+        employee_name as employeeName,
+        department,
+        work_date as workDate,
+        check_in_at as checkInAt,
+        check_out_at as checkOutAt,
+        status,
+        note,
+        created_at as createdAt,
+        updated_at as updatedAt
+      FROM attendance_records
+      ${whereClause}
+      ORDER BY work_date DESC, employee_name ASC
+      LIMIT ?
+    `).all(...params, limit);
+
+    return {
+      records,
+      total: totalRow?.c || 0,
+      filters: {
+        employeeId: query.employeeId || null,
+        employeeName: query.employeeName || null,
+        department: query.department || null,
+        status: query.status || null,
+        from: query.from || null,
+        to: query.to || null,
+        limit,
+      },
+    };
+  });
+
+  app.get('/api/employees/:employeeId/attendance', async (req) => {
+    const { employeeId } = req.params as any;
+    const query = req.query as any;
+    const qs = new URLSearchParams();
+    qs.set('employeeId', String(employeeId));
+    if (query.from) qs.set('from', String(query.from));
+    if (query.to) qs.set('to', String(query.to));
+    if (query.status) qs.set('status', String(query.status));
+    if (query.limit) qs.set('limit', String(query.limit));
+    return app.inject({ method: 'GET', url: `/api/attendance/records?${qs.toString()}` });
+  });
+
   // ═══ Task Master / Kanban ═══════════════════════════
   app.get('/api/task-master/tasks', async (req) => {
     const db = getDb();
@@ -403,8 +486,9 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   // Note: This must be the LAST route registered. Routes added in gateway.ts
   // before registerDashboardRoutes() take priority via Fastify's route matching.
   app.all('/api/*', async (req, reply) => {
-    // Handle /api/learn/search inline (catch-all overrides specific routes in Fastify)
     const urlPath = req.url.split('?')[0];
+
+    // GET /api/learn/search
     if (urlPath === '/api/learn/search' && req.method === 'GET') {
       const { knowledgeBase } = await import('../../core/knowledge-base.js');
       const { q, keywords, project, limit } = req.query as any;
@@ -412,6 +496,33 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       if (!searchTerms) return { data: [], message: 'q or keywords parameter required' };
       return { data: knowledgeBase.query(searchTerms, project, Number(limit) || 10) };
     }
+
+    // GET /api/memory — 메모리 통계 + 최근 항목 요약
+    if (urlPath === '/api/memory' && req.method === 'GET') {
+      const { semanticMemory } = await import('../../core/semantic-memory.js');
+      const stats = semanticMemory.getStats();
+      const recent = semanticMemory.search('', { limit: 5 });
+      return { data: recent, stats, message: 'ok' };
+    }
+
+    // GET /api/knowledge — 지식 베이스 요약
+    if (urlPath === '/api/knowledge' && req.method === 'GET') {
+      const { knowledgeBase } = await import('../../core/knowledge-base.js');
+      const { getDb } = await import('../../storage/database.js');
+      const db = getDb();
+      const queryParam = (req.query as any)?.q || '';
+      const context = knowledgeBase.getContext('default');
+      // When no query: return all entries ordered by recency
+      const all = queryParam
+        ? knowledgeBase.query(queryParam, undefined, 20)
+        : db.prepare('SELECT * FROM knowledge_base ORDER BY updated_at DESC LIMIT 20').all();
+      const stats = {
+        total: (db.prepare('SELECT COUNT(*) as c FROM knowledge_base').get() as any)?.c ?? 0,
+        byCategory: db.prepare(`SELECT category, COUNT(*) as count FROM knowledge_base GROUP BY category`).all(),
+      };
+      return { data: all, context, stats, message: 'ok' };
+    }
+
     reply.code(200);
     return { data: [], message: `Route ${req.method} ${req.url} — pending implementation` };
   });

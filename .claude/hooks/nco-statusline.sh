@@ -1,11 +1,12 @@
 #!/bin/bash
 # NCO AI Status Line for Claude Code — macOS Apple Silicon
-# 5줄 출력:
+# 6줄 출력:
 #  1. [이름] [백엔드:모델] 📁 폴더
 #  2. api✓ ws✓ [AI상태]N/9
-#  3. MLX · Apple Silicon · localhost:8000 · proxy:4100   (MLX 모드일 때)
-#  4. 1일 ████ X% · 주별 ████ Y% | Ctx:Z% | $cost
-#  5. ↻ 1일 MM/DD HH:MM · 주별 MM/DD HH:MM
+#  3. NCO ████ X% (NCO:Y↑ 직접:Z↓)
+#  4. Hig plan · online · N cr · 오늘 -M
+#  5. 1일 ████ X% · 주별 ████ Y% | Ctx:Z% | $cost
+#  6. ↻ 1일 MM/DD HH:MM · 주별 MM/DD HH:MM
 
 GREEN='\033[32m'; CYAN='\033[36m'; RED='\033[31m'
 YELLOW='\033[33m'; GRAY='\033[90m'; BLUE='\033[34m'
@@ -205,26 +206,109 @@ API="✗"; WS="✗"
 (echo > /dev/tcp/localhost/6200) 2>/dev/null && API="✓"
 [ "$API" = "✓" ] && (echo > /dev/tcp/localhost/6201) 2>/dev/null && WS="✓"
 
+# ── 에이전트 라벨 사전 (등록되지 않은 ID는 자동 슬러그 처리) ──
 declare -A SHORT=(
   ["claude-code"]="Cla" ["opencode"]="Opn" ["gemini"]="Gem"
-  ["codex"]="Cdx"       ["aider"]="Aid"    ["cursor-agent"]="Cur"
-  ["copilot"]="Cop"     ["openrouter"]="ORT" ["mlx"]="MLX"
+  ["codex"]="Cdx"       ["cursor-agent"]="Cur"
+  ["copilot"]="Cop"     ["openrouter"]="ORT" ["nvidia"]="NIM"
+  ["mlx"]="MLX" ["ollama"]="OlM" ["higgsfield"]="Hig"
 )
-ORDER=("claude-code" "opencode" "gemini" "codex" "aider" "cursor-agent" "copilot" "openrouter" "mlx")
 
 DAEMONS=""; AI_DISPLAY=""; ONLINE=0
-[ "$API" = "✓" ] && DAEMONS=$(curl -s -m 1 http://localhost:6200/api/daemons 2>/dev/null)
+[ "$API" = "✓" ] && DAEMONS=$(curl -s -m 0.5 http://localhost:6200/api/daemons 2>/dev/null)
 
+# ── ORDER 동적 구성 (NCO 실시간 싱크) ─────────────────────────
+# 우선순위:
+#   1. 라이브 /api/daemons — enabled=true 만, evicted_providers 제외
+#   2. health.json — nco-health-monitor.sh 캐시 (백엔드 다운 시)
+#   3. 하드코딩 폴백 (aider 퇴출 반영, 2026-05-14)
+_CAPS_FILE="${HOME}/.claude/nco-perf/capabilities.json"
+_HEALTH_FILE="${HOME}/.claude/nco-perf/health.json"
+ORDER=()
+while IFS= read -r _line; do
+  [ -n "$_line" ] && ORDER+=("$_line")
+done < <(
+  CAPS_FILE="$_CAPS_FILE" HEALTH_FILE="$_HEALTH_FILE" DAEMONS_RAW="$DAEMONS" \
+  python3 - <<'PYEOF' 2>/dev/null
+import json, os
+caps_path = os.environ.get("CAPS_FILE","")
+health_path = os.environ.get("HEALTH_FILE","")
+daemons_raw = os.environ.get("DAEMONS_RAW","")
+
+evicted = set()
+try:
+    caps = json.load(open(caps_path))
+    evicted = set((caps.get("evicted_providers") or {}).keys())
+except Exception:
+    pass
+
+ids = []
+try:
+    if daemons_raw.strip():
+        d = json.loads(daemons_raw)
+        for it in d.get("daemons", []):
+            pid = it.get("id")
+            if not pid or pid in evicted:
+                continue
+            if it.get("enabled") is False:
+                continue
+            ids.append(pid)
+except Exception:
+    ids = []
+
+if not ids:
+    try:
+        h = json.load(open(health_path))
+        for pid, p in (h.get("providers") or {}).items():
+            if pid in evicted: continue
+            if p.get("enabled") is False: continue
+            ids.append(pid)
+    except Exception:
+        pass
+
+if not ids:
+    fallback = ["claude-code","opencode","gemini","codex","cursor-agent","copilot","openrouter","mlx","ollama","higgsfield"]
+    ids = [x for x in fallback if x not in evicted]
+
+print("\n".join(ids))
+PYEOF
+)
+if [ "${#ORDER[@]}" -eq 0 ]; then
+  ORDER=("claude-code" "opencode" "gemini" "codex" "cursor-agent" "copilot" "openrouter" "mlx" "ollama" "higgsfield")
+fi
+
+# ── 에이전트 상태 표시 ─────────────────────────────────────────
 for ai in "${ORDER[@]}"; do
   S="${SHORT[$ai]}"
-  STATUS=$(echo "$DAEMONS" | jq -r ".daemons[]? | select(.id==\"${ai}\") | .status" 2>/dev/null)
+  # 미등록 ID는 첫3글자(첫글자 대문자)로 슬러그 라벨 생성 (bash 3.2 / BSD 호환)
+  if [ -z "$S" ]; then
+    _raw=$(echo "$ai" | tr -cd 'a-zA-Z0-9' | cut -c1-3)
+    if [ -n "$_raw" ]; then
+      _first=$(printf '%s' "$_raw" | cut -c1 | tr 'a-z' 'A-Z')
+      _rest=$(printf '%s' "$_raw" | cut -c2-)
+      S="${_first}${_rest}"
+    else
+      S="?"
+    fi
+  fi
+  # NCO CLI 프로바이더는 stateless lazy spawn — 위임 시 subprocess spawn → 종료
+  # offline = 휴면 상태(정상). enabled && available 이면 "위임 가능"으로 활성 카운트
+  INFO=$(echo "$DAEMONS" | jq -r ".daemons[]? | select(.id==\"${ai}\") | \"\(.status) \(.enabled) \(.available)\"" 2>/dev/null)
+  read -r STATUS ENABLED AVAILABLE <<< "$INFO"
   case "$STATUS" in
     working|thinking) AI_DISPLAY+="${GREEN}${S}${RESET} "; ((ONLINE++)) ;;
-    idle|offline)     AI_DISPLAY+="${CYAN}${S}${RESET} ";  ((ONLINE++)) ;;
+    idle)             AI_DISPLAY+="${CYAN}${S}${RESET} ";  ((ONLINE++)) ;;
     discussing)       AI_DISPLAY+="${BLUE}${S}${RESET} ";  ((ONLINE++)) ;;
     reviewing)        AI_DISPLAY+="${MAGENTA}${S}${RESET} "; ((ONLINE++)) ;;
     waiting)          AI_DISPLAY+="${YELLOW}${S}${RESET} "; ((ONLINE++)) ;;
     error|isolated)   AI_DISPLAY+="${RED}${S}${RESET} " ;;
+    offline)
+      if [ "$ENABLED" = "true" ] && [ "$AVAILABLE" = "true" ]; then
+        AI_DISPLAY+="${GRAY}${CYAN}${S}${RESET} "; ((ONLINE++))
+      else
+        AI_DISPLAY+="${GRAY}${S}${RESET} "
+      fi
+      ;;
     *)                AI_DISPLAY+="${GRAY}${S}${RESET} " ;;
   esac
 done
@@ -232,7 +316,62 @@ done
 [ "$API" = "✓" ] && API_C="api${GREEN}✓${RESET}" || API_C="api${RED}✗${RESET}"
 [ "$WS"  = "✓" ] && WS_C="ws${GREEN}✓${RESET}"  || WS_C="ws${RED}✗${RESET}"
 
-# ── 출력 (5줄) ───────────────────────────────────────────────────────────────
+# ── Higgsfield 크레딧 + 당일 사용량 (캐시 기반, 3분 TTL) ────────────────────
+HIG_CACHE="${HOME}/.claude/hig-statusline-cache.json"
+HIG_CACHE_MAX_AGE=180
+
+_refresh_hig_cache() {
+  local now age
+  if [ -f "$HIG_CACHE" ]; then
+    now=$(date +%s)
+    age=$((now - $(stat -f %m "$HIG_CACHE" 2>/dev/null || stat -c %Y "$HIG_CACHE" 2>/dev/null || echo 0)))
+    [ "$age" -lt "$HIG_CACHE_MAX_AGE" ] && return 0
+  fi
+  (
+    _status=$(higgsfield account status --json 2>/dev/null) || exit 1
+    _txns=$(higgsfield account transactions --size 100 --json 2>/dev/null) || _txns="[]"
+    printf '%s\n---SEP---\n%s' "$_status" "$_txns" | python3 -c "
+import json, sys
+from datetime import datetime
+raw = sys.stdin.read()
+parts = raw.split('\n---SEP---\n', 1)
+st = json.loads(parts[0])
+txns = json.loads(parts[1]) if len(parts) > 1 else []
+today_local = datetime.now().strftime('%Y-%m-%d')
+today_spend = 0
+for t in txns:
+    if t.get('action') != 'spend': continue
+    ca = t.get('created_at','')
+    try:
+        dt = datetime.fromisoformat(ca.replace('Z','+00:00')).astimezone()
+        if dt.strftime('%Y-%m-%d') == today_local:
+            today_spend += abs(t.get('credits',0))
+    except: pass
+out = {'credits': st.get('credits',0), 'plan': st.get('subscription_plan_type','?'), 'today_spend': today_spend}
+json.dump(out, open('$HIG_CACHE','w'))
+" 2>/dev/null
+  ) &
+}
+_refresh_hig_cache
+
+HIG_CREDITS=0; HIG_PLAN="?"; HIG_TODAY=0
+if [ -f "$HIG_CACHE" ]; then
+  eval $(python3 -c "
+import json
+try:
+  d=json.load(open('$HIG_CACHE'))
+  cr=d.get('credits',0)
+  cr=int(cr) if isinstance(cr,float) and cr==int(cr) else cr
+  print(f'HIG_CREDITS={cr}')
+  print(f'HIG_PLAN=\"{d.get(\"plan\",\"?\")}\"')
+  ts=d.get('today_spend',0)
+  ts=int(ts) if isinstance(ts,float) and ts==int(ts) else ts
+  print(f'HIG_TODAY={ts}')
+except: print('HIG_CREDITS=0\nHIG_PLAN=\"?\"\nHIG_TODAY=0')
+" 2>/dev/null)
+fi
+
+# ── 출력 (6줄) ───────────────────────────────────────────────────────────────
 PROJ_PART=""
 [ -n "$PROJECT_FOLDER" ] && PROJ_PART=" ${GRAY}📁 ${PROJECT_FOLDER}${RESET}"
 
@@ -246,14 +385,28 @@ echo -e " ${API_C} ${WS_C} [${AI_DISPLAY}]${ONLINE}/${#ORDER[@]}"
 NCO_BAR=$(make_bar "$NCO_PCT")
 echo -e " ${CYAN}NCO${RESET} ${GREEN}${NCO_BAR}${RESET} ${NCO_PCT}% ${GRAY}(NCO:${NCO_CALLS}↑ 직접:${DIRECT_EDITS}↓)${RESET}"
 
-# 줄 4: Anthropic 사용량 막대 | Ctx | $비용
+# 줄 4: Higgsfield 크레딧 + 당일 사용량
+# Hig 상태: NCO daemons에서 가져옴
+HIG_STATUS_RAW=$(echo "$DAEMONS" | jq -r '.daemons[]? | select(.id=="higgsfield") | .status' 2>/dev/null)
+case "$HIG_STATUS_RAW" in
+  working|thinking|idle|discussing|reviewing) HIG_ONLINE="${GREEN}online${RESET}" ;;
+  offline)
+    _hig_en=$(echo "$DAEMONS" | jq -r '.daemons[]? | select(.id=="higgsfield") | .enabled' 2>/dev/null)
+    _hig_av=$(echo "$DAEMONS" | jq -r '.daemons[]? | select(.id=="higgsfield") | .available' 2>/dev/null)
+    [ "$_hig_en" = "true" ] && [ "$_hig_av" = "true" ] && HIG_ONLINE="${CYAN}ready${RESET}" || HIG_ONLINE="${GRAY}offline${RESET}"
+    ;;
+  *) HIG_ONLINE="${GRAY}offline${RESET}" ;;
+esac
+echo -e " ${MAGENTA}Hig${RESET} ${HIG_PLAN} · ${HIG_ONLINE} · ${CYAN}${HIG_CREDITS}${RESET} cr · 오늘 ${YELLOW}-${HIG_TODAY}${RESET}"
+
+# 줄 5: Anthropic 사용량 막대 | Ctx | $비용 (was 줄 4)
 DAY_BAR=$(make_bar "$DAY_PCT")
 WEEK_BAR=$(make_bar "$WEEK_PCT")
 DAY_COLOR=$(color_for_pct "$DAY_PCT")
 WEEK_COLOR=$(color_for_pct "$WEEK_PCT")
 echo -e " ${GRAY}1일${RESET} ${DAY_COLOR}${DAY_BAR}${RESET} ${DAY_PCT}% ${GRAY}·${RESET} ${GRAY}주별${RESET} ${WEEK_COLOR}${WEEK_BAR}${RESET} ${WEEK_PCT}% | Ctx:${PCT}% | \$${COST}"
 
-# 줄 5: 리셋 시각
+# 줄 6: 리셋 시각
 DAY_RESET_FMT=$(fmt_reset "$DAY_RESET")
 WEEK_RESET_FMT=$(fmt_reset "$WEEK_RESET")
 echo -e " ${GRAY}↻ 1일 ${DAY_RESET_FMT} · 주별 ${WEEK_RESET_FMT}${RESET}"

@@ -16,14 +16,14 @@ const MAX_ITERATIONS = 15;
 const MAX_HISTORY_TURNS = 10;
 const MAX_TOOL_RESULT_CHARS = 1500;
 
-// Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
+// Strip ANSI escape codes from CLI output (opencode, agy, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
 function stripAnsi(str: string): string {
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').trim();
 }
 
 // Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'aider']);
+const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'agy']);
 
 interface LoopResult {
   output: string;
@@ -204,11 +204,8 @@ export class OrchestratedLoop {
       case 'codex':
         // codex exec <prompt> — non-interactive; workspace-write sandbox allows file I/O
         return ['exec', '--full-auto', '--skip-git-repo-check', prompt];
-      case 'gemini':
-        return [...baseArgs, prompt];
-      case 'aider':
-        // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
-        return ['--message', prompt, ...baseArgs];
+      case 'agy':
+        return ['--print', '--output-format', 'text', ...baseArgs, prompt];
       case 'opencode': {
         // opencode run [flags] <message> — all flags are subcommand-level
         const extra = baseArgs.filter(a => a !== 'run');
@@ -220,6 +217,16 @@ export class OrchestratedLoop {
       case 'copilot':
         // copilot CLI 1.0.43: --allow-all enables file/shell permissions; --prompt for non-interactive
         return [...baseArgs, '--prompt', prompt];
+      case 'higgsfield': {
+        return ['generate', 'create', 'flux_2', '--prompt', prompt, '--wait'];
+      }
+      case 'openclaw': {
+        // openclaw capability model run --local --model <model> --prompt <text>
+        // OPENROUTER_API_KEY must be set in provider.env
+        const model = (this.provider as any).model || 'openrouter/openai/gpt-4o-mini';
+        const ocModel = model.includes('/') ? `openrouter/${model.split('/').slice(-2).join('/')}` : `openrouter/${model}`;
+        return ['capability', 'model', 'run', '--local', '--model', ocModel, '--prompt', prompt];
+      }
       default:
         return [...baseArgs, prompt];
     }

@@ -1,5 +1,5 @@
 import { config as dotenvConfig } from 'dotenv';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -32,6 +32,11 @@ function loadJSON<T>(filename: string): T {
     throw new Error(`Config file not found: ${filepath}`);
   }
   return JSON.parse(readFileSync(filepath, 'utf-8')) as T;
+}
+
+function writeJSON(filename: string, value: unknown): void {
+  const filepath = resolve(ROOT, 'config', filename);
+  writeFileSync(filepath, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
 }
 
 export const topology = loadJSON<Topology>('topology.json');
@@ -78,6 +83,56 @@ interface ProvidersFile {
   providers: ProviderConfig[];
 }
 
+export interface CompanySelectionConfig {
+  keywords: string[];
+  aliases?: string[];
+  regexes?: string[];
+  minComplexity?: number;
+  priority?: number;
+  autoSelect?: boolean;
+}
+
+export interface CompanyRoleConfig {
+  role: string;
+  provider?: string;
+  fallbackProviders?: string[];
+  prompt: string;
+}
+
+export interface CompanyAutomationConfig {
+  strategy: 'pipeline' | 'remote-task';
+  autoProgress?: boolean;
+  endpoint?: string;
+  method?: 'POST';
+  timeoutMs?: number;
+  fallbackProvider?: string;
+  payloadTemplate?: {
+    promptField?: string;
+    taskIdField?: string;
+  };
+}
+
+export interface CompanyProfile {
+  id: string;
+  name: string;
+  enabled: boolean;
+  description?: string;
+  mode: 'company' | 'nova-ax';
+  selection: CompanySelectionConfig;
+  providers: {
+    default: string[];
+    roles: CompanyRoleConfig[];
+  };
+  automation: CompanyAutomationConfig;
+  metadata?: Record<string, unknown>;
+}
+
+interface CompanyProfilesFile {
+  version: number;
+  updated: string;
+  companies: CompanyProfile[];
+}
+
 export function loadProviders(): ProviderConfig[] {
   return loadJSON<ProvidersFile>('ai-providers.json').providers;
 }
@@ -90,6 +145,26 @@ export function getProvider(id: string): ProviderConfig | undefined {
   return loadProviders().find(p => p.id === id);
 }
 
+export function loadCompanyProfiles(): CompanyProfile[] {
+  return loadJSON<CompanyProfilesFile>('company-profiles.json').companies;
+}
+
+export function loadEnabledCompanyProfiles(): CompanyProfile[] {
+  return loadCompanyProfiles().filter(company => company.enabled);
+}
+
+export function getCompanyProfile(id: string): CompanyProfile | undefined {
+  return loadCompanyProfiles().find(company => company.id === id);
+}
+
+export function saveCompanyProfiles(companies: CompanyProfile[]): void {
+  writeJSON('company-profiles.json', {
+    version: 1,
+    updated: new Date().toISOString().slice(0, 10),
+    companies,
+  });
+}
+
 // ─── Environment ──────────────────────────────────────
 export const env = {
   PORT: Number(process.env.PORT || topology.ports.apiGateway),
@@ -99,9 +174,11 @@ export const env = {
   REDIS_URL: process.env.REDIS_URL || `redis://127.0.0.1:${topology.ports.redis}`,
   STATE_FILE_PATH: resolve(ROOT, process.env.STATE_FILE_PATH || topology.paths.stateFile),
   DASHBOARD_URL: process.env.DASHBOARD_URL || `http://localhost:${topology.ports.dashboard}`,
-  PROJECT_DIR: process.env.PROJECT_DIR || topology.paths.dashboard,
+  PROJECT_DIR: process.env.PROJECT_DIR || topology.paths.backend,
   NCO_API_TOKEN: process.env.NCO_API_TOKEN || '',
+  NCO_JWT_SECRET: process.env.NCO_JWT_SECRET || '',
   HF_TOKEN: process.env.HF_TOKEN || '',
+  OBSIDIAN_VAULT_PATH: process.env.OBSIDIAN_VAULT_PATH || '',
   ROOT,
 } as const;
 

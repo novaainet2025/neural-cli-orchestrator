@@ -102,6 +102,12 @@ NCO_SESSION_FILE="$NCO_SESSION_DIR/$NCO_SESSION_ID.json"
 # Clean sessions older than 24h
 find "$NCO_SESSION_DIR" -name "*.json" -mmin +1440 -delete 2>/dev/null
 
+# Save git baseline for quality gate (pre-existing changes before this session)
+_BASELINE_CHANGED=$(git -C "$PROJECT_DIR" diff --name-only 2>/dev/null | wc -l | tr -d ' ')
+_BASELINE_STAGED=$(git -C "$PROJECT_DIR" diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
+_BASELINE_TOTAL=$(( ${_BASELINE_CHANGED:-0} + ${_BASELINE_STAGED:-0} ))
+echo "$_BASELINE_TOTAL" > "/tmp/nco-gate-baseline-${NCO_SESSION_ID}"
+
 # Create session state file (now includes NCO_NAME)
 cat > "$NCO_SESSION_FILE" <<SESSIONJSON
 {

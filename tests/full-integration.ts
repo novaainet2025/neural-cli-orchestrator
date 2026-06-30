@@ -275,7 +275,7 @@ async function main() {
   });
 
   await test('협업', 'POST /api/collaboration/message', async () => {
-    const r = await post('/api/collaboration/message', { from: 'codex', to: 'gemini', message: 'hello', type: 'direct' });
+    const r = await post('/api/collaboration/message', { from: 'codex', to: 'agy', message: 'hello', type: 'direct' });
     assert(r.data.ok === true, 'not ok');
   });
 

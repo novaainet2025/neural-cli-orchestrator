@@ -157,7 +157,6 @@ bash cli-installs/install-all.sh codex    # 개별 설치
 | **opencode** | 자동 설치 | Architect |
 | **gemini** | 자동 설치 | Designer |
 | **codex** | 자동 설치 | Engineer |
-| **aider** | 자동 설치 | Coder |
 | **cursor-agent** | 자동 설치 | Reviewer |
 | **copilot** | 자동 설치 | Researcher |
 | **openrouter** | API 키만 필요 | Advisor |

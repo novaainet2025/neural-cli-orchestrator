@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NCO (Neural CLI Orchestrator) is a TypeScript backend that orchestrates 9 AI agents (Claude Code, Codex, Gemini CLI, Aider, OpenCode, Cursor Agent, Copilot, OpenRouter, Ollama) as a collaborative team. Agents are classified into three types:
+NCO (Neural CLI Orchestrator) is a TypeScript backend that orchestrates 9 AI agents (Claude Code, Codex, Gemini CLI, OpenCode, Cursor Agent, Copilot, OpenRouter, MLX, NVIDIA) as a collaborative team. Agents are classified into three types:
 
 - **Type A (Native)**: CLI agents with their own execution loop (claude-code)
-- **Type B (Orchestrated)**: CLI agents driven by NCO's loop with XML-based tool calls (codex, gemini, aider, opencode, cursor-agent, copilot)
+- **Type B (Orchestrated)**: CLI agents driven by NCO's loop with XML-based tool calls (codex, gemini, opencode, cursor-agent, copilot)
 - **Type C (API-based)**: OpenAI-compatible API endpoints with key rotation (openrouter, ollama)
 
 Coordination modes: task (single agent), parallel (all agents), discussion (multi-round dialogue), consensus (voting), hive (unified entity), broadcast (message all).
@@ -101,11 +101,12 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 | 작업 유형 | 자동 호출 패턴 |
 |----------|--------------|
 | 새 API 엔드포인트 추가 | opencode(설계) → codex(구현) → cursor-agent(리뷰) → ollama(검증) |
-| 새 에이전트 타입 추가 | opencode(아키텍처) + gemini(인터페이스 설계) 병렬 → aider(파일 편집) |
+| 새 에이전트 타입 추가 | opencode(아키텍처) + gemini(인터페이스 설계) 병렬 → codex(파일 편집) |
 | 보안 수정 | cursor-agent(감사) + ollama(검증) 병렬 |
 | 성능 최적화 | copilot(벤치마크 리서치) → codex(구현) → ollama(검증) |
 | 테스트 커버리지 확대 | codex(테스트 생성) + ollama(엣지케이스) 병렬 |
 | 모니터 UI 변경 | gemini(디자인 제안) → 나(구현) |
+| 이미지/영상 생성 | higgsfield(생성) → gemini(검토) |
 | 전체 리팩토링 | `nco_commander` 단일 호출 |
 
 ### Supervisor 루프 — 이 프로젝트 기준
@@ -137,3 +138,15 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 - **`/claude-gemma-pipeline`** 은 긴 템플릿·예시가 필요할 때만 참고(선택).
 
 게이트 예: `bash cli-installs/gemma-gate-check.sh . --no-plan` 또는 `--plan docs/plans/<이번작업>.md`.
+
+## Mesh 통신 규칙
+
+[MESH 요청] 또는 [MESH REQUEST] 태그가 포함된 사용자 입력을 받으면, 이것은 다른 CLI 세션의 Claude가 보낸 메시지입니다.
+
+**반드시 다음을 수행하세요:**
+1. 메시지 내용을 읽고 이해합니다.
+2. `bash /tmp/mesh-reply.sh "응답 내용"` 을 Bash 도구로 실행하여 답장을 보냅니다.
+3. 답장 내용은 영문으로 작성합니다 (osascript keystroke 제약).
+4. 답장을 보낸 후 정상 작업을 계속합니다.
+
+이 규칙은 CLAUDE.md 지시사항이므로 반드시 준수해야 합니다.

@@ -11,26 +11,26 @@ const log = createLogger('commander');
  *
  * Management Layer: Strategic decisions (claude-code, opencode)
  * Information Layer: Research & analysis (copilot, openrouter)
- * Execution Layer: Code implementation (codex, aider, gemini)
+ * Execution Layer: Code implementation (codex, agy)
  * Quality Layer: Review & validation (cursor-agent, mlx)
  */
 
 const LAYERS = {
   management: {
     name: 'Management',
-    agents: ['claude-code', 'opencode'],
+    agents: ['opencode', 'claude-code'],
     role: 'Strategic planning, architecture decisions, final synthesis',
     canDelegateTo: ['information', 'execution', 'quality'],
   },
   information: {
     name: 'Information',
-    agents: ['copilot', 'openrouter'],
+    agents: ['copilot', 'cursor-agent'],
     role: 'Research, data gathering, analysis',
     canDelegateTo: ['execution'],
   },
   execution: {
     name: 'Execution',
-    agents: ['codex', 'aider', 'gemini'],
+    agents: ['codex', 'agy', 'copilot'],
     role: 'Code implementation, design, engineering',
     canDelegateTo: [],
   },
@@ -60,6 +60,19 @@ interface LayerResult {
   success: boolean;
   durationMs: number;
 }
+
+const PLAN_PLACEHOLDER_PATTERNS = [
+  /^\(?작업 추가 필요\)?$/i,
+  /^\(?task(?:s)? to be added\)?$/i,
+  /^todo$/i,
+  /^tbd$/i,
+  /^none$/i,
+] as const;
+
+const PLAN_ACTION_PATTERNS = [
+  /^(add|analyze|build|check|create|document|fix|implement|investigate|refactor|remove|review|run|test|update|validate|verify|write)\b/i,
+  /^(구현|수정|추가|작성|검증|분석|조사|리뷰|업데이트|실행|테스트|제거)/,
+] as const;
 
 class Commander {
   /**
@@ -101,6 +114,16 @@ class Commander {
         return this.failResult(commandId, prompt, layerResults, 'Management analysis failed');
       }
 
+      const plannedSteps = this.extractActionablePlanSteps(analysis.output, prompt);
+      if (plannedSteps.length === 0) {
+        return this.failResult(
+          commandId,
+          prompt,
+          layerResults,
+          'Management produced an empty or placeholder execution plan',
+        );
+      }
+
       // ─── Layer 2: Information — Research (optional) ──
       const needsResearch = /research|분석|조사|investigate|찾아|search/i.test(prompt);
       if (needsResearch) {
@@ -115,7 +138,7 @@ class Commander {
       const execPrompt = [
         `Implement the following based on the Commander's plan:`,
         '',
-        analysis.output,
+        plannedSteps.map(step => `- ${step}`).join('\n'),
         '',
         `Original request: ${prompt}`,
       ].join('\n');
@@ -220,6 +243,25 @@ class Commander {
 
     // Fallback: any enabled agent
     return agentManager.listEnabledIds()[0] || layerAgents[0];
+  }
+
+  private extractActionablePlanSteps(planText: string, prompt: string): string[] {
+    const promptText = prompt.trim().toLowerCase();
+
+    return planText
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map(line => line.replace(/^#+\s*/, ''))
+      .map(line => line.replace(/^[-*]\s+\[[ xX]\]\s*/, ''))
+      .map(line => line.replace(/^[-*]\s+/, ''))
+      .map(line => line.replace(/^\d+[.)]\s+/, ''))
+      .map(line => line.trim())
+      .filter(Boolean)
+      .filter(line => !PLAN_PLACEHOLDER_PATTERNS.some(pattern => pattern.test(line)))
+      .filter(line => line.toLowerCase() !== promptText)
+      .filter(line => !/^task:\s*$/i.test(line))
+      .filter(line => PLAN_ACTION_PATTERNS.some(pattern => pattern.test(line)));
   }
 
   private failResult(

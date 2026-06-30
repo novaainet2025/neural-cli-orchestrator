@@ -1,25 +1,42 @@
 import Database from 'better-sqlite3';
 import { readFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { env } from '../utils/config.js';
+import { env, topology } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('database');
 
 let db: Database.Database | null = null;
+let dbPath: string | null = null;
+
+function resolveDatabasePath(): string {
+  return resolve(env.ROOT, process.env.DATABASE_PATH || topology.paths.database);
+}
 
 export function getDb(): Database.Database {
+  const currentPath = resolveDatabasePath();
+
+  if (db && dbPath !== currentPath) {
+    db.close();
+    db = null;
+    log.info({ path: dbPath, nextPath: currentPath }, 'SQLite connection reset for updated DATABASE_PATH');
+  }
+
   if (!db) {
-    const dbDir = dirname(env.DATABASE_PATH);
+    const dbDir = dirname(currentPath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
 
-    db = new Database(env.DATABASE_PATH);
+    db = new Database(currentPath);
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
     db.pragma('busy_timeout = 5000');
+    db.pragma('cache_size = -64000'); // 64MB cache
+    db.pragma('temp_store = MEMORY');
+    db.pragma('mmap_size = 30000000000'); // 30GB mmap for 64-bit systems
+    dbPath = currentPath;
 
-    log.info({ path: env.DATABASE_PATH }, 'SQLite connected (WAL mode)');
+    log.info({ path: currentPath }, 'SQLite connected (WAL mode)');
   }
   return db;
 }
@@ -28,6 +45,7 @@ export function closeDb(): void {
   if (db) {
     db.close();
     db = null;
+    dbPath = null;
     log.info('SQLite closed');
   }
 }
