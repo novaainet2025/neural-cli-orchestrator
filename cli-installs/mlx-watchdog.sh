@@ -1,23 +1,42 @@
 #!/usr/bin/env bash
-# mlx-watchdog.sh — inter-session에서 MLX heartbeat 수신 → NCO provider 동적 ON/OFF
+# mlx-watchdog.sh — Tailscale HTTP 직접 폴링으로 MLX 가용성 감지 → NCO provider 동적 ON/OFF
 # WSL 노드에서 실행 (subnote, snt, kangnote)
-# 사용법: bash mlx-watchdog.sh [--nco-config /path/to/ai-providers.json]
+# 사용법: bash mlx-watchdog.sh
 #
-# mlx_up 수신  → remote-mlx provider enabled=true → NCO 재로드
-# mlx_down 수신 → remote-mlx provider enabled=false → NCO 재로드
-# 3분간 heartbeat 없음 → 자동 오프라인 처리 (타임아웃)
+# 구조: messages.log 의존 제거 — Tailscale HTTP 직접 폴링 방식
+#   온라인 감지 → remote-mlx provider enabled=true → NCO 재로드
+#   오프라인 감지 → remote-mlx provider enabled=false → NCO 재로드
+#
+# 환경변수:
+#   MLX_WATCHDOG_CONFIG  — ai-providers.json 경로 (기본: ../config/ai-providers.json)
+#   MLX_REMOTE_HOST      — MLX 서버 Tailscale IP (기본: 100.88.88.69)
+#   MLX_REMOTE_PORT      — MLX 서버 포트 (기본: 8000)
+#   MLX_POLL_INTERVAL    — 폴링 간격(초) (기본: 60)
 #
 # 실행 방법: pm2 start mlx-watchdog.sh --name mlx-watchdog --interpreter bash
 
 set -euo pipefail
 
 CONFIG="${MLX_WATCHDOG_CONFIG:-$(dirname "$(dirname "${BASH_SOURCE[0]}")")/config/ai-providers.json}"
-HEARTBEAT_TIMEOUT=180    # 3분간 heartbeat 없으면 오프라인 처리
-INBOX_LOG="$HOME/.claude/data/inter-session/messages.log"
-LAST_HEARTBEAT=0
+MLX_HOST="${MLX_REMOTE_HOST:-100.88.88.69}"
+MLX_PORT="${MLX_REMOTE_PORT:-8000}"
+POLL_INTERVAL="${MLX_POLL_INTERVAL:-60}"
+MLX_URL="http://${MLX_HOST}:${MLX_PORT}"
 CURRENT_STATE="unknown"  # "online" | "offline" | "unknown"
 
 log() { echo "[mlx-watchdog] $(date '+%H:%M:%S') $*"; }
+
+# MLX 서버 헬스 체크 — /v1/models 응답 여부
+_mlx_healthy() {
+  curl -sf --max-time 5 "${MLX_URL}/v1/models" >/dev/null 2>&1
+}
+
+# MLX 모델명 조회
+_get_model() {
+  curl -s --max-time 5 "${MLX_URL}/v1/models" 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null \
+    || echo "unknown"
+}
 
 # remote-mlx provider enabled 상태 변경
 _set_provider() {
@@ -88,66 +107,28 @@ _reload_nco() {
   fi
 }
 
-_parse_heartbeat() {
-  # "mlx_up: url=http://100.88.88.69:8000 proxy=... model=... host=..."
-  local TEXT="$1"
-  MLX_URL=$(echo "$TEXT" | grep -oP 'url=\K[^\s]+' || echo "")
-  MLX_MODEL=$(echo "$TEXT" | grep -oP 'model=\K[^\s]+' || echo "unknown")
-  echo "$MLX_URL|$MLX_MODEL"
-}
-
 log "시작됨 — config: $CONFIG"
-log "inter-session 메시지 모니터링 중..."
+log "MLX 대상: ${MLX_URL} (폴링 간격: ${POLL_INTERVAL}초)"
+log "직접 HTTP 폴링 모드 (messages.log 의존 없음)"
 
-# inter-session messages.log tail 방식으로 실시간 감지
-tail -F "$INBOX_LOG" 2>/dev/null | while IFS= read -r LINE; do
-  # JSON 파싱
-  TEXT=$(echo "$LINE" | python3 -c "
-import json,sys
-try:
-  d=json.loads(sys.stdin.read())
-  t=d.get('text','')
-  if 'mlx_up:' in t or 'mlx_down:' in t:
-    print(t)
-except: pass
-" 2>/dev/null)
-
-  [ -z "$TEXT" ] && continue
-
-  NOW=$(date +%s)
-
-  if echo "$TEXT" | grep -q "mlx_up:"; then
-    PARSED=$(_parse_heartbeat "$TEXT")
-    URL="${PARSED%|*}"
-    MODEL="${PARSED#*|}"
-
+# 메인 폴링 루프
+while true; do
+  if _mlx_healthy; then
     if [ "$CURRENT_STATE" != "online" ]; then
-      log "MLX 온라인 감지! url=$URL model=$MODEL"
-      _set_provider "true" "$URL" "$MODEL" && log "remote-mlx ENABLED"
+      MODEL=$(_get_model)
+      log "MLX 온라인 감지! url=${MLX_URL} model=${MODEL}"
+      _set_provider "true" "$MLX_URL" "$MODEL" && log "remote-mlx ENABLED"
       _reload_nco
       CURRENT_STATE="online"
     fi
-    LAST_HEARTBEAT=$NOW
-
-  elif echo "$TEXT" | grep -q "mlx_down:"; then
+  else
     if [ "$CURRENT_STATE" != "offline" ]; then
-      log "MLX 다운 신호 수신"
+      log "MLX 오프라인 감지 (${MLX_URL} 응답 없음)"
       _set_provider "false" "keep" "keep" && log "remote-mlx DISABLED"
       _reload_nco
       CURRENT_STATE="offline"
     fi
   fi
 
-  # 타임아웃 체크 (마지막 heartbeat로부터 3분 이상)
-  if [ "$CURRENT_STATE" = "online" ] && [ "$LAST_HEARTBEAT" -gt 0 ]; then
-    ELAPSED=$(( NOW - LAST_HEARTBEAT ))
-    if [ "$ELAPSED" -gt "$HEARTBEAT_TIMEOUT" ]; then
-      log "Heartbeat 타임아웃 (${ELAPSED}초) — 오프라인 처리"
-      _set_provider "false" "keep" "keep" && log "remote-mlx DISABLED (timeout)"
-      _reload_nco
-      CURRENT_STATE="offline"
-      LAST_HEARTBEAT=0
-    fi
-  fi
-
+  sleep "$POLL_INTERVAL"
 done
