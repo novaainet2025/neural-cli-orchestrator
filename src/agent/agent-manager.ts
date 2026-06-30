@@ -268,6 +268,10 @@ class AgentManager {
   }
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<void> {
+    if (!provider.healthCheck) {
+      await sharedState.setAgentState(id, { status: 'online' });
+      return;
+    }
     const url = typeof provider.healthCheck.url === 'string' ? provider.healthCheck.url : null;
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });

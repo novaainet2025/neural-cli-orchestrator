@@ -24,7 +24,11 @@
         "linux",
         "wsl"
       ],
-      "note": "Mac MLX via Tailscale (100.88.88.69:8000). auto-managed by mlx-watchdog.sh — enabled=true when heartbeat active"
+      "note": "Mac MLX via Tailscale (100.88.88.69:8000). auto-managed by mlx-watchdog.sh — enabled=true when heartbeat active",
+      "healthCheck": {
+        "url": "http://100.88.88.69:8000/v1/models",
+        "timeout": 5000
+      }
     },
     {
       "id": "claude-code",

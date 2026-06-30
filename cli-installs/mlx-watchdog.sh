@@ -82,8 +82,15 @@ if not found and enabled:
         "rateLimitRpm": 10,
         "cost": "free",
         "capabilities": ["code", "analysis", "reasoning"],
+        "healthCheck": {"url": url + "/v1/models", "timeout": 5000},
         "note": "Mac MLX via Tailscale — auto-managed by mlx-watchdog.sh"
     })
+elif found and enabled and url != "keep":
+    # 기존 항목 업데이트 시 healthCheck도 갱신
+    for p in data["providers"]:
+        if p.get("id") == "remote-mlx":
+            p["healthCheck"] = {"url": url + "/v1/models", "timeout": 5000}
+            break
 
 with open(cfg_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
