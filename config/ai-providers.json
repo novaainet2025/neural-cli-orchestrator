@@ -10,7 +10,7 @@
       "role": "CEO",
       "score": 95,
       "model": "claude-opus-4-6",
-      "command": "/Users/nova-ai/.local/bin/claude",
+      "command": "claude",
       "args": [
         "--dangerously-skip-permissions"
       ],
@@ -38,7 +38,7 @@
         "style": "strategic"
       },
       "healthCheck": {
-        "command": "/Users/nova-ai/.local/bin/claude",
+        "command": "claude",
         "args": [
           "--version"
         ],
@@ -103,7 +103,9 @@
       "model": "gemini-3-pro",
       "command": "agy",
       "args": [],
-      "env": {},
+      "env": {
+        "AGY_TOKEN": "4/0AdkVLPy3pq65YH-CUVK40YzQVJbNyPsdLfS8zXjFaziSwzMCNNNXqh7R0HOg45PUkAK9TA"
+      },
       "concurrency": 4,
       "rateLimitRpm": 20,
       "cost": "paid",
@@ -364,7 +366,10 @@
         "type": "api",
         "url": "http://localhost:8000/v1/models",
         "timeout": 5000
-      }
+      },
+      "platforms": [
+        "mac"
+      ]
     },
     {
       "id": "ollama",
@@ -418,7 +423,11 @@
       "proxy_endpoint": "http://localhost:4100",
       "updated": "2026-06-30",
       "_disabled_reason": "Mac — MLX(Apple Silicon) 우선",
-      "_disabled_at": "2026-06-30"
+      "_disabled_at": "2026-06-30",
+      "platforms": [
+        "mac",
+        "linux-gpu"
+      ]
     },
     {
       "id": "nvidia",
@@ -596,11 +605,11 @@
       "type": "cli",
       "role": "ToolUser",
       "score": 86,
-      "model": "gemini-2.5-flash",
-      "command": "/Users/nova-ai/.local/bin/hermes-nco",
+      "model": "openrouter/openai/gpt-4o-mini",
+      "command": "hermes-nco",
       "args": [],
       "env": {
-        "GEMINI_API_KEY": "AIzaSyBWiDTk8-1IHIVb1TTdPrVZqUXFFLb9Z6Y"
+        "OPENROUTER_API_KEY": "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"
       },
       "concurrency": 2,
       "rateLimitRpm": 10,
@@ -626,9 +635,9 @@
         "tone": "capable",
         "style": "tool-oriented"
       },
-      "note": "Hermes Agent v0.15.2. CLI oneshot 래퍼(/hermes-nco) — stdin 프롬프트→gemini-2.5-flash 응답. 수정: 2026-06-10",
+      "note": "hermes-nco v2 (2026-06-30): OpenRouter API 직접 호출 방식으로 변경 (hermes -z non-TTY stdout 불가 문제 해결). model=openai/gpt-4o-mini via openrouter.",
       "healthCheck": {
-        "command": "/Users/nova-ai/.local/bin/hermes",
+        "command": "hermes",
         "args": [
           "--version"
         ],
