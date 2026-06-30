@@ -55,3 +55,30 @@ for c in changed:
 if not changed:
     print("  변경 없음 (이미 표준)")
 PY
+
+# NCO 재시작 (nova-ax :6300 건드리지 않도록 경로 기반 타깃)
+echo ""
+echo "NCO 재시작..."
+if pm2 restart nco-backend 2>/dev/null; then
+  echo "  PM2 restart OK"
+elif fuser -k 6200/tcp 2>/dev/null; then
+  sleep 1
+  NCO_MEM0_NO_EMBED=1 nohup tsx src/index.ts > /tmp/nco.log 2>&1 &
+  echo "  fuser kill + restart OK"
+else
+  # 마지막 수단: 경로 포함 패턴으로 NCO만 타깃 (nova-ax 제외)
+  NCO_DIR="$(pwd)"
+  pkill -f "${NCO_DIR}.*tsx" 2>/dev/null || true
+  sleep 1
+  NCO_MEM0_NO_EMBED=1 nohup tsx src/index.ts > /tmp/nco.log 2>&1 &
+  echo "  path-targeted restart OK"
+fi
+
+sleep 3
+curl -s localhost:6200/health | python3 -c "
+import json,sys
+try:
+  d=json.load(sys.stdin)
+  print('STANDARD_OK providers='+str(d.get('providerCount','?')))
+except:
+  print('health check failed')" 2>/dev/null || echo "NCO 아직 기동 중..."
