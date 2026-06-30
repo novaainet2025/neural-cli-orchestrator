@@ -5,7 +5,7 @@
     {
       "id": "claude-code",
       "name": "Claude Code",
-      "enabled": false,
+      "enabled": true,
       "type": "cli",
       "role": "CEO",
       "score": 95,
@@ -44,7 +44,7 @@
         ],
         "timeout": 8000
       },
-      "note": "Type A Native agent. Runs claude CLI as subprocess with NCO_HOOK_DISABLED=1 (재귀 방지). 재추가: 2026-06-14"
+      "note": "Type A Native agent. NCO_HOOK_DISABLED=1로 재귀 차단 (agent-manager.ts:147). 전 플랫폼 통일 ON — 2026-06-30"
     },
     {
       "id": "opencode",
@@ -422,8 +422,6 @@
       },
       "proxy_endpoint": "http://localhost:4100",
       "updated": "2026-06-30",
-      "_disabled_reason": "Mac — MLX(Apple Silicon) 우선",
-      "_disabled_at": "2026-06-30",
       "platforms": [
         "mac",
         "linux-gpu"

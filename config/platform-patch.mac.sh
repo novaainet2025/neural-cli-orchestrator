@@ -13,8 +13,8 @@ with open(cfg_path) as f:
     data = json.load(f)
 
 ENABLE  = {"opencode","agy","codex","cursor-agent","copilot",
-           "higgsfield","hermes","openclaw","nvidia","mlx"}
-DISABLE = {"claude-code","openrouter","ollama"}  # Mac: 재귀방지, MLX 우선
+           "higgsfield","hermes","openclaw","nvidia","mlx","claude-code"}
+DISABLE = {"openrouter","ollama"}  # Mac: MLX 로컬 우선, openrouter 불필요
 
 changed = []
 for p in data["providers"]:
@@ -35,7 +35,7 @@ with open(cfg_path, "w") as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
     f.write("\n")
 
-print("Mac 패치 완료")
+print(f"Mac 패치 완료 (claude-code ON — NCO_HOOK_DISABLED=1로 재귀 차단됨)")
 for c in changed:
     print(c)
 if not changed:
