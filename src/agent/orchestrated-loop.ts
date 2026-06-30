@@ -4,6 +4,9 @@ import { parseToolCalls, extractThinking } from './tool-parser.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
+import { mem0Search, mem0Add } from '../core/mem0-bridge.js';
+import { quickHallucinationScore as hallucinationQuickCheck } from '../core/hallucination-guard.js';
+import { evaluateWithReflexion } from '../core/reflexion.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
@@ -62,7 +65,24 @@ export class OrchestratedLoop {
     });
 
     const teamState = await this.buildTeamContext();
-    const systemBase = options?.systemPrompt || this.provider.persona.systemPrompt;
+    let systemBase = options?.systemPrompt || this.provider.persona.systemPrompt;
+
+    try {
+      const relatedMemories = await mem0Search({
+        agentId,
+        query: prompt,
+        limit: 3,
+      });
+      const memoryLines = relatedMemories.memories
+        .filter(memory => (memory.score ?? 0) > 0.5)
+        .slice(0, 3)
+        .map(memory => `- ${memory.content}`);
+      if (memoryLines.length > 0) {
+        systemBase = `${systemBase}\n\n## 관련 기억\n${memoryLines.join('\n')}`;
+      }
+    } catch (err: any) {
+      log.warn({ agentId, err: err?.message ?? String(err) }, 'mem0 search failed, continuing without memory context');
+    }
     
     const fullSystem = options?.compact
       ? buildCompactSystemPrompt(systemBase)
@@ -154,7 +174,32 @@ export class OrchestratedLoop {
         .filter(Boolean)
         .pop() || '';
 
-      return { output, iterations, toolCalls: totalToolCalls, artifacts };
+      let finalTaggedOutput = output;
+
+      try {
+        await mem0Add({
+          agentId,
+          content: output.slice(0, 500),
+        });
+      } catch (err: any) {
+        log.warn({ agentId, err: err?.message ?? String(err) }, 'mem0 add failed, continuing without memory persistence');
+      }
+
+      try {
+        const score = hallucinationQuickCheck(output, prompt);
+        if (score < 0.5) {
+          finalTaggedOutput = `[검증필요] ${output}`;
+        }
+      } catch (err: any) {
+        log.warn({ agentId, err: err?.message ?? String(err) }, 'hallucination quick check failed, continuing without output tag');
+      }
+
+      // Fire-and-forget reflexion critique — stores quality feedback in mem0 for future tasks
+      evaluateWithReflexion(agentId, prompt, output, { saveMemory: true }).catch((err: any) => {
+        log.debug({ agentId, err: err?.message ?? String(err) }, 'reflexion evaluate failed (non-critical)');
+      });
+
+      return { output: finalTaggedOutput, iterations, toolCalls: totalToolCalls, artifacts };
     } finally {
       await sharedState.setAgentState(agentId, {
         status: 'idle',

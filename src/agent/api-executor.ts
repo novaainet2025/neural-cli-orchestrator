@@ -11,6 +11,9 @@ import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { getApiKeys, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
+import { mem0Search, mem0Add } from '../core/mem0-bridge.js';
+import { quickHallucinationScore as hallucinationQuickCheck } from '../core/hallucination-guard.js';
+import { evaluateWithReflexion } from '../core/reflexion.js';
 
 const log = createLogger('api-executor');
 
@@ -87,7 +90,21 @@ export class ApiExecutor {
 
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
 
-    const systemContent = await this.buildSystemPrompt(systemPrompt);
+    let systemBase = systemPrompt || this.provider.persona.systemPrompt;
+    try {
+      const relatedMemories = await mem0Search({ agentId, query: prompt, limit: 3 });
+      const memoryLines = relatedMemories.memories
+        .filter(m => (m.score ?? 0) > 0.5)
+        .slice(0, 3)
+        .map(m => `- ${m.content}`);
+      if (memoryLines.length > 0) {
+        systemBase = `${systemBase}\n\n## 관련 기억\n${memoryLines.join('\n')}`;
+      }
+    } catch (err: any) {
+      log.warn({ agentId, err: err?.message ?? String(err) }, 'mem0 search failed, continuing without memory context');
+    }
+
+    const systemContent = await this.buildSystemPrompt(systemBase);
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemContent },
       { role: 'user', content: prompt },
@@ -251,8 +268,30 @@ export class ApiExecutor {
       }
     }
 
+    let taggedOutput = finalOutput;
+
+    try {
+      await mem0Add({ agentId, content: finalOutput.slice(0, 500) });
+    } catch (err: any) {
+      log.warn({ agentId, err: err?.message ?? String(err) }, 'mem0 add failed, continuing without memory persistence');
+    }
+
+    try {
+      const score = hallucinationQuickCheck(finalOutput, prompt);
+      if (score < 0.5) {
+        taggedOutput = `[검증필요] ${finalOutput}`;
+      }
+    } catch (err: any) {
+      log.warn({ agentId, err: err?.message ?? String(err) }, 'hallucination quick check failed, continuing without output tag');
+    }
+
+    // Fire-and-forget reflexion critique — stores quality feedback in mem0 for future tasks
+    evaluateWithReflexion(agentId, prompt, finalOutput, { saveMemory: true }).catch((err: any) => {
+      log.debug({ agentId, err: err?.message ?? String(err) }, 'reflexion evaluate failed (non-critical)');
+    });
+
     return {
-      output: finalOutput,
+      output: taggedOutput,
       iterations,
       toolCalls: totalToolCalls,
       model: this.provider.model || 'unknown',
