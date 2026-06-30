@@ -34,7 +34,7 @@ _pm2_start() {
   pm2 describe "$PM2_NAME" >/dev/null 2>&1 \
     && pm2 start "$PM2_NAME" 2>&1 | tail -3 \
     || pm2 start "$MLX_BIN" --name "$PM2_NAME" --interpreter none --max-memory-restart 30G \
-         -- --model "$MODEL_PATH" --port $PORT --host 127.0.0.1 2>&1 | tail -3
+         -- --model "$MODEL_PATH" --port $PORT --host 0.0.0.0 2>&1 | tail -3
 }
 
 CMD="${1:-status}"

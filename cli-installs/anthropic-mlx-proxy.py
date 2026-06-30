@@ -466,7 +466,7 @@ class ThreadedHTTPServer(HTTPServer):
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PROXY_PORT
-    server = ThreadedHTTPServer(("127.0.0.1", port), ProxyHandler)
+    server = ThreadedHTTPServer(("0.0.0.0", port), ProxyHandler)
     print(f"[anthropic-mlx-proxy] Listening on http://localhost:{port}")
     print(f"[anthropic-mlx-proxy] Forwarding → {MLX_BASE}")
     print(f"[anthropic-mlx-proxy] Use:")
