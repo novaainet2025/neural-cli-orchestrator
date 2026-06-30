@@ -5,23 +5,41 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('knowledge-base');
 
-// ─── Embedding Service (optional, localhost:6270) ────
-const EMBED_URL = 'http://localhost:6270/embed';
+// ─── Embedding Service — ollama nomic-embed-text (primary) or legacy 6270 ────
+const OLLAMA_EMBED_URL = 'http://localhost:11434/api/embed';
+const LEGACY_EMBED_URL = 'http://localhost:6270/embed';
+const EMBED_MODEL = 'nomic-embed-text';
 
 async function fetchEmbedding(text: string): Promise<number[] | null> {
+  // 1) Try ollama (primary — nomic-embed-text 768dim)
   try {
-    const res = await fetch(EMBED_URL, {
+    const res = await fetch(OLLAMA_EMBED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json() as { embeddings?: number[][] };
+      if (Array.isArray(data.embeddings?.[0])) return data.embeddings![0];
+    }
+  } catch { /* fallthrough */ }
+
+  // 2) Legacy embed service at 6270
+  try {
+    const res = await fetch(LEGACY_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { embedding?: number[] };
-    return Array.isArray(data.embedding) ? data.embedding : null;
-  } catch {
-    return null; // service unavailable — fall back to lexical
-  }
+    if (res.ok) {
+      const data = await res.json() as { embedding?: number[] };
+      if (Array.isArray(data.embedding)) return data.embedding;
+    }
+  } catch { /* fallthrough */ }
+
+  return null; // both unavailable — fall back to lexical
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
