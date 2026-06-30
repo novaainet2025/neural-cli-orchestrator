@@ -114,7 +114,11 @@ class AgentManager {
           ], {
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
-            env: { ...process.env, ...provider.env },
+            env: {
+              ...process.env,
+              ...provider.env,
+              NCO_HOOK_DISABLED: '1', // 재귀 방지: claude-code 서브프로세스에서 NCO 훅 비활성
+            },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
           });
