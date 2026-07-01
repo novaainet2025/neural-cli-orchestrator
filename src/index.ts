@@ -1,5 +1,6 @@
 import { env } from './utils/config.js';
 import { createLogger } from './utils/logger.js';
+import { initTelemetry } from './core/telemetry.js';
 import { getDb, runMigrations, closeDb } from './storage/database.js';
 import { getRedis, closeRedis, redisHealthCheck } from './storage/redis.js';
 import { eventBus } from './core/event-bus.js';
@@ -20,6 +21,9 @@ async function boot(): Promise<void> {
   log.info('═══════════════════════════════════════');
   log.info('  NCO Backend — Neural CLI Orchestrator');
   log.info('═══════════════════════════════════════');
+
+  // 0. Telemetry (noop if OTEL_EXPORTER_OTLP_ENDPOINT not set)
+  await initTelemetry();
 
   // 1. SQLite + Migrations
   log.info('Initializing database...');

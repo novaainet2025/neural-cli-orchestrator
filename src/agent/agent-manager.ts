@@ -10,6 +10,10 @@ import { createTaskId } from '../utils/id.js';
 
 const log = createLogger('agent-manager');
 
+function promptSummary(s: string): boolean {
+  return s.trim().length > 10;
+}
+
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
 // Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
@@ -76,6 +80,7 @@ class AgentManager {
     systemPrompt?: string;
     compact?: boolean;
     signal?: AbortSignal;
+    projectDir?: string;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
@@ -94,6 +99,19 @@ class AgentManager {
       let output: string;
       let iterations = 0;
       let toolCalls = 0;
+
+      // ── HNSW Vector Memory: Pre-task semantic recall ─────
+      try {
+        const { vectorMemory } = await import('../core/vector-memory.js');
+        const memories = await vectorMemory.search(agentId, prompt, 5);
+        if (memories.length > 0) {
+          const ctx = memories
+            .map(m => `- [score:${m.score.toFixed(2)}${m.semantic ? ',sem' : ',bm25'}] ${m.content.slice(0, 300)}`)
+            .join('\n');
+          prompt = prompt + `\n\n[장기 기억 컨텍스트 (자동 검색됨)]\n${ctx}\n`;
+          log.debug({ agentId, memCount: memories.length, semantic: memories[0]?.semantic }, 'memory context injected');
+        }
+      } catch { /* non-critical */ }
 
       switch (agentType) {
         case 'A': {
@@ -196,6 +214,23 @@ class AgentManager {
         knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
       } catch { /* non-critical */ }
 
+      // ── HNSW Vector Memory: Post-task storage ────────────
+      try {
+        const { vectorMemory } = await import('../core/vector-memory.js');
+        // Store: task prompt (context) + output summary
+        const promptSnippet = prompt.slice(0, 200).replace(/\[장기 기억 컨텍스트[\s\S]*?\]/m, '').trim();
+        const outputSummary = output.replace(/\s+/g, ' ').trim().slice(0, 400);
+        if (promptSummary(promptSnippet)) {
+          await vectorMemory.add(agentId, `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`, 1.0);
+        }
+      } catch { /* non-critical */ }
+
+      // ── AgentEvolver: record success for persona tuning ─
+      try {
+        const { agentEvolver } = await import('../core/agent-evolver.js');
+        agentEvolver.record(agentId, taskId, true, durationMs, output.length);
+      } catch { /* non-critical */ }
+
       const newCount = (this.circuitSuccessCounts.get(agentId) ?? 0) + 1;
       this.circuitSuccessCounts.set(agentId, newCount);
 
@@ -228,6 +263,12 @@ class AgentManager {
 
       this.circuitSuccessCounts.set(agentId, 0);
       this.recordLatency(agentId, durationMs);
+
+      // ── AgentEvolver: record failure ──────────────────────
+      try {
+        const { agentEvolver } = await import('../core/agent-evolver.js');
+        agentEvolver.record(agentId, taskId, false, durationMs, 0);
+      } catch { /* non-critical */ }
 
       return {
         taskId, agentId, output: '', iterations: 0, toolCalls: 0,

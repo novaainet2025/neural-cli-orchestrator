@@ -71,6 +71,15 @@ const TOOLS = [
   { name: 'nco_invocations', description: '전체 에이전트 호출 현황 조회', params: ['limit'] },
   // Ollama / Anthropic proxy debug (1)
   { name: 'nco_ollama_debug', description: 'Anthropic proxy (4100) debug against Ollama upstream: status|errors|recover|test|recover:*. Requires proxy + OLLAMA_BASE_URL.', params: ['action'] },
+  // HNSW Vector Memory (6)
+  { name: 'nco_memory_add', description: 'Store a memory with HNSW semantic embedding', params: ['agentId', 'content'] },
+  { name: 'nco_memory_search', description: 'Semantic HNSW search across agent memories', params: ['agentId', 'query', 'k'] },
+  { name: 'nco_memory_list', description: 'List all memories for an agent', params: ['agentId'] },
+  { name: 'nco_memory_stats', description: 'Get agent memory stats (count, semantic%, index)', params: ['agentId'] },
+  { name: 'nco_memory_rebuild', description: 'Rebuild HNSW index from SQLite (recovery)', params: ['agentId'] },
+  { name: 'nco_memory_consolidate', description: 'Run SCM sleep consolidation (boost+prune)', params: ['agentId'] },
+  // AgentEvolver (1)
+  { name: 'nco_evolver_stats', description: 'Get agent evolution stats and persona suggestions', params: ['agentId'] },
 ];
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -169,6 +178,15 @@ case 'nco_mesh_send': {
         return JSON.stringify({ error: `Anthropic proxy unreachable at ${PROXY}: ${err.message}` });
       }
     }
+    // HNSW Vector Memory
+    case 'nco_memory_add': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/add`, { content: args.content }));
+    case 'nco_memory_search': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/search`, { query: args.query, k: args.k ? Number(args.k) : 5 }));
+    case 'nco_memory_list': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(args.agentId)}`));
+    case 'nco_memory_stats': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(args.agentId)}/stats`));
+    case 'nco_memory_rebuild': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/rebuild`, {}));
+    case 'nco_memory_consolidate': return JSON.stringify(await ncoPost('/api/memory/consolidate', { agentId: args.agentId }));
+    // AgentEvolver
+    case 'nco_evolver_stats': return JSON.stringify(await ncoFetch(`/api/evolver/${encodeURIComponent(args.agentId)}/stats`));
     default: return JSON.stringify({ error: `Unknown tool: ${name}` });
   }
 }
