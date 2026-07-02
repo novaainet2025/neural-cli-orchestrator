@@ -88,6 +88,7 @@ type VerifierResult = {
   timedOut: boolean;
   passed: boolean;
   outputSnippet: string;
+  spawnError?: string;
 };
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
@@ -130,21 +131,34 @@ async function waitForExitWithTimeout(
   child: ChildProcessByStdio<null, Readable, Readable>,
   timeoutMs: number,
 ): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  const OUTPUT_LIMIT = 64 * 1024;
   let stdout = '';
   let stderr = '';
   let timedOut = false;
 
   child.stdout.on('data', chunk => {
-    stdout += chunk.toString();
+    if (stdout.length >= OUTPUT_LIMIT) return;
+    const text = chunk.toString();
+    stdout += text.slice(0, OUTPUT_LIMIT - stdout.length);
   });
   child.stderr.on('data', chunk => {
-    stderr += chunk.toString();
+    if (stderr.length >= OUTPUT_LIMIT) return;
+    const text = chunk.toString();
+    stderr += text.slice(0, OUTPUT_LIMIT - stderr.length);
   });
 
   return await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      if (process.platform === 'win32') {
+        child.kill('SIGKILL');
+        return;
+      }
+      try {
+        process.kill(-child.pid!, 'SIGKILL');
+      } catch {
+        child.kill('SIGKILL');
+      }
     }, timeoutMs);
 
     child.once('error', err => {
@@ -178,6 +192,7 @@ async function applyVerifierGate(
       {
         cwd: env.PROJECT_DIR,
         env: process.env,
+        detached: process.platform !== 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
         signal: controllerSignal,
       },
@@ -195,7 +210,11 @@ async function applyVerifierGate(
       passed,
       outputSnippet,
     };
-    persistVerifierResult(task.taskId, verifierResult);
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (err) {
+      log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
+    }
 
     if (passed) {
       return classified;
@@ -217,8 +236,13 @@ async function applyVerifierGate(
       timedOut: false,
       passed: false,
       outputSnippet,
+      spawnError: outputSnippet,
     };
-    persistVerifierResult(task.taskId, verifierResult);
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (persistErr) {
+      log.warn({ taskId: task.taskId, err: persistErr }, 'Failed to persist verifier result');
+    }
 
     return {
       ...classified,

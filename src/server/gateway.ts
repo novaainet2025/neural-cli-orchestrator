@@ -431,9 +431,17 @@ export async function createGateway() {
       ORDER BY id DESC
       LIMIT 1
     `).get(id) as { ai: string | null; prompt: string | null } | undefined;
+    const verifierRow = db.prepare(`
+      SELECT verifier_json, verifier_result_json
+      FROM tasks
+      WHERE id=?
+    `).get(id) as {
+      verifier_json: string | null;
+      verifier_result_json: string | null;
+    } | undefined;
 
     const failedTask = deadLetter ? undefined : db.prepare(`
-      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt, verifier_json, verifier_result_json
+      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
       FROM tasks
       WHERE id=? AND status='failed'
     `).get(id) as {
@@ -443,12 +451,19 @@ export async function createGateway() {
       workspace_id: string | null;
       priority: number | null;
       system_prompt: string | null;
-      verifier_json: string | null;
-      verifier_result_json: string | null;
     } | undefined;
 
+    const parsedVerifier = (() => {
+      if (!verifierRow?.verifier_json) return undefined;
+      try {
+        return JSON.parse(verifierRow.verifier_json);
+      } catch {
+        return undefined;
+      }
+    })();
+
     const payload = deadLetter
-      ? { ai: deadLetter.ai ?? undefined, prompt: deadLetter.prompt ?? '' }
+      ? { ai: deadLetter.ai ?? undefined, prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
       : failedTask
         ? {
             ai: failedTask.assigned_to ?? undefined,
@@ -457,14 +472,7 @@ export async function createGateway() {
             workspaceId: failedTask.workspace_id ?? undefined,
             priority: failedTask.priority ?? undefined,
             systemPrompt: failedTask.system_prompt ?? undefined,
-            verifier: (() => {
-              if (!failedTask.verifier_json) return undefined;
-              try {
-                return JSON.parse(failedTask.verifier_json);
-              } catch {
-                return undefined;
-              }
-            })(),
+            verifier: parsedVerifier,
           }
         : null;
 
@@ -473,9 +481,9 @@ export async function createGateway() {
       return { error: 'Retry source not found' };
     }
 
-    if (failedTask?.verifier_result_json) {
+    if (verifierRow?.verifier_result_json) {
       try {
-        const parsed = JSON.parse(failedTask.verifier_result_json) as {
+        const parsed = JSON.parse(verifierRow.verifier_result_json) as {
           passed?: boolean;
           outputSnippet?: string;
           command?: string;
