@@ -39,7 +39,7 @@ async function boot(): Promise<void> {
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,
     });
-    return { success: result.success, output: result.output, error: result.error };
+    return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
   await taskQueue.init(loadEnabledProviders());
 

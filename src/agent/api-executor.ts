@@ -23,6 +23,11 @@ interface ApiResult {
   iterations: number;
   toolCalls: number;
   model: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
   success?: boolean;
   error?: string;
 }
@@ -85,6 +90,11 @@ export class ApiExecutor {
     let iterations = 0;
     let rateLimitRotations = 0;
     let totalToolCalls = 0;
+    const usage = {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
 
     const credentialError = this.getCredentialPreflightError();
     if (credentialError) {
@@ -144,6 +154,9 @@ export class ApiExecutor {
           }
 
           const response = await client.chat.completions.create(createParams);
+          usage.promptTokens += response.usage?.prompt_tokens ?? 0;
+          usage.completionTokens += response.usage?.completion_tokens ?? 0;
+          usage.totalTokens += response.usage?.total_tokens ?? 0;
 
           const msg = response.choices[0]?.message;
           if (!msg) break;
@@ -300,6 +313,7 @@ export class ApiExecutor {
       iterations,
       toolCalls: totalToolCalls,
       model: this.provider.model || 'unknown',
+      usage,
     };
   }
 

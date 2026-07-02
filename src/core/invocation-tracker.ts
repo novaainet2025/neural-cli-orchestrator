@@ -248,9 +248,16 @@ class InvocationTracker {
       LIMIT 20
     `).all() as Record<string, unknown>[];
 
+    // 대시보드 목록 표시용 — 저장은 2000자지만 개요 페이로드는 500자로 자른다
+    // (전문은 getInvocation() 단건 조회 또는 tasks.response에서)
+    const forDisplay = (inv: Invocation): Invocation =>
+      inv.resultSummary && inv.resultSummary.length > 500
+        ? { ...inv, resultSummary: inv.resultSummary.slice(0, 500) + '…' }
+        : inv;
+
     return {
-      active: activeRows.map(rowToInvocation),
-      recentCompleted: recentRows.map(rowToInvocation),
+      active: activeRows.map(rowToInvocation).map(forDisplay),
+      recentCompleted: recentRows.map(rowToInvocation).map(forDisplay),
     };
   }
 

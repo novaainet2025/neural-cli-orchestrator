@@ -37,6 +37,11 @@ interface TaskResult {
   success: boolean;
   error?: string;
   durationMs: number;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
 }
 
 class AgentManager {
@@ -115,6 +120,7 @@ class AgentManager {
       let output: string;
       let iterations = 0;
       let toolCalls = 0;
+      let usage: TaskResult['usage'];
 
       // ── HNSW Vector Memory: Pre-task semantic recall ─────
       try {
@@ -186,6 +192,7 @@ class AgentManager {
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
+          usage = result.usage;
           // credential preflight 등 executor가 명시한 실패를 completed로 흘리지 않는다
           if (result.success === false) {
             throw new Error(result.error || 'api executor reported failure');
@@ -264,7 +271,7 @@ class AgentManager {
         agentEvolver.record(agentId, taskId, true, durationMs, output.length);
       } catch { /* non-critical */ }
 
-      return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs };
+      return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs, usage };
 
     } catch (err: any) {
       const durationMs = Date.now() - startTime;

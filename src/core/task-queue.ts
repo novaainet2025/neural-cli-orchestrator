@@ -60,7 +60,16 @@ export interface QueueMetrics {
   mode: 'bullmq' | 'semaphore';
 }
 
-type TaskExecutionResult = { success: boolean; output: string; error?: string };
+type TaskExecutionResult = {
+  success: boolean;
+  output: string;
+  error?: string;
+  usage?: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+};
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
@@ -232,12 +241,13 @@ class TaskQueueManager {
       const result = await this.executor(task, controller.signal);
       const classified = classifyResult(result);
       if (invocationId) {
-        const summary = (classified.output || '').slice(0, 500);
+        const summary = (classified.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
           invocationId,
           classified.success ? 'completed' : 'failed',
           classified.success ? summary : undefined,
           classified.success ? undefined : (classified.error || classified.output),
+          classified.usage,
         );
         await invocationTracker.notifyCompletion(invocationId);
       }
@@ -421,12 +431,13 @@ class TaskQueueManager {
       if (classified.success) entry.completed++;
       else entry.failed++;
       if (invocationId) {
-        const summary = (classified.output || '').slice(0, 500);
+        const summary = (classified.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
           invocationId,
           classified.success ? 'completed' : 'failed',
           classified.success ? summary : undefined,
           classified.success ? undefined : (classified.error || classified.output),
+          classified.usage,
         );
         await invocationTracker.notifyCompletion(invocationId);
       }

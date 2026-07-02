@@ -263,8 +263,13 @@ export class OrchestratedLoop {
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];
       case 'opencode':
-        // opencode run <message> — non-interactive; 'chat' opens TUI
-        return ['run', prompt];
+        // opencode run <message> — non-interactive; 'chat' opens TUI.
+        // provider.args 보존 규칙: 첫 토큰이 비플래그면 이미 subcommand(run/plan 등)가
+        // 지정된 것이므로 그대로 쓰고, 플래그로 시작하거나 비어있으면 run을 앞에 붙인다.
+        // (baseArgs 전체에서 비플래그를 찾으면 '-m <model>'의 값을 subcommand로 오판한다)
+        return baseArgs[0] && !baseArgs[0].startsWith('-')
+          ? [...baseArgs, prompt]
+          : ['run', ...baseArgs, prompt];
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];

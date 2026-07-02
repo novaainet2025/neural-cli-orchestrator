@@ -106,7 +106,7 @@ async function boot(): Promise<void> {
       signal,
       timeoutMs: task.timeoutMs,
     });
-    return { success: result.success, output: result.output, error: result.error };
+    return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
   await taskQueue.init(loadEnabledProviders());
 
