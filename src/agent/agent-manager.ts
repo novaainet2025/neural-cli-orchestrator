@@ -186,6 +186,10 @@ class AgentManager {
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
+          // credential preflight 등 executor가 명시한 실패를 completed로 흘리지 않는다
+          if (result.success === false) {
+            throw new Error(result.error || 'api executor reported failure');
+          }
           break;
         }
       }

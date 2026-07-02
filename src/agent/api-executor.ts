@@ -23,6 +23,8 @@ interface ApiResult {
   iterations: number;
   toolCalls: number;
   model: string;
+  success?: boolean;
+  error?: string;
 }
 
 function jsonArgsToStringRecord(raw: string): Record<string, string> {
@@ -82,6 +84,19 @@ export class ApiExecutor {
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
+
+    const credentialError = this.getCredentialPreflightError();
+    if (credentialError) {
+      const error = `credential preflight failed: ${credentialError}`;
+      return {
+        output: error,
+        iterations,
+        toolCalls: totalToolCalls,
+        model: this.provider.model || 'unknown',
+        success: false,
+        error,
+      };
+    }
 
     const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId);
 
@@ -247,6 +262,18 @@ export class ApiExecutor {
     if (compact) return buildCompactSystemPrompt(base);
     const teamState = await this.buildTeamContext();
     return buildApiAgentSystemPrompt(base, teamState);
+  }
+
+  private getCredentialPreflightError(): string | null {
+    if (this.keys.length === 0) {
+      return 'no API keys configured';
+    }
+
+    if (this.keys.every(key => key.trim().length < 20)) {
+      return 'all API keys are shorter than 20 characters';
+    }
+
+    return null;
   }
 
   private async buildTeamContext(): Promise<string> {

@@ -60,7 +60,31 @@ export interface QueueMetrics {
   mode: 'bullmq' | 'semaphore';
 }
 
-type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<{ success: boolean; output: string; error?: string }>;
+type TaskExecutionResult = { success: boolean; output: string; error?: string };
+type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
+
+const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
+
+function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
+  if (!result.success) return result;
+
+  const output = result.output ?? '';
+  const trimmed = output.trim();
+
+  if (trimmed.length === 0) {
+    return { ...result, success: false, output, error: 'silent-failure: empty output' };
+  }
+
+  if (trimmed === '(에이전트 응답 없음)') {
+    return { ...result, success: false, output, error: 'silent-failure: no agent response' };
+  }
+
+  if (output.length < 300 && SILENT_FAILURE_PATTERN.test(output)) {
+    return { ...result, success: false, output, error: 'silent-failure: limit or credential message' };
+  }
+
+  return result;
+}
 
 // ─── In-memory semaphore (Redis-offline fallback) ─────
 class Semaphore {
@@ -192,7 +216,7 @@ class TaskQueueManager {
     log.debug({ agentId, concurrency }, 'BullMQ queue+worker created');
   }
 
-  private async runJob(task: QueuedTask, entry: AgentQueueEntry): Promise<{ success: boolean; output: string }> {
+  private async runJob(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
     if (!this.executor) throw new Error('Executor not set');
 
     const controller = new AbortController();
@@ -206,17 +230,18 @@ class TaskQueueManager {
 
     try {
       const result = await this.executor(task, controller.signal);
+      const classified = classifyResult(result);
       if (invocationId) {
-        const summary = (result.output || '').slice(0, 500);
+        const summary = (classified.output || '').slice(0, 500);
         invocationTracker.completeInvocation(
           invocationId,
-          result.success ? 'completed' : 'failed',
-          result.success ? summary : undefined,
-          result.success ? undefined : (result.error || result.output),
+          classified.success ? 'completed' : 'failed',
+          classified.success ? summary : undefined,
+          classified.success ? undefined : (classified.error || classified.output),
         );
         await invocationTracker.notifyCompletion(invocationId);
       }
-      return result;
+      return classified;
     } catch (err: any) {
       if (invocationId) {
         invocationTracker.completeInvocation(invocationId, 'failed', undefined, err.message);
@@ -392,18 +417,20 @@ class TaskQueueManager {
 
     try {
       const result = await this.executor(task, controller.signal);
-      entry.completed++;
+      const classified = classifyResult(result);
+      if (classified.success) entry.completed++;
+      else entry.failed++;
       if (invocationId) {
-        const summary = (result.output || '').slice(0, 500);
+        const summary = (classified.output || '').slice(0, 500);
         invocationTracker.completeInvocation(
           invocationId,
-          result.success ? 'completed' : 'failed',
-          result.success ? summary : undefined,
-          result.success ? undefined : (result.error || result.output),
+          classified.success ? 'completed' : 'failed',
+          classified.success ? summary : undefined,
+          classified.success ? undefined : (classified.error || classified.output),
         );
         await invocationTracker.notifyCompletion(invocationId);
       }
-      return result;
+      return classified;
     } catch (err: any) {
       entry.failed++;
       if (invocationId) {
