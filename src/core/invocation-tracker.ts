@@ -123,7 +123,13 @@ class InvocationTracker {
 
     let durationMs: number | null = null;
     if (row?.created_at) {
-      durationMs = Date.now() - new Date(row.created_at).getTime();
+      // created_at은 SQLite datetime('now') = UTC이지만 타임존 표기가 없어
+      // new Date()가 로컬로 파싱, KST에서 duration이 +9h 오염됨 (실측 9h+40s).
+      // 'T'+'Z'를 붙여 UTC로 명시 파싱한다. 이미 ISO/타임존 표기가 있으면 그대로 둔다.
+      const iso = /[TZ]|[+-]\d{2}:\d{2}$/.test(row.created_at)
+        ? row.created_at
+        : row.created_at.replace(' ', 'T') + 'Z';
+      durationMs = Date.now() - new Date(iso).getTime();
     }
 
     const pT = usage?.promptTokens ?? 0;

@@ -83,6 +83,7 @@ export class ApiExecutor {
   async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean }): Promise<ApiResult> {
     const agentId = this.provider.id;
     let iterations = 0;
+    let rateLimitRotations = 0;
     let totalToolCalls = 0;
 
     const credentialError = this.getCredentialPreflightError();
@@ -147,7 +148,40 @@ export class ApiExecutor {
           const msg = response.choices[0]?.message;
           if (!msg) break;
 
-          const textContent = typeof msg.content === 'string' ? msg.content : '';
+          // NIM Nemotron 등 reasoner 모델은 본문을 content가 아닌 reasoning_content에
+          // 넣는다 — content만 읽으면 빈 결과가 completed로 기록됨 (2026-07-03 실측)
+          // NIM 등 일부 프로바이더는 content를 문자열 대신 콘텐츠 파트 배열
+          // ([{type:'text',text:'...'}])로 반환한다 (2026-07-03 nvidia 실측:
+          // contentType=object, completion_tokens>0인데 문자열 추출 실패).
+          // reasoner 모델은 본문을 reasoning_content에 넣기도 한다.
+          const rawContent: unknown = msg.content;
+          let textContent = '';
+          if (typeof rawContent === 'string') {
+            textContent = rawContent;
+          } else if (Array.isArray(rawContent)) {
+            textContent = rawContent
+              .map(p => typeof p === 'string' ? p : (p as { text?: unknown })?.text)
+              .filter((t): t is string => typeof t === 'string')
+              .join('');
+          } else if (rawContent && typeof rawContent === 'object') {
+            const t = (rawContent as { text?: unknown }).text;
+            if (typeof t === 'string') textContent = t;
+          }
+          if (!textContent) {
+            const reasoningContent = (msg as { reasoning_content?: unknown }).reasoning_content;
+            if (typeof reasoningContent === 'string') textContent = reasoningContent;
+          }
+
+          if (!textContent && !msg.tool_calls?.length) {
+            // 빈 응답 원인 추적용 — 어떤 필드/finish_reason으로 비었는지 남긴다
+            log.warn({
+              agentId, taskId,
+              finishReason: response.choices[0]?.finish_reason,
+              contentType: typeof msg.content,
+              msgKeys: Object.keys(msg),
+              usage: response.usage,
+            }, 'empty content from provider response');
+          }
 
           await eventBus.publish({
             type: 'task:chunk', taskId, agentId,
@@ -213,9 +247,16 @@ export class ApiExecutor {
             ? (err as { status?: number }).status
             : undefined;
           if (status === 429 && this.keys.length > 1) {
+            // 무한 회전 방지: 전 키가 rate-limit이면 iterations--가 MAX_ITERATIONS를
+            // 무력화해 태스크가 영구 hang이었다 (2026-07-03 openrouter 7키 실측).
+            rateLimitRotations++;
+            if (rateLimitRotations > this.keys.length * 2) {
+              throw new Error(`rate limited (429) on all ${this.keys.length} keys after ${rateLimitRotations} rotations`);
+            }
             this.cooldowns.set(this.keyIndex, Date.now() + (this.provider.keyRotation?.cooldownMs || 60000));
             this.keyIndex = (this.keyIndex + 1) % this.keys.length;
-            log.warn({ agentId, keyIndex: this.keyIndex }, 'Rate limited, rotating key');
+            log.warn({ agentId, keyIndex: this.keyIndex, rateLimitRotations }, 'Rate limited, rotating key');
+            await new Promise(r => setTimeout(r, 1000 * Math.min(rateLimitRotations, 10)));
             iterations--;
             continue;
           }
@@ -247,6 +288,11 @@ export class ApiExecutor {
       }
     } finally {
       await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
+    }
+
+    // 빈 완료를 성공으로 기록하면 위임자가 결과 유실을 감지 못한다 (nvidia 빈 결과 사건)
+    if (!finalOutput.trim()) {
+      throw new Error(`empty completion from provider '${agentId}' after ${iterations} iteration(s)`);
     }
 
     return {
@@ -291,6 +337,10 @@ export class ApiExecutor {
     return new OpenAI({
       apiKey: apiKey || 'not-needed',
       baseURL,
+      // maxRetries 0: SDK 내부 재시도는 429의 Retry-After(실측 openrouter 일일한도
+      // 소진 시 31162s)를 존중하며 잠들어 태스크가 시간 단위로 hang한다.
+      // 429/오류는 즉시 throw시켜 우리 키 회전 루프가 제어하도록 한다.
+      maxRetries: 0,
       timeout: this.sandbox.getTimeout(),
     });
   }

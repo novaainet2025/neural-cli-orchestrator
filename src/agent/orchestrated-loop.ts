@@ -227,15 +227,19 @@ export class OrchestratedLoop {
       case 'codex':
         // codex exec <prompt> — non-interactive; skip git trust check outside workdir
         // --output-last-message: final assistant reply only (no banner/echo)
+        // --sandbox workspace-write: 기본 read-only 샌드박스는 구현 위임이 전부
+        //   "patch rejected: read-only sandbox"로 실패한다 (2026-07-03 subnote 실측)
         return lastMessageFile
-          ? ['exec', '--skip-git-repo-check', '--output-last-message', lastMessageFile, prompt]
-          : ['exec', '--skip-git-repo-check', prompt];
+          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
       case 'agy':
-        // Antigravity CLI: --print runs a single prompt non-interactively;
-        // --dangerously-skip-permissions avoids tool-approval hangs in autonomous mode
-        return ['--print', '--dangerously-skip-permissions', ...baseArgs, prompt];
+        // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
+        // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가
+        // 뒤따르는 플래그 문자열을 프롬프트로 오인해 매 태스크가 해당 플래그 설명만
+        // 반환하는 버그가 있었다 (2026-07-03 subnote 실측: 순서 교정 후 정답 반환).
+        return ['--dangerously-skip-permissions', ...baseArgs, '--print', prompt];
       case 'aider':
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];
