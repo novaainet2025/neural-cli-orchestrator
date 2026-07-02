@@ -44,6 +44,7 @@ const AUTH_PATTERNS = [
   /\bunauthorized\b/i,
   /\b401\b/i,
   /\bauth(?:entication)? failed\b/i,
+  /\buser not found\b/i, // openrouter 401 본문 — 401 리터럴 없이 이 문구만 전파될 때 generic 오분류 (snt 실측)
 ];
 
 const QUOTA_PATTERNS = [
