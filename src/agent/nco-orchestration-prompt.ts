@@ -1,5 +1,18 @@
 import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
 
+/**
+ * Fable 운영 원칙 요약 — fleet 공통 행동 규범 (nova-fleet-config/docs/fable-principles.md v1).
+ * 모든 NCO 에이전트(Type B/C) system prompt preamble에 주입된다.
+ */
+export const FABLE_PRINCIPLES_PREAMBLE = [
+  '## Fable Principles (fleet code of conduct)',
+  '1. Honesty-first: unverified success is worse than failure. Verify with ground-truth evidence (file content, HTTP body, DB row) before claiming done. Say "unknown" when unknown; mark guesses as guesses.',
+  '2. Benevolent knowledge sharing: share discovered error patterns and fixes with sources (commit hash, file path, measurement) so others can re-verify.',
+  '3. Collaboration > solo: check for duplicate work before starting; answer peer questions accurately or admit ignorance.',
+  '4. Safety: no destructive ops (rm -rf, force-push, DROP, data deletion) without explicit approval; never bypass verification gates — fix root causes.',
+  '5. Completeness: implement → review → gap-check → verify. Never hide unverified items; state them explicitly.',
+].join('\n');
+
 /** Shared NCO tool protocol (XML) — Type B orchestrated loop and Type C API agents must stay aligned. */
 export const NCO_TOOL_XML_INSTRUCTIONS = [
   '## Tools (XML)',
@@ -20,6 +33,8 @@ export function buildOrchestrationSystemPrompt(
 ): string {
   return [
     baseSystem,
+    '',
+    FABLE_PRINCIPLES_PREAMBLE,
     '',
     '## Team',
     teamStateLines || 'None',
@@ -54,7 +69,17 @@ export const NCO_API_NATIVE_TOOLS_HINT = [
 ].join('\n');
 
 export function buildApiAgentSystemPrompt(baseSystem: string, teamStateLines: string): string {
-  return `${buildOrchestrationSystemPrompt(baseSystem, teamStateLines)}\n\n${NCO_API_NATIVE_TOOLS_HINT}`;
+  // Type C agents get native tool_calls — do NOT include XML tool instructions (confuses smaller models)
+  return [
+    baseSystem,
+    '',
+    FABLE_PRINCIPLES_PREAMBLE,
+    '',
+    '## Team',
+    teamStateLines || 'None',
+    '',
+    NCO_API_NATIVE_TOOLS_HINT,
+  ].join('\n');
 }
 
 /**

@@ -469,7 +469,9 @@ class DiscussionEngine {
         const result = await agentManager.executeTask(pid, prompt, {
           systemPrompt: `Discussion R${round}. Session: ${sessionId}`,
           compact: true,
-          signal: AbortSignal.timeout(30_000),
+          // 120s: Type B CLI(codex 등)는 콜드스타트+추론에 30s 이상 소요 —
+          // 30s abort는 tmpfile 미생성 → 배너 전사 폴백 오염의 원인이었음
+          signal: AbortSignal.timeout(120_000),
         });
 
         const db = getDb();
@@ -820,7 +822,7 @@ class DiscussionEngine {
       participants,
       rounds,
       finalConsensusRate: consensusRate,
-      adoptedProposal: adoptedProposal.slice(0, 2000),
+      adoptedProposal: adoptedProposal.slice(0, 20000),
       rationale: `Adopted ${adoptedAgent}'s proposal with ${(consensusRate * 100).toFixed(0)}% consensus after ${rounds.length} rounds.`,
       dissentingOpinions,
       totalDurationMs: Date.now() - startTime,

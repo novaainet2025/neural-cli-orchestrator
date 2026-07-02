@@ -1,4 +1,7 @@
 import { execa } from 'execa';
+import { readFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
 import { AgentToolExecutor } from './agent-tools.js';
 import { parseToolCalls, extractThinking } from './tool-parser.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
@@ -175,9 +178,15 @@ export class OrchestratedLoop {
       ...history.map(h => `### ${h.role === 'user' ? 'User' : 'Assistant'}:\n${h.content}`),
     ].join('\n');
 
+    // codex: --output-last-message writes ONLY the final assistant message to a file,
+    // avoiding banner/echo pollution in stdout (T1-verified flag support)
+    const lastMessageFile = this.provider.id === 'codex'
+      ? joinPath(tmpdir(), `nco-codex-last-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
+      : null;
+
     // Most CLI AIs accept prompt via stdin or -p flag
     // Adapt per provider
-    const finalArgs = this.buildArgs(args, combined);
+    const finalArgs = this.buildArgs(args, combined, lastMessageFile);
 
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
@@ -190,6 +199,22 @@ export class OrchestratedLoop {
         reject: false,
       });
 
+      if (lastMessageFile) {
+        try {
+          const lastMsg = readFileSync(lastMessageFile, 'utf-8').trim();
+          if (lastMsg) return lastMsg;
+        } catch {
+          // file missing (codex failed before writing) — fall back below
+        } finally {
+          try { unlinkSync(lastMessageFile); } catch { /* already gone */ }
+        }
+        // codex killed before writing final message (timeout/abort):
+        // raw stdout is a session transcript (banner + prompt echo) — never return it as the answer
+        if ((result as any).isCanceled || result.failed) {
+          return `[codex: no final response — process ${(result as any).isCanceled ? 'aborted (timeout)' : 'failed'}]`;
+        }
+      }
+
       return stripAnsi(result.stdout || result.stderr || '');
     } catch (err: any) {
       log.error({ agentId: this.provider.id, err: err.message }, 'CLI call failed');
@@ -197,11 +222,14 @@ export class OrchestratedLoop {
     }
   }
 
-  private buildArgs(baseArgs: string[], prompt: string): string[] {
+  private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null): string[] {
     switch (this.provider.id) {
       case 'codex':
         // codex exec <prompt> — non-interactive; skip git trust check outside workdir
-        return ['exec', '--skip-git-repo-check', prompt];
+        // --output-last-message: final assistant reply only (no banner/echo)
+        return lastMessageFile
+          ? ['exec', '--skip-git-repo-check', '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
       case 'aider':

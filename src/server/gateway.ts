@@ -259,11 +259,13 @@ export async function createGateway() {
 
     // Inject workspace conversation history into systemPrompt so the agent
     // has context from previous turns in the same workspace session.
-    const systemPromptWithContext = injectContext(
-      input.systemPrompt,
-      input.workspaceId || 'default',
-      taskId,
-    );
+    // Only when the caller EXPLICITLY passed workspaceId — otherwise one-shot
+    // tasks get polluted with unrelated 'default' workspace history and the
+    // agent answers the old conversation instead of the current prompt.
+    const explicitWorkspace = typeof (req.body as any)?.workspaceId === 'string';
+    const systemPromptWithContext = explicitWorkspace
+      ? injectContext(input.systemPrompt, input.workspaceId || 'default', taskId)
+      : input.systemPrompt;
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
