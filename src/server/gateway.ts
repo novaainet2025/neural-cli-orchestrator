@@ -37,7 +37,6 @@ function detectFailedCompletion(response: string | null | undefined): boolean {
 }
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
-import { registerMem0Routes } from './routes/mem0.js';
 import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
@@ -1443,8 +1442,7 @@ export async function createGateway() {
     return { invocations: rows };
   });
 
-  // ═══ mem0 Memory Layer Routes ═══════════════════════
-  await registerMem0Routes(app);
+  // mem0 라우트는 아래 "NCO 메가태스크 이식" 블록에 inline 구현되어 있다 (중복 등록 금지)
 
   // ═══ Inter-Session Routes (list/status/send/broadcast) ═══
   // dashboard-compat의 catch-all 스텁보다 먼저 등록해야 실제 핸들러가 응답한다

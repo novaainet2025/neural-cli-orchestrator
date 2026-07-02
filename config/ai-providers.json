@@ -397,7 +397,7 @@
     {
       "id": "ollama",
       "name": "Ollama",
-      "enabled": true,
+      "enabled": false,
       "type": "api",
       "role": "Engineer",
       "score": 80,
@@ -444,7 +444,7 @@
         "timeout": 5000
       },
       "updated": "2026-07-02",
-      "_disabled_reason": "Mac — MLX(Apple Silicon) 우선",
+      "_disabled_reason": "ollama 미응답(localhost:11434)",
       "_disabled_at": "2026-07-02"
     },
     {
