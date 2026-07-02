@@ -207,7 +207,7 @@ class TaskQueueManager {
   private async setupBullMQ(agentId: string, concurrency: number, entry: AgentQueueEntry): Promise<void> {
     const redis = await getRedis();
     const connection = { host: redis.options.host || '127.0.0.1', port: Number(redis.options.port || 6379) };
-    const queueName = `nco:agent:${agentId}`;
+    const queueName = `nco-agent-${agentId}`;
 
     entry.queue = new Queue<QueuedTask>(queueName, { connection });
 
@@ -394,7 +394,7 @@ class TaskQueueManager {
     try {
       // Wait for job to complete via QueueEvents
       const result = await job.waitUntilFinished(
-        new QueueEvents(`nco:agent:${task.agentId}`, {
+        new QueueEvents(`nco-agent-${task.agentId}`, {
           connection: { host: (await getRedis()).options.host || '127.0.0.1', port: Number((await getRedis()).options.port || 6379) },
         }),
         300_000, // 5 min timeout
