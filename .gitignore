@@ -9,3 +9,9 @@ db/worker-state.json
 .pm2/
 .aider*
 config/ai-providers.local.json
+# 세션 노트는 머신 로컬 (공유 저장소 커밋 금지)
+context_note.md
+context_history/
+docs/improvements/
+# 머신 로컬 PM2 앱 정의 (ecosystem.config.cjs는 중립 SSOT)
+ecosystem.local.cjs
