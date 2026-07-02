@@ -344,7 +344,7 @@
       "type": "api",
       "role": "Generalist",
       "score": 75,
-      "model": "nvidia/nemotron-3-super-120b-a12b:free",
+      "model": "openai/gpt-oss-120b:free",
       "command": null,
       "args": [],
       "endpoint": "https://openrouter.ai/api/v1",
@@ -357,8 +357,8 @@
         "cooldownMs": 60000
       },
       "freeModels": [
-        "nvidia/nemotron-3-super-120b-a12b:free",
         "openai/gpt-oss-120b:free",
+        "nvidia/nemotron-3-super-120b-a12b:free",
         "google/gemma-3-27b-it:free",
         "google/gemma-4-31b-it:free",
         "nousresearch/hermes-3-llama-3.1-405b:free",
@@ -387,7 +387,7 @@
         "tone": "versatile",
         "style": "efficient"
       },
-      "note": "Free tier only. Uses OpenAI-compatible API via openrouter.ai",
+      "note": "Free tier only. Uses OpenAI-compatible API via openrouter.ai | 2026-07-03: 기본 model을 gpt-oss-120b:free로 교체 — nemotron free는 일일한도+깨진 <unk> 출력, gpt-oss만 정상(T1 프로브)",
       "healthCheck": {
         "type": "api",
         "url": "https://openrouter.ai/api/v1/models",
