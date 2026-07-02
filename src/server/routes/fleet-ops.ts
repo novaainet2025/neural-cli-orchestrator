@@ -16,6 +16,7 @@
 import type { FastifyInstance } from 'fastify';
 import { hostname } from 'os';
 import { agentManager } from '../../agent/agent-manager.js';
+import { circuitBreakerRegistry } from '../../security/circuit-breaker-registry.js';
 import { eventBus } from '../../core/event-bus.js';
 import { sharedState } from '../../core/shared-state.js';
 import { getDb } from '../../storage/database.js';
@@ -106,8 +107,8 @@ export async function collectAgentSnapshots(): Promise<FleetReportAgent[]> {
         : state.currentTask ?? null;
     }
 
-    const sandbox = agentManager.getSandbox(provider.id);
-    const circuitState = sandbox?.circuitBreaker?.toJSON()?.state ?? 'closed';
+    // registry가 단일 진실원 (구 sandbox breaker는 registry와 불일치, kangnote 2026-07-02 보고)
+    const circuitState = circuitBreakerRegistry.getSnapshot(provider.id).state;
     if (circuitState === 'open' && status !== 'working') {
       status = 'error';
     }

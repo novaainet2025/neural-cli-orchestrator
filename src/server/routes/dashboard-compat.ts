@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../storage/database.js';
 import { sharedState } from '../../core/shared-state.js';
 import { agentManager } from '../../agent/agent-manager.js';
+import { circuitBreakerRegistry } from '../../security/circuit-breaker-registry.js';
 import { eventBus } from '../../core/event-bus.js';
 import { discussionEngine } from '../../core/discussion-engine.js';
 import { createTaskId, createSessionId, createMessageId } from '../../utils/id.js';
@@ -584,18 +585,17 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const successCount = stats?.completed || 0;
       const successRate = taskCount > 0 ? Math.round((successCount / taskCount) * 100) : 0;
       const avgDurationMs = stats?.avg_ms ? Math.round(stats.avg_ms) : 0;
-      // CircuitBreaker 상태 수집
-      const sandbox = agentManager.getSandbox(p.id);
-      const cbJson = sandbox?.circuitBreaker?.toJSON() as any;
+      // CircuitBreaker 상태 수집 — registry가 단일 진실원 (구 sandbox breaker는 registry와 불일치, kangnote 2026-07-02 보고)
+      const cb = circuitBreakerRegistry.getSnapshot(p.id);
       // 마지막 실패 이유: DB 태스크 response에서 추출
       const rawLastError = lastFailMap.get(p.id) ?? null;
       const lastError = rawLastError
         ? rawLastError.slice(0, 120)
-        : (cbJson?.lastFailureAt ? `마지막 실패: ${new Date(cbJson.lastFailureAt).toLocaleTimeString('ko-KR')}` : null);
-      const circuitState: string = cbJson?.state ?? 'closed';
+        : (cb.openedAt ? `마지막 실패: ${new Date(cb.openedAt).toLocaleTimeString('ko-KR')}` : null);
+      const circuitState: string = cb.state;
       const health = {
         circuitState,
-        consecutiveFailures: cbJson?.failures ?? 0,
+        consecutiveFailures: cb.failureCount,
         lastError,
       };
 
