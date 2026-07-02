@@ -7,14 +7,39 @@ import { redisHealthCheck } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { discussionEngine } from '../core/discussion-engine.js';
-import { sharedState } from '../core/shared-state.js';
+import { sharedState, type AgentState } from '../core/shared-state.js';
 import { eventBus, type NCOEvent } from '../core/event-bus.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
 import { taskQueue } from '../core/task-queue.js';
+
+/** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
+function detectFailedCompletion(response: string | null | undefined): boolean {
+  if (!response) return false;
+  const patterns = [
+    /\b(?:error|exception)\b.*\b(?:occurred|happened|encountered)\b/i,
+    /\bfailed\s+(?:to|with)\b/i,
+    /\b(?:exceeded|over)\b.*\b(?:limit|quota|rate)\b/i,
+    /\bAPI\s*(?:key|quota|limit)\b.*\b(?:invalid|expired|exceeded)\b/i,
+    /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
+    /\b(?:streaming|execution)\s+error\b/i,
+    /\busage.*exceeded\b/i,
+    /\btimeout\b.*\b(?:error|exceeded|after)\b/i,
+    /\bActionRequiredError\b/i,
+    /\busage\s+limit\b/i,
+    /\bProviderModelNotFoundError\b/i,
+    /^Error:\s/m,
+    /\brequest\s+timed\s+out\b/i,
+    /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
+  ];
+  return patterns.some(p => p.test(response));
+}
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
+import { registerMem0Routes } from './routes/mem0.js';
+import { registerInterSessionRoutes } from './routes/inter-session.js';
+import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
@@ -142,7 +167,21 @@ export async function createGateway() {
 
   app.get('/api/ai-providers/status', async () => {
     const states = await sharedState.getAllAgentStates();
-    return { providers: states };
+    const providers: Record<string, AgentState> = {};
+    for (const p of agentManager.listProviders()) {
+      const s = states[p.id];
+      providers[p.id] = {
+        id: p.id,
+        status: s?.status || 'offline',
+        currentTask: s?.currentTask || null,
+        currentFiles: s?.currentFiles || [],
+        lastAction: s?.lastAction || null,
+        lastActionAt: s?.lastActionAt || null,
+        messageCount: s?.messageCount || 0,
+        health: s?.health || { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
+      };
+    }
+    return { providers };
   });
 
   // ═══ Daemons ══════════════════════════════════════
@@ -174,9 +213,14 @@ export async function createGateway() {
 
   // ═══ Tasks ════════════════════════════════════════
   app.post('/api/task', async (req, reply) => {
-    const input = CreateTaskInput.parse(req.body);
+    const parsed = CreateTaskInput.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+    const input = parsed.data;
     const taskId = createTaskId();
-    const agentId = input.ai || 'claude-code';
+    const agentId = input.ai ?? 'claude-code';
 
     // Extract caller context for invocation tracking
     const body = req.body as any;
@@ -225,9 +269,10 @@ export async function createGateway() {
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
+        const honest = result.success && !detectFailedCompletion(response) ? 'completed' : 'failed';
         try {
           db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-            .run(result.success ? 'completed' : 'failed', response, taskId);
+            .run(honest, response, taskId);
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
       })
       .catch(err => {
@@ -304,7 +349,7 @@ export async function createGateway() {
     const body = req.body as any;
     const prompt = (body.message || body.prompt || '').trim();
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
-    const agentId = body.ai || 'claude-code';
+    const agentId = body.ai ?? 'claude-code';
 
     const taskId = createTaskId();
     reply.code(202);
@@ -1238,8 +1283,10 @@ export async function createGateway() {
       taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
         .then(result => {
           try {
+            const cResp = result.output || result.error;
+            const cStatus = result.success && !detectFailedCompletion(cResp) ? 'completed' : 'failed';
             db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-              .run(result.success ? 'completed' : 'failed', result.output || result.error, taskId);
+              .run(cStatus, cResp, taskId);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
@@ -1355,6 +1402,22 @@ export async function createGateway() {
     return { invocations: invocationTracker.listInvocations(limit, offset) };
   });
 
+  app.get('/api/invocations/:id', async (req, reply) => {
+    const { id } = req.params as any;
+    const db = getDb();
+    const invocation = db.prepare(`
+      SELECT * FROM agent_invocations
+      WHERE id = ?
+    `).get(id);
+
+    if (!invocation) {
+      reply.code(404);
+      return { error: 'Invocation not found' };
+    }
+
+    return { invocation };
+  });
+
   app.get('/api/invocations/overview', async () => {
     return invocationTracker.getOverview();
   });
@@ -1377,6 +1440,16 @@ export async function createGateway() {
     `).all(agentId, limit);
     return { invocations: rows };
   });
+
+  // ═══ mem0 Memory Layer Routes ═══════════════════════
+  await registerMem0Routes(app);
+
+  // ═══ Inter-Session Routes (list/status/send/broadcast) ═══
+  // dashboard-compat의 catch-all 스텁보다 먼저 등록해야 실제 핸들러가 응답한다
+  await registerInterSessionRoutes(app);
+
+  // ═══ Fleet Ops (push 텔레메트리 + edit-lease) ═══════════
+  await registerFleetOpsRoutes(app);
 
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);

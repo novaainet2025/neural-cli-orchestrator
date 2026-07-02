@@ -10,6 +10,7 @@ import { eventBus } from '../../core/event-bus.js';
 import { discussionEngine } from '../../core/discussion-engine.js';
 import { createTaskId, createSessionId, createMessageId } from '../../utils/id.js';
 import { env } from '../../utils/config.js';
+import { getPushReports } from './fleet-ops.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -704,29 +705,121 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return { agents: sorted, updatedAt: new Date().toISOString() };
   });
 
-  // inter-session 메시지 피드 (최근 20개)
+  // inter-session 메시지 피드 (최근 100개)
   app.get('/api/inter-session/messages', async () => {
     const logPath = `${process.env.HOME}/.claude/data/inter-session/messages.log`;
     try {
-      const { stdout } = await execFileAsync('tail', ['-40', logPath]);
+      const { stdout } = await execFileAsync('tail', ['-200', logPath]);
       const messages = stdout.trim().split('\n')
         .filter(Boolean)
         .map(line => {
           try { return JSON.parse(line); } catch { return null; }
         })
         .filter(Boolean)
-        .slice(-20)
+        .slice(-100)
         .map((m: any) => ({
           id:       m.msg_id ?? '',
           from:     m.from_name ?? m.from ?? '?',
           to:       m.to_session_id ? 'broadcast' : (m.to ?? '?'),
-          text:     (m.text ?? '').slice(0, 120),
+          text:     (m.text ?? '').slice(0, 200),
           ts:       m.ts ?? '',
         }))
         .reverse();
       return { messages };
     } catch {
       return { messages: [] };
+    }
+  });
+
+  // inter-session 세션별 활동 분석 (passive working detection)
+  app.get('/api/inter-session/activity', async () => {
+    const logPath = `${process.env.HOME}/.claude/data/inter-session/messages.log`;
+    try {
+      const { stdout } = await execFileAsync('tail', ['-500', logPath]);
+      const now = Date.now();
+      const entries = stdout.trim().split('\n')
+        .filter(Boolean)
+        .map(line => { try { return JSON.parse(line); } catch { return null; } })
+        .filter(Boolean);
+
+      // 세션별 활동 집계
+      const sessionActivity = new Map<string, {
+        name: string;
+        msgCount1m: number;   // 1분 내 메시지 수
+        msgCount5m: number;   // 5분 내 메시지 수
+        lastMsgTs: string;
+        lastMsgAge: number;   // ms
+        lastMsgText: string;
+        status: 'working' | 'idle' | 'online';
+        statusSource: string;  // 판정 근거
+      }>();
+
+      for (const m of entries) {
+        const name = m.from_name ?? m.from ?? '';
+        if (!name) continue;
+        const ts = m.ts ?? '';
+        const msgTime = ts ? new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z').getTime() : 0;
+        const age = now - msgTime;
+        const text = (m.text ?? '').slice(0, 200);
+
+        let entry = sessionActivity.get(name);
+        if (!entry) {
+          entry = { name, msgCount1m: 0, msgCount5m: 0, lastMsgTs: '', lastMsgAge: Infinity, lastMsgText: '', status: 'online', statusSource: '' };
+          sessionActivity.set(name, entry);
+        }
+
+        if (age < 60_000) entry.msgCount1m++;
+        if (age < 300_000) entry.msgCount5m++;
+
+        if (age < entry.lastMsgAge) {
+          entry.lastMsgAge = age;
+          entry.lastMsgTs = ts;
+          entry.lastMsgText = text;
+        }
+      }
+
+      // 상태 판정
+      for (const [, entry] of sessionActivity) {
+        const text = entry.lastMsgText.toLowerCase();
+        // 명시적 status 메시지 우선
+        if (/^status:\s*working/i.test(entry.lastMsgText)) {
+          entry.status = 'working';
+          entry.statusSource = 'explicit-status';
+        } else if (/^status:\s*idle/i.test(entry.lastMsgText)) {
+          entry.status = entry.lastMsgAge < 120_000 ? 'idle' : 'online';
+          entry.statusSource = 'explicit-status';
+        } else if (/^(done:|answer:)/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
+          entry.status = 'working';
+          entry.statusSource = 'done/answer-recent';
+        } else if (/^question:/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
+          entry.status = 'working';
+          entry.statusSource = 'question-active';
+        } else if (entry.msgCount1m >= 2) {
+          // 1분 내 2+ 메시지 = 활발하게 작업 중
+          entry.status = 'working';
+          entry.statusSource = `frequency:${entry.msgCount1m}msg/1m`;
+        } else if (entry.msgCount5m >= 3) {
+          entry.status = 'working';
+          entry.statusSource = `frequency:${entry.msgCount5m}msg/5m`;
+        } else if (entry.lastMsgAge < 60_000) {
+          entry.status = 'idle';
+          entry.statusSource = 'recent-but-quiet';
+        } else if (entry.lastMsgAge < 300_000) {
+          entry.status = 'online';
+          entry.statusSource = 'seen-5m';
+        } else {
+          entry.status = 'online';
+          entry.statusSource = 'stale';
+        }
+      }
+
+      const sessions = Array.from(sessionActivity.values())
+        .filter(s => !s.name.startsWith('nco-'))  // NCO 프로바이더 제외
+        .sort((a, b) => a.lastMsgAge - b.lastMsgAge);
+
+      return { sessions, count: sessions.length, analyzedAt: new Date().toISOString() };
+    } catch {
+      return { sessions: [], count: 0, analyzedAt: new Date().toISOString() };
     }
   });
 
@@ -840,10 +933,14 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const sessionRadius = 520;
       const sessionNodeIds: string[] = [];
 
+      // fleet 프로바이더 노드: 클라이언트 mergedGraphData에서 /api/fleet/agents 기반으로 단일 생성
+      // (서버 graph에서는 세션 노드만 생성, 프로바이더 노드는 생성하지 않음)
+
       // 사람/피어 세션 → 큰 다이아몬드 노드 (외부 링)
       humanPeers.forEach((peer, si) => {
         const angle = (si / Math.max(humanPeers.length, 4)) * 2 * Math.PI;
         sessionNodeIds.push(`session:${peer.name}`);
+        const isLocal = peer.name.startsWith('nova-macstudio-');
         (nodes as any[]).push({
           id: `session:${peer.name}`,
           type: 'session',
@@ -854,9 +951,12 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             status: 'online',
             connectedSince: peer.since,
             cwd: peer.cwd,
-            isRemote: !peer.name.startsWith('nova-macstudio-'),
+            isRemote: !isLocal,
           },
         });
+
+        // 원격 세션 fleet 프로바이더: 클라이언트 mergedGraphData에서 /api/fleet/agents 기반으로 생성
+        // (서버 + 클라이언트 이중 생성 → 중복 24개 문제 방지)
       });
 
       // nco-* 세션 → 작은 위성 노드: 대응 provider에 연결
@@ -968,6 +1068,46 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     }
   });
 
+  // ═══ Dashboard Context Notes (맥락노트 + 개선노트) ══════════════
+  app.get('/api/dashboard/context-notes', async () => {
+    const fs = await import('fs');
+    const path = await import('path');
+    const os = await import('os');
+    const home = os.homedir();
+
+    // 맥락노트
+    const ctxPath = path.join(home, 'projects', 'context_note.md');
+    let contextNote = { exists: false, content: '', mtime: '' };
+    try {
+      const stat = fs.statSync(ctxPath);
+      contextNote = { exists: true, content: fs.readFileSync(ctxPath, 'utf-8').slice(0, 4000), mtime: stat.mtime.toISOString() };
+    } catch {}
+
+    // 개선노트 (최근 10개 — score + nextItems만 경량 반환)
+    const impDir = path.join(home, '.claude', 'improvements');
+    const improvementNotes: any[] = [];
+    try {
+      const files = fs.readdirSync(impDir)
+        .filter((f: string) => f.endsWith('.md') && !f.includes('INDEX'))
+        .sort().reverse().slice(0, 10);
+      for (const f of files) {
+        const fpath = path.join(impDir, f);
+        const stat = fs.statSync(fpath);
+        const content = fs.readFileSync(fpath, 'utf-8');
+        const scoreMatch = content.match(/점수:\s*(\S+)/);
+        const nextMatch = content.match(/권장 개선사항[^\n]*\n((?:\d+\..*\n?){1,5})/);
+        improvementNotes.push({
+          filename: f,
+          mtime: stat.mtime.toISOString(),
+          score: scoreMatch ? scoreMatch[1] : '-',
+          nextItems: nextMatch ? nextMatch[1].trim() : '',
+        });
+      }
+    } catch {}
+
+    return { contextNote, improvementNotes };
+  });
+
   // ═══ Circuit Breaker 수동 리셋 API ══════════════════
   app.post('/api/agents/:id/reset-circuit', async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -1007,26 +1147,33 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const now = Date.now();
 
       // inter-session 세션명 → 호스트명 추출 (nova-macstudio-claude-1 → nova-macstudio)
+      // claude-N-M 패턴 (충돌 회피 suffix) 도 처리: subnote-claude-2-2 → subnote
       const extractHost = (name: string): string => {
-        const m = name.match(/^(.+?)-claude-\d+$/);
+        const m = name.match(/^(.+?)-claude-\d+(?:-\d+)*$/);
         return m ? m[1] : name;
       };
 
       // 텍스트 포맷 providers 파싱
+      // 실제 프로바이더 ID: claude-code, opencode, codex, agy 등 (하이픈 포함 소문자)
+      // 비 프로바이더: ok, healthy, all-ok, none, 11 등 (상태 표현 또는 숫자)
+      const PROVIDER_STATUS_WORDS = /^(ok|all-ok|healthy|enabled|yes|no|true|false|none|disabled|up-to-date|idle|working|error|online|offline|done)$/i;
+      const isRealProvider = (id: string) => id && !/^\d+$/.test(id) && !PROVIDER_STATUS_WORDS.test(id);
+
       const parseTextProviders = (txt: string): any[] | null => {
         // done: providers=[a,b,c] health=ok  (대괄호 포함)
         const arrMatch = txt.match(/providers=\[([^\]]+)\]/);
         if (arrMatch) {
-          return arrMatch[1].split(',').map(id => id.trim()).filter(Boolean).map(id => ({
-            id, name: id, status: 'idle' as const, currentTask: null,
-          }));
+          const ids = arrMatch[1].split(',').map(id => id.trim()).filter(isRealProvider);
+          if (ids.length === 0) return null;
+          return ids.map(id => ({ id, name: id, status: 'idle' as const, currentTask: null }));
         }
         // done: providers=a,b,c health=ok  (대괄호 없음, 공백/| 전까지)
         const bareMatch = txt.match(/providers=([a-z0-9\-_,]+)/);
         if (bareMatch && !bareMatch[1].includes('all-ok') && !bareMatch[1].includes('enabled')) {
-          return bareMatch[1].split(',').map(id => id.trim()).filter(Boolean).map(id => ({
-            id, name: id, status: 'idle' as const, currentTask: null,
-          }));
+          // 순수 숫자(카운트) 또는 상태 단어 필터링 — 실제 프로바이더 명칭만 허용
+          const ids = bareMatch[1].split(',').map(id => id.trim()).filter(isRealProvider);
+          if (ids.length === 0) return null;
+          return ids.map(id => ({ id, name: id, status: 'idle' as const, currentTask: null }));
         }
         // status: host=X ... providers=all-ok — 호스트 존재 표시만
         if (/providers=all-ok/.test(txt)) return [];
@@ -1065,7 +1212,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             // status: host=X ts=... providers=all-ok 텍스트 포맷
             const hostMatch = txt.match(/host=([^\s|]+)/);
             if (hostMatch) {
-              const hostName = hostMatch[1];
+              // host=kangnote-claude-1 같은 세션명도 extractHost로 정규화
+              const hostName = extractHost(hostMatch[1]);
               const key = hostName.toLowerCase();
               const existing = hostMap.get(key);
               const existTs = existing?.ts ? new Date(existing.ts).getTime() : 0;
@@ -1104,7 +1252,28 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         } catch { /* skip malformed */ }
       }
 
-      const hosts = Array.from(hostMap.values());
+      // push 텔레메트리 병합 — 원격 NCO가 직접 push한 보고(T1)가
+      // 메시지 파싱 보고(T4)보다 신선하면 우선한다 (fleet-ops.ts)
+      for (const pr of getPushReports()) {
+        const key = pr.host.toLowerCase();
+        const existing = hostMap.get(key);
+        const existTs = existing?.ts ? new Date(existing.ts).getTime() : 0;
+        const prTs = new Date(pr.ts).getTime();
+        if (!existing || prTs > existTs) {
+          hostMap.set(key, { host: pr.host, agents: pr.agents as any, from: pr.from ?? `${pr.host}-push`, ts: pr.ts });
+        }
+      }
+
+      // agents=0인 호스트 제거 — 오래된 IS 메시지에서 유래한 빈 호스트 엔트리 방지
+      const hosts = Array.from(hostMap.values())
+        .filter(h => h.agents.length > 0)
+        .map(h => {
+          // 신선도: 마지막 보고 경과초 — 프론트가 stale 호스트를 회색/경과표시할 수 있게 제공
+          let staleSeconds: number | null = null;
+          const tsMs = h.ts ? new Date(h.ts).getTime() : 0;
+          if (tsMs > 0) staleSeconds = Math.max(0, Math.round((Date.now() - tsMs) / 1000));
+          return { ...h, staleSeconds };
+        });
       const totalAgents = hosts.reduce((s, h) => s + h.agents.length, 0);
       return { hosts, totalAgents, hostCount: hosts.length, updatedAt: new Date().toISOString() };
     } catch (err: any) {
@@ -1113,11 +1282,39 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   });
 
   // ═══ Fleet 브로드캐스트 트리거 (강제 갱신) ═════════════════
+  // 쿨다운: 대시보드 다중 탭/30초 타이머가 겹치면 같은 요청이 원격에 분당 수회
+  // 중복 도착 → 원격 세션들이 "재시도 루프"로 판단하고 응답을 거부함 (T1: 12회 중복 항의).
+  // 실브로드캐스트는 최소 90초 간격으로 1회만 나간다.
+  let lastFleetBroadcastAt = 0;
+  const FLEET_BROADCAST_COOLDOWN_MS = 90_000;
   app.post('/api/fleet/refresh', async () => {
     try {
+      const sinceLast = Date.now() - lastFleetBroadcastAt;
+      if (sinceLast < FLEET_BROADCAST_COOLDOWN_MS) {
+        return { ok: true, skipped: true, message: `Cooldown: ${Math.round((FLEET_BROADCAST_COOLDOWN_MS - sinceLast) / 1000)}s 후 재시도 가능` };
+      }
+      lastFleetBroadcastAt = Date.now();
       const IS_BIN = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'plugins', 'cache', 'inter-session', 'inter-session', '0.1.2', 'skills', 'inter-session', 'bin');
       const msg = 'fleet-status-request: respond with JSON {"host":"<pc-name>","agents":[{"id":"<id>","name":"<name>","status":"idle|working|error","currentTask":"<task or null>"},...]} for all your NCO providers. Use status: prefix.';
-      await execFileAsync('python3', [join(IS_BIN, 'send.py'), '--all', '--text', msg], { timeout: 5000 });
+      // PM2 프로세스 트리에는 inter-session listener가 없으므로 send.py의 identity
+      // discovery가 실패한다("not connected"). 살아있는 세션 키를 PPID_OVERRIDE로
+      // 빌려 전송한다 (inter-session.ts runSendPy와 동일 메커니즘, shared.py:565).
+      const clientsDir = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
+      let ppidKey: string | null = null;
+      try {
+        for (const f of readdirSync(clientsDir)) {
+          if (!f.endsWith('.session')) continue;
+          const pid = parseInt(f, 10);
+          if (!Number.isFinite(pid)) continue;
+          try { process.kill(pid, 0); } catch { continue; } // stale 세션 제외
+          ppidKey = f.replace('.session', '');
+          break;
+        }
+      } catch { /* clients dir 없음 → override 없이 시도 */ }
+      await execFileAsync('python3', [join(IS_BIN, 'send.py'), '--all', '--text', msg], {
+        timeout: 5000,
+        env: ppidKey ? { ...process.env, INTER_SESSION_PPID_OVERRIDE: ppidKey } : process.env,
+      });
       return { ok: true, message: 'Fleet status request broadcast sent' };
     } catch (err: any) {
       return { ok: false, error: String(err?.message ?? err) };
@@ -1130,13 +1327,16 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     session: string; tool: string; action: string; file: string; project: string;
     ts: number; done: boolean;
   }[]>();
-  const ACTIVITY_TTL_MS = 30_000; // 30초 후 자동 만료
+  const ACTIVITY_TTL_MS = 30_000;      // 진행 중: 30초
+  const ACTIVITY_DONE_TTL_MS = 12_000; // 완료됨: 12초간 유지 (대시보드 폴링 캐치용)
 
   // 만료 정리 (10초마다)
   setInterval(() => {
     const now = Date.now();
     for (const [session, acts] of activityStore.entries()) {
-      const alive = acts.filter(a => now - a.ts < ACTIVITY_TTL_MS && !a.done);
+      const alive = acts.filter(a =>
+        a.done ? now - a.ts < ACTIVITY_DONE_TTL_MS : now - a.ts < ACTIVITY_TTL_MS
+      );
       if (alive.length === 0) activityStore.delete(session);
       else activityStore.set(session, alive);
     }
@@ -1156,8 +1356,11 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     const existing = activityStore.get(session) ?? [];
     if (isDone) {
-      // 완료: 해당 도구 항목 제거
-      activityStore.set(session, existing.filter(a => a.tool !== tool || a.file !== file));
+      // 완료: 삭제 대신 done=true + ts갱신 (12초간 "최근 완료" 표시)
+      const updated = existing.map(a =>
+        (a.tool === tool && a.file === file) ? { ...a, done: true, ts: Date.now() } : a
+      );
+      activityStore.set(session, updated);
     } else {
       // 시작: 같은 도구+파일 중복 제거 후 추가
       const filtered = existing.filter(a => !(a.tool === tool && a.file === file));
@@ -1174,7 +1377,9 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const now = Date.now();
     const result: Record<string, any[]> = {};
     for (const [session, acts] of activityStore.entries()) {
-      const alive = acts.filter(a => now - a.ts < ACTIVITY_TTL_MS && !a.done);
+      const alive = acts.filter(a =>
+        a.done ? now - a.ts < ACTIVITY_DONE_TTL_MS : now - a.ts < ACTIVITY_TTL_MS
+      );
       if (alive.length > 0) result[session] = alive;
     }
     return { activities: result, ts: new Date().toISOString() };
@@ -1190,17 +1395,25 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       FROM tasks ORDER BY created_at DESC LIMIT 300
     `).all() as any[];
 
-    // 프로젝트명 추출 함수
+    // 프로젝트명 추출 함수 (우선순위: 파일경로 > nco-* > 알려진키워드 > 첫단어)
     const extractProject = (prompt: string): string => {
       if (!prompt) return 'unknown';
-      // 파일 경로 패턴 추출
-      const m = prompt.match(/\/(?:project|projects|Users\/[^/]+\/(?:project|work))\/([^/\s]+)/);
-      if (m) return m[1];
-      // NCO 프로젝트명 패턴
-      const nm = prompt.match(/\b(nco[-\w]+|nco_[\w]+)\b/i);
-      if (nm) return nm[1].toLowerCase();
-      // 첫 10단어 요약
-      return prompt.split(/\s+/).slice(0, 4).join(' ').slice(0, 40);
+      // 1) 파일 경로 패턴: /project/xxx/ 또는 /Users/xxx/project/xxx/
+      const pathM = prompt.match(/\/(?:project|projects)\/([a-zA-Z0-9_-]+)/);
+      if (pathM) return pathM[1];
+      // 2) NCO 대시보드 키워드
+      if (/nco.?dashboard/i.test(prompt)) return 'nco-dashboard';
+      if (/fleet.?sync|fleet.?감독|fleet.?check/i.test(prompt)) return 'fleet-ops';
+      if (/inter.?session/i.test(prompt)) return 'inter-session';
+      if (/bootstrap|nova.?fleet/i.test(prompt)) return 'nova-fleet-config';
+      // 3) nco-xxx 패턴
+      const ncoM = prompt.match(/\b(nco[-_][a-z0-9]+)\b/i);
+      if (ncoM) return ncoM[1].toLowerCase();
+      // 4) done:/status:/answer: 접두사 → 감독 작업으로 분류
+      if (/^(done:|status:|answer:|fleet-)/i.test(prompt.trimStart())) return 'fleet-ops';
+      // 5) 첫 의미있는 단어 (조사/접속사 제외)
+      const words = prompt.split(/\s+/).filter(w => w.length > 2 && !/^(the|and|for|with|from|this|that|한|의|을|를|이|가|에|서)$/i.test(w));
+      return words.slice(0, 2).join(' ').slice(0, 35) || 'unknown';
     };
 
     const projectMap = new Map<string, { done: number; fail: number; run: number; pending: number; lastAt: string; agents: Set<string> }>();
@@ -1216,11 +1429,26 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       if ((r.completed_at ?? r.created_at) > p.lastAt) p.lastAt = r.completed_at ?? r.created_at;
     }
 
+    // 테스트 아티팩트 이름 패턴
+    const TEST_PATTERN = /^(race-test-|stress-test-|bench-test-|load-test-|test-task-|debug-|tmp-)/i;
     const projects = [...projectMap.entries()]
-      .sort((a, b) => b[1].lastAt.localeCompare(a[1].lastAt))
+      .filter(([name, s]) => {
+        const total = s.done + s.fail + s.run + s.pending;
+        if (total === 0) return false;                          // 빈 프로젝트 제거
+        if (TEST_PATTERN.test(name) && s.done === 0 && s.fail === 0) return false; // 완료 없는 test 제거
+        return true;
+      })
+      .sort((a, b) => {
+        // running 먼저, 그 다음 lastAt 내림차순
+        const aRun = a[1].run > 0 ? 1 : 0;
+        const bRun = b[1].run > 0 ? 1 : 0;
+        if (bRun !== aRun) return bRun - aRun;
+        return b[1].lastAt.localeCompare(a[1].lastAt);
+      })
       .slice(0, Number(limit))
       .map(([name, s]) => ({
-        name,
+        // 프로젝트명 후처리: 트레일링 콜론/마침표/줄바꿈 제거
+        name: name.replace(/[:\.\s]+$/, '').trim(),
         done: s.done, fail: s.fail, running: s.run, pending: s.pending,
         total: s.done + s.fail + s.run + s.pending,
         agents: [...s.agents],
@@ -1235,14 +1463,38 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   // Note: This must be the LAST route registered. Routes added in gateway.ts
   // before registerDashboardRoutes() take priority via Fastify's route matching.
   app.all('/api/*', async (req, reply) => {
-    // Handle /api/learn/search inline (catch-all overrides specific routes in Fastify)
     const urlPath = req.url.split('?')[0];
+
+    // gateway.ts에서 이미 등록된 라우트는 catch-all에서 제외 — Fastify wildcard 우선순위 문제 우회
+    const gatewayRoutes = [
+      /^\/api\/invocations(\/|$)/,
+      /^\/api\/safety\//,
+    ];
+    if (gatewayRoutes.some(r => r.test(urlPath))) {
+      reply.callNotFound();
+      return;
+    }
+
+    // Handle /api/learn/search inline
     if (urlPath === '/api/learn/search' && req.method === 'GET') {
       const { knowledgeBase } = await import('../../core/knowledge-base.js');
       const { q, keywords, project, limit } = req.query as any;
       const searchTerms = q || keywords;
       if (!searchTerms) return { data: [], message: 'q or keywords parameter required' };
       return { data: knowledgeBase.query(searchTerms, project, Number(limit) || 10) };
+    }
+
+    // ── /api/memory/overview — 전체 에이전트 메모리 요약 ────────────────
+    if (urlPath === '/api/memory/overview' && req.method === 'GET') {
+      const { vectorMemory } = await import('../../core/vector-memory.js');
+      const agentIds = ['agy','claude-2','claude-code','codex','copilot','cursor-agent',
+                        'gemini','hermes','mlx','nvidia','openclaw','opencode','openrouter'];
+      const byAgent = agentIds.map(id => {
+        try { return { agentId: id, ...(vectorMemory.stats(id) ?? {}) }; }
+        catch { return { agentId: id, total: 0, semantic_count: 0, indexLoaded: false }; }
+      }).filter(a => a.total > 0);
+      const totalMemories = byAgent.reduce((s, a) => s + (a.total ?? 0), 0);
+      return { totalMemories, totalAgents: byAgent.length, lastConsolidatedAt: new Date().toISOString(), byAgent };
     }
 
     // ── HNSW Vector Memory routes (/api/memory/*) ────────────────────────

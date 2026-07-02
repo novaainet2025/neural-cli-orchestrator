@@ -97,7 +97,9 @@ async function boot(): Promise<void> {
     reply.type('text/html').send(getTopologyHTML(env.WS_PORT, env.PORT));
   });
 
-  await gateway.listen({ port: env.PORT, host: '127.0.0.1' });
+  // 2026-07-02 사용자 승인: Tailscale 사설망 내 원격 NCO들의 fleet push 수신을 위해
+  // 0.0.0.0 바인드 (HOST env로 재정의 가능 — 되돌리려면 HOST=127.0.0.1)
+  await gateway.listen({ port: env.PORT, host: process.env.HOST ?? '0.0.0.0' });
   log.info({ port: env.PORT }, 'API Gateway listening');
 
   // 9. WebSocket Bridge (:6201)
