@@ -45,10 +45,25 @@ const pushReports = new Map<string, FleetReport>();
 const PUSH_MAX_HOSTS = 50;
 const PUSH_TTL_MS = 10 * 60_000;
 
+function deletePersistedPushReport(host: string): void {
+  getDb().prepare('DELETE FROM fleet_push_reports WHERE host=?').run(host);
+}
+
+function persistPushReport(report: FleetReport): void {
+  getDb().prepare(`
+    INSERT INTO fleet_push_reports (host, payload, ts)
+    VALUES (?, ?, ?)
+    ON CONFLICT(host) DO UPDATE SET payload=excluded.payload, ts=excluded.ts
+  `).run(report.host, JSON.stringify(report), report.ts);
+}
+
 export function getPushReports(): FleetReport[] {
   const now = Date.now();
   for (const [k, r] of pushReports) {
-    if (now - new Date(r.ts).getTime() > PUSH_TTL_MS) pushReports.delete(k);
+    if (now - new Date(r.ts).getTime() > PUSH_TTL_MS) {
+      pushReports.delete(k);
+      deletePersistedPushReport(k);
+    }
   }
   return Array.from(pushReports.values());
 }
@@ -127,6 +142,44 @@ function activeLease(file: string): Lease | null {
 }
 
 export async function registerFleetOpsRoutes(app: FastifyInstance) {
+  const db = getDb();
+  const persistedReports = db.prepare(`
+    SELECT host, payload, ts
+    FROM fleet_push_reports
+  `).all() as Array<{ host: string; payload: string; ts: string }>;
+  const deleteExpiredPushReport = db.prepare('DELETE FROM fleet_push_reports WHERE host=?');
+  const now = Date.now();
+  for (const row of persistedReports) {
+    if (now - new Date(row.ts).getTime() > PUSH_TTL_MS) {
+      deleteExpiredPushReport.run(row.host);
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(row.payload) as Partial<FleetReport>;
+      const agents = Array.isArray(parsed.agents) ? parsed.agents : null;
+      if (!agents) {
+        deleteExpiredPushReport.run(row.host);
+        continue;
+      }
+      pushReports.set(row.host, {
+        host: row.host,
+        agents: agents
+          .filter(a => a && typeof a.id === 'string' && a.id.length > 0 && a.id.length < 50 && !a.id.includes('/'))
+          .map(a => ({
+            id: a.id,
+            name: a.name ?? a.id,
+            status: a.status ?? 'idle',
+            currentTask: a.currentTask ?? null,
+            taskId: typeof a.taskId === 'string' && a.taskId.length > 0 ? a.taskId : undefined,
+            since: typeof a.since === 'string' && a.since.length > 0 ? a.since : undefined,
+          })),
+        from: typeof parsed.from === 'string' ? parsed.from : undefined,
+        ts: row.ts,
+      });
+    } catch {
+      deleteExpiredPushReport.run(row.host);
+    }
+  }
 
   // ─── POST /api/fleet/report — 원격 NCO의 상태 push ───────────────────
   app.post('/api/fleet/report', async (req, reply) => {
@@ -158,7 +211,9 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
       return { ok: false, error: 'too many hosts' };
     }
     const ts = new Date().toISOString();
-    pushReports.set(host, { host, agents: valid, from: (body?.from ?? `${host}-push`), ts });
+    const report = { host, agents: valid, from: (body?.from ?? `${host}-push`), ts };
+    pushReports.set(host, report);
+    persistPushReport(report);
     await eventBus.publish({
       type: 'fleet:update',
       host,

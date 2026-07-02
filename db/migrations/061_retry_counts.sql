@@ -1,0 +1,4 @@
+CREATE TABLE IF NOT EXISTS retry_counts (
+  task_id TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0
+);

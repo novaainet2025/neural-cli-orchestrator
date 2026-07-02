@@ -414,6 +414,12 @@ export async function createGateway() {
   app.post('/api/tasks/:id/retry', async (req, reply) => {
     const { id } = req.params as any;
     const db = getDb();
+    const taskLineage = db.prepare(`
+      SELECT parent_task_id
+      FROM tasks
+      WHERE id=?
+    `).get(id) as { parent_task_id: string | null } | undefined;
+    const sourceTaskId = taskLineage?.parent_task_id ?? id;
     const deadLetter = db.prepare(`
       SELECT ai, prompt
       FROM dead_letter_tasks
@@ -453,12 +459,45 @@ export async function createGateway() {
       return { error: 'Retry source not found' };
     }
 
+    const readRetryCount = db.prepare(`
+      SELECT count
+      FROM retry_counts
+      WHERE task_id=?
+    `);
+    const incrementRetryCount = db.prepare(`
+      INSERT INTO retry_counts (task_id, count)
+      VALUES (?, 1)
+      ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
+    `);
+    const reserveRetry = db.transaction((taskId: string) => {
+      const row = readRetryCount.get(taskId) as { count: number } | undefined;
+      const count = row?.count ?? 0;
+      if (count >= 3) {
+        return { allowed: false, count };
+      }
+      incrementRetryCount.run(taskId);
+      const updated = readRetryCount.get(taskId) as { count: number };
+      return { allowed: true, count: updated.count };
+    });
+    const retryReservation = reserveRetry(sourceTaskId);
+    if (!retryReservation.allowed) {
+      reply.code(429);
+      return { error: 'retry limit exceeded', count: retryReservation.count };
+    }
+
     const created = await app.inject({ method: 'POST', url: '/api/task', payload });
     const body = created.json() as { taskId?: string; error?: string };
     if (created.statusCode >= 400 || !body.taskId) {
+      // 생성 실패는 재시도 예산에서 제외 — 시스템 오류로 상한에 갇히는 것 방지 (hermes 리뷰 f)
+      db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(sourceTaskId);
       reply.code(created.statusCode);
       return body;
     }
+    db.prepare(`
+      UPDATE tasks
+      SET parent_task_id=?, updated_at=datetime('now')
+      WHERE id=?
+    `).run(sourceTaskId, body.taskId);
 
     reply.code(202);
     return { newTaskId: body.taskId, retryOf: id };
