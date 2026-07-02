@@ -365,8 +365,10 @@ export async function createGateway() {
       return rejectWhileDraining(reply);
     }
 
-    // Alias for /api/task
-    return app.inject({ method: 'POST', url: '/api/task', payload: req.body as any });
+    // Alias for /api/task — inject 응답 객체를 그대로 반환하면 내부 res가 직렬화되어 깨진 JSON이 나감
+    const res = await app.inject({ method: 'POST', url: '/api/task', payload: req.body as any });
+    reply.code(res.statusCode);
+    return res.json();
   });
 
   app.get('/api/tasks', async (req) => {
