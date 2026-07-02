@@ -22,24 +22,17 @@ export interface AgentState {
 }
 
 const AGENT_PREFIX = 'nco:agent:';
-const AGENT_TTL = 300; // 5 min
+const AGENT_TTL = 600; // 10 min (기존 5분 → 소실 방지 확대)
 const ARTIFACTS_KEY = 'nco:artifacts:recent';
 const LOCK_PREFIX = 'nco:lock:file:';
 
 export class SharedState {
-  // ─── Agent State ──────────────────────────────────
-  async getAgentState(agentId: string): Promise<AgentState | null> {
-    if (!isRedisConnected()) return null;
-    const redis = await getRedis();
-    const raw = await redis.get(`${AGENT_PREFIX}${agentId}:state`);
-    return raw ? JSON.parse(raw) : null;
-  }
+  private localStates: Record<string, AgentState> = {};
+  private localHeartbeats: Record<string, number> = {};
+  private warnedFallbackOps = new Set<string>();
 
-  async setAgentState(agentId: string, state: Partial<AgentState>): Promise<void> {
-    if (!isRedisConnected()) return;
-    const redis = await getRedis();
-    const current = await this.getAgentState(agentId);
-    const merged: AgentState = {
+  private createDefaultState(agentId: string): AgentState {
+    return {
       id: agentId,
       status: 'offline',
       currentTask: null,
@@ -48,22 +41,59 @@ export class SharedState {
       lastActionAt: null,
       messageCount: 0,
       health: { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
-      ...current,
-      ...state,
     };
+  }
+
+  private warnLocalFallback(op: string): void {
+    if (this.warnedFallbackOps.has(op)) return;
+    this.warnedFallbackOps.add(op);
+    log.warn({ op }, 'Redis unavailable, using in-memory shared state fallback');
+  }
+
+  // ─── Agent State ──────────────────────────────────
+  async getAgentState(agentId: string): Promise<AgentState | null> {
+    if (!isRedisConnected()) {
+      this.warnLocalFallback('getAgentState');
+      return this.localStates[agentId] || null;
+    }
+    const redis = await getRedis();
+    const raw = await redis.get(`${AGENT_PREFIX}${agentId}:state`);
+    if (raw) {
+      const state = JSON.parse(raw) as AgentState;
+      this.localStates[agentId] = state;
+      return state;
+    }
+    return this.localStates[agentId] || null;
+  }
+
+  async setAgentState(agentId: string, state: Partial<AgentState>): Promise<void> {
+    const current = await this.getAgentState(agentId);
+    const merged: AgentState = { ...this.createDefaultState(agentId), ...current, ...state };
+    this.localStates[agentId] = merged;
+
+    if (!isRedisConnected()) {
+      this.warnLocalFallback('setAgentState');
+      return;
+    }
+
+    const redis = await getRedis();
     await redis.set(`${AGENT_PREFIX}${agentId}:state`, JSON.stringify(merged), 'EX', AGENT_TTL);
   }
 
   async getAllAgentStates(): Promise<Record<string, AgentState>> {
-    if (!isRedisConnected()) return {};
+    if (!isRedisConnected()) {
+      this.warnLocalFallback('getAllAgentStates');
+      return { ...this.localStates };
+    }
     const redis = await getRedis();
     const keys = await redis.keys(`${AGENT_PREFIX}*:state`);
-    const result: Record<string, AgentState> = {};
+    const result: Record<string, AgentState> = { ...this.localStates };
     for (const key of keys) {
       const raw = await redis.get(key);
       if (raw) {
         const state = JSON.parse(raw) as AgentState;
         result[state.id] = state;
+        this.localStates[state.id] = state;
       }
     }
     return result;
@@ -71,18 +101,54 @@ export class SharedState {
 
   // ─── Heartbeat ────────────────────────────────────
   async heartbeat(agentId: string): Promise<void> {
-    if (!isRedisConnected()) return;
+    const now = Date.now();
+    this.localHeartbeats[agentId] = now;
+    if (!isRedisConnected()) {
+      this.warnLocalFallback('heartbeat');
+      return;
+    }
     const redis = await getRedis();
-    await redis.set(`${AGENT_PREFIX}${agentId}:heartbeat`, String(Date.now()), 'EX', 60);
+    await redis.set(`${AGENT_PREFIX}${agentId}:heartbeat`, String(now), 'EX', 120);
+    // heartbeat 시 state TTL도 갱신 (소실 방지)
+    const stateKey = `${AGENT_PREFIX}${agentId}:state`;
+    const ttl = await redis.ttl(stateKey);
+    if (ttl > 0 && ttl < AGENT_TTL / 2) {
+      await redis.expire(stateKey, AGENT_TTL);
+    }
   }
 
   async isAgentAlive(agentId: string): Promise<boolean> {
-    if (!isRedisConnected()) return false;
+    const localAlive = !!this.localHeartbeats[agentId] && (Date.now() - this.localHeartbeats[agentId]) < 60000;
+    if (!isRedisConnected()) {
+      this.warnLocalFallback('isAgentAlive');
+      return localAlive;
+    }
     const redis = await getRedis();
-    return (await redis.exists(`${AGENT_PREFIX}${agentId}:heartbeat`)) === 1;
+    return (await redis.exists(`${AGENT_PREFIX}${agentId}:heartbeat`)) === 1 || localAlive;
   }
 
   // ─── File Locks ───────────────────────────────────
+  /**
+   * Acquire a distributed file-edit lock for the given path.
+   *
+   * Call this immediately before starting a file edit, and call `releaseLock()`
+   * after the edit has completed so other agents can safely proceed.
+   *
+   * The lock uses a TTL to prevent stale locks from remaining forever if the
+   * editor crashes or never releases it. `ttlMs` is the lock lifetime in
+   * milliseconds and defaults to 300,000 ms (5 minutes).
+   *
+   * Example:
+   * ```ts
+   * const locked = await sharedState.acquireLock(filePath, agentId);
+   * if (!locked) return;
+   * try {
+   *   // edit file here
+   * } finally {
+   *   await sharedState.releaseLock(filePath, agentId);
+   * }
+   * ```
+   */
   async acquireLock(path: string, agentId: string, ttlMs = 300_000): Promise<boolean> {
     if (!isRedisConnected()) return true; // no redis = no lock needed
     const redis = await getRedis();

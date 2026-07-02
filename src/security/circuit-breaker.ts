@@ -1,8 +1,4 @@
-import { createLogger } from '../utils/logger.js';
-
-const log = createLogger('circuit-breaker');
-
-export type CircuitState = 'closed' | 'open' | 'half-open';
+import { circuitBreakerRegistry, type CircuitState } from './circuit-breaker-registry.js';
 
 export interface CircuitBreakerConfig {
   failureThreshold: number;    // consecutive failures to open (default 5)
@@ -10,103 +6,41 @@ export interface CircuitBreakerConfig {
   halfOpenMaxAttempts: number;  // attempts in half-open (default 1)
 }
 
-const DEFAULT_CONFIG: CircuitBreakerConfig = {
-  failureThreshold: 5,
-  resetTimeoutMs: 60_000,
-  halfOpenMaxAttempts: 3,  // must be >= 3 to allow 3 consecutive success check
-};
-
 export class CircuitBreaker {
-  private state: CircuitState = 'closed';
-  private failures = 0;
-  private lastFailureAt = 0;
-  private halfOpenAttempts = 0;
-  private consecutiveSuccesses = 0;
-  private config: CircuitBreakerConfig;
   private agentId: string;
 
   constructor(agentId: string, config?: Partial<CircuitBreakerConfig>) {
     this.agentId = agentId;
-    this.config = { ...DEFAULT_CONFIG, ...config };
+    void config;
   }
 
   canExecute(): boolean {
-    switch (this.state) {
-      case 'closed':
-        return true;
-
-      case 'open': {
-        const elapsed = Date.now() - this.lastFailureAt;
-        if (elapsed >= this.config.resetTimeoutMs) {
-          this.state = 'half-open';
-          this.halfOpenAttempts = 0;
-          this.consecutiveSuccesses = 0;
-          log.info({ agentId: this.agentId }, 'Circuit half-open (retry allowed)');
-          return true;
-        }
-        return false;
-      }
-
-      case 'half-open':
-        return this.halfOpenAttempts < this.config.halfOpenMaxAttempts;
-    }
+    return circuitBreakerRegistry.canExecute(this.agentId);
   }
 
   recordSuccess(): void {
-    if (this.state === 'half-open') {
-      this.consecutiveSuccesses++;
-      if (this.consecutiveSuccesses >= 3) {
-        log.info({ agentId: this.agentId }, 'Circuit closed (recovered)');
-        this.state = 'closed';
-        this.failures = 0;
-        this.halfOpenAttempts = 0;
-        this.consecutiveSuccesses = 0;
-      }
-      return;
-    }
-    this.state = 'closed';
-    this.failures = 0;
-    this.halfOpenAttempts = 0;
-    this.consecutiveSuccesses = 0;
+    circuitBreakerRegistry.recordSuccess(this.agentId);
   }
 
   recordFailure(error?: string): void {
-    this.consecutiveSuccesses = 0;
-    this.failures++;
-    this.lastFailureAt = Date.now();
-
-    if (this.state === 'half-open') {
-      this.halfOpenAttempts++;
-      this.consecutiveSuccesses = 0;
-      if (this.halfOpenAttempts >= this.config.halfOpenMaxAttempts) {
-        this.state = 'open';
-        log.warn({ agentId: this.agentId, failures: this.failures, error }, 'Circuit re-opened');
-      }
-      return;
-    }
-
-    if (this.failures >= this.config.failureThreshold) {
-      this.state = 'open';
-      log.warn({ agentId: this.agentId, failures: this.failures, error },
-        'Circuit opened (agent isolated)');
-    }
+    circuitBreakerRegistry.recordFailure(this.agentId, error);
   }
 
-  getState(): CircuitState { return this.state; }
-  getFailures(): number { return this.failures; }
+  getState(): CircuitState { return circuitBreakerRegistry.getSnapshot(this.agentId).state; }
+  getFailures(): number { return circuitBreakerRegistry.getSnapshot(this.agentId).failureCount; }
 
   reset(): void {
-    this.state = 'closed';
-    this.failures = 0;
-    this.halfOpenAttempts = 0;
-    this.consecutiveSuccesses = 0;
+    circuitBreakerRegistry.reset(this.agentId);
   }
 
   toJSON() {
+    const snapshot = circuitBreakerRegistry.getSnapshot(this.agentId);
     return {
-      state: this.state,
-      failures: this.failures,
-      lastFailureAt: this.lastFailureAt,
+      state: snapshot.state,
+      failures: snapshot.failureCount,
+      lastFailureAt: snapshot.openedAt ?? 0,
+      cooldownUntil: snapshot.cooldownUntil,
+      reason: snapshot.reason,
       agentId: this.agentId,
     };
   }

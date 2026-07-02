@@ -414,6 +414,17 @@ function buildTopology(data, commMatrix) {
   const { sessions = [], daemons = [], tasks = [] } = data;
   const nodes = [];
   const edges = [];
+  const activeTaskStatuses = new Set(['assigned', 'running', 'active', 'streaming', 'queued', 'pending']);
+  const sessionAliases = new Map();
+  const resolveCliNodeId = (value) => {
+    if (!value) return null;
+    const canonical = sessionAliases.get(value) || value;
+    return 'cli::' + canonical;
+  };
+  const resolveAgentNodeId = (...values) => {
+    const candidate = values.find(Boolean);
+    return candidate ? 'agent::' + candidate : null;
+  };
 
   // 1) NCO Hub
   nodes.push({
@@ -424,20 +435,24 @@ function buildTopology(data, commMatrix) {
   });
 
   // 2) CLI Sessions
-  const sessionIds = new Set();
   (sessions || []).forEach(s => {
-    const id = 'cli::' + (s.agentId || s.sessionId);
-    sessionIds.add(id);
+    const canonicalSessionKey = s.agentId || s.sessionId;
+    if (!canonicalSessionKey) return;
+    if (s.agentId) sessionAliases.set(s.agentId, canonicalSessionKey);
+    if (s.sessionId) sessionAliases.set(s.sessionId, canonicalSessionKey);
+    const id = 'cli::' + canonicalSessionKey;
     nodes.push({
       id,
       type: 'cli',
       position: { x: 0, y: 0 },
       data: {
-        label: s.agentId || s.sessionId,
+        label: canonicalSessionKey,
         pid: s.pid,
         model: s.model,
         status: s.status || 'active',
         work: s.currentWork || s.description || '',
+        key: canonicalSessionKey,
+        aliases: [s.agentId, s.sessionId].filter(Boolean),
         _raw: s,
         __w: 150, __h: 72,
       },
@@ -462,7 +477,7 @@ function buildTopology(data, commMatrix) {
 
     const activeTasks = (tasks || []).filter(t =>
       (t.assigned_to === agentType || t.provider === agentType || t.agent === agentType) &&
-      (t.status === 'running' || t.status === 'active')
+      activeTaskStatuses.has(t.status)
     );
 
     nodes.push({
@@ -492,9 +507,10 @@ function buildTopology(data, commMatrix) {
   // 3.5) CLI→Agent spawn edges (from tasks with spawned_by_cli)
   const cliAgentEdgeKeys = new Set();
   (tasks || []).forEach(t => {
-    if (!t.spawned_by_cli || !t.assigned_to) return;
-    const srcId = 'cli::' + t.spawned_by_cli;
-    const dstId = 'agent::' + t.assigned_to;
+    if (!t.spawned_by_cli) return;
+    const srcId = resolveCliNodeId(t.spawned_by_cli);
+    const dstId = resolveAgentNodeId(t.assigned_to, t.provider, t.agent);
+    if (!srcId || !dstId) return;
     const srcExists = nodes.some(n => n.id === srcId);
     const dstExists = nodes.some(n => n.id === dstId);
     if (!srcExists || !dstExists) return;
@@ -533,9 +549,10 @@ function buildTopology(data, commMatrix) {
 
   Object.entries(commMatrix).forEach(([key, val]) => {
     const { from, to, count, msgType } = val;
-    const srcId = 'cli::' + from;
-    const dstId = to === '*' ? 'nco' : 'cli::' + to;
+    const srcId = resolveCliNodeId(from);
+    const dstId = to === '*' ? 'nco' : resolveCliNodeId(to);
     const color = meshColors[msgType] || meshColors.default;
+    if (!srcId || !dstId) return;
 
     // Only add edge if both nodes exist
     const srcExists = nodes.some(n => n.id === srcId);
@@ -589,9 +606,9 @@ function DetailPanel({ node, edge, edges, commMatrix, onClose }) {
       if (type === 'cli') {
         const r = d._raw || {};
         const meshEdges = edges.filter(e => e.type === 'mesh' && (e.source === node.id || e.target === node.id));
-        const agentId = r.agentId || r.sessionId;
+        const aliases = new Set(d.aliases || [r.agentId, r.sessionId].filter(Boolean));
         const myMsgs = Object.entries(commMatrix)
-          .filter(([k]) => k.startsWith(agentId + '::') || k.endsWith('::' + agentId))
+          .filter(([, v]) => aliases.has(v.from) || aliases.has(v.to))
           .flatMap(([, v]) => v.msgs || [])
           .slice(-10);
 
@@ -771,7 +788,7 @@ function TopologyInner() {
       setStats({
         sessions: (data.sessions || []).length,
         agents: (data.daemons || []).length,
-        tasks: (data.tasks || []).filter(t => t.status === 'running' || t.status === 'active').length,
+        tasks: (data.tasks || []).filter(t => ['assigned', 'running', 'active', 'streaming', 'queued', 'pending'].includes(t.status)).length,
         msgs: Object.values(commRef.current).reduce((a, v) => a + (v.count || 0), 0),
       });
       setLoading(false);

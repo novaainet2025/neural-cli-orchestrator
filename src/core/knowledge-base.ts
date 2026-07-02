@@ -312,20 +312,6 @@ class KnowledgeBase {
     return id;
   }
 
-  /**
-   * Specifically index an Obsidian file.
-   */
-  async indexObsidianFile(filePath: string, content: string): Promise<string> {
-    const id = `kb_obsidian_${createHash('md5').update(filePath).digest('hex').slice(0, 16)}`;
-    return this.saveWithEmbedding({
-      id,
-      projectPath: 'obsidian',
-      category: 'obsidian',
-      content,
-      confidence: 1.0,
-    });
-  }
-
   removeObsidianFile(filePath: string): void {
     const id = `kb_obsidian_${createHash('md5').update(filePath).digest('hex').slice(0, 16)}`;
     const db = getDb();
@@ -438,6 +424,19 @@ class KnowledgeBase {
     }
 
     return saved;
+  }
+
+  /**
+   * Index a markdown file from an Obsidian vault into the knowledge base.
+   */
+  async indexObsidianFile(filePath: string, content: string): Promise<string> {
+    const category = await this.inferCategoryAsync(content);
+    return this.saveWithEmbedding({
+      projectPath: filePath,
+      category,
+      content: content.slice(0, 4000),
+      confidence: 0.75,
+    });
   }
 }
 

@@ -1,7 +1,9 @@
 import { agentManager } from '../agent/agent-manager.js';
 import { sharedState } from './shared-state.js';
 import { getDb } from '../storage/database.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { createLogger } from '../utils/logger.js';
+import type { TaskType } from './quality-gate.js';
 
 const log = createLogger('smart-router');
 
@@ -117,6 +119,13 @@ class SmartRouter {
     }
 
     if (available.length === 0) {
+      const localFallback = sortProvidersByCostOrder(
+        allProviders.filter(id => id === 'ollama' || id === 'mlx'),
+      );
+      if (localFallback.length > 0) {
+        log.warn({ providers: localFallback }, 'All providers unavailable — using local fallback');
+        return localFallback.slice(0, count || localFallback.length);
+      }
       log.warn('No available providers — falling back to all enabled');
       return allProviders.slice(0, count || 1);
     }
@@ -158,6 +167,9 @@ class SmartRouter {
     } catch { /* ignore */ }
 
     // Check circuit breaker via shared state
+    const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
+    if (snapshot.state === 'open') return false;
+
     try {
       const agentState = await sharedState.getAgentState(agentId);
       if (agentState?.health?.circuitState === 'open') return false;
@@ -177,6 +189,20 @@ class SmartRouter {
       case 'commander': return 5;
       default: return 1;
     }
+  }
+
+  /**
+   * Infer a TaskType from a prompt for quality gate evaluation.
+   */
+  inferTaskType(prompt: string): TaskType {
+    if (/test|spec|검증|verify/i.test(prompt)) return 'verify';
+    if (/review|audit|검토/i.test(prompt)) return 'review';
+    if (/design|architect|구조|설계/i.test(prompt)) return 'design';
+    if (/research|찾아|조사/i.test(prompt)) return 'research';
+    if (/ui|frontend|화면|스타일/i.test(prompt)) return 'ui';
+    if (/image|video|영상|이미지/i.test(prompt)) return 'media';
+    if (/code|fix|bug|implement|add|create|refactor|수정|구현/i.test(prompt)) return 'code';
+    return 'general';
   }
 
   /**

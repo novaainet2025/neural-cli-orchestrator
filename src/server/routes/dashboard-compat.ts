@@ -12,13 +12,13 @@ import { createTaskId, createSessionId, createMessageId } from '../../utils/id.j
 import { env } from '../../utils/config.js';
 import { getPushReports } from './fleet-ops.js';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const execFileAsync = promisify(execFile);
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
 
 const IS_CLIENTS_DIR = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
 
@@ -110,35 +110,10 @@ async function startCbAutoHeal() {
   if (cbAutoHealTimer) return; // 이미 실행 중
   cbAutoHealTimer = setInterval(async () => {
     try {
-      for (const [id, provider] of (agentManager as any).providers as Map<string, any>) {
+      for (const [id] of (agentManager as any).providers as Map<string, any>) {
         const sandbox = agentManager.getSandbox(id);
         if (!sandbox) continue;
-        const cbJson = sandbox.circuitBreaker?.toJSON?.() as any;
-        if (cbJson?.state !== 'open') continue;
-
-        // open CB → 헬스체크 커맨드 실행
-        const hc = provider.healthCheck;
-        if (!hc?.command) {
-          // healthCheck.command 없으면 그냥 리셋
-          sandbox.circuitBreaker.reset();
-          await sharedState.setAgentState(id, {
-            health: { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
-            status: 'online',
-          });
-          continue;
-        }
-
-        try {
-          await execFileAsync(hc.command, hc.args ?? [], { timeout: hc.timeout ?? 8000 });
-          // 헬스체크 통과 → CB 리셋
-          sandbox.circuitBreaker.reset();
-          await sharedState.setAgentState(id, {
-            health: { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
-            status: 'online',
-          });
-        } catch {
-          // 헬스체크 실패 → CB 유지 (에이전트 실제 사용 불가)
-        }
+        sandbox.circuitBreaker.canExecute();
       }
     } catch { /* 예외 무시 */ }
   }, 2 * 60 * 1000); // 2분
@@ -712,7 +687,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const { stdout } = await execFileAsync('tail', ['-200', logPath]);
       const messages = stdout.trim().split('\n')
         .filter(Boolean)
-        .map(line => {
+        .map((line: string) => {
           try { return JSON.parse(line); } catch { return null; }
         })
         .filter(Boolean)
@@ -739,7 +714,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const now = Date.now();
       const entries = stdout.trim().split('\n')
         .filter(Boolean)
-        .map(line => { try { return JSON.parse(line); } catch { return null; } })
+        .map((line: string) => { try { return JSON.parse(line); } catch { return null; } })
         .filter(Boolean);
 
       // 세션별 활동 집계
@@ -1335,10 +1310,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       try {
         const { stdout } = await execFileAsync('python3', [join(IS_BIN, 'list.py')], { timeout: 5000, env: sendEnv });
         targets = stdout.split('\n').slice(1)
-          .map(l => l.trim().split(/\s+/)[0])
-          .filter(n => n && /-claude-\d+(-\d+)*$/.test(n))
-          .filter(n => !isSelfHost(extractPeerHost(n)))
-          .filter(n => !freshHosts.has(extractPeerHost(n)));
+          .map((l: string) => l.trim().split(/\s+/)[0])
+          .filter((n: string) => n && /-claude-\d+(-\d+)*$/.test(n))
+          .filter((n: string) => !isSelfHost(extractPeerHost(n)))
+          .filter((n: string) => !freshHosts.has(extractPeerHost(n)));
       } catch { targets = null; }
 
       if (targets === null) {

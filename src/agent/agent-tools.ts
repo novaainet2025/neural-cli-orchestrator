@@ -61,15 +61,8 @@ export class AgentToolExecutor {
         output: result.output.slice(0, 500), // truncate for event
       });
 
-      if (result.ok) {
-        this.sandbox.recordSuccess();
-      } else {
-        this.sandbox.recordFailure(result.error);
-      }
-
       return result;
     } catch (err: any) {
-      this.sandbox.recordFailure(err.message);
       return { ok: false, output: '', error: err.message };
     } finally {
       release();

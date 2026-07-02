@@ -17,6 +17,10 @@ import { taskQueue } from '../core/task-queue.js';
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
 function detectFailedCompletion(response: string | null | undefined): boolean {
   if (!response) return false;
+  if (/^Error:\s/i.test(response)) return true;
+
+  const longSuccessPrefix = /^(?:done|status|answer):/i;
+  const hasLongSuccessPrefix = longSuccessPrefix.test(response) && response.length >= 200;
   const patterns = [
     /\b(?:error|exception)\b.*\b(?:occurred|happened|encountered)\b/i,
     /\bfailed\s+(?:to|with)\b/i,
@@ -29,14 +33,29 @@ function detectFailedCompletion(response: string | null | undefined): boolean {
     /\bActionRequiredError\b/i,
     /\busage\s+limit\b/i,
     /\bProviderModelNotFoundError\b/i,
-    /^Error:\s/m,
     /\brequest\s+timed\s+out\b/i,
     /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
   ];
+  if (hasLongSuccessPrefix) {
+    const leadingSegment = response.slice(0, 300);
+    const strongLeadingFailurePatterns = [
+      /\b(?:error|exception)\b.*\b(?:occurred|happened|encountered)\b/i,
+      /\bfailed\s+(?:to|with)\b/i,
+      /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
+      /\b(?:streaming|execution)\s+error\b/i,
+      /\btimeout\b.*\b(?:error|exceeded|after)\b/i,
+      /\bActionRequiredError\b/i,
+      /\bProviderModelNotFoundError\b/i,
+      /\brequest\s+timed\s+out\b/i,
+      /^status:\s*failed\b/i,
+    ];
+    return strongLeadingFailurePatterns.some(p => p.test(leadingSegment));
+  }
   return patterns.some(p => p.test(response));
 }
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
+import { registerCircuitRoutes } from './routes/circuit.js';
 import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
@@ -182,6 +201,8 @@ export async function createGateway() {
     }
     return { providers };
   });
+
+  await registerCircuitRoutes(app);
 
   // ═══ Daemons ══════════════════════════════════════
   app.get('/api/daemons', async () => {

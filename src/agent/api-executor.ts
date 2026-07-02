@@ -15,8 +15,8 @@ import { createLogger } from '../utils/logger.js';
 const log = createLogger('api-executor');
 
 const MAX_ITERATIONS = 10;
-const MAX_HISTORY = 12;
-const MAX_OUTPUT_LEN = 2500;
+const MAX_HISTORY = 24;
+const MAX_OUTPUT_LEN = 16000;
 
 interface ApiResult {
   output: string;
@@ -129,8 +129,6 @@ export class ApiExecutor {
 
           const response = await client.chat.completions.create(createParams);
 
-          this.sandbox.recordSuccess();
-
           const msg = response.choices[0]?.message;
           if (!msg) break;
 
@@ -153,12 +151,14 @@ export class ApiExecutor {
               if (tc.type !== 'function') continue;
               totalToolCalls++;
               const args = jsonArgsToStringRecord(tc.function.arguments ?? '');
+              log.debug({ agentId, tool: tc.function.name, args: JSON.stringify(args).slice(0, 200) }, 'Tool call');
               const result = await toolExecutor.execute({
                 tool: tc.function.name,
                 args,
               });
               const outRaw = result.output || result.error || '';
-              const truncated = outRaw.length > MAX_OUTPUT_LEN 
+              log.debug({ agentId, tool: tc.function.name, ok: result.ok, outputLen: outRaw.length }, 'Tool result');
+              const truncated = outRaw.length > MAX_OUTPUT_LEN
                 ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
                 : outRaw;
               const summary = `[${tc.function.name}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`;
@@ -216,7 +216,6 @@ export class ApiExecutor {
           }
 
           const message = err instanceof Error ? err.message : String(err);
-          this.sandbox.recordFailure(message);
 
           if (this.provider.apiConfig?.fallback) {
             log.info({ agentId, fallback: this.provider.apiConfig.fallback.provider }, 'Falling back');
@@ -265,6 +264,7 @@ export class ApiExecutor {
     return new OpenAI({
       apiKey: apiKey || 'not-needed',
       baseURL,
+      timeout: this.sandbox.getTimeout(),
     });
   }
 

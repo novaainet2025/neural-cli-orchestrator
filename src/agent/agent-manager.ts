@@ -2,6 +2,7 @@ import { OrchestratedLoop } from './orchestrated-loop.js';
 import { ApiExecutor } from './api-executor.js';
 import { createSandbox, type SandboxManager } from '../security/sandbox-manager.js';
 import { verificationGate } from '../security/verification-gate.js';
+import { circuitBreakerRegistry, classifyCircuitError } from '../security/circuit-breaker-registry.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
@@ -43,7 +44,6 @@ class AgentManager {
   private latencyHistory = new Map<string, number[]>();
   private providers = new Map<string, ProviderConfig>();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
-  private circuitSuccessCounts = new Map<string, number>();
 
   async init(): Promise<void> {
     const providers = loadEnabledProviders();
@@ -55,6 +55,7 @@ class AgentManager {
     }
 
     this.injectDerivedKeys();
+    await circuitBreakerRegistry.restore(providers.map(provider => provider.id));
 
     // Start health monitor (30s)
     this.healthTimer = setInterval(() => this.healthCheck(), 30_000);
@@ -89,6 +90,20 @@ class AgentManager {
     const sandbox = this.sandboxes.get(agentId)!;
     const taskId = options?.taskId || createTaskId();
     const startTime = Date.now();
+
+    if (!sandbox.canExecute()) {
+      const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
+      return {
+        taskId,
+        agentId,
+        output: '',
+        iterations: 0,
+        toolCalls: 0,
+        success: false,
+        error: `Circuit breaker open for agent ${agentId} (${snapshot.reason ?? 'generic'})`,
+        durationMs: 0,
+      };
+    }
 
     // Publish task start
     await eventBus.publish({
@@ -140,7 +155,6 @@ class AgentManager {
           });
           output = result.stdout || result.stderr || '';
           iterations = 1;
-          sandbox.recordSuccess();
           break;
         }
 
@@ -178,6 +192,23 @@ class AgentManager {
 
       const durationMs = Date.now() - startTime;
       this.recordLatency(agentId, durationMs);
+
+      const classified = classifyCircuitError(output);
+      if (classified) {
+        circuitBreakerRegistry.recordFailure(agentId, output);
+        return {
+          taskId,
+          agentId,
+          output,
+          iterations,
+          toolCalls,
+          success: false,
+          error: `Provider failure detected: ${classified.reason}`,
+          durationMs,
+        };
+      }
+
+      circuitBreakerRegistry.recordSuccess(agentId);
 
       // Triple Verification Gate — run L1/L2/L3 checks
       try {
@@ -229,23 +260,11 @@ class AgentManager {
         agentEvolver.record(agentId, taskId, true, durationMs, output.length);
       } catch { /* non-critical */ }
 
-      const newCount = (this.circuitSuccessCounts.get(agentId) ?? 0) + 1;
-      this.circuitSuccessCounts.set(agentId, newCount);
-
-      // half-open → closed: propagate success to CircuitBreaker
-      const cb = sandbox.circuitBreaker;
-      if (cb.getState() === 'half-open') {
-        cb.recordSuccess();
-        if (newCount >= 3 && cb.getState() === 'closed') {
-          log.info('Circuit closed: %s (3 consecutive successes)', agentId);
-          this.circuitSuccessCounts.set(agentId, 0);
-        }
-      }
-
       return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs };
 
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
+      circuitBreakerRegistry.recordFailure(agentId, err?.message);
 
       // 상태 복구 — 실패/타임아웃 시 idle로 복원
       await sharedState.setAgentState(agentId, {
@@ -258,8 +277,6 @@ class AgentManager {
         type: 'task:failed', taskId, agentId,
         error: err.message, durationMs,
       });
-
-      this.circuitSuccessCounts.set(agentId, 0);
       this.recordLatency(agentId, durationMs);
 
       // ── AgentEvolver: record failure ──────────────────────
@@ -328,14 +345,21 @@ class AgentManager {
       headers.Authorization = `Bearer ${apiKey}`;
     }
     try {
-      await fetch(url, {
+      const response = await fetch(url, {
         method: 'GET',
         headers,
         signal: AbortSignal.timeout(timeout),
       });
+      if (!response.ok) {
+        const body = await response.text();
+        circuitBreakerRegistry.recordFailure(id, `HTTP ${response.status}: ${body}`);
+        await sharedState.setAgentState(id, { status: 'offline' });
+        return;
+      }
       await sharedState.setAgentState(id, { status: 'idle' });
       await sharedState.heartbeat(id);
     } catch (e) {
+      circuitBreakerRegistry.recordFailure(id, e instanceof Error ? e.message : String(e));
       await sharedState.setAgentState(id, { status: 'offline' });
       log.debug({
         id,
