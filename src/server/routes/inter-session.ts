@@ -98,13 +98,47 @@ export async function registerInterSessionRoutes(app: FastifyInstance) {
     return reply.send({ connected: true, name: 'nco-server', key, bin: BIN });
   });
 
+  // ─── 발신 dedup 가드 (2026-07-02 감사: 671건 중 고유 273종 — 평균 2.5배 중복) ──
+  // (호스트, 내용지문) 단위로 6시간 내 동일 발신을 차단한다. 세션이 아니라 "호스트"
+  // 기준: kangnote-claude-1/2/3은 같은 기계이므로 1회면 충분. force:true로 우회 가능.
+  const sentLog = new Map<string, number>(); // key: host|fingerprint → sentAt
+  const DEDUP_WINDOW_MS = 6 * 60 * 60_000;
+  const DEDUP_MAX_ENTRIES = 2000;
+  function dedupKey(to: string, text: string): string {
+    const host = to.replace(/-claude-\d+(-\d+)?$/, ''); // kangnote-claude-2 → kangnote
+    const fingerprint = text.replace(/\s+/g, ' ').trim().slice(0, 120);
+    return `${host}|${fingerprint}`;
+  }
+  function checkDedup(to: string, text: string): number | null {
+    const now = Date.now();
+    if (sentLog.size > DEDUP_MAX_ENTRIES) {
+      for (const [k, t] of sentLog) { if (now - t > DEDUP_WINDOW_MS) sentLog.delete(k); }
+    }
+    const key = dedupKey(to, text);
+    const prev = sentLog.get(key);
+    if (prev && now - prev < DEDUP_WINDOW_MS) return prev;
+    sentLog.set(key, now);
+    return null;
+  }
+
   // ─── POST /api/inter-session/send ────────────────────────────────────────
   app.post<{
-    Body: { to: string; text: string; fromSession?: string };
+    Body: { to: string; text: string; fromSession?: string; force?: boolean };
   }>('/api/inter-session/send', async (req, reply) => {
-    const { to, text, fromSession = 'nco-server' } = req.body ?? {};
+    const { to, text, fromSession = 'nco-server', force = false } = req.body ?? {};
     if (!to || !text) {
       return reply.code(400).send({ error: '`to`와 `text` 필드 필수' });
+    }
+    if (!force) {
+      const prevAt = checkDedup(to, text);
+      if (prevAt !== null) {
+        const ago = Math.round((Date.now() - prevAt) / 60_000);
+        log.warn({ to, ago }, '[inter-session] duplicate send blocked');
+        return reply.send({
+          ok: false, deduped: true,
+          message: `동일 내용을 같은 호스트에 ${ago}분 전 발신함 — 재발신하려면 force:true`,
+        });
+      }
     }
 
     // NCO 자신의 세션 키 조회 (없으면 speaker-mobile 등 다른 활성 세션 키 사용)

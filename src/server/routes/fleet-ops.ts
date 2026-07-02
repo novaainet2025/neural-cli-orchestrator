@@ -16,6 +16,9 @@
 import type { FastifyInstance } from 'fastify';
 import { hostname } from 'os';
 import { agentManager } from '../../agent/agent-manager.js';
+import { eventBus } from '../../core/event-bus.js';
+import { sharedState } from '../../core/shared-state.js';
+import { getDb } from '../../storage/database.js';
 import { createLogger } from '../../utils/logger.js';
 
 const log = createLogger('fleet-ops');
@@ -25,6 +28,8 @@ export interface FleetReportAgent {
   name?: string;
   status?: string;
   currentTask?: string | null;
+  taskId?: string;
+  since?: string;
 }
 export interface FleetReport {
   host: string;
@@ -46,6 +51,61 @@ export function getPushReports(): FleetReport[] {
     if (now - new Date(r.ts).getTime() > PUSH_TTL_MS) pushReports.delete(k);
   }
   return Array.from(pushReports.values());
+}
+
+export async function collectAgentSnapshots(): Promise<FleetReportAgent[]> {
+  const db = getDb();
+  const providers = agentManager.listProviders().filter(p => p.enabled !== false);
+  const states = await sharedState.getAllAgentStates();
+  const activeTasks = db.prepare(
+    "SELECT assigned_to, id, prompt, status, created_at FROM tasks WHERE status IN ('running','streaming','assigned') ORDER BY created_at DESC"
+  ).all() as Array<{ assigned_to: string | null; id: string; prompt: string | null; status: string; created_at: string | null }>;
+
+  const activeMap = new Map<string, { id: string; prompt: string | null; status: string; created_at: string | null }>();
+  for (const task of activeTasks) {
+    if (task.assigned_to && !activeMap.has(task.assigned_to)) {
+      activeMap.set(task.assigned_to, task);
+    }
+  }
+
+  return providers.map((provider) => {
+    const state = states[provider.id] as any || {};
+    const activeTask = activeMap.get(provider.id);
+    let status: string;
+    let currentTask: string | null = null;
+    let taskId: string | undefined;
+    let since: string | undefined;
+
+    if (activeTask) {
+      status = 'working';
+      currentTask = activeTask.prompt?.slice(0, 120) ?? null;
+      taskId = activeTask.id;
+      since = activeTask.created_at ?? undefined;
+    } else {
+      const rawStatus = state.status as string | undefined;
+      status = rawStatus === 'working' ? 'working'
+        : rawStatus === 'idle' ? 'idle'
+        : 'online';
+      currentTask = typeof state.currentTask === 'string'
+        ? state.currentTask.slice(0, 120)
+        : state.currentTask ?? null;
+    }
+
+    const sandbox = agentManager.getSandbox(provider.id);
+    const circuitState = sandbox?.circuitBreaker?.toJSON()?.state ?? 'closed';
+    if (circuitState === 'open' && status !== 'working') {
+      status = 'error';
+    }
+
+    return {
+      id: provider.id,
+      name: provider.name ?? provider.id,
+      status,
+      currentTask,
+      ...(taskId ? { taskId } : {}),
+      ...(since ? { since } : {}),
+    };
+  });
 }
 
 // ── edit-lease 저장소 (파일 → lease) ──────────────────────────────────
@@ -80,7 +140,14 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
     // 유효 에이전트만 (id 필수, 경로형 문자열 배제 — 메시지 파서와 동일 기준)
     const valid = agents
       .filter(a => a && typeof a.id === 'string' && a.id.length > 0 && a.id.length < 50 && !a.id.includes('/'))
-      .map(a => ({ id: a.id, name: a.name ?? a.id, status: a.status ?? 'idle', currentTask: a.currentTask ?? null }));
+      .map(a => ({
+        id: a.id,
+        name: a.name ?? a.id,
+        status: a.status ?? 'idle',
+        currentTask: a.currentTask ?? null,
+        taskId: typeof a.taskId === 'string' && a.taskId.length > 0 ? a.taskId : undefined,
+        since: typeof a.since === 'string' && a.since.length > 0 ? a.since : undefined,
+      }));
     if (valid.length === 0) {
       reply.code(400);
       return { ok: false, error: 'no valid agents' };
@@ -90,7 +157,21 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
       reply.code(429);
       return { ok: false, error: 'too many hosts' };
     }
-    pushReports.set(host, { host, agents: valid, from: (body?.from ?? `${host}-push`), ts: new Date().toISOString() });
+    const ts = new Date().toISOString();
+    pushReports.set(host, { host, agents: valid, from: (body?.from ?? `${host}-push`), ts });
+    await eventBus.publish({
+      type: 'fleet:update',
+      host,
+      agents: valid.map((agent) => ({
+        id: agent.id,
+        status: agent.status ?? 'idle',
+        currentTask: agent.currentTask ?? null,
+        taskId: agent.taskId,
+        since: agent.since,
+      })),
+      agentCount: valid.length,
+      ts,
+    });
     return { ok: true, host, agents: valid.length };
   });
 
@@ -157,12 +238,7 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
     const myHost = hostname().toLowerCase().replace(/\.local$/, '');
     const pushOnce = async () => {
       try {
-        const providers = agentManager.listProviders().filter(p => p.enabled !== false);
-        const agents = providers.map(p => ({
-          id: p.id, name: p.name ?? p.id,
-          status: 'idle',
-          currentTask: null,
-        }));
+        const agents = await collectAgentSnapshots();
         await fetch(`${central}/api/fleet/report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -173,6 +249,34 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
         log.debug({ err: String(err) }, 'fleet push failed (central unreachable)');
       }
     };
+    let pushDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let firstPendingAt = 0; // 기아 방지: 이벤트 폭주로 디바운스가 계속 리셋돼도 최대 지연 보장
+    const PUSH_DEBOUNCE_MS = 4000;
+    const PUSH_MAX_DELAY_MS = 15_000;
+    const schedulePush = () => {
+      const now = Date.now();
+      if (!firstPendingAt) firstPendingAt = now;
+      if (now - firstPendingAt >= PUSH_MAX_DELAY_MS) {
+        // 최대 지연 초과 — 디바운스 무시하고 즉시 push
+        if (pushDebounceTimer) { clearTimeout(pushDebounceTimer); pushDebounceTimer = null; }
+        firstPendingAt = 0;
+        void pushOnce();
+        return;
+      }
+      if (pushDebounceTimer) clearTimeout(pushDebounceTimer);
+      pushDebounceTimer = setTimeout(() => {
+        pushDebounceTimer = null;
+        firstPendingAt = 0;
+        void pushOnce();
+      }, PUSH_DEBOUNCE_MS);
+      pushDebounceTimer.unref();
+    };
+    const handleFleetRelevantEvent = () => {
+      schedulePush();
+    };
+    eventBus.on('task:created', handleFleetRelevantEvent);
+    eventBus.on('task:completed', handleFleetRelevantEvent);
+    eventBus.on('task:failed', handleFleetRelevantEvent);
     setInterval(pushOnce, 60_000).unref();
     void pushOnce();
     log.info({ central, myHost }, 'fleet push client enabled');

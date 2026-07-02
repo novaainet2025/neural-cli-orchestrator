@@ -1311,11 +1311,49 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           break;
         }
       } catch { /* clients dir 없음 → override 없이 시도 */ }
-      await execFileAsync('python3', [join(IS_BIN, 'send.py'), '--all', '--text', msg], {
-        timeout: 5000,
-        env: ppidKey ? { ...process.env, INTER_SESSION_PPID_OVERRIDE: ppidKey } : process.env,
-      });
-      return { ok: true, message: 'Fleet status request broadcast sent' };
+      const sendEnv = ppidKey ? { ...process.env, INTER_SESSION_PPID_OVERRIDE: ppidKey } : process.env;
+
+      // push 모델(POST /api/fleet/report)로 3분 내 신선한 보고를 보낸 호스트는
+      // 브로드캐스트 대상에서 제외한다 (snt 항의 반영: 중복 요청 = 쿼터 낭비 + 노이즈).
+      // 대상 산출 실패 시에만 기존 --all 폴백.
+      const FRESH_PUSH_MS = 3 * 60_000;
+      const freshHosts = new Set(
+        getPushReports()
+          .filter(r => Date.now() - new Date(r.ts).getTime() < FRESH_PUSH_MS)
+          .map(r => r.host.toLowerCase())
+      );
+      const extractPeerHost = (name: string): string => {
+        const m = name.match(/^(.+?)-claude-\d+(?:-\d+)*$/);
+        return m ? m[1].toLowerCase() : name.toLowerCase();
+      };
+      const myHostName = (process.env.HOSTNAME ?? 'nova-macstudio').toLowerCase().replace(/\.local$/, '');
+      // 자기 호스트 판정: 완전 일치 또는 inter-session 40자 이름 절단 케이스만
+      // (짧은 prefix 우연 일치로 타 호스트를 self로 오탐하지 않도록 최소 8자 요구)
+      const isSelfHost = (peerHost: string): boolean =>
+        peerHost === myHostName || (myHostName.startsWith(peerHost) && peerHost.length >= 8);
+      let targets: string[] | null = null;
+      try {
+        const { stdout } = await execFileAsync('python3', [join(IS_BIN, 'list.py')], { timeout: 5000, env: sendEnv });
+        targets = stdout.split('\n').slice(1)
+          .map(l => l.trim().split(/\s+/)[0])
+          .filter(n => n && /-claude-\d+(-\d+)*$/.test(n))
+          .filter(n => !isSelfHost(extractPeerHost(n)))
+          .filter(n => !freshHosts.has(extractPeerHost(n)));
+      } catch { targets = null; }
+
+      if (targets === null) {
+        await execFileAsync('python3', [join(IS_BIN, 'send.py'), '--all', '--text', msg], { timeout: 5000, env: sendEnv });
+        return { ok: true, message: 'Fleet status request broadcast sent (fallback --all)' };
+      }
+      if (targets.length === 0) {
+        return { ok: true, skipped: true, message: `All remote hosts fresh via push (${freshHosts.size} hosts) — broadcast unnecessary` };
+      }
+      for (const t of targets) {
+        try {
+          await execFileAsync('python3', [join(IS_BIN, 'send.py'), '--to', t, '--text', msg], { timeout: 5000, env: sendEnv });
+        } catch { /* 개별 대상 실패는 무시 */ }
+      }
+      return { ok: true, message: `Fleet status request sent to ${targets.length} host(s) (excluded ${freshHosts.size} fresh-push)` };
     } catch (err: any) {
       return { ok: false, error: String(err?.message ?? err) };
     }
