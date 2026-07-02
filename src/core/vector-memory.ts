@@ -27,7 +27,11 @@ const HNSW_M = 16;               // HNSW graph connectivity (16 = balanced)
 const HNSW_EF = 200;             // ef_construction: build quality
 const HNSW_EF_SEARCH = 50;       // ef search: recall/speed tradeoff
 const INDEX_DIR = join(env.ROOT, 'db', 'hnsw-indices');
-const MAX_ELEMENTS = 1_000_000;  // max memories per agent index
+// initIndex는 MAX_ELEMENTS × EMBED_DIM × 4B를 선할당한다 (1M × 1536 × 4B ≈ 6.1GB/agent).
+// 저사양 머신(subnote 3.7GB)에서 C++ std::runtime_error(Not enough memory)로 프로세스가
+// 통째로 죽으므로 env로 조절 가능해야 한다. NCO_VECTOR_MEMORY_DISABLED=1이면 아예 비활성.
+const MAX_ELEMENTS = Math.max(1_000, Number(process.env.NCO_HNSW_MAX_ELEMENTS ?? 1_000_000));
+const VECTOR_MEMORY_DISABLED = process.env.NCO_VECTOR_MEMORY_DISABLED === '1';
 
 // ── Lazy HNSW module ─────────────────────────────────────────────────────────
 let _HierarchicalNSW: any = null;
@@ -204,6 +208,7 @@ class VectorMemoryService {
 
   /** Add a new memory entry. Embeds and indexes automatically. */
   async add(agentId: string, content: string, importance = 1.0): Promise<string> {
+    if (VECTOR_MEMORY_DISABLED) return '';
     ensureTable();
     const db = getDb();
     const { vector, semantic } = await embed(content);
@@ -230,6 +235,7 @@ class VectorMemoryService {
 
   /** Search: HNSW ANN → top-k results ranked by score × importance */
   async search(agentId: string, query: string, k = 5): Promise<VectorMemoryEntry[]> {
+    if (VECTOR_MEMORY_DISABLED) return [];
     ensureTable();
     const db = getDb();
     const idx = await getOrCreateIndex(agentId);
@@ -334,6 +340,7 @@ class VectorMemoryService {
 
   /** Rebuild HNSW index from SQLite (recovery / index corruption) */
   async rebuildIndex(agentId: string): Promise<number> {
+    if (VECTOR_MEMORY_DISABLED) return 0;
     ensureTable();
     indexCache.delete(agentId);
     const idx = await getOrCreateIndex(agentId);
