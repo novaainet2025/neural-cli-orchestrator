@@ -8,3 +8,4 @@ db/worker-state.json
 *.log
 .pm2/
 .aider*
+config/ai-providers.local.json

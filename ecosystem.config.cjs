@@ -5,7 +5,9 @@ module.exports = {
       // tsx 셸 래퍼는 PM2 cluster 모드에서 ERR_MODULE_NOT_FOUND로 크래시 루프(252회) —
       // 컴파일된 dist를 fork 모드로 실행 (npm run build 필요)
       script: 'dist/index.js',
-      cwd: '/Users/nova-ai/project/nco',
+      // 머신 중립화(2026-07-02): 경로는 이 파일 위치 기준, 머신별 값(OLLAMA_BASE_URL 등)은
+      // .env(비추적)에서 읽는다 — 공유 저장소에 머신 전용 값 커밋 금지 (pull 충돌 원인)
+      cwd: __dirname,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -15,8 +17,6 @@ module.exports = {
         PORT: 6200,
         WS_PORT: 6201,
         NODE_ENV: 'production',
-        // macOS 네이티브 Ollama (WSL 전용 172.28.112.1은 이 Mac에서 도달 불가 — timeout 원인)
-        OLLAMA_BASE_URL: 'http://127.0.0.1:11434',
       },
     },
   ],

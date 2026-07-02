@@ -78,8 +78,51 @@ interface ProvidersFile {
   providers: ProviderConfig[];
 }
 
+/** 현재 플랫폼: darwin | wsl | linux (WSL은 /proc/version의 microsoft 마커로 판별) */
+export function detectPlatform(): 'darwin' | 'wsl' | 'linux' {
+  if (process.platform === 'darwin') return 'darwin';
+  try {
+    const v = readFileSync('/proc/version', 'utf-8').toLowerCase();
+    if (v.includes('microsoft')) return 'wsl';
+  } catch { /* not linux or unreadable */ }
+  return 'linux';
+}
+
+interface LocalOverrides {
+  overrides?: Record<string, Partial<ProviderConfig>>;
+}
+
+/**
+ * 머신별 오버레이 (config/ai-providers.local.json, git 비추적).
+ * 2026-07-02 도입: 머신별 정책(enable/endpoint 등)이 공유 ai-providers.json에
+ * 섞여 있어 원격들이 git pull 때마다 충돌/거부하던 문제의 구조적 해결.
+ * 공유 파일 = 코드·중립 기본값(SSOT), 로컬 파일 = 이 머신의 정책.
+ */
 export function loadProviders(): ProviderConfig[] {
-  return loadJSON<ProvidersFile>('ai-providers.json').providers;
+  let providers = loadJSON<ProvidersFile>('ai-providers.json').providers;
+
+  // 1) 로컬 오버레이 병합 (provider id 단위 shallow merge)
+  const localPath = resolve(ROOT, 'config', 'ai-providers.local.json');
+  if (existsSync(localPath)) {
+    try {
+      const local = JSON.parse(readFileSync(localPath, 'utf-8')) as LocalOverrides;
+      const ov = local.overrides ?? {};
+      providers = providers.map(p => (ov[p.id] ? { ...p, ...ov[p.id], id: p.id } : p));
+    } catch (err) {
+      // 오버레이 파손 시 기본값으로 계속 (부팅 실패보다 낫다) — 단, 로그로 알림
+      console.error(`[config] ai-providers.local.json parse failed — ignored: ${String(err)}`);
+    }
+  }
+
+  // 2) 플랫폼 필터: platforms 명시된 프로바이더는 현재 플랫폼일 때만 활성
+  const plat = detectPlatform();
+  providers = providers.map(p => {
+    const platforms = (p as { platforms?: string[] }).platforms;
+    if (platforms && !platforms.includes(plat)) return { ...p, enabled: false };
+    return p;
+  });
+
+  return providers;
 }
 
 /** WSL + Windows Ollama: OLLAMA_BASE_URL 우선, OLLAMA_HOST 폴백 (포트 중복 방지) */
@@ -130,6 +173,7 @@ export const env = {
   PROJECT_DIR: process.env.PROJECT_DIR || topology.paths.dashboard,
   NCO_API_TOKEN: process.env.NCO_API_TOKEN || '',
   HF_TOKEN: process.env.HF_TOKEN || '',
+  OBSIDIAN_VAULT_PATH: process.env.OBSIDIAN_VAULT_PATH || '',
   ROOT,
 } as const;
 
