@@ -304,10 +304,11 @@ export async function createGateway() {
     // Save to DB
     const db = getDb();
     try {
+      const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?)
-      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli);
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?)
+      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson);
     } catch (dbErr) {
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
       reply.code(500); return { error: 'Failed to create task' };
@@ -336,7 +337,7 @@ export async function createGateway() {
       : input.systemPrompt;
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, metadata: { invocationId } })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
         const honest = result.success && !detectFailedCompletion(response) ? 'completed' : 'failed';
@@ -432,7 +433,7 @@ export async function createGateway() {
     `).get(id) as { ai: string | null; prompt: string | null } | undefined;
 
     const failedTask = deadLetter ? undefined : db.prepare(`
-      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
+      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt, verifier_json, verifier_result_json
       FROM tasks
       WHERE id=? AND status='failed'
     `).get(id) as {
@@ -442,6 +443,8 @@ export async function createGateway() {
       workspace_id: string | null;
       priority: number | null;
       system_prompt: string | null;
+      verifier_json: string | null;
+      verifier_result_json: string | null;
     } | undefined;
 
     const payload = deadLetter
@@ -454,12 +457,36 @@ export async function createGateway() {
             workspaceId: failedTask.workspace_id ?? undefined,
             priority: failedTask.priority ?? undefined,
             systemPrompt: failedTask.system_prompt ?? undefined,
+            verifier: (() => {
+              if (!failedTask.verifier_json) return undefined;
+              try {
+                return JSON.parse(failedTask.verifier_json);
+              } catch {
+                return undefined;
+              }
+            })(),
           }
         : null;
 
     if (!payload || !payload.prompt) {
       reply.code(404);
       return { error: 'Retry source not found' };
+    }
+
+    if (failedTask?.verifier_result_json) {
+      try {
+        const parsed = JSON.parse(failedTask.verifier_result_json) as {
+          passed?: boolean;
+          outputSnippet?: string;
+          command?: string;
+          timedOut?: boolean;
+          spawnError?: string | null;
+          exitCode?: number | null;
+        };
+        if (parsed.passed === false && parsed.outputSnippet) {
+          payload.prompt += `\n\n[Previous verifier failure]\nCommand: ${parsed.command}\nExit: ${parsed.timedOut ? 'timeout' : parsed.spawnError ? 'spawn-error' : parsed.exitCode}\nOutput:\n${parsed.outputSnippet}`;
+        }
+      } catch {}
     }
 
     const readRetryCount = db.prepare(`

@@ -42,6 +42,11 @@ export const CreateTaskInput = z.object({
   timeout: z.number().int().min(1000).max(1_800_000).optional(), // per-task wall-clock ms (max 30min)
   systemPrompt: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  verifier: z.object({
+    type: z.literal('run'),
+    command: z.string().min(1),
+    timeoutMs: z.number().int().min(1000).max(300_000).optional(),
+  }).optional(),
 });
 
 export const CreateDiscussionInput = z.object({

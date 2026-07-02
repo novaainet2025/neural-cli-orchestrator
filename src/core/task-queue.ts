@@ -9,8 +9,10 @@
  */
 
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { spawn, type ChildProcessByStdio } from 'child_process';
+import type { Readable } from 'stream';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
-import { loadEnabledProviders, type ProviderConfig } from '../utils/config.js';
+import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { invocationTracker } from './invocation-tracker.js';
@@ -43,6 +45,11 @@ export interface QueuedTask {
   systemPrompt?: string;
   /** Per-task wall-clock override (ms) — falls back to sandbox default when unset */
   timeoutMs?: number;
+  verifier?: {
+    type: 'run';
+    command: string;
+    timeoutMs?: number;
+  };
   priority?: number;
   metadata?: {
     invocationId?: string;
@@ -72,6 +79,17 @@ type TaskExecutionResult = {
 };
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
 
+type VerifierResult = {
+  type: 'run';
+  command: string;
+  timeoutMs: number;
+  startedAt: string;
+  exitCode: number | null;
+  timedOut: boolean;
+  passed: boolean;
+  outputSnippet: string;
+};
+
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
 
 function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
@@ -93,6 +111,121 @@ function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
   }
 
   return result;
+}
+
+function mergeVerifierOutput(stdout: string, stderr: string): string {
+  return `${stdout}${stdout && stderr ? '\n' : ''}${stderr}`.slice(0, 2000);
+}
+
+function persistVerifierResult(taskId: string, verifierResult: VerifierResult): void {
+  const db = getDb();
+  db.prepare(`
+    UPDATE tasks
+    SET verifier_result_json=?, updated_at=datetime('now')
+    WHERE id=?
+  `).run(JSON.stringify(verifierResult), taskId);
+}
+
+async function waitForExitWithTimeout(
+  child: ChildProcessByStdio<null, Readable, Readable>,
+  timeoutMs: number,
+): Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }> {
+  let stdout = '';
+  let stderr = '';
+  let timedOut = false;
+
+  child.stdout.on('data', chunk => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', chunk => {
+    stderr += chunk.toString();
+  });
+
+  return await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGKILL');
+    }, timeoutMs);
+
+    child.once('error', err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.once('close', code => {
+      clearTimeout(timer);
+      resolve({ code, stdout, stderr, timedOut });
+    });
+  });
+}
+
+async function applyVerifierGate(
+  task: QueuedTask,
+  classified: TaskExecutionResult,
+  controllerSignal: AbortSignal,
+): Promise<TaskExecutionResult> {
+  if (!classified.success || task.verifier?.type !== 'run') {
+    return classified;
+  }
+
+  const startedAt = new Date().toISOString();
+  const timeoutMs = task.verifier.timeoutMs ?? 60_000;
+
+  try {
+    const child = spawn(
+      process.platform === 'win32' ? 'cmd' : 'bash',
+      process.platform === 'win32' ? ['/d', '/s', '/c', task.verifier.command] : ['-lc', task.verifier.command],
+      {
+        cwd: env.PROJECT_DIR,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        signal: controllerSignal,
+      },
+    );
+    const { code, stdout, stderr, timedOut } = await waitForExitWithTimeout(child, timeoutMs);
+    const outputSnippet = mergeVerifierOutput(stdout, stderr);
+    const passed = code === 0 && !timedOut;
+    const verifierResult: VerifierResult = {
+      type: 'run',
+      command: task.verifier.command,
+      timeoutMs,
+      startedAt,
+      exitCode: code,
+      timedOut,
+      passed,
+      outputSnippet,
+    };
+    persistVerifierResult(task.taskId, verifierResult);
+
+    if (passed) {
+      return classified;
+    }
+
+    return {
+      ...classified,
+      success: false,
+      error: [classified.error, `verifier failed: ${outputSnippet}`].filter(Boolean).join('\n\n'),
+    };
+  } catch (err) {
+    const outputSnippet = String(err instanceof Error ? err.message : err).slice(0, 2000);
+    const verifierResult: VerifierResult = {
+      type: 'run',
+      command: task.verifier.command,
+      timeoutMs,
+      startedAt,
+      exitCode: null,
+      timedOut: false,
+      passed: false,
+      outputSnippet,
+    };
+    persistVerifierResult(task.taskId, verifierResult);
+
+    return {
+      ...classified,
+      success: false,
+      error: [classified.error, `verifier failed: ${outputSnippet}`].filter(Boolean).join('\n\n'),
+    };
+  }
 }
 
 // ─── In-memory semaphore (Redis-offline fallback) ─────
@@ -240,18 +373,19 @@ class TaskQueueManager {
     try {
       const result = await this.executor(task, controller.signal);
       const classified = classifyResult(result);
+      const gated = await applyVerifierGate(task, classified, controller.signal);
       if (invocationId) {
-        const summary = (classified.output || '').slice(0, 2000);
+        const summary = (gated.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
           invocationId,
-          classified.success ? 'completed' : 'failed',
-          classified.success ? summary : undefined,
-          classified.success ? undefined : (classified.error || classified.output),
-          classified.usage,
+          gated.success ? 'completed' : 'failed',
+          gated.success ? summary : undefined,
+          gated.success ? undefined : (gated.error || gated.output),
+          gated.usage,
         );
         await invocationTracker.notifyCompletion(invocationId);
       }
-      return classified;
+      return gated;
     } catch (err: any) {
       if (invocationId) {
         invocationTracker.completeInvocation(invocationId, 'failed', undefined, err.message);
@@ -428,20 +562,21 @@ class TaskQueueManager {
     try {
       const result = await this.executor(task, controller.signal);
       const classified = classifyResult(result);
-      if (classified.success) entry.completed++;
+      const gated = await applyVerifierGate(task, classified, controller.signal);
+      if (gated.success) entry.completed++;
       else entry.failed++;
       if (invocationId) {
-        const summary = (classified.output || '').slice(0, 2000);
+        const summary = (gated.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
           invocationId,
-          classified.success ? 'completed' : 'failed',
-          classified.success ? summary : undefined,
-          classified.success ? undefined : (classified.error || classified.output),
-          classified.usage,
+          gated.success ? 'completed' : 'failed',
+          gated.success ? summary : undefined,
+          gated.success ? undefined : (gated.error || gated.output),
+          gated.usage,
         );
         await invocationTracker.notifyCompletion(invocationId);
       }
-      return classified;
+      return gated;
     } catch (err: any) {
       entry.failed++;
       if (invocationId) {
