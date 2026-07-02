@@ -1,6 +1,9 @@
 -- 005_tasks.sql CHECK에 상태기계(task-state.ts)가 허용하는 'queued','timed_out'이 빠져 있어
 -- 해당 상태로 UPDATE/INSERT 시 SQLITE_CONSTRAINT 발생하는 잠재 버그 수정 (kangnote T1 발견, 2026-07-03).
 -- SQLite는 CHECK 변경 불가 → 테이블 재생성 방식.
+-- 029_false_reports.sql의 FK(task_id REFERENCES tasks(id)) + database.ts 전역 foreign_keys=ON 때문에
+-- DROP TABLE tasks 전후 PRAGMA 래핑 필수 (044/052 패턴, claude-1 codex 리뷰 critical 지적).
+PRAGMA foreign_keys=OFF;
 CREATE TABLE tasks_new (
   id TEXT PRIMARY KEY,
   mode TEXT NOT NULL DEFAULT 'task',
@@ -34,3 +37,4 @@ ALTER TABLE tasks_new RENAME TO tasks;
 CREATE INDEX idx_tasks_assigned ON tasks(assigned_to, status);
 CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_created ON tasks(created_at DESC);
+PRAGMA foreign_keys=ON;
