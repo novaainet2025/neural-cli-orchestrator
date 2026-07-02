@@ -78,6 +78,7 @@ async function boot(): Promise<void> {
       taskId: task.taskId,
       systemPrompt: task.systemPrompt,
       signal,
+      timeoutMs: task.timeoutMs,
     });
     return { success: result.success, output: result.output, error: result.error };
   });

@@ -81,6 +81,7 @@ class AgentManager {
     compact?: boolean;
     signal?: AbortSignal;
     projectDir?: string;
+    timeoutMs?: number;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
@@ -118,7 +119,7 @@ class AgentManager {
           // Type A: Claude Code native — delegate to subprocess, monitor only
           const { execa } = await import('execa');
           // Build a merged abort signal: caller's signal OR a hard wall-clock timeout
-          const timeoutMs = sandbox.getTimeout();
+          const timeoutMs = options?.timeoutMs ?? sandbox.getTimeout();
           const wallClock = AbortSignal.timeout(timeoutMs);
           const signal = options?.signal
             ? AbortSignal.any([options.signal, wallClock])
@@ -145,7 +146,7 @@ class AgentManager {
 
         case 'B': {
           // Type B: NCO orchestrated loop
-          const timeoutMs = sandbox.getTimeout();
+          const timeoutMs = options?.timeoutMs ?? sandbox.getTimeout();
           const wallClock = AbortSignal.timeout(timeoutMs);
           const signal = options?.signal
             ? AbortSignal.any([options.signal, wallClock])

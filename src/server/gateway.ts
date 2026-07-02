@@ -267,7 +267,7 @@ export async function createGateway() {
       : input.systemPrompt;
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, metadata: { invocationId } })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, metadata: { invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
         const honest = result.success && !detectFailedCompletion(response) ? 'completed' : 'failed';

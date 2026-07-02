@@ -33,13 +33,13 @@ export const MessageTypeSchema = z.enum([
 
 // ─── API Input ────────────────────────────────────────
 export const CreateTaskInput = z.object({
-  ai: z.string().optional(),
+  ai: z.enum(['claude-code', 'opencode', 'gemini', 'codex', 'cursor-agent', 'copilot', 'openrouter', 'ollama', 'mlx', 'agy', 'hermes', 'openclaw', 'higgsfield', 'nvidia']).optional(),
   prompt: z.string().min(1),
   mode: TaskModeSchema.optional().default('task'),
   providers: z.array(z.string()).optional(),
   workspaceId: z.string().optional().default('default'),
   priority: z.number().int().min(0).max(10).optional().default(0),
-  timeout: z.number().positive().optional(),
+  timeout: z.number().int().min(1000).max(1_800_000).optional(), // per-task wall-clock ms (max 30min)
   systemPrompt: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
