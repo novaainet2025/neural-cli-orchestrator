@@ -15,6 +15,11 @@ function promptSummary(s: string): boolean {
   return s.trim().length > 10;
 }
 
+function getTaskTimeoutMs(): number {
+  const v = Number(process.env.NCO_TASK_TIMEOUT_MS);
+  return Number.isFinite(v) && v >= 60_000 ? v : 1_200_000;
+}
+
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
 // Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
@@ -140,7 +145,7 @@ class AgentManager {
           // Type A: Claude Code native — delegate to subprocess, monitor only
           const { execa } = await import('execa');
           // Build a merged abort signal: caller's signal OR a hard wall-clock timeout
-          const timeoutMs = options?.timeoutMs ?? sandbox.getTimeout();
+          const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
           const wallClock = AbortSignal.timeout(timeoutMs);
           const signal = options?.signal
             ? AbortSignal.any([options.signal, wallClock])
@@ -166,7 +171,7 @@ class AgentManager {
 
         case 'B': {
           // Type B: NCO orchestrated loop
-          const timeoutMs = options?.timeoutMs ?? sandbox.getTimeout();
+          const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
           const wallClock = AbortSignal.timeout(timeoutMs);
           const signal = options?.signal
             ? AbortSignal.any([options.signal, wallClock])
