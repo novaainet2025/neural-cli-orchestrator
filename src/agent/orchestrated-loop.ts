@@ -23,6 +23,31 @@ function stripAnsi(str: string): string {
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').trim();
 }
 
+function extractOpenCodeText(stdout: string): string | undefined {
+  let parsedAnyLine = false;
+  const textParts: string[] = [];
+
+  for (const line of stripAnsi(stdout).split(/\r?\n/)) {
+    if (!line.trim()) continue;
+
+    try {
+      const event = JSON.parse(line);
+      parsedAnyLine = true;
+      if (event?.type === 'text' && typeof event.part?.text === 'string') {
+        textParts.push(event.part.text);
+      }
+    } catch {
+      // Ignore non-JSON lines mixed into the JSONL stream.
+    }
+  }
+
+  // JSONL은 파싱됐지만 text 이벤트가 0개(도구만 실행 등)면 의도적으로 빈 문자열을
+  // 반환한다 — raw JSONL로 폴백하면 step_start 등 이벤트 잡음이 답변으로 오염되고,
+  // 빈 문자열은 하류 classifyResult가 silent-failure로 정확히 분류한다.
+  // JSON 줄이 하나도 없으면(구버전 formatted 출력) undefined → raw 폴백.
+  return parsedAnyLine ? textParts.join('') : undefined;
+}
+
 // Providers that handle prompt as CLI args — do NOT send via stdin
 const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'agy']);
 
@@ -225,13 +250,21 @@ export class OrchestratedLoop {
           return `[codex: no final response — process ${status}]${suffix}`;
         }
 
-        const output = stripAnsi(result.stdout || result.stderr || '');
+        const opencodeOutput = this.provider.id === 'opencode'
+          ? extractOpenCodeText(result.stdout || '')
+          : undefined;
+        const output = opencodeOutput ?? stripAnsi(result.stdout || result.stderr || '');
         if (!output) {
           const fallbackSummary = stderrSummary || stripAnsi(result.shortMessage || '').slice(0, 500) || 'no stderr';
           return `[${this.provider.id}: CLI failed exit=${result.exitCode ?? 'unknown'} — ${fallbackSummary}]`;
         }
 
         return output;
+      }
+
+      if (this.provider.id === 'opencode') {
+        const output = extractOpenCodeText(result.stdout || '');
+        if (output !== undefined) return output;
       }
 
       return stripAnsi(result.stdout || result.stderr || '');
@@ -262,14 +295,19 @@ export class OrchestratedLoop {
       case 'aider':
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];
-      case 'opencode':
+      case 'opencode': {
         // opencode run <message> — non-interactive; 'chat' opens TUI.
         // provider.args 보존 규칙: 첫 토큰이 비플래그면 이미 subcommand(run/plan 등)가
         // 지정된 것이므로 그대로 쓰고, 플래그로 시작하거나 비어있으면 run을 앞에 붙인다.
         // (baseArgs 전체에서 비플래그를 찾으면 '-m <model>'의 값을 subcommand로 오판한다)
+        // --format json 필수: 기본 formatted 모드는 non-TTY에서 배너만 찍고 영구 hang.
+        const formatArgs = baseArgs.some(arg => arg === '--format' || arg.startsWith('--format='))
+          ? []
+          : ['--format', 'json'];
         return baseArgs[0] && !baseArgs[0].startsWith('-')
-          ? [...baseArgs, prompt]
-          : ['run', ...baseArgs, prompt];
+          ? [...baseArgs, ...formatArgs, prompt]
+          : ['run', ...baseArgs, ...formatArgs, prompt];
+      }
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', prompt];
