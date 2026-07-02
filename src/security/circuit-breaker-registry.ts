@@ -45,6 +45,8 @@ const AUTH_PATTERNS = [
   /\b401\b/i,
   /\bauth(?:entication)? failed\b/i,
   /\buser not found\b/i, // openrouter 401 본문 — 401 리터럴 없이 이 문구만 전파될 때 generic 오분류 (snt 실측)
+  // preflight 실패는 키를 고치기 전엔 자가치유 불가 — 60s generic 쿨다운 재시도 낭비 대신 auth immediateOpen
+  /\bcredential preflight failed\b/i,
 ];
 
 const QUOTA_PATTERNS = [
