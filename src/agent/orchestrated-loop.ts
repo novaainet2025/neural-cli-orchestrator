@@ -208,11 +208,30 @@ export class OrchestratedLoop {
         } finally {
           try { unlinkSync(lastMessageFile); } catch { /* already gone */ }
         }
-        // codex killed before writing final message (timeout/abort):
-        // raw stdout is a session transcript (banner + prompt echo) — never return it as the answer
-        if ((result as any).isCanceled || result.failed) {
-          return `[codex: no final response — process ${(result as any).isCanceled ? 'aborted (timeout)' : 'failed'}]`;
+      }
+
+      if (result.failed || result.exitCode !== 0) {
+        const stderrSummary = stripAnsi(result.stderr || '').slice(0, 500);
+        log.warn({
+          agentId: this.provider.id,
+          exitCode: result.exitCode,
+          shortMessage: result.shortMessage,
+          stderr: stderrSummary,
+        }, 'CLI call returned non-zero exit');
+
+        if (lastMessageFile) {
+          const status = (result as any).isCanceled ? 'aborted (timeout)' : 'failed';
+          const suffix = stderrSummary ? ` — ${stderrSummary}` : '';
+          return `[codex: no final response — process ${status}]${suffix}`;
         }
+
+        const output = stripAnsi(result.stdout || result.stderr || '');
+        if (!output) {
+          const fallbackSummary = stderrSummary || stripAnsi(result.shortMessage || '').slice(0, 500) || 'no stderr';
+          return `[${this.provider.id}: CLI failed exit=${result.exitCode ?? 'unknown'} — ${fallbackSummary}]`;
+        }
+
+        return output;
       }
 
       return stripAnsi(result.stdout || result.stderr || '');
