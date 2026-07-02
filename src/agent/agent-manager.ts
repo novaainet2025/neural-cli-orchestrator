@@ -204,7 +204,10 @@ class AgentManager {
       const durationMs = Date.now() - startTime;
       this.recordLatency(agentId, durationMs);
 
-      const classified = classifyCircuitError(output);
+      // 성공 출력의 실패패턴 분류는 짧은 출력(<300자)에만 적용 — 긴 기술 출력(diff·문서)이
+      // 에러 문자열을 *인용*만 해도 서킷이 트립되는 오탐 방지 (2026-07-03 codex auth 오픈 실측:
+      // v1.1 diff 본문의 'credential preflight failed' 리터럴에 트립됨)
+      const classified = output.trim().length < 300 ? classifyCircuitError(output) : null;
       if (classified) {
         circuitBreakerRegistry.recordFailure(agentId, output);
         return {
