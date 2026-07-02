@@ -24,7 +24,7 @@ function stripAnsi(str: string): string {
 }
 
 // Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot']);
+const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'agy']);
 
 interface LoopResult {
   output: string;
@@ -232,6 +232,10 @@ export class OrchestratedLoop {
           : ['exec', '--skip-git-repo-check', prompt];
       case 'gemini':
         return [...baseArgs, prompt];
+      case 'agy':
+        // Antigravity CLI: --print runs a single prompt non-interactively;
+        // --dangerously-skip-permissions avoids tool-approval hangs in autonomous mode
+        return ['--print', '--dangerously-skip-permissions', ...baseArgs, prompt];
       case 'aider':
         // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
         return ['--message', prompt, ...baseArgs];

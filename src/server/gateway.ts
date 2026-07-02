@@ -1456,5 +1456,158 @@ export async function createGateway() {
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);
 
+  // ── NCO 메가태스크 이식 2026-06-30: mem0/hallucination/reflexion/github ──
+  // GitHub Agent — 레포 검색 및 이식 가능성 평가
+  // POST /api/github/search  — 단일 목표 검색
+  // POST /api/github/agent   — 전체 목표 병렬 검색 (hallucination/memory/self-improvement/collaboration)
+  // ─────────────────────────────────────────────────────────────────────────
+  app.post('/api/github/search', async (req, reply) => {
+    const { goal, limit } = req.body as { goal?: string; limit?: number };
+    if (!goal) { reply.code(400); return { error: 'goal required (hallucination | memory | self-improvement | collaboration)' }; }
+    try {
+      const { searchGitHub } = await import('../core/github-agent.js');
+      const repos = await searchGitHub(goal, limit ?? 5);
+      return { goal, repos, count: repos.length, searchedAt: new Date().toISOString() };
+    } catch (err: any) {
+      reply.code(500);
+      return { error: err?.message ?? 'GitHub search failed' };
+    }
+  });
+
+  app.post('/api/github/agent', async (req, reply) => {
+    const { goals, limitPerGoal } = (req.body ?? {}) as { goals?: string[]; limitPerGoal?: number };
+    try {
+      const { runGitHubAgent } = await import('../core/github-agent.js');
+      const results = await runGitHubAgent({
+        goals: goals as any,
+        limitPerGoal: limitPerGoal ?? 5,
+      });
+      const totalRepos = results.reduce((s, r) => s + r.repos.length, 0);
+      const topRepos = results.flatMap(r => r.repos).sort((a, b) => b.transplantScore - a.transplantScore).slice(0, 10);
+      return { results, totalRepos, topRepos, ranAt: new Date().toISOString() };
+    } catch (err: any) {
+      reply.code(500);
+      return { error: err?.message ?? 'GitHub agent failed' };
+    }
+  });
+
+  log.info('GitHub Agent routes registered — /api/github/{search,agent}');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // mem0 — 에이전트별 장기 기억 CRUD
+  // POST /api/mem0/:agentId/add        — 기억 저장
+  // POST /api/mem0/:agentId/search     — 기억 검색 (시맨틱 / BM25)
+  // GET  /api/mem0/:agentId            — 기억 목록
+  // DELETE /api/mem0/:agentId/:memId   — 기억 삭제
+  // DELETE /api/mem0/:agentId          — 에이전트 기억 전체 초기화
+  // GET  /api/mem0/stats               — 전체 통계
+  // ─────────────────────────────────────────────────────────────────────────
+  app.post('/api/mem0/:agentId/add', async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    const { content, userId, metadata } = req.body as { content: string; userId?: string; metadata?: Record<string, unknown> };
+    if (!content) { reply.code(400); return { error: 'content required' }; }
+    try {
+      const { mem0Add } = await import('../core/mem0-bridge.js');
+      return await mem0Add({ agentId, content, userId, metadata });
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.post('/api/mem0/:agentId/search', async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    const { query, limit, userId } = req.body as { query: string; limit?: number; userId?: string };
+    if (!query) { reply.code(400); return { error: 'query required' }; }
+    try {
+      const { mem0Search } = await import('../core/mem0-bridge.js');
+      return await mem0Search({ agentId, query, limit, userId });
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.get('/api/mem0/:agentId', async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    const { limit, userId } = req.query as { limit?: string; userId?: string };
+    try {
+      const { mem0List } = await import('../core/mem0-bridge.js');
+      const memories = mem0List({ agentId, limit: limit ? parseInt(limit) : 20, userId });
+      return { agentId, memories, count: memories.length };
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.delete('/api/mem0/:agentId/:memId', async (req, reply) => {
+    const { agentId, memId } = req.params as { agentId: string; memId: string };
+    try {
+      const { mem0Delete } = await import('../core/mem0-bridge.js');
+      const deleted = mem0Delete(memId, agentId);
+      if (!deleted) { reply.code(404); return { error: 'memory not found' }; }
+      return { deleted: true, id: memId };
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.delete('/api/mem0/:agentId', async (req, reply) => {
+    const { agentId } = req.params as { agentId: string };
+    try {
+      const { mem0Clear } = await import('../core/mem0-bridge.js');
+      const cleared = mem0Clear(agentId);
+      return { cleared, agentId };
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.get('/api/mem0/stats', async (_req, reply) => {
+    try {
+      const { mem0Stats } = await import('../core/mem0-bridge.js');
+      return mem0Stats();
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  log.info('mem0 Bridge routes registered — /api/mem0/{agentId}/add|search, GET|DELETE /api/mem0/:agentId');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Hallucination Guard — bastion-anchor 이식 (2026-06-30)
+  // POST /api/hallucination/check  — 응답 환각 검증 (컨텍스트 기반 + 자가 검증)
+  // POST /api/hallucination/quick  — 빠른 점수만 (동기, 실시간용)
+  // ─────────────────────────────────────────────────────────────────────────
+  app.post('/api/hallucination/check', async (req, reply) => {
+    const { response, context, prompt, runSelfReview } = req.body as {
+      response: string; context?: string; prompt?: string; runSelfReview?: boolean;
+    };
+    if (!response) { reply.code(400); return { error: 'response required' }; }
+    try {
+      const { checkHallucination } = await import('../core/hallucination-guard.js');
+      const report = await checkHallucination(response, { context, prompt, runSelfReview: runSelfReview ?? false });
+      return report;
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  app.post('/api/hallucination/quick', async (req, reply) => {
+    const { response, context } = req.body as { response: string; context?: string };
+    if (!response) { reply.code(400); return { error: 'response required' }; }
+    try {
+      const { quickHallucinationScore } = await import('../core/hallucination-guard.js');
+      const score = quickHallucinationScore(response, context);
+      return { score, recommendation: score >= 0.7 ? 'accept' : score >= 0.4 ? 'review' : 'reject' };
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  log.info('Hallucination Guard routes registered — /api/hallucination/{check,quick}');
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Reflexion — 자가 개선 평가 API (opt-in, 에이전트 루프 비수정)
+  // POST /api/reflexion/evaluate   — 기존 응답 자가 평가만 (critique+mem0 저장)
+  // ─────────────────────────────────────────────────────────────────────────
+  app.post('/api/reflexion/evaluate', async (req, reply) => {
+    const { agentId, prompt, response, saveMemory, userId } = req.body as {
+      agentId: string; prompt: string; response: string; saveMemory?: boolean; userId?: string;
+    };
+    if (!agentId || !prompt || !response) {
+      reply.code(400);
+      return { error: 'agentId, prompt, response required' };
+    }
+    try {
+      const { evaluateWithReflexion } = await import('../core/reflexion.js');
+      return await evaluateWithReflexion(agentId, prompt, response, { saveMemory, userId });
+    } catch (err: any) { reply.code(500); return { error: err?.message }; }
+  });
+
+  log.info('Reflexion routes registered — /api/reflexion/evaluate');
+
   return app;
 }

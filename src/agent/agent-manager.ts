@@ -132,11 +132,8 @@ class AgentManager {
           ], {
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
-            env: {
-              ...process.env,
-              ...provider.env,
-              NCO_HOOK_DISABLED: '1', // 재귀 방지: claude-code 서브프로세스에서 NCO 훅 비활성
-            },
+            // NCO 재귀보호 (2026-06-30, fleet 6a748e4): 서브에이전트 claude가 NCO 훅 재트리거 → 무한재귀 방지
+            env: { ...process.env, ...provider.env, NCO_HOOK_DISABLED: '1' },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
           });
@@ -313,11 +310,8 @@ class AgentManager {
   }
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<void> {
-    if (!provider.healthCheck) {
-      await sharedState.setAgentState(id, { status: 'online' });
-      return;
-    }
-    const url = typeof provider.healthCheck.url === 'string' ? provider.healthCheck.url : null;
+    // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider(예: remote-mlx) TypeError crash-loop 방지
+    const url = typeof provider.healthCheck?.url === 'string' ? provider.healthCheck.url : null;
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });
       return;

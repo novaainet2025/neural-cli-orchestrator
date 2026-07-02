@@ -1,26 +1,45 @@
+import { createHash } from 'crypto';
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('knowledge-base');
 
-// ─── Embedding Service (optional, localhost:6270) ────
-const EMBED_URL = 'http://localhost:6270/embed';
+// ─── Embedding Service — ollama nomic-embed-text (primary) or legacy 6270 ────
+const OLLAMA_EMBED_URL = 'http://localhost:11434/api/embed';
+const LEGACY_EMBED_URL = 'http://localhost:6270/embed';
+const EMBED_MODEL = 'nomic-embed-text';
 
 async function fetchEmbedding(text: string): Promise<number[] | null> {
+  // 1) Try ollama (primary — nomic-embed-text 768dim)
   try {
-    const res = await fetch(EMBED_URL, {
+    const res = await fetch(OLLAMA_EMBED_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (res.ok) {
+      const data = await res.json() as { embeddings?: number[][] };
+      if (Array.isArray(data.embeddings?.[0])) return data.embeddings![0];
+    }
+  } catch { /* fallthrough */ }
+
+  // 2) Legacy embed service at 6270
+  try {
+    const res = await fetch(LEGACY_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return null;
-    const data = await res.json() as { embedding?: number[] };
-    return Array.isArray(data.embedding) ? data.embedding : null;
-  } catch {
-    return null; // service unavailable — fall back to lexical
-  }
+    if (res.ok) {
+      const data = await res.json() as { embedding?: number[] };
+      if (Array.isArray(data.embedding)) return data.embedding;
+    }
+  } catch { /* fallthrough */ }
+
+  return null; // both unavailable — fall back to lexical
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
@@ -38,7 +57,7 @@ function cosineSimilarity(a: number[], b: number[]): number {
 export interface KnowledgeEntry {
   id?: string;
   projectPath: string;
-  category: 'bug_pattern' | 'architecture' | 'convention' | 'decision';
+  category: 'bug_pattern' | 'architecture' | 'convention' | 'decision' | 'obsidian';
   content: string;
   sourceTaskId?: string;
   sourceDiscussionId?: string;
@@ -53,8 +72,16 @@ class KnowledgeBase {
     const id = entry.id || createId('kb');
     const db = getDb();
     db.prepare(`
-      INSERT INTO knowledge_base (id, project_path, category, content, source_task_id, source_discussion_id, confidence)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO knowledge_base (id, project_path, category, content, source_task_id, source_discussion_id, confidence, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        project_path = excluded.project_path,
+        category = excluded.category,
+        content = excluded.content,
+        source_task_id = excluded.source_task_id,
+        source_discussion_id = excluded.source_discussion_id,
+        confidence = excluded.confidence,
+        updated_at = datetime('now')
     `).run(
       id,
       entry.projectPath,
@@ -97,6 +124,58 @@ class KnowledgeBase {
     }
 
     return results;
+  }
+
+  /**
+   * Query knowledge by category and optional keywords.
+   */
+  queryByCategory(category: string, keywords?: string, limit = 10): any[] {
+    const db = getDb();
+    const params: any[] = [category];
+    let sql = 'SELECT * FROM knowledge_base WHERE category = ?';
+
+    if (keywords) {
+      const terms = keywords.split(/\s+/).filter(Boolean);
+      if (terms.length > 0) {
+        const conditions = terms.map(() => 'content LIKE ?').join(' AND ');
+        sql += ` AND (${conditions})`;
+        params.push(...terms.map(t => `%${t}%`));
+      }
+    }
+
+    sql += ' ORDER BY updated_at DESC LIMIT ?';
+    params.push(limit);
+
+    const results = db.prepare(sql).all(...params) as any[];
+
+    // Increment used_count
+    const updateStmt = db.prepare('UPDATE knowledge_base SET used_count = used_count + 1 WHERE id = ?');
+    for (const r of results) {
+      updateStmt.run(r.id);
+    }
+
+    return results;
+  }
+
+  /**
+   * Specifically search Obsidian notes, with optional semantic boost.
+   */
+  async queryObsidian(query: string, limit = 10): Promise<any[]> {
+    // If no query, return recent ones
+    if (!query || query.trim().length === 0) {
+      return this.queryByCategory('obsidian', '', limit);
+    }
+
+    // Try semantic search first
+    const similar = await this.findSimilarAsync(query, limit * 2);
+    const filtered = similar.filter(e => e.category === 'obsidian');
+
+    if (filtered.length > 0) {
+      return filtered.slice(0, limit);
+    }
+
+    // Fallback to lexical
+    return this.queryByCategory('obsidian', query, limit);
   }
 
   /**
@@ -174,6 +253,7 @@ class KnowledgeBase {
       architecture: 0,
       convention: 0,
       decision: 0,
+      obsidian: 0,
     };
 
     const patterns: Array<{ category: KnowledgeEntry['category']; terms: RegExp[] }> = [
@@ -181,6 +261,7 @@ class KnowledgeBase {
       { category: 'architecture', terms: [/\bdesign\b/, /\bstructure\b/, /\bpattern\b/, /\bmodule\b/, /\blayer\b/, /\bservice\b/, /\bcomponent\b/, /\binterface\b/, /아키텍처/, /설계/, /구조/] },
       { category: 'decision', terms: [/\bdecided\b/, /\bchose\b/, /\breason\b/, /\bapproach\b/, /\btradeoff\b/, /\bselected\b/, /결정/, /선택/, /방향/, /이유/] },
       { category: 'convention', terms: [/\bconvention\b/, /\bstandard\b/, /\bformat\b/, /\bstyle\b/, /\bnaming\b/, /\brule\b/, /\bguideline\b/, /규칙/, /컨벤션/, /형식/] },
+      { category: 'obsidian', terms: [/\bvault\b/, /\bobsidian\b/, /\bnote\b/, /\btag\b/, /옵시디언/, /메모/, /지식/] },
     ];
 
     for (const { category, terms } of patterns) {
@@ -206,9 +287,17 @@ class KnowledgeBase {
     const embedding = await fetchEmbedding(entry.content);
     const db = getDb();
     db.prepare(`
-      INSERT INTO knowledge_base (id, project_path, category, content, source_task_id, source_discussion_id, confidence, embedding_json)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET embedding_json=excluded.embedding_json
+      INSERT INTO knowledge_base (id, project_path, category, content, source_task_id, source_discussion_id, confidence, embedding_json, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        project_path = excluded.project_path,
+        category = excluded.category,
+        content = excluded.content,
+        source_task_id = excluded.source_task_id,
+        source_discussion_id = excluded.source_discussion_id,
+        confidence = excluded.confidence,
+        embedding_json = COALESCE(excluded.embedding_json, knowledge_base.embedding_json),
+        updated_at = datetime('now')
     `).run(
       id,
       entry.projectPath,
@@ -221,6 +310,27 @@ class KnowledgeBase {
     );
     log.info({ id, category: entry.category, hasEmbedding: !!embedding }, 'Knowledge saved with embedding');
     return id;
+  }
+
+  /**
+   * Specifically index an Obsidian file.
+   */
+  async indexObsidianFile(filePath: string, content: string): Promise<string> {
+    const id = `kb_obsidian_${createHash('md5').update(filePath).digest('hex').slice(0, 16)}`;
+    return this.saveWithEmbedding({
+      id,
+      projectPath: 'obsidian',
+      category: 'obsidian',
+      content,
+      confidence: 1.0,
+    });
+  }
+
+  removeObsidianFile(filePath: string): void {
+    const id = `kb_obsidian_${createHash('md5').update(filePath).digest('hex').slice(0, 16)}`;
+    const db = getDb();
+    db.prepare('DELETE FROM knowledge_base WHERE id = ?').run(id);
+    log.info({ id, filePath }, 'Obsidian knowledge removed');
   }
 
   /**
