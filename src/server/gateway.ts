@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { env } from '../utils/config.js';
@@ -13,6 +13,7 @@ import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
 import { taskQueue } from '../core/task-queue.js';
+import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
 
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
 function detectFailedCompletion(response: string | null | undefined): boolean {
@@ -64,6 +65,12 @@ import { collaborationEngine } from '../core/collaboration-engine.js';
 import { sortProvidersByCostOrder } from '../core/smart-router.js';
 
 const log = createLogger('gateway');
+let draining = false;
+
+function rejectWhileDraining(reply: FastifyReply) {
+  reply.code(503);
+  return { error: 'draining: new tasks rejected' };
+}
 
 // ─── Lazy-cached dynamic imports (avoid repeated await import() per request) ─
 let _cliMeshMod: Awaited<typeof import('../core/cli-mesh.js')> | null = null;
@@ -89,6 +96,42 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  const getInFlightCount = (): number => {
+    const db = getDb();
+    const row = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM tasks
+      WHERE status IN ('queued', 'assigned', 'running', 'streaming')
+    `).get() as { count: number };
+    return row.count;
+  };
+
+  const cancelTaskById = async (taskId: string, reply?: { code: (statusCode: number) => unknown }) => {
+    const db = getDb();
+    const task = db.prepare('SELECT id, status FROM tasks WHERE id=?').get(taskId) as { id: string; status: string } | undefined;
+    if (!task) {
+      reply?.code(404);
+      return { ok: false, killed: false, error: 'Task not found' };
+    }
+
+    if (TERMINAL_STATES.has(task.status)) {
+      return { ok: true, killed: false, alreadyTerminal: true, status: task.status };
+    }
+
+    const killed = await taskQueue.abort(taskId);
+    const moved = transitionTask(db, taskId, 'cancelled');
+
+    if (!moved.ok) {
+      if (moved.prev && TERMINAL_STATES.has(moved.prev)) {
+        return { ok: true, killed, alreadyTerminal: true, status: moved.prev };
+      }
+      log.info({ taskId, prev: moved.prev }, 'Cancel skipped because task transition was rejected');
+      return { ok: false, killed, status: moved.prev };
+    }
+
+    await eventBus.publish({ type: 'task:cancelled', taskId });
+    return { ok: true, killed, status: 'cancelled' };
+  };
 
   await app.register(cors, {
     origin: [
@@ -233,6 +276,10 @@ export async function createGateway() {
 
   // ═══ Tasks ════════════════════════════════════════
   app.post('/api/task', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const parsed = CreateTaskInput.safeParse(req.body);
     if (!parsed.success) {
       reply.code(400);
@@ -293,14 +340,18 @@ export async function createGateway() {
         const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
         const honest = result.success && !detectFailedCompletion(response) ? 'completed' : 'failed';
         try {
-          db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-            .run(honest, response, taskId);
+          const moved = transitionTask(db, taskId, honest, { response, completedAt: true });
+          if (!moved.ok) {
+            log.info({ taskId, prev: moved.prev, next: honest }, 'Skipped terminal completion update');
+          }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
       })
       .catch(err => {
         try {
-          db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-            .run(err.message, taskId);
+          const moved = transitionTask(db, taskId, 'failed', { error: err.message });
+          if (!moved.ok) {
+            log.info({ taskId, prev: moved.prev, next: 'failed' }, 'Skipped terminal failure update');
+          }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task failure failed'); }
       });
 
@@ -309,6 +360,10 @@ export async function createGateway() {
   });
 
   app.post('/api/tasks', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     // Alias for /api/task
     return app.inject({ method: 'POST', url: '/api/task', payload: req.body as any });
   });
@@ -346,28 +401,90 @@ export async function createGateway() {
     return { taskId: task.id, status: task.status, progress: task.progress, result: task.response, updatedAt: task.updated_at };
   });
 
+  app.post('/api/tasks/:id/cancel', async (req, reply) => {
+    const { id } = req.params as any;
+    return cancelTaskById(id, reply);
+  });
+
   app.delete('/api/tasks/:id', async (req, reply) => {
     const { id } = req.params as any;
+    return cancelTaskById(id, reply);
+  });
+
+  app.post('/api/tasks/:id/retry', async (req, reply) => {
+    const { id } = req.params as any;
     const db = getDb();
+    const deadLetter = db.prepare(`
+      SELECT ai, prompt
+      FROM dead_letter_tasks
+      WHERE task_id=?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(id) as { ai: string | null; prompt: string | null } | undefined;
 
-    // Abort via taskQueue (works for both BullMQ queued and semaphore active tasks)
-    const killed = await taskQueue.abort(id);
+    const failedTask = deadLetter ? undefined : db.prepare(`
+      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
+      FROM tasks
+      WHERE id=? AND status='failed'
+    `).get(id) as {
+      assigned_to: string | null;
+      prompt: string;
+      mode: string | null;
+      workspace_id: string | null;
+      priority: number | null;
+      system_prompt: string | null;
+    } | undefined;
 
-    // Atomic DB update — transaction ensures status + timestamp are consistent
-    const cancelTask = db.transaction(() => {
-      db.prepare("UPDATE tasks SET status='cancelled', updated_at=datetime('now') WHERE id=?").run(id);
-    });
-    try {
-      cancelTask();
-    } catch (dbErr) {
-      log.error({ err: (dbErr as Error).message, taskId: id }, 'Failed to cancel task in DB');
+    const payload = deadLetter
+      ? { ai: deadLetter.ai ?? undefined, prompt: deadLetter.prompt ?? '' }
+      : failedTask
+        ? {
+            ai: failedTask.assigned_to ?? undefined,
+            prompt: failedTask.prompt,
+            mode: failedTask.mode ?? undefined,
+            workspaceId: failedTask.workspace_id ?? undefined,
+            priority: failedTask.priority ?? undefined,
+            systemPrompt: failedTask.system_prompt ?? undefined,
+          }
+        : null;
+
+    if (!payload || !payload.prompt) {
+      reply.code(404);
+      return { error: 'Retry source not found' };
     }
-    await eventBus.publish({ type: 'task:cancelled', taskId: id });
-    return { ok: true, killed };
+
+    const created = await app.inject({ method: 'POST', url: '/api/task', payload });
+    const body = created.json() as { taskId?: string; error?: string };
+    if (created.statusCode >= 400 || !body.taskId) {
+      reply.code(created.statusCode);
+      return body;
+    }
+
+    reply.code(202);
+    return { newTaskId: body.taskId, retryOf: id };
+  });
+
+  app.get('/api/admin/drain', async () => {
+    return { draining, inFlight: getInFlightCount() };
+  });
+
+  app.post('/api/admin/drain', async (req, reply) => {
+    const body = req.body as { enabled?: unknown } | undefined;
+    if (typeof body?.enabled !== 'boolean') {
+      reply.code(400);
+      return { error: 'enabled must be boolean' };
+    }
+
+    draining = body.enabled;
+    return { draining, inFlight: getInFlightCount() };
   });
 
   // ═══ Chat ═════════════════════════════════════════
   app.post('/api/chat/messages', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const body = req.body as any;
     const prompt = (body.message || body.prompt || '').trim();
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
@@ -401,6 +518,10 @@ export async function createGateway() {
 
   // ═══ Discussions / Realtime ═══════════════════════
   app.post('/api/realtime/discussion', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const input = CreateDiscussionInput.parse(req.body);
     reply.code(202);
 
@@ -435,6 +556,10 @@ export async function createGateway() {
   });
 
   app.post('/api/realtime/parallel', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const body = req.body as any;
     const providers = body.providers || sortProvidersByCostOrder(agentManager.listEnabledIds()).slice(0, 3);
     reply.code(202);
@@ -459,6 +584,10 @@ export async function createGateway() {
   });
 
   app.post('/api/realtime/consensus', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const input = CreateDiscussionInput.parse(req.body);
     reply.code(202);
 
@@ -505,6 +634,10 @@ export async function createGateway() {
 
   // Start a discussion tied to the real engine (replaces legacy /discussion/start stub)
   app.post('/api/discussion/start', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const body = req.body as any;
     const topic = body.topic || body.prompt;
     if (!topic) { reply.code(400); return { error: 'topic or prompt required' }; }
@@ -1135,6 +1268,10 @@ export async function createGateway() {
 
   // ═══ Hive Mode (9 AI → 1 Super AI) ══════════════════
   app.post('/api/hive', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const { prompt, providers } = req.body as any;
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
     const allProviders = providers || agentManager.listEnabledIds();
@@ -1277,7 +1414,11 @@ export async function createGateway() {
   });
 
   // ═══ Conductor (Smart Router Auto-Dispatch) ════════
-  app.post('/api/conductor', async (req) => {
+  app.post('/api/conductor', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
     const smartRouter = await getSmartRouter();
     const { prompt } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };

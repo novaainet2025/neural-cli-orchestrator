@@ -9,6 +9,7 @@ import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
 import { sessionManager } from './agent/session-manager.js';
 import { taskQueue } from './core/task-queue.js';
+import { transitionTask } from './core/task-state.js';
 import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
@@ -16,6 +17,42 @@ import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
 
 const log = createLogger('main');
+
+function recoverOrphanedTasks(): number {
+  const db = getDb();
+  const orphans = db.prepare(`
+    SELECT id, assigned_to, prompt
+    FROM tasks
+    WHERE status IN ('queued', 'assigned', 'running', 'streaming')
+  `).all() as Array<{ id: string; assigned_to: string | null; prompt: string }>;
+
+  const insertDeadLetter = db.prepare(`
+    INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const recoverOne = db.transaction((task: { id: string; assigned_to: string | null; prompt: string }) => {
+    const moved = transitionTask(db, task.id, 'failed', {
+      error: 'orphaned: server restart',
+      completedAt: true,
+    });
+    if (!moved.ok) {
+      return false;
+    }
+
+    insertDeadLetter.run(task.id, task.assigned_to, task.prompt, 'orphaned: server restart');
+    return true;
+  });
+
+  let recovered = 0;
+  for (const task of orphans) {
+    if (recoverOne(task)) {
+      recovered++;
+    }
+  }
+
+  return recovered;
+}
 
 async function boot(): Promise<void> {
   log.info('═══════════════════════════════════════');
@@ -29,19 +66,8 @@ async function boot(): Promise<void> {
   log.info('Initializing database...');
   const db = getDb();
   runMigrations();
-
-  // 1b. Startup recovery: mark tasks stuck in "assigned" as failed
-  //     These are tasks that were in-flight when the server was killed/restarted.
-  const zombieResult = db.prepare(`
-    UPDATE tasks
-    SET status = 'failed',
-        error  = 'timed_out: server restarted while task was in-flight',
-        updated_at = datetime('now')
-    WHERE status = 'assigned'
-  `).run();
-  if (zombieResult.changes > 0) {
-    log.warn({ count: zombieResult.changes }, 'Startup recovery: marked in-flight tasks as failed');
-  }
+  const orphanedCount = recoverOrphanedTasks();
+  log.warn({ count: orphanedCount }, 'Startup orphan recovery processed');
 
   // 2. Redis
   log.info('Connecting to Redis...');
