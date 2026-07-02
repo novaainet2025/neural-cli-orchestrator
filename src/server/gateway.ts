@@ -58,6 +58,7 @@ import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { registerCircuitRoutes } from './routes/circuit.js';
 import { registerInterSessionRoutes } from './routes/inter-session.js';
+import { registerHandoffRoutes } from './routes/handoff.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
@@ -1651,6 +1652,7 @@ export async function createGateway() {
 
   // ═══ Fleet Ops (push 텔레메트리 + edit-lease) ═══════════
   await registerFleetOpsRoutes(app);
+  await registerHandoffRoutes(app);
 
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);

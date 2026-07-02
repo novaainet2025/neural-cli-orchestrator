@@ -22,6 +22,7 @@ const PERSIST_TYPES = new Set([
   'message:direct', 'message:broadcast', 'message:review',
   'message:approve', 'message:reject',
   'task:created', 'task:completed', 'task:failed',
+  'session:handoff',
   'discussion:started', 'discussion:completed',
   'discussion:round_completed', 'discussion:consensus_reached',
   'system:error', 'system:rate_limit',
