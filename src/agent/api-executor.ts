@@ -325,6 +325,11 @@ export class ApiExecutor {
   }
 
   private getCredentialPreflightError(): string | null {
+    // 키 불필요 프로바이더(ollama/mlx 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
+    // 없으면 'no API keys configured'→auth immediateOpen 오분류 (2026-07-03 ollama 부팅 트립 실측)
+    const requiresKey = Boolean(this.provider.keyRotation?.enabled || this.provider.apiKeyRef);
+    if (!requiresKey) return null;
+
     if (this.keys.length === 0) {
       return 'no API keys configured';
     }
