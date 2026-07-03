@@ -44,7 +44,10 @@ export const CreateTaskInput = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
   verifier: z.object({
     type: z.literal('run'),
-    command: z.string().min(1),
+    command: z.string().min(1).refine(
+      command => !/[;|&<>$`(){}\n'"\\]/.test(command),
+      'verifier.command must be a plain binary invocation (no shell metacharacters)',
+    ),
     timeoutMs: z.number().int().min(1000).max(300_000).optional(),
   }).optional(),
 });

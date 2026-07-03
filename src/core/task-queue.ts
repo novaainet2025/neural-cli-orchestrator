@@ -16,6 +16,7 @@ import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { invocationTracker } from './invocation-tracker.js';
+import { CommandGate } from '../security/command-gate.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -37,6 +38,15 @@ const BASE_BACKOFF_MS = 5_000; // 5s, then 10s, then 20s
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 const TASK_MONITOR_INTERVAL_MS = 15_000;
 const PARTIAL_OUTPUT_LIMIT = 64 * 1024;
+const DEFAULT_VERIFIER_ALLOWLIST = ['node', 'npx', 'npm', 'git', 'curl', 'true', 'false', 'sleep', 'cat', 'ls', 'grep', 'sqlite3', 'tsc', 'vitest'];
+const verifierAllowlist = (process.env.VERIFIER_ALLOWLIST ?? '')
+  .split(',')
+  .map(command => command.trim())
+  .filter(Boolean);
+const verifierCommandGate = new CommandGate({
+  allowedCommands: verifierAllowlist.length > 0 ? verifierAllowlist : DEFAULT_VERIFIER_ALLOWLIST,
+  deniedCommands: [],
+});
 
 const log = createLogger('task-queue');
 
@@ -188,19 +198,95 @@ async function applyVerifierGate(
 
   const startedAt = new Date().toISOString();
   const timeoutMs = task.verifier.timeoutMs ?? 60_000;
+  const [binary, ...args] = task.verifier.command.trim().split(/\s+/);
+
+  if (!binary) {
+    const reason = 'Missing verifier binary';
+    const verifierResult: VerifierResult = {
+      type: 'run',
+      command: task.verifier.command,
+      timeoutMs,
+      startedAt,
+      exitCode: null,
+      timedOut: false,
+      passed: false,
+      outputSnippet: reason,
+      spawnError: `CommandGate: ${reason}`,
+    };
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (err) {
+      log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
+    }
+
+    return {
+      ...classified,
+      success: false,
+      error: [classified.error, `verifier failed: ${reason}`].filter(Boolean).join('\n\n'),
+    };
+  }
+
+  if (binary.includes('/') || binary.includes('\\')) {
+    const reason = 'CommandGate: path-based binary not allowed';
+    const verifierResult: VerifierResult = {
+      type: 'run',
+      command: task.verifier.command,
+      timeoutMs,
+      startedAt,
+      exitCode: null,
+      timedOut: false,
+      passed: false,
+      outputSnippet: reason,
+      spawnError: reason,
+    };
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (err) {
+      log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
+    }
+
+    return {
+      ...classified,
+      success: false,
+      error: [classified.error, `verifier failed: ${reason}`].filter(Boolean).join('\n\n'),
+    };
+  }
+
+  const gateResult = verifierCommandGate.validate(binary, args);
+  if (!gateResult.ok) {
+    const reason = gateResult.reason ?? 'Unknown command gate rejection';
+    const verifierResult: VerifierResult = {
+      type: 'run',
+      command: task.verifier.command,
+      timeoutMs,
+      startedAt,
+      exitCode: null,
+      timedOut: false,
+      passed: false,
+      outputSnippet: reason,
+      spawnError: `CommandGate: ${reason}`,
+    };
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (err) {
+      log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
+    }
+
+    return {
+      ...classified,
+      success: false,
+      error: [classified.error, `verifier failed: ${reason}`].filter(Boolean).join('\n\n'),
+    };
+  }
 
   try {
-    const child = spawn(
-      process.platform === 'win32' ? 'cmd' : 'bash',
-      process.platform === 'win32' ? ['/d', '/s', '/c', task.verifier.command] : ['-lc', task.verifier.command],
-      {
-        cwd: env.PROJECT_DIR,
-        env: process.env,
-        detached: process.platform !== 'win32',
-        stdio: ['ignore', 'pipe', 'pipe'],
-        signal: controllerSignal,
-      },
-    );
+    const child = spawn(binary, args, {
+      cwd: env.PROJECT_DIR,
+      env: process.env,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      signal: controllerSignal,
+    });
     const { code, stdout, stderr, timedOut } = await waitForExitWithTimeout(child, timeoutMs);
     const outputSnippet = mergeVerifierOutput(stdout, stderr);
     const passed = code === 0 && !timedOut;
