@@ -4,6 +4,7 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../storage/database.js';
+import { getRedis } from '../../storage/redis.js';
 import { sharedState } from '../../core/shared-state.js';
 import { agentManager } from '../../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../../security/circuit-breaker-registry.js';
@@ -1262,13 +1263,70 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   // 실브로드캐스트는 최소 90초 간격으로 1회만 나간다.
   let lastFleetBroadcastAt = 0;
   const FLEET_BROADCAST_COOLDOWN_MS = 90_000;
+  const FLEET_BROADCAST_COOLDOWN_KEY = 'nco:fleet:last-broadcast';
   app.post('/api/fleet/refresh', async () => {
     try {
-      const sinceLast = Date.now() - lastFleetBroadcastAt;
-      if (sinceLast < FLEET_BROADCAST_COOLDOWN_MS) {
-        return { ok: true, skipped: true, message: `Cooldown: ${Math.round((FLEET_BROADCAST_COOLDOWN_MS - sinceLast) / 1000)}s 후 재시도 가능` };
+      const now = Date.now();
+      let cooldownRemainingMs: number | null = null;
+      let usedRedisCooldown = false;
+
+      try {
+        const redis = await getRedis();
+        const setResult = await redis.set(
+          FLEET_BROADCAST_COOLDOWN_KEY,
+          String(now),
+          'PX',
+          FLEET_BROADCAST_COOLDOWN_MS,
+          'NX',
+        );
+        if (setResult === 'OK') {
+          usedRedisCooldown = true;
+          lastFleetBroadcastAt = now;
+        } else {
+          const ttlMs = await redis.pttl(FLEET_BROADCAST_COOLDOWN_KEY);
+          if (ttlMs > 0) {
+            cooldownRemainingMs = ttlMs;
+            usedRedisCooldown = true;
+          } else {
+            const previousValue = await redis.get(FLEET_BROADCAST_COOLDOWN_KEY);
+            const previousTs = previousValue ? Number(previousValue) : NaN;
+            if (Number.isFinite(previousTs)) {
+              const sinceLast = now - previousTs;
+              if (sinceLast < FLEET_BROADCAST_COOLDOWN_MS) {
+                cooldownRemainingMs = FLEET_BROADCAST_COOLDOWN_MS - sinceLast;
+                usedRedisCooldown = true;
+              }
+            }
+            if (!usedRedisCooldown) {
+              const retrySetResult = await redis.set(
+                FLEET_BROADCAST_COOLDOWN_KEY,
+                String(now),
+                'PX',
+                FLEET_BROADCAST_COOLDOWN_MS,
+              );
+              if (retrySetResult === 'OK') {
+                usedRedisCooldown = true;
+                lastFleetBroadcastAt = now;
+              }
+            }
+          }
+        }
+      } catch {
+        usedRedisCooldown = false;
       }
-      lastFleetBroadcastAt = Date.now();
+
+      if (!usedRedisCooldown) {
+        const sinceLast = now - lastFleetBroadcastAt;
+        if (sinceLast < FLEET_BROADCAST_COOLDOWN_MS) {
+          cooldownRemainingMs = FLEET_BROADCAST_COOLDOWN_MS - sinceLast;
+        } else {
+          lastFleetBroadcastAt = now;
+        }
+      }
+
+      if (cooldownRemainingMs !== null && cooldownRemainingMs > 0) {
+        return { ok: true, skipped: true, message: `Cooldown: ${Math.round(cooldownRemainingMs / 1000)}s 후 재시도 가능` };
+      }
       const IS_BIN = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'plugins', 'cache', 'inter-session', 'inter-session', '0.1.2', 'skills', 'inter-session', 'bin');
       const msg = 'fleet-status-request: respond with JSON {"host":"<pc-name>","agents":[{"id":"<id>","name":"<name>","status":"idle|working|error","currentTask":"<task or null>"},...]} for all your NCO providers. Use status: prefix.';
       // PM2 프로세스 트리에는 inter-session listener가 없으므로 send.py의 identity
