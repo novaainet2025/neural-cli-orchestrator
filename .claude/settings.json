@@ -1,7 +1,7 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash /home/nova/projects/neural-cli-orchestrator/.claude/hooks/nco-statusline.sh"
+    "command": "bash /Users/nova-ai/.claude/hooks/nco-statusline.sh"
   },
   "hooks": {
     "UserPromptSubmit": [
@@ -14,26 +14,6 @@
             "statusMessage": "Checking NCO status..."
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /home/nova/.claude/hooks/advisor-start.sh",
-            "timeout": 15,
-            "statusMessage": "Advisor 스코핑 중..."
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash /home/nova/.claude/hooks/improvement-inject.sh",
-            "timeout": 5,
-            "statusMessage": "이전 개선사항 로드 중..."
-          }
-        ]
       }
     ],
     "Stop": [
@@ -44,18 +24,6 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/end-of-turn-check.sh",
             "timeout": 30,
             "statusMessage": "Gap analysis + verification..."
-          },
-          {
-            "type": "command",
-            "command": "bash /home/nova/.claude/hooks/advisor-stop.sh",
-            "timeout": 25,
-            "statusMessage": "Advisor 품질 검토 중..."
-          },
-          {
-            "type": "command",
-            "command": "bash /home/nova/.claude/hooks/memory-snapshot.sh",
-            "timeout": 25,
-            "statusMessage": "맥락 노트 저장 중..."
           }
         ]
       }

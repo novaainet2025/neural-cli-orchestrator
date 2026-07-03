@@ -89,7 +89,15 @@ CACHE_FILE="$CHECK_CACHE_DIR/$CACHE_KEY.cache"
 
 _cached_check() {
     if [ -f "$CACHE_FILE" ]; then
-        local age=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
+        local mtime
+        if mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null); then
+            :
+        elif mtime=$(stat -f %m "$CACHE_FILE" 2>/dev/null); then
+            :
+        else
+            mtime=0
+        fi
+        local age=$(($(date +%s) - mtime))
         if [ "$age" -lt "$CHECK_CACHE_TTL" ]; then
             cat "$CACHE_FILE"
             return 0
@@ -110,8 +118,8 @@ else
     CHANGED_COUNT=$(to_int "$CHANGED_COUNT")
 
     DIFF_STAT=$(git diff --stat 2>/dev/null | tail -1)
-    ADDITIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= insertion)' || echo "0")
-    DELETIONS=$(echo "$DIFF_STAT" | grep -oP '\d+(?= deletion)' || echo "0")
+    ADDITIONS=$(echo "$DIFF_STAT" | awk '{for(i=1;i<=NF;i++) if($(i+1)~/^insertion/) {print $i; found=1}} END{if(!found) print 0}')
+    DELETIONS=$(echo "$DIFF_STAT" | awk '{for(i=1;i<=NF;i++) if($(i+1)~/^deletion/) {print $i; found=1}} END{if(!found) print 0}')
     ADDITIONS=$(to_int "$ADDITIONS")
     DELETIONS=$(to_int "$DELETIONS")
 

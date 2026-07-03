@@ -10,6 +10,7 @@ import { agentManager } from './agent/agent-manager.js';
 import { sessionManager } from './agent/session-manager.js';
 import { taskQueue } from './core/task-queue.js';
 import { transitionTask } from './core/task-state.js';
+import { loadCronJobs } from './core/cron-scheduler.js';
 import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
@@ -109,6 +110,9 @@ async function boot(): Promise<void> {
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
   await taskQueue.init(loadEnabledProviders());
+
+  // 7c. Internal cron jobs
+  loadCronJobs();
 
   // 8. Fastify Gateway (HTTP :6200)
   log.info('Starting API Gateway...');

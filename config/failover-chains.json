@@ -1,5 +1,10 @@
 {
   "codex": ["opencode", "agy"],
   "ollama": ["agy", "openrouter"],
-  "opencode": ["codex"]
+  "opencode": ["codex"],
+  "cursor-agent": ["agy", "openrouter"],
+  "copilot": ["openrouter", "agy"],
+  "agy": ["openrouter", "ollama"],
+  "hermes": ["agy", "openrouter"],
+  "nvidia": ["openrouter", "agy"]
 }

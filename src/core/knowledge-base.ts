@@ -65,6 +65,10 @@ export interface KnowledgeEntry {
 }
 
 class KnowledgeBase {
+  isSelfImprovementAutoApplyEnabled(): boolean {
+    return process.env.NCO_SELF_IMPROVEMENT_AUTO_APPLY === '1';
+  }
+
   /**
    * Save a knowledge entry.
    */
@@ -312,6 +316,62 @@ class KnowledgeBase {
     return id;
   }
 
+  async upsertDistilledLesson(
+    entry: KnowledgeEntry,
+    similarityThreshold = 0.85,
+  ): Promise<{ action: 'inserted' | 'merged' | 'blocked'; id?: string; similarity?: number }> {
+    if (!this.isSelfImprovementAutoApplyEnabled()) {
+      return { action: 'blocked' };
+    }
+
+    const db = getDb();
+    const exact = db.prepare(`
+      SELECT * FROM knowledge_base
+      WHERE project_path = ?
+        AND category = ?
+        AND lower(trim(content)) = lower(trim(?))
+      LIMIT 1
+    `).get(entry.projectPath, entry.category, entry.content) as Record<string, unknown> | undefined;
+
+    if (exact) {
+      const existing = this.rowToEntry(exact);
+      const id = await this.saveWithEmbedding({
+        ...existing,
+        id: existing.id,
+        confidence: Math.min(1, Math.max(existing.confidence ?? 0.8, entry.confidence ?? 0.8) + 0.02),
+        sourceTaskId: entry.sourceTaskId ?? existing.sourceTaskId,
+      });
+      return { action: 'merged', id, similarity: 1 };
+    }
+
+    const candidates = await this.findSimilarAsync(entry.content, 5);
+    let best: KnowledgeEntry | null = null;
+    let bestSimilarity = 0;
+    for (const candidate of candidates) {
+      const similarity = this.contentSimilarity(entry.content, candidate.content);
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        best = candidate;
+      }
+    }
+
+    if (best?.id && bestSimilarity >= similarityThreshold) {
+      const id = await this.saveWithEmbedding({
+        ...best,
+        id: best.id,
+        category: entry.category,
+        projectPath: entry.projectPath,
+        content: this.mergeKnowledgeContent(best.content, entry.content),
+        sourceTaskId: entry.sourceTaskId ?? best.sourceTaskId,
+        confidence: Math.min(1, Math.max(best.confidence ?? 0.8, entry.confidence ?? 0.8) + 0.05),
+      });
+      return { action: 'merged', id, similarity: bestSimilarity };
+    }
+
+    const id = await this.saveWithEmbedding(entry);
+    return { action: 'inserted', id, similarity: bestSimilarity };
+  }
+
   removeObsidianFile(filePath: string): void {
     const id = `kb_obsidian_${createHash('md5').update(filePath).digest('hex').slice(0, 16)}`;
     const db = getDb();
@@ -384,6 +444,19 @@ class KnowledgeBase {
     }
     const union = a.size + b.size - inter;
     return union === 0 ? 0 : inter / union;
+  }
+
+  private contentSimilarity(a: string, b: string): number {
+    return this.jaccardSimilarity(this.tokenWordSet(a), this.tokenWordSet(b));
+  }
+
+  private mergeKnowledgeContent(existing: string, incoming: string): string {
+    const normalizedExisting = existing.trim().toLowerCase();
+    const normalizedIncoming = incoming.trim().toLowerCase();
+    if (normalizedExisting === normalizedIncoming || normalizedExisting.includes(normalizedIncoming)) {
+      return existing;
+    }
+    return `${existing}\n\nRelated lesson: ${incoming}`;
   }
 
   /**

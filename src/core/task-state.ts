@@ -64,6 +64,30 @@ export function transitionTask(
   const result = db.prepare(sql).run(...params, taskId, ...allowedSources);
 
   if (result.changes === 1) {
+    if (next === 'completed') {
+      const taskOutput = extra?.response || '';
+      // Actually we are in ESM, so let's import dynamically
+      Promise.resolve().then(async () => {
+        try {
+          const { extractTaskEvidenceJson } = await import('./task-evidence.js');
+          const evidenceResult = extractTaskEvidenceJson(taskOutput);
+          if (!evidenceResult.warning && evidenceResult.evidenceJson) {
+            const parsed = JSON.parse(evidenceResult.evidenceJson);
+            const hasT1orT2 = Array.isArray(parsed) && parsed.some((item: any) => item.tier === 'T1' || item.tier === 'T2');
+            if (hasT1orT2) {
+              const { gatherTaskTrajectory, skillDistiller } = await import('./skill-distiller.js');
+              const trajectory = await gatherTaskTrajectory(taskId);
+              if (trajectory.taskType !== 'distill') {
+                const projectPath = process.env.PROJECT_DIR || './';
+                await skillDistiller.runPipeline(taskId, taskOutput, projectPath, trajectory);
+              }
+            }
+          }
+        } catch (err) {
+          // Ignore background processing errors to prevent breaking task completion flow
+        }
+      });
+    }
     return { ok: true };
   }
 
