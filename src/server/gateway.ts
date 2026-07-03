@@ -1136,10 +1136,14 @@ export async function createGateway() {
     const db = getDb();
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
+      // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
+      const metadataJson = input.requiredEvidence && input.requiredEvidence.length > 0
+        ? JSON.stringify({ requiredEvidence: input.requiredEvidence })
+        : null;
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, parent_task_id, last_activity_at)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, datetime('now'))
-      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson, input.parentTaskId ?? null);
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
     } catch (dbErr) {
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
       reply.code(500); return { error: 'Failed to create task' };
@@ -2493,16 +2497,32 @@ export async function createGateway() {
         .then(result => {
           try {
             const cResp = result.output || result.error;
-            const cStatus = result.success && !detectFailedCompletion(cResp) ? 'completed' : 'failed';
+            let cStatus = result.success && !detectFailedCompletion(cResp) ? 'completed' : 'failed';
+            let cError: string | null = null;
+            // P1-6 evidence-gate opt-in 하드차단: requiredEvidence 선언 태스크는 증거 충족 시에만 완료.
+            if (cStatus === 'completed') {
+              try {
+                const metaRow = db.prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as { metadata_json: string | null } | undefined;
+                const requiredKinds = metaRow?.metadata_json ? (JSON.parse(metaRow.metadata_json)?.requiredEvidence ?? []) : [];
+                if (Array.isArray(requiredKinds) && requiredKinds.length > 0) {
+                  const gate = requireEvidence(result.evidenceJson ?? {}, requiredKinds);
+                  if (!gate.allowed) {
+                    cStatus = 'failed';
+                    cError = `evidence_gate_blocked: missing ${gate.missing.join(', ')}`;
+                  }
+                }
+              } catch (gateErr) { log.warn({ err: (gateErr as Error).message, taskId }, 'evidence gate check failed (non-fatal)'); }
+            }
             db.prepare(`
               UPDATE tasks
               SET status=?,
                   response=?,
+                  error=COALESCE(?, error),
                   completed_at=datetime('now'),
                   updated_at=datetime('now'),
                   evidence_json=COALESCE(?, evidence_json)
               WHERE id=?
-            `).run(cStatus, cResp, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
+            `).run(cStatus, cResp, cError, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
             if (cStatus === 'completed') {
               void handleCompletedTaskQualityGate(taskId, cResp ?? '')
                 .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed conductor task quality gate failed'));

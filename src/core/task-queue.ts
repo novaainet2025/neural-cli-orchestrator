@@ -18,6 +18,7 @@ import { createLogger } from '../utils/logger.js';
 import { invocationTracker } from './invocation-tracker.js';
 import { CommandGate } from '../security/command-gate.js';
 import { extractTaskEvidenceJson } from './task-evidence.js';
+import { requireEvidence } from '../security/evidence-gate.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -194,7 +195,33 @@ export async function applyVerifierGate(
   classified: TaskExecutionResult,
   controllerSignal: AbortSignal,
 ): Promise<TaskExecutionResult> {
-  if (!classified.success || task.verifier?.type !== 'run') {
+  if (!classified.success) {
+    return classified;
+  }
+
+  // P1-6 evidence-gate opt-in 하드차단: 태스크가 metadata_json.requiredEvidence를 선언하면
+  // 해당 증거가 모두 있어야 성공. 없으면 completed→failed 강등(evidence_gate_blocked).
+  // 선언 없으면(기본) 완전 무영향.
+  try {
+    const row = getDb().prepare('SELECT metadata_json FROM tasks WHERE id=?').get(task.taskId) as { metadata_json: string | null } | undefined;
+    const requiredKinds = row?.metadata_json ? (JSON.parse(row.metadata_json)?.requiredEvidence ?? []) : [];
+    if (Array.isArray(requiredKinds) && requiredKinds.length > 0) {
+      const extracted = extractTaskEvidenceJson(classified.output || '');
+      const gate = requireEvidence(extracted.evidenceJson ?? {}, requiredKinds);
+      if (!gate.allowed) {
+        return {
+          ...classified,
+          success: false,
+          status: 'failed',
+          error: [classified.error, `evidence_gate_blocked: missing ${gate.missing.join(', ')}`].filter(Boolean).join('\n\n'),
+        };
+      }
+    }
+  } catch (err) {
+    log.warn({ taskId: task.taskId, err: (err as Error).message }, 'evidence gate check failed (non-fatal)');
+  }
+
+  if (task.verifier?.type !== 'run') {
     return classified;
   }
 
@@ -502,9 +529,6 @@ class TaskQueueManager {
       },
       { connection, concurrency },
     );
-
-    entry.worker.on('completed', () => { entry.completed++; });
-    entry.worker.on('failed', () => { entry.failed++; });
 
     log.debug({ agentId, concurrency }, 'BullMQ queue+worker created');
   }

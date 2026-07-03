@@ -33,7 +33,7 @@ export const MessageTypeSchema = z.enum([
 
 // ─── API Input ────────────────────────────────────────
 export const CreateTaskInput = z.object({
-  ai: z.enum(['claude-code', 'opencode', 'gemini', 'codex', 'cursor-agent', 'copilot', 'openrouter', 'ollama', 'mlx', 'agy', 'hermes', 'openclaw', 'higgsfield', 'nvidia']).optional(),
+  ai: z.enum(['claude-code', 'opencode', 'codex', 'cursor-agent', 'copilot', 'openrouter', 'ollama', 'mlx', 'agy', 'hermes', 'openclaw', 'higgsfield', 'nvidia']).optional(),
   prompt: z.string().min(1),
   mode: TaskModeSchema.optional().default('task'),
   providers: z.array(z.string()).optional(),
@@ -52,6 +52,9 @@ export const CreateTaskInput = z.object({
     ),
     timeoutMs: z.number().int().min(1000).max(300_000).optional(),
   }).optional(),
+  // P1-6 evidence-gate opt-in: 이 목록이 있으면 완료 시 해당 증거가 모두 있어야 'completed',
+  // 아니면 'failed'(evidence_gate_blocked)로 강등된다. 없으면 기존 완료 흐름 무영향.
+  requiredEvidence: z.array(z.string().min(1)).optional(),
 });
 
 export const CreateDiscussionInput = z.object({
