@@ -515,7 +515,10 @@ function rejectWhileDraining(reply: FastifyReply) {
 }
 
 async function resolveAcquisitionVersion(packageName: string, requestedVersion?: string): Promise<string> {
-  if (requestedVersion) return requestedVersion;
+  // dist-tags ("latest", "next", etc.) are not semver — resolve via npm registry
+  // semver starts with a digit or range prefix (^, ~, >=, <=, >, <, =, *)
+  const isDistTag = requestedVersion && !/^[\d^~>=<!*]/.test(requestedVersion);
+  if (requestedVersion && !isDistTag) return requestedVersion;
 
   const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`, {
     signal: AbortSignal.timeout(10_000),
@@ -525,13 +528,15 @@ async function resolveAcquisitionVersion(packageName: string, requestedVersion?:
   }
 
   const packument = await response.json() as {
-    'dist-tags'?: { latest?: unknown };
+    'dist-tags'?: Record<string, unknown>;
   };
-  const latest = packument?.['dist-tags']?.latest;
-  if (typeof latest !== 'string' || latest.length === 0) {
-    throw new Error(`latest dist-tag missing for ${packageName}`);
+  const distTags = packument?.['dist-tags'] ?? {};
+  const tag = requestedVersion && isDistTag ? requestedVersion : 'latest';
+  const resolved = distTags[tag];
+  if (typeof resolved !== 'string' || resolved.length === 0) {
+    throw new Error(`dist-tag "${tag}" missing for ${packageName}`);
   }
-  return latest;
+  return resolved;
 }
 
 function serializeAcquisitionRecord(record: AcquisitionRecord) {
@@ -1195,18 +1200,28 @@ export async function createGateway() {
     const discovered = await discoverAcquisitions(input);
     const results = [];
     for (const candidate of discovered) {
-      results.push(await processAcquisitionCandidate({
-        packageName: candidate.packageName,
-        version: candidate.version,
-        sourceType: candidate.sourceType,
-        sourceRef: candidate.sourceRef,
-        evidence: candidate.evidence,
-        discoveredFrom: {
-          request: input,
+      try {
+        results.push(await processAcquisitionCandidate({
+          packageName: candidate.packageName,
+          version: candidate.version,
           sourceType: candidate.sourceType,
           sourceRef: candidate.sourceRef,
-        },
-      }));
+          evidence: candidate.evidence,
+          discoveredFrom: {
+            request: input,
+            sourceType: candidate.sourceType,
+            sourceRef: candidate.sourceRef,
+          },
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // dist-tag / version resolution errors → 400 (client error), not 500
+        if (message.includes('dist-tag') || message.includes('npm registry')) {
+          reply.code(400);
+          return { error: 'Version resolution failed', details: message };
+        }
+        throw err;
+      }
     }
 
     return {
