@@ -286,7 +286,9 @@ export class OrchestratedLoop {
           // stdout도 포함 — quota/usage-limit 등 실패 사유가 stderr가 아닌 stdout으로
           // 출력되는 CLI(codex)에서 사유가 유실돼 하류 분류기(circuit/quality gate)가
           // 못 보는 문제 방지 (실측 2026-07-03: "hit your usage limit"이 stdout으로만 출력)
-          const stdoutSummary = stripAnsi(result.stdout || '').trim().slice(0, 300);
+          // tail 300자 사용 — head는 CLI 배너/프롬프트 에코가 차지해 실제 오류 문구(끝부분)가
+          // 유실됨 (E2E 실측 2026-07-03: head 300엔 배너만 담기고 usage limit 문구 누락)
+          const stdoutSummary = stripAnsi(result.stdout || '').trim().slice(-300);
           const parts = [stderrSummary, stdoutSummary].filter(Boolean).join(' | ');
           const suffix = parts ? ` — ${parts}` : '';
           return `[codex: no final response — process ${status}]${suffix}`;

@@ -43,10 +43,16 @@ describe('response quality gate', () => {
     expect(result.heuristics).toContain('TOOL_ECHO');
   });
 
-  it('rejects responses shorter than 50 non-whitespace characters', () => {
-    const result = checkResponseQuality('1234567890123456789012345678901234567890123456789');
-    expect(result.pass).toBe(false);
-    expect(result.heuristics).toContain('EMPTY_OR_SHORT');
+  it('rejects empty or symbol-only responses', () => {
+    expect(checkResponseQuality('').heuristics).toContain('EMPTY_OR_SHORT');
+    expect(checkResponseQuality('   \n\t ').heuristics).toContain('EMPTY_OR_SHORT');
+    expect(checkResponseQuality('...---!!!').heuristics).toContain('EMPTY_OR_SHORT');
+  });
+
+  it('passes short but substantive answers (retry-cap burn regression)', () => {
+    // 길이 단독(<50) reject가 정당 단답을 거부해 retry cap을 전소시킨 현장 결함 회귀 방지
+    expect(checkResponseQuality('OK').pass).toBe(true);
+    expect(checkResponseQuality('done: 통과').pass).toBe(true);
   });
 
   it('rejects responses starting with a provider error marker', () => {

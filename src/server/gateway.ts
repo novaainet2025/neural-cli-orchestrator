@@ -797,10 +797,10 @@ export async function createGateway() {
   const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
     const db = getDb();
     const taskRow = db.prepare(`
-      SELECT assigned_to, verifier_json
+      SELECT assigned_to, verifier_json, parent_task_id
       FROM tasks
       WHERE id=?
-    `).get(taskId) as { assigned_to: string | null; verifier_json: string | null } | undefined;
+    `).get(taskId) as { assigned_to: string | null; verifier_json: string | null; parent_task_id: string | null } | undefined;
     if (!taskRow) return;
 
     const quality = checkResponseQuality(response, {
@@ -809,8 +809,37 @@ export async function createGateway() {
     if (quality.pass) return;
 
     updateTaskQualityMetadata(db, taskId, quality.heuristics);
+
+    // 같은 프로바이더 재시도는 quota/고장 상태에서 cap 3을 전소시킴 (E2E 실측 2026-07-03:
+    // codex quota 중 ERROR_MARKER reject가 codex로 3연속 재배정) — 실패 failover와 동일한
+    // 체인 선택기를 재사용해 미시도·가용 에이전트로 라우팅. 후보 없으면 기존대로 같은 ai 재시도.
+    let toAgent: string | undefined;
+    if (taskRow.assigned_to) {
+      const chains = loadFailoverChainsConfig();
+      if (chains) {
+        const sourceTaskId = taskRow.parent_task_id ?? taskId;
+        const attemptedAgents = (db.prepare(`
+          SELECT assigned_to
+          FROM tasks
+          WHERE id=? OR parent_task_id=?
+          ORDER BY created_at ASC
+        `).all(sourceTaskId, sourceTaskId) as Array<{ assigned_to: string | null }>)
+          .map(row => row.assigned_to)
+          .filter((value): value is string => Boolean(value));
+        toAgent = selectFailoverCandidate({
+          chain: chains[taskRow.assigned_to],
+          attemptedAgents,
+          isAvailable: (candidate) => {
+            if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
+            return circuitBreakerRegistry.getAvailability(candidate).available;
+          },
+        }) ?? undefined;
+      }
+    }
+
     const created = await createRetryTask(taskId, {
       allowCompletedSource: true,
+      overrideAi: toAgent,
       reason: `quality_rejected: ${quality.heuristics.join(',')}`,
     });
     if (!created.ok) {
@@ -823,7 +852,7 @@ export async function createGateway() {
       taskId: created.newTaskId,
       sourceTaskId: created.sourceTaskId,
       fromAgent: taskRow.assigned_to ?? undefined,
-      toAgent: undefined,
+      toAgent,
       reason: 'quality_rejected',
       retryCount: created.retryCount,
     });

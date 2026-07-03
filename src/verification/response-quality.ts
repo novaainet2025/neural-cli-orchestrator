@@ -50,7 +50,12 @@ export function checkResponseQuality(
 
   if (isThinkingOnly(normalized)) heuristics.push('THINKING_ONLY');
   if (isToolEcho(normalized)) heuristics.push('TOOL_ECHO');
-  if (collapsed.length < 50) heuristics.push('EMPTY_OR_SHORT');
+  // EMPTY_OR_SHORT는 빈 응답 또는 문자·숫자가 전혀 없는 기호/공백 잔해만 reject.
+  // 단순 길이(<50) 기준은 정당한 단답("OK", "done: 통과")까지 reject해 retry cap을
+  // 전소시키는 현장 결함이 확인되어 제거 (실측 2026-07-03, claude-3 보고).
+  if (collapsed.length < 50 && !/[\p{L}\p{N}]/u.test(collapsed)) {
+    heuristics.push('EMPTY_OR_SHORT');
+  }
   if (ERROR_MARKER_START.test(normalized)) heuristics.push('ERROR_MARKER');
   if (opts?.requireProtocolPrefix && normalized.trim() && !PROTOCOL_PREFIX.test(normalized.trimStart())) {
     heuristics.push('FORMAT_MISMATCH');

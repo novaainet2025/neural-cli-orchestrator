@@ -81,7 +81,7 @@ afterAll(async () => {
   await server.close();
 });
 
-function stubAcquisitionFetch() {
+function stubAcquisitionFetch(overrides?: { osvBody?: unknown }) {
   vi.stubGlobal('fetch', vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes('registry.npmjs.org')) {
@@ -108,7 +108,7 @@ function stubAcquisitionFetch() {
       return new Response(JSON.stringify({ scorecard: { overallScore: 6.2 } }), { status: 200 });
     }
     if (url.includes('api.osv.dev')) {
-      return new Response(JSON.stringify({ results: [{ vulns: [] }] }), { status: 200 });
+      return new Response(JSON.stringify(overrides?.osvBody ?? { results: [{ vulns: [] }] }), { status: 200 });
     }
     throw new Error(`unexpected url ${url}`);
   }));
@@ -161,6 +161,41 @@ describe('acquisitions gateway routes', () => {
     expect(approveBody.record.decision).toBe('active');
     expect(approveBody.record.approval_state).toBe('approved');
     expect(approveBody.skill?.name).toBe('acquired_safe_approval_package');
+  });
+
+  it('treats OSV response without vulns key as 0 vulns (clean-package regression)', async () => {
+    // OSV querybatch는 취약점 0이면 results[0]={} (vulns 키 생략) — reject하면 클린 패키지 전부 거부됨
+    stubAcquisitionFetch({ osvBody: { results: [{}] } });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/acquisitions/discover',
+      payload: { packageName: AUTO_PACKAGE },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      acquisitions: Array<{ record: { decision: string; vet_results: { osv: { status: string } } } }>;
+    };
+    expect(body.acquisitions[0].record.vet_results.osv.status).toBe('pass');
+    expect(body.acquisitions[0].record.decision).toBe('active');
+  });
+
+  it('rejects when OSV results array is missing (fail-closed)', async () => {
+    stubAcquisitionFetch({ osvBody: {} });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/acquisitions/discover',
+      payload: { packageName: AUTO_PACKAGE },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as {
+      acquisitions: Array<{ record: { decision: string; vet_results: { osv: { status: string } } } }>;
+    };
+    expect(body.acquisitions[0].record.vet_results.osv.status).toBe('reject');
+    expect(body.acquisitions[0].record.decision).toBe('rejected');
   });
 
   it('GET /api/acquisitions filters by decision', async () => {

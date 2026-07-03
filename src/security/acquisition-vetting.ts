@@ -183,8 +183,22 @@ async function runOsvGate(candidate: AcquisitionCandidate, fetchImpl: typeof fet
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
-    const vulns = Array.isArray(data?.results?.[0]?.vulns) ? data.results[0].vulns : null;
-    if (!vulns) return rejectGate('results[0].vulns missing', 'osv querybatch');
+    // OSV querybatch는 취약점이 없으면 results[0]을 빈 객체({})로 반환하고 vulns 키를 생략한다
+    // (T1 실측 2026-07-03: left-pad@1.3.0 → {"results":[{}]}). 키 부재 = 0 vulns이므로 pass.
+    // fail-closed는 응답 구조 자체가 깨진 경우(results 배열 부재/빈 배열/비객체 엔트리)에만 적용.
+    const results = data?.results;
+    if (!Array.isArray(results) || results.length === 0) {
+      return rejectGate('results array missing or empty', 'osv querybatch');
+    }
+    const first = results[0];
+    if (typeof first !== 'object' || first === null) {
+      return rejectGate('results[0] is not an object', 'osv querybatch');
+    }
+    const rawVulns = (first as Record<string, unknown>).vulns;
+    if (rawVulns !== undefined && !Array.isArray(rawVulns)) {
+      return rejectGate('results[0].vulns is not an array', 'osv querybatch');
+    }
+    const vulns = Array.isArray(rawVulns) ? rawVulns : [];
     if (vulns.length > 0) {
       const advisoryIds = vulns
         .map((entry: any) => entry?.id)
