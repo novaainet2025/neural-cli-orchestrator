@@ -109,7 +109,7 @@ type VerifierResult = {
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
 
-function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
+export function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
   if (!result.success) return result;
 
   const output = result.output ?? '';
@@ -189,7 +189,7 @@ async function waitForExitWithTimeout(
   });
 }
 
-async function applyVerifierGate(
+export async function applyVerifierGate(
   task: QueuedTask,
   classified: TaskExecutionResult,
   controllerSignal: AbortSignal,
@@ -396,8 +396,12 @@ interface TaskRuntimeEntry {
   startedAt: number;
   timeoutMs: number;
   idleTimeoutMs: number;
+  firstActivityTimeoutMs: number;
   lastActivityAt: number;
   lastOutputAt: number;
+  firstOutputAt?: number | null;
+  firstActivityObserved: boolean;
+  firstOutputObserved: boolean;
   lastDbFlushAt: number;
   partialOutput: string;
   childPid: number | null;
@@ -405,7 +409,7 @@ interface TaskRuntimeEntry {
   processAlive: boolean;
   liveness: LivenessState;
   stalledSince: number | null;
-  abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)';
+  abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
 }
 
 // ─── TaskQueueManager ─────────────────────────────────
@@ -847,8 +851,11 @@ class TaskQueueManager {
     if (!runtime) return;
     const now = Date.now();
     runtime.lastActivityAt = now;
+    runtime.firstActivityObserved = true;
     if (chunk && chunk.length > 0) {
       runtime.lastOutputAt = now;
+      runtime.firstOutputAt ??= now;
+      runtime.firstOutputObserved = true;
       runtime.partialOutput = (runtime.partialOutput + chunk).slice(-PARTIAL_OUTPUT_LIMIT);
     }
     runtime.liveness = 'working';
@@ -893,6 +900,11 @@ class TaskQueueManager {
     return Number.isFinite(raw) && raw >= 60_000 ? raw : DEFAULT_IDLE_TIMEOUT_MS;
   }
 
+  private getFirstActivityTimeoutMs(): number {
+    const raw = Number(process.env.NCO_FIRST_ACTIVITY_TIMEOUT_MS);
+    return Number.isFinite(raw) && raw >= 60_000 ? raw : 180_000;
+  }
+
   private getBullWaitTimeoutMs(taskTimeoutMs?: number): number {
     return this.getHardTimeoutMs(taskTimeoutMs) + 30_000;
   }
@@ -906,8 +918,12 @@ class TaskQueueManager {
       startedAt: now,
       timeoutMs: this.getHardTimeoutMs(task.timeoutMs),
       idleTimeoutMs: this.getIdleTimeoutMs(),
+      firstActivityTimeoutMs: this.getFirstActivityTimeoutMs(),
       lastActivityAt: now,
       lastOutputAt: now,
+      firstOutputAt: null,
+      firstActivityObserved: false,
+      firstOutputObserved: false,
       lastDbFlushAt: 0,
       partialOutput: '',
       childPid: null,
@@ -983,6 +999,12 @@ class TaskQueueManager {
       return;
     }
 
+    if (!runtime.firstActivityObserved && now - runtime.startedAt >= runtime.firstActivityTimeoutMs) {
+      this.setAbortReason(runtime.taskId, 'timeout(first-activity)');
+      runtime.controller.abort(new Error('timeout(first-activity)'));
+      return;
+    }
+
     const { alive, cpuSeconds } = this.sampleProcess(runtime.childPid);
     runtime.processAlive = alive;
     if (cpuSeconds !== null) {
@@ -1000,7 +1022,7 @@ class TaskQueueManager {
     }
 
     const idleMs = now - runtime.lastActivityAt;
-    if (idleMs >= runtime.idleTimeoutMs) {
+    if (runtime.firstActivityObserved && idleMs >= runtime.idleTimeoutMs) {
       runtime.stalledSince ??= now;
       runtime.liveness = alive || !runtime.childPid ? 'stalled' : 'dead';
       if (runtime.liveness === 'stalled') {

@@ -21,7 +21,7 @@ const PERSIST_TYPES = new Set([
   'action:run', 'action:test', 'action:git',
   'message:direct', 'message:broadcast', 'message:review',
   'message:approve', 'message:reject',
-  'task:created', 'task:completed', 'task:failed',
+  'task:created', 'task:completed', 'task:failed', 'task:failover',
   'session:handoff',
   'discussion:started', 'discussion:completed',
   'discussion:round_completed', 'discussion:consensus_reached',

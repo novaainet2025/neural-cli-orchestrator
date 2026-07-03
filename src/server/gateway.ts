@@ -164,6 +164,11 @@ import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
 import { ProviderSelectionError, sortProvidersByCostOrder } from '../core/smart-router.js';
+import {
+  isRetryableFailoverFailure,
+  loadFailoverChainsConfig,
+  selectFailoverCandidate,
+} from './task-failover.js';
 
 const log = createLogger('gateway');
 let draining = false;
@@ -197,6 +202,18 @@ const MeshSendBodySchema = z.object({
 });
 
 type MeshRouteType = z.infer<typeof MeshRouteTypeSchema>;
+type RetryTaskPayload = {
+  ai?: string;
+  prompt: string;
+  mode?: z.infer<typeof CreateTaskInput.shape.mode>;
+  workspaceId?: string;
+  priority?: number;
+  systemPrompt?: string;
+  verifier?: z.infer<NonNullable<typeof CreateTaskInput.shape.verifier>>;
+};
+type RetryTaskResult =
+  | { ok: true; newTaskId: string; sourceTaskId: string; retryCount: number }
+  | { ok: false; statusCode: number; body: Record<string, unknown> };
 
 interface CommGraphEdge {
   from: string;
@@ -218,6 +235,9 @@ const CommGraphConfigSchema = z.object({
     types: z.array(MeshRouteTypeSchema).min(1),
   })),
   defaultPolicy: z.enum(['allow', 'deny']),
+});
+const RetryTaskBodySchema = z.object({
+  ai: CreateTaskInput.shape.ai.optional(),
 });
 
 let cachedCommGraph: CommGraphConfig | null = null;
@@ -355,6 +375,257 @@ export async function createGateway() {
 
     await eventBus.publish({ type: 'task:cancelled', taskId });
     return { ok: true, killed, status: 'cancelled' };
+  };
+
+  const readRetryCount = (db: ReturnType<typeof getDb>, taskId: string) => db.prepare(`
+    SELECT count
+    FROM retry_counts
+    WHERE task_id=?
+  `).get(taskId) as { count: number } | undefined;
+
+  const reserveRetry = (db: ReturnType<typeof getDb>, taskId: string) => db.transaction((sourceTaskId: string) => {
+    const row = readRetryCount(db, sourceTaskId);
+    const count = row?.count ?? 0;
+    if (count >= 3) {
+      return { allowed: false as const, count };
+    }
+    db.prepare(`
+      INSERT INTO retry_counts (task_id, count)
+      VALUES (?, 1)
+      ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
+    `).run(sourceTaskId);
+    const updated = readRetryCount(db, sourceTaskId) as { count: number };
+    return { allowed: true as const, count: updated.count };
+  });
+
+  const rollbackRetryReservation = (db: ReturnType<typeof getDb>, taskId: string) => {
+    db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(taskId);
+  };
+
+  const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
+    const taskLineage = db.prepare(`
+      SELECT parent_task_id
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as { parent_task_id: string | null } | undefined;
+    return taskLineage?.parent_task_id ?? taskId;
+  };
+
+  const parseRetryTaskAi = (value: string | null | undefined): string | undefined => {
+    if (!value) return undefined;
+    const parsed = CreateTaskInput.shape.ai.safeParse(value);
+    return parsed.success ? parsed.data : undefined;
+  };
+
+  const loadRetryPayload = (db: ReturnType<typeof getDb>, taskId: string): RetryTaskPayload | null => {
+    const deadLetter = db.prepare(`
+      SELECT ai, prompt
+      FROM dead_letter_tasks
+      WHERE task_id=?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(taskId) as { ai: string | null; prompt: string | null } | undefined;
+    const verifierRow = db.prepare(`
+      SELECT verifier_json, verifier_result_json
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as {
+      verifier_json: string | null;
+      verifier_result_json: string | null;
+    } | undefined;
+    const failedTask = deadLetter ? undefined : db.prepare(`
+      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
+      FROM tasks
+      WHERE id=? AND status IN ('failed', 'timed_out')
+    `).get(taskId) as {
+      assigned_to: string | null;
+      prompt: string;
+      mode: z.infer<typeof CreateTaskInput.shape.mode> | null;
+      workspace_id: string | null;
+      priority: number | null;
+      system_prompt: string | null;
+    } | undefined;
+
+    const parsedVerifier = (() => {
+      if (!verifierRow?.verifier_json) return undefined;
+      try {
+        return JSON.parse(verifierRow.verifier_json) as z.infer<NonNullable<typeof CreateTaskInput.shape.verifier>>;
+      } catch {
+        return undefined;
+      }
+    })();
+
+    const payload = deadLetter
+      ? { ai: parseRetryTaskAi(deadLetter.ai), prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
+      : failedTask
+        ? {
+            ai: parseRetryTaskAi(failedTask.assigned_to),
+            prompt: failedTask.prompt,
+            mode: failedTask.mode ?? undefined,
+            workspaceId: failedTask.workspace_id ?? undefined,
+            priority: failedTask.priority ?? undefined,
+            systemPrompt: failedTask.system_prompt ?? undefined,
+            verifier: parsedVerifier,
+          }
+        : null;
+
+    if (!payload || !payload.prompt) {
+      return null;
+    }
+
+    if (verifierRow?.verifier_result_json) {
+      try {
+        const parsed = JSON.parse(verifierRow.verifier_result_json) as {
+          passed?: boolean;
+          outputSnippet?: string;
+          command?: string;
+          timedOut?: boolean;
+          spawnError?: string | null;
+          exitCode?: number | null;
+        };
+        if (parsed.passed === false && parsed.outputSnippet) {
+          payload.prompt += `\n\n[Previous verifier failure]\nCommand: ${parsed.command}\nExit: ${parsed.timedOut ? 'timeout' : parsed.spawnError ? 'spawn-error' : parsed.exitCode}\nOutput:\n${parsed.outputSnippet}`;
+        }
+      } catch {}
+    }
+
+    try {
+      const handoffRow = db.prepare(`
+        SELECT packet_json
+        FROM handoff_packets
+        WHERE task_id = ? AND accepted = 1
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+      `).get(taskId) as { packet_json: string } | undefined;
+      
+      if (handoffRow?.packet_json) {
+        const packet = JSON.parse(handoffRow.packet_json);
+        let handoffInfo = `\n\n[Handoff Resume Info]\nOutcome: ${packet.outcome}\nSummary: ${packet.summary}`;
+        if (packet.evidence && packet.evidence.length > 0) {
+          handoffInfo += `\nEvidence:\n` + packet.evidence.map((e: any) => `- [${e.tier}] ${e.claim}`).join('\n');
+        }
+        payload.prompt += handoffInfo;
+      }
+    } catch {}
+
+    return payload;
+  };
+
+  const validateRetryOverrideAgent = (ai: string | undefined): { ok: true } | { ok: false; body: Record<string, unknown> } => {
+    if (!ai) return { ok: true };
+    if (!agentManager.getProvider(ai) || !agentManager.listEnabledIds().includes(ai)) {
+      return { ok: false, body: { error: 'invalid ai override' } };
+    }
+    return { ok: true };
+  };
+
+  const createRetryTask = async (
+    taskId: string,
+    options?: { overrideAi?: string },
+  ): Promise<RetryTaskResult> => {
+    const db = getDb();
+    const sourceTaskId = resolveRetrySourceTaskId(db, taskId);
+    const payload = loadRetryPayload(db, taskId);
+    if (!payload) {
+      return { ok: false, statusCode: 404, body: { error: 'Retry source not found' } };
+    }
+
+    const overrideValidation = validateRetryOverrideAgent(options?.overrideAi);
+    if (!overrideValidation.ok) {
+      return { ok: false, statusCode: 400, body: overrideValidation.body };
+    }
+
+    const finalPayload: RetryTaskPayload = {
+      ...payload,
+      ai: options?.overrideAi ?? payload.ai,
+    };
+    const retryReservation = reserveRetry(db, sourceTaskId)(sourceTaskId);
+    if (!retryReservation.allowed) {
+      return { ok: false, statusCode: 429, body: { error: 'retry limit exceeded', count: retryReservation.count } };
+    }
+
+    const created = await app.inject({ method: 'POST', url: '/api/task', payload: finalPayload });
+    const body = created.json() as { taskId?: string; error?: string };
+    if (created.statusCode >= 400 || !body.taskId) {
+      rollbackRetryReservation(db, sourceTaskId);
+      return { ok: false, statusCode: created.statusCode, body: body as Record<string, unknown> };
+    }
+
+    db.prepare(`
+      UPDATE tasks
+      SET parent_task_id=?, updated_at=datetime('now')
+      WHERE id=?
+    `).run(sourceTaskId, body.taskId);
+
+    return { ok: true, newTaskId: body.taskId, sourceTaskId, retryCount: retryReservation.count };
+  };
+
+  import('../core/kanban-engine.js').then(({ kanbanEngine }) => {
+    kanbanEngine.createRetryTaskRef = createRetryTask;
+  }).catch(err => {
+    log.error({ err }, 'Failed to bind createRetryTaskRef to kanbanEngine');
+  });
+
+  const scheduleTaskFailover = async (
+    taskId: string,
+    failure: { status?: string | null; error?: string | null; response?: string | null },
+  ): Promise<void> => {
+    if ((process.env.NCO_AUTO_FAILOVER ?? 'on').toLowerCase() === 'off') return;
+    if (!isRetryableFailoverFailure(failure)) return;
+
+    const chains = loadFailoverChainsConfig();
+    if (!chains) return;
+
+    const db = getDb();
+    const taskRow = db.prepare(`
+      SELECT id, status, parent_task_id, assigned_to
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as {
+      id: string;
+      status: string;
+      parent_task_id: string | null;
+      assigned_to: string | null;
+    } | undefined;
+    if (!taskRow || !taskRow.assigned_to || taskRow.status === 'cancelled') {
+      return;
+    }
+    if (TERMINAL_STATES.has(taskRow.status) && taskRow.status !== 'failed' && taskRow.status !== 'timed_out') return;
+
+    const sourceTaskId = taskRow.parent_task_id ?? taskRow.id;
+    const attemptedAgents = (db.prepare(`
+      SELECT assigned_to
+      FROM tasks
+      WHERE id=? OR parent_task_id=?
+      ORDER BY created_at ASC
+    `).all(sourceTaskId, sourceTaskId) as Array<{ assigned_to: string | null }>)
+      .map(row => row.assigned_to)
+      .filter((value): value is string => Boolean(value));
+    const toAgent = selectFailoverCandidate({
+      chain: chains[taskRow.assigned_to],
+      attemptedAgents,
+      isAvailable: (candidate) => {
+        if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
+        return circuitBreakerRegistry.getAvailability(candidate).available;
+      },
+    });
+    if (!toAgent) return;
+
+    const created = await createRetryTask(taskId, { overrideAi: toAgent });
+    if (!created.ok) {
+      log.info({ taskId, toAgent, statusCode: created.statusCode, body: created.body }, 'Automatic task failover skipped');
+      return;
+    }
+
+    await eventBus.publish({
+      type: 'task:failover',
+      taskId: created.newTaskId,
+      sourceTaskId,
+      fromAgent: taskRow.assigned_to,
+      toAgent,
+      reason: failure.error ?? failure.status ?? 'retryable_failure',
+      retryCount: created.retryCount,
+    });
   };
 
   await app.register(cors, {
@@ -590,14 +861,21 @@ export async function createGateway() {
             log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
+        if (nextStatus !== 'completed' && nextStatus !== 'cancelled') {
+          void scheduleTaskFailover(taskId, { status: nextStatus, error: error ?? null, response })
+            .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Auto failover scheduling failed'));
+        }
       })
       .catch(err => {
+        const failureError = err.message || 'unknown: enqueue failure';
         try {
-          const moved = transitionTask(db, taskId, 'failed', { error: err.message || 'unknown: enqueue failure' });
+          const moved = transitionTask(db, taskId, 'failed', { error: failureError });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: 'failed' }, 'Skipped terminal failure update');
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task failure failed'); }
+        void scheduleTaskFailover(taskId, { status: 'failed', error: failureError, response: null })
+          .catch(scheduleErr => log.warn({ err: scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr), taskId }, 'Auto failover scheduling failed'));
       });
 
     reply.code(202);
@@ -677,128 +955,18 @@ export async function createGateway() {
 
   app.post('/api/tasks/:id/retry', async (req, reply) => {
     const { id } = req.params as any;
-    const db = getDb();
-    const taskLineage = db.prepare(`
-      SELECT parent_task_id
-      FROM tasks
-      WHERE id=?
-    `).get(id) as { parent_task_id: string | null } | undefined;
-    const sourceTaskId = taskLineage?.parent_task_id ?? id;
-    const deadLetter = db.prepare(`
-      SELECT ai, prompt
-      FROM dead_letter_tasks
-      WHERE task_id=?
-      ORDER BY id DESC
-      LIMIT 1
-    `).get(id) as { ai: string | null; prompt: string | null } | undefined;
-    const verifierRow = db.prepare(`
-      SELECT verifier_json, verifier_result_json
-      FROM tasks
-      WHERE id=?
-    `).get(id) as {
-      verifier_json: string | null;
-      verifier_result_json: string | null;
-    } | undefined;
-
-    const failedTask = deadLetter ? undefined : db.prepare(`
-      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
-      FROM tasks
-      WHERE id=? AND status IN ('failed', 'timed_out')
-    `).get(id) as {
-      assigned_to: string | null;
-      prompt: string;
-      mode: string | null;
-      workspace_id: string | null;
-      priority: number | null;
-      system_prompt: string | null;
-    } | undefined;
-
-    const parsedVerifier = (() => {
-      if (!verifierRow?.verifier_json) return undefined;
-      try {
-        return JSON.parse(verifierRow.verifier_json);
-      } catch {
-        return undefined;
-      }
-    })();
-
-    const payload = deadLetter
-      ? { ai: deadLetter.ai ?? undefined, prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
-      : failedTask
-        ? {
-            ai: failedTask.assigned_to ?? undefined,
-            prompt: failedTask.prompt,
-            mode: failedTask.mode ?? undefined,
-            workspaceId: failedTask.workspace_id ?? undefined,
-            priority: failedTask.priority ?? undefined,
-            systemPrompt: failedTask.system_prompt ?? undefined,
-            verifier: parsedVerifier,
-          }
-        : null;
-
-    if (!payload || !payload.prompt) {
-      reply.code(404);
-      return { error: 'Retry source not found' };
+    const parsedBody = RetryTaskBodySchema.safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsedBody.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
     }
-
-    if (verifierRow?.verifier_result_json) {
-      try {
-        const parsed = JSON.parse(verifierRow.verifier_result_json) as {
-          passed?: boolean;
-          outputSnippet?: string;
-          command?: string;
-          timedOut?: boolean;
-          spawnError?: string | null;
-          exitCode?: number | null;
-        };
-        if (parsed.passed === false && parsed.outputSnippet) {
-          payload.prompt += `\n\n[Previous verifier failure]\nCommand: ${parsed.command}\nExit: ${parsed.timedOut ? 'timeout' : parsed.spawnError ? 'spawn-error' : parsed.exitCode}\nOutput:\n${parsed.outputSnippet}`;
-        }
-      } catch {}
-    }
-
-    const readRetryCount = db.prepare(`
-      SELECT count
-      FROM retry_counts
-      WHERE task_id=?
-    `);
-    const incrementRetryCount = db.prepare(`
-      INSERT INTO retry_counts (task_id, count)
-      VALUES (?, 1)
-      ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
-    `);
-    const reserveRetry = db.transaction((taskId: string) => {
-      const row = readRetryCount.get(taskId) as { count: number } | undefined;
-      const count = row?.count ?? 0;
-      if (count >= 3) {
-        return { allowed: false, count };
-      }
-      incrementRetryCount.run(taskId);
-      const updated = readRetryCount.get(taskId) as { count: number };
-      return { allowed: true, count: updated.count };
-    });
-    const retryReservation = reserveRetry(sourceTaskId);
-    if (!retryReservation.allowed) {
-      reply.code(429);
-      return { error: 'retry limit exceeded', count: retryReservation.count };
-    }
-
-    const created = await app.inject({ method: 'POST', url: '/api/task', payload });
-    const body = created.json() as { taskId?: string; error?: string };
-    if (created.statusCode >= 400 || !body.taskId) {
-      // 생성 실패는 재시도 예산에서 제외 — 시스템 오류로 상한에 갇히는 것 방지 (hermes 리뷰 f)
-      db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(sourceTaskId);
+    const created = await createRetryTask(id, { overrideAi: parsedBody.data.ai });
+    if (!created.ok) {
       reply.code(created.statusCode);
-      return body;
+      return created.body;
     }
-    db.prepare(`
-      UPDATE tasks
-      SET parent_task_id=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(sourceTaskId, body.taskId);
-
     reply.code(202);
-    return { newTaskId: body.taskId, retryOf: id };
+    return { newTaskId: created.newTaskId, retryOf: id };
   });
 
   app.get('/api/admin/drain', async () => {

@@ -1,0 +1,5 @@
+{
+  "codex": ["opencode", "agy"],
+  "ollama": ["agy", "openrouter"],
+  "opencode": ["codex"]
+}
