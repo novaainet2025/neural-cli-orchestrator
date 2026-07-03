@@ -480,7 +480,7 @@ export async function createGateway() {
     const failedTask = deadLetter ? undefined : db.prepare(`
       SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
       FROM tasks
-      WHERE id=? AND status='failed'
+      WHERE id=? AND status IN ('failed', 'timed_out')
     `).get(id) as {
       assigned_to: string | null;
       prompt: string;
