@@ -10,6 +10,10 @@ const INTERNAL_THOUGHT_TAGS = [
 
 const PROTOCOL_PREFIX = /^(?:done|status|question|error):/i;
 const TOOL_ECHO_LINE = /^\s*\[tool:[^\]\n]+\]\s*$/i;
+// 프로바이더 wrapper가 붙이는 실패 마커로 *시작*하는 응답 — 실질 출력 없이 completed로
+// 빠지는 케이스 (실측: "[codex: no final response — process failed] — Reading additional input from stdin...")
+// 정상 응답 뒤에 마커가 꼬리로 붙는 경우는 통과해야 하므로 시작 위치만 검사한다.
+const ERROR_MARKER_START = /^\s*\[[\w-]+:\s*no final response\b/i;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -47,6 +51,7 @@ export function checkResponseQuality(
   if (isThinkingOnly(normalized)) heuristics.push('THINKING_ONLY');
   if (isToolEcho(normalized)) heuristics.push('TOOL_ECHO');
   if (collapsed.length < 50) heuristics.push('EMPTY_OR_SHORT');
+  if (ERROR_MARKER_START.test(normalized)) heuristics.push('ERROR_MARKER');
   if (opts?.requireProtocolPrefix && normalized.trim() && !PROTOCOL_PREFIX.test(normalized.trimStart())) {
     heuristics.push('FORMAT_MISMATCH');
   }

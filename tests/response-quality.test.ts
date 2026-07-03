@@ -49,6 +49,21 @@ describe('response quality gate', () => {
     expect(result.heuristics).toContain('EMPTY_OR_SHORT');
   });
 
+  it('rejects responses starting with a provider error marker', () => {
+    const result = checkResponseQuality(
+      '[codex: no final response — process failed] — Reading additional input from stdin...',
+    );
+    expect(result.pass).toBe(false);
+    expect(result.heuristics).toContain('ERROR_MARKER');
+  });
+
+  it('passes a real response with a trailing error marker', () => {
+    const result = checkResponseQuality(
+      `done: ${'analysis '.repeat(100)}\n[codex: no final response — process failed] — Reading additional input from stdin...`,
+    );
+    expect(result.pass).toBe(true);
+  });
+
   it('passes a long normal review response', () => {
     const result = checkResponseQuality(`done: ${'review '.repeat(500)}`);
     expect(result.pass).toBe(true);
