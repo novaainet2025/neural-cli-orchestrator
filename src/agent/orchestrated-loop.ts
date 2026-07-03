@@ -283,7 +283,12 @@ export class OrchestratedLoop {
 
         if (lastMessageFile) {
           const status = (result as any).isCanceled ? 'aborted (timeout)' : 'failed';
-          const suffix = stderrSummary ? ` — ${stderrSummary}` : '';
+          // stdout도 포함 — quota/usage-limit 등 실패 사유가 stderr가 아닌 stdout으로
+          // 출력되는 CLI(codex)에서 사유가 유실돼 하류 분류기(circuit/quality gate)가
+          // 못 보는 문제 방지 (실측 2026-07-03: "hit your usage limit"이 stdout으로만 출력)
+          const stdoutSummary = stripAnsi(result.stdout || '').trim().slice(0, 300);
+          const parts = [stderrSummary, stdoutSummary].filter(Boolean).join(' | ');
+          const suffix = parts ? ` — ${parts}` : '';
           return `[codex: no final response — process ${status}]${suffix}`;
         }
 
