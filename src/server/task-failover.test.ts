@@ -7,6 +7,7 @@ describe('isRetryableFailoverFailure', () => {
     expect(isRetryableFailoverFailure({ error: "empty completion from provider 'ollama' after 2 iteration(s)" })).toBe(true);
     expect(isRetryableFailoverFailure({ response: '[codex: no final response — process aborted (timeout)]' })).toBe(true);
     expect(isRetryableFailoverFailure({ error: 'timeout waiting for provider output' })).toBe(true);
+    expect(isRetryableFailoverFailure({ status: 'failed', error: 'The operation was aborted due to timeout' })).toBe(true);
     expect(isRetryableFailoverFailure({ status: 'failed', error: 'verifier failed: exit 1' })).toBe(false);
   });
 });

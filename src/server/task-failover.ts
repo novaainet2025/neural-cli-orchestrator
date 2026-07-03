@@ -18,6 +18,8 @@ const RETRYABLE_FAILOVER_PATTERNS = [
   /empty completion from provider/i,
   /no final response — process aborted \(timeout\)/i,
   /timeout waiting/i,
+  // executor 레벨 AbortSignal 타임아웃 — status=failed로 귀결되는 실전 최다 패턴 (E2E task_Iu1JtUsJR6tf8auo에서 실측)
+  /aborted due to timeout/i,
 ];
 
 export function loadFailoverChainsConfig(): FailoverChainsConfig | null {
