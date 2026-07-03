@@ -1,6 +1,9 @@
 import Fastify, { type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
+import { z } from 'zod/v4';
 import { env } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { redisHealthCheck } from '../storage/redis.js';
@@ -173,6 +176,120 @@ const REALTIME_MINIMUMS = {
 } as const;
 
 type RealtimeGateMode = keyof typeof REALTIME_MINIMUMS;
+
+const MESH_COMM_GRAPH_PATH = resolve(env.ROOT, 'config', 'comm-graph.json');
+const MeshRouteTypeSchema = z.enum([
+  'info',
+  'task',
+  'review',
+  'approval',
+  'question',
+  'warning',
+  'request',
+  'conflict',
+]);
+const MeshSendBodySchema = z.object({
+  fromSessionId: z.string().min(1),
+  fromAgent: z.string().min(1).optional(),
+  toSessionId: z.string().min(1).optional(),
+  content: z.string().min(1).max(64_000),
+  type: MeshRouteTypeSchema.default('info'),
+});
+
+type MeshRouteType = z.infer<typeof MeshRouteTypeSchema>;
+
+interface CommGraphEdge {
+  from: string;
+  to: string;
+  types: MeshRouteType[];
+}
+
+interface CommGraphConfig {
+  edges: CommGraphEdge[];
+  defaultPolicy: 'allow' | 'deny';
+}
+
+type MeshCommGraphMode = 'off' | 'shadow' | 'enforce';
+
+const CommGraphConfigSchema = z.object({
+  edges: z.array(z.object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    types: z.array(MeshRouteTypeSchema).min(1),
+  })),
+  defaultPolicy: z.enum(['allow', 'deny']),
+});
+
+let cachedCommGraph: CommGraphConfig | null = null;
+let cachedCommGraphWarning: string | null = null;
+
+function getMeshCommGraphMode(): MeshCommGraphMode {
+  const raw = (process.env.NCO_MESH_COMM_GRAPH_MODE ?? 'shadow').toLowerCase();
+  if (raw === 'off' || raw === 'shadow' || raw === 'enforce') return raw;
+  return 'shadow';
+}
+
+function loadCommGraphConfig(): CommGraphConfig | null {
+  if (cachedCommGraph) return cachedCommGraph;
+  try {
+    if (!existsSync(MESH_COMM_GRAPH_PATH)) {
+      if (cachedCommGraphWarning !== 'missing') {
+        cachedCommGraphWarning = 'missing';
+        log.warn({ path: MESH_COMM_GRAPH_PATH }, 'comm-graph config missing — mesh routing gate disabled');
+      }
+      return null;
+    }
+
+    const parsed = CommGraphConfigSchema.parse(JSON.parse(readFileSync(MESH_COMM_GRAPH_PATH, 'utf-8')));
+    cachedCommGraph = parsed;
+    cachedCommGraphWarning = null;
+    return cachedCommGraph;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (cachedCommGraphWarning !== message) {
+      cachedCommGraphWarning = message;
+      log.warn({ err: message, path: MESH_COMM_GRAPH_PATH }, 'comm-graph config invalid — mesh routing gate disabled');
+    }
+    return null;
+  }
+}
+
+function matchCommGraphPattern(pattern: string, value: string): boolean {
+  if (pattern === '*') return true;
+  if (pattern.endsWith('*')) return value.startsWith(pattern.slice(0, -1));
+  return pattern === value;
+}
+
+function evaluateCommGraph({ from, to, type }: { from: string; to: string; type: MeshRouteType }) {
+  const config = loadCommGraphConfig();
+  if (!config) {
+    return {
+      allowed: true,
+      reason: 'config_unavailable',
+      matchedEdge: null,
+      defaultPolicy: 'allow' as const,
+    };
+  }
+
+  for (const edge of config.edges) {
+    if (!matchCommGraphPattern(edge.from, from)) continue;
+    if (!matchCommGraphPattern(edge.to, to)) continue;
+    if (!edge.types.includes(type)) continue;
+    return {
+      allowed: true,
+      reason: 'matched_allow_edge',
+      matchedEdge: edge,
+      defaultPolicy: config.defaultPolicy,
+    };
+  }
+
+  return {
+    allowed: config.defaultPolicy === 'allow',
+    reason: config.defaultPolicy === 'allow' ? 'default_allow' : 'default_deny',
+    matchedEdge: null,
+    defaultPolicy: config.defaultPolicy,
+  };
+}
 
 function rejectWhileDraining(reply: FastifyReply) {
   reply.code(503);
@@ -1048,12 +1165,43 @@ export async function createGateway() {
     return { summary };
   });
 
-  app.post('/api/mesh/send', async (req) => {
+  app.post('/api/mesh/send', async (req, reply) => {
     const cliMesh = await getCliMesh();
-    const { fromSessionId, fromAgent, toSessionId, content, type } = req.body as any;
-    if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
+    const parsed = MeshSendBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'invalid_mesh_message', issues: parsed.error.issues };
+    }
+    const { fromSessionId, fromAgent, toSessionId, content, type } = parsed.data;
+    const destination = toSessionId || '*';
+    const mode = getMeshCommGraphMode();
+    if (mode !== 'off') {
+      const route = evaluateCommGraph({
+        from: fromAgent || 'unknown',
+        to: destination,
+        type,
+      });
+      if (!route.allowed) {
+        const denial = {
+          reason: route.reason,
+          from: fromAgent || 'unknown',
+          to: destination,
+          type,
+          mode,
+        };
+        if (mode === 'shadow') {
+          log.warn(denial, 'mesh:route_denied_shadow');
+        } else {
+          reply.code(403);
+          return {
+            error: 'mesh_route_denied',
+            ...denial,
+          };
+        }
+      }
+    }
     const delivered = await cliMesh.sendMessage(
-      fromSessionId, fromAgent || 'unknown', toSessionId || '*', content, type || 'info',
+      fromSessionId, fromAgent || 'unknown', destination, content, type,
     );
     // cli-mesh.sendMessage already publishes mesh:message event
     return { delivered };
@@ -1098,12 +1246,42 @@ export async function createGateway() {
   });
 
   // Broadcast a message from one CLI session to all active sessions
-  app.post('/api/mesh/broadcast', async (req) => {
+  app.post('/api/mesh/broadcast', async (req, reply) => {
     const cliMesh = await getCliMesh();
-    const { fromSessionId, fromAgent, content, type } = req.body as any;
-    if (!fromSessionId || !content) return { error: 'fromSessionId and content required' };
+    const parsed = MeshSendBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'invalid_mesh_message', issues: parsed.error.issues };
+    }
+    const { fromSessionId, fromAgent, content, type } = parsed.data;
+    const mode = getMeshCommGraphMode();
+    if (mode !== 'off') {
+      const route = evaluateCommGraph({
+        from: fromAgent || 'unknown',
+        to: '*',
+        type,
+      });
+      if (!route.allowed) {
+        const denial = {
+          reason: route.reason,
+          from: fromAgent || 'unknown',
+          to: '*',
+          type,
+          mode,
+        };
+        if (mode === 'shadow') {
+          log.warn(denial, 'mesh:route_denied_shadow');
+        } else {
+          reply.code(403);
+          return {
+            error: 'mesh_route_denied',
+            ...denial,
+          };
+        }
+      }
+    }
     const delivered = await cliMesh.sendMessage(
-      fromSessionId, fromAgent || 'unknown', '*', content, type || 'info',
+      fromSessionId, fromAgent || 'unknown', '*', content, type,
     );
     // cli-mesh.sendMessage already publishes mesh:message event
     return { delivered };

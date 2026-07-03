@@ -98,7 +98,7 @@ export interface MeshMessage {
   fromAgent: string;      // agentId (e.g., 'claude-code')
   to: string;             // sessionId of recipient ('*' for broadcast)
   content: string;
-  type: 'info' | 'warning' | 'request' | 'conflict';
+  type: 'info' | 'task' | 'review' | 'approval' | 'question' | 'warning' | 'request' | 'conflict';
   createdAt: string;
   read: boolean;
 }

@@ -1,0 +1,15 @@
+{
+  "edges": [
+    {
+      "from": "claude-*",
+      "to": "*",
+      "types": ["info", "task"]
+    },
+    {
+      "from": "*",
+      "to": "*",
+      "types": ["info"]
+    }
+  ],
+  "defaultPolicy": "deny"
+}
