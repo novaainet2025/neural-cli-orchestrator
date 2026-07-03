@@ -54,6 +54,17 @@ function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(msg);
 }
 
+function assertAllowedRealtimeOrConductor(res: { status: number; data: any }, expectedError: string): void {
+  if (res.status === 409) {
+    assert(res.data?.error === expectedError, `error: ${res.data?.error}`);
+    return;
+  }
+  assert(
+    res.status === 200 || res.status === 202 || res.status === 503,
+    `HTTP ${res.status}`,
+  );
+}
+
 function assertOk(res: { status: number }, expected = 200): void {
   assert(res.status === expected, `HTTP ${res.status} (expected ${expected})`);
 }
@@ -380,17 +391,21 @@ async function testParallel() {
       prompt: '[TEST] 병렬 실행 테스트: 1+1=?',
       providers: ['ollama', 'openrouter'],
     });
-    assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
+    assertAllowedRealtimeOrConductor(r, 'insufficient_available_providers');
     assert(typeof r.data === 'object', '병렬 응답 객체 아님');
   });
 
   await test('T06', 'POST /api/realtime/parallel — 비동기 시작 응답 구조', async () => {
     const r = await post('/api/realtime/parallel', {
       prompt: '[TEST] 간단한 질문',
-      providers: ['ollama'],
+      providers: ['ollama', 'openrouter'],
     });
-    // 병렬 실행은 비동기 — 즉시 {status:"started", providers:[...]} 반환
     assert(typeof r.data === 'object', '응답 구조 오류');
+    if (r.status === 409) {
+      assert(r.data?.error === 'insufficient_available_providers', `error: ${r.data?.error}`);
+      return;
+    }
+    assertAllowedRealtimeOrConductor(r, 'insufficient_available_providers');
     assert(r.data.status === 'started' || r.data.sessionId || r.data.results,
       `시작 응답 없음: ${JSON.stringify(r.data).slice(0, 200)}`);
   });
@@ -546,7 +561,7 @@ async function testConsensus() {
       consensusThreshold: 0.6,
       maxRounds: 2,
     });
-    assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
+    assertAllowedRealtimeOrConductor(r, 'insufficient_available_providers');
     assert(r.data.sessionId || r.data.status || r.data.error, '합의 응답 구조 오류');
   });
 
@@ -679,7 +694,7 @@ async function testTeamWork() {
     const r = await post('/api/conductor', {
       prompt: '[TEST] Conductor 자동 라우팅 테스트',
     });
-    assert(r.status === 200 || r.status === 202 || r.status === 503, `HTTP ${r.status}`);
+    assertAllowedRealtimeOrConductor(r, 'insufficient_available_providers');
   });
 
   await test('T11', '4계층 에이전트 역할 매핑 검증', async () => {

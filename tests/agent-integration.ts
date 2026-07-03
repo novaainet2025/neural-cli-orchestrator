@@ -23,6 +23,13 @@ async function test(cat: string, name: string, fn: () => Promise<void>) {
   catch (e: any) { failed++; console.log(`  ✗ ${name}: ${e.message}`); }
 }
 function assert(c: boolean, m: string) { if (!c) throw new Error(m); }
+function assertExpected409(res: { status: number; data: any }, expectedError: string) {
+  if (res.status === 409) {
+    assert(res.data?.error === expectedError, `error: ${res.data?.error}`);
+    return;
+  }
+  throw new Error(`HTTP ${res.status}`);
+}
 
 async function api(path: string, opts?: RequestInit) {
   const r = await fetch(`${API}${path}`, opts);
@@ -244,9 +251,15 @@ async function main() {
 
     const r = await post('/api/realtime/discussion', {
       prompt: 'Agent test topic for WS',
-      providers: ['openrouter', 'openrouter'],
+      providers: ['openrouter', 'ollama', 'codex'],
       mode: 'discussion',
     });
+    if (r.status === 409) {
+      // 게이트: 가용 프로바이더 < 3이면 WS 이벤트를 기대할 수 없음
+      assertExpected409(r, 'insufficient_available_providers');
+      close();
+      return;
+    }
     assert(r.status === 202, `HTTP ${r.status}`);
 
     // 비동기 토론 — 이벤트 도착 대기
@@ -267,16 +280,19 @@ async function main() {
   await test('토론', 'realtime/parallel → started', async () => {
     const r = await post('/api/realtime/parallel', {
       prompt: 'Parallel agent test',
-      providers: ['openrouter'],
+      providers: ['openrouter', 'ollama'],
     });
-    assert(r.status === 202, `HTTP ${r.status}`);
+    if (r.status === 202) return;
+    assertExpected409(r, 'insufficient_available_providers');
   });
 
   await test('토론', 'realtime/consensus → started', async () => {
     const r = await post('/api/realtime/consensus', {
       prompt: 'Consensus agent test',
+      providers: ['openrouter', 'ollama', 'codex'],
     });
-    assert(r.status === 202, `HTTP ${r.status}`);
+    if (r.status === 202) return;
+    assertExpected409(r, 'insufficient_available_providers');
   });
 
   // ═══ 7. Rate Limit + Circuit Breaker ═══

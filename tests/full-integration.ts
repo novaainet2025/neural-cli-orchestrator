@@ -24,6 +24,13 @@ async function test(category: string, name: string, fn: () => Promise<void>) {
 }
 
 function assert(cond: boolean, msg: string) { if (!cond) throw new Error(msg); }
+function assertProviderGate(res: { status: number; data: any }, expectedError: string) {
+  if (res.status === 409) {
+    assert(res.data?.error === expectedError, `error: ${res.data?.error}`);
+    return;
+  }
+  throw new Error(`HTTP ${res.status}`);
+}
 
 async function api(path: string, options?: RequestInit) {
   const res = await fetch(`${API}${path}`, options);
@@ -195,9 +202,12 @@ async function main() {
 
   await test('작업', 'POST /api/task → 202 + taskId', async () => {
     const r = await post('/api/task', { ai: 'openrouter', prompt: 'integration test' });
-    assert(r.status === 202, `HTTP ${r.status}`);
-    assert(!!r.data.taskId, 'no taskId');
-    assert(r.data.status === 'assigned', `status: ${r.data.status}`);
+    if (r.status === 202) {
+      assert(!!r.data.taskId, 'no taskId');
+      assert(r.data.status === 'queued', `status: ${r.data.status}`);
+      return;
+    }
+    assertProviderGate(r, 'provider_gated');
   });
 
   await test('작업', 'GET /api/tasks → 작업 목록', async () => {
@@ -252,8 +262,11 @@ async function main() {
 
   await test('토론', 'POST /api/realtime/discussion → started', async () => {
     const r = await post('/api/realtime/discussion', { prompt: 'test discussion', mode: 'discussion' });
-    assert(r.status === 202, `HTTP ${r.status}`);
-    assert(r.data.status === 'started', `status: ${r.data.status}`);
+    if (r.status === 202) {
+      assert(r.data.status === 'started', `status: ${r.data.status}`);
+      return;
+    }
+    assertProviderGate(r, 'insufficient_available_providers');
   });
 
   await test('토론', 'GET /api/discussions → 목록', async () => {
