@@ -3,40 +3,43 @@ import { planManager } from './plan-manager.js';
 import { kanbanEngine } from './kanban-engine.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
+import { LAYER_TIER_AGENTS, tierOf } from './tier-policy.js';
 
 const log = createLogger('commander');
 
 /**
- * Commander 4-Layer Hierarchy
+ * Commander 4-Layer Hierarchy — Brain/Worker 2계층 정책 적용 (tier-policy.ts 단일 소스)
  *
- * Management Layer: Strategic decisions (claude-code, opencode)
- * Information Layer: Research & analysis (copilot, openrouter)
- * Execution Layer: Code implementation (codex, aider, gemini)
- * Quality Layer: Review & validation (cursor-agent, ollama)
+ * Management Layer (두뇌/유료): 계획·최종 종합 (claude-code, opencode)
+ * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/nvidia)
+ * Execution Layer (워커/무료 로컬): 대량 구현 (mlx, ollama, hermes, aider → codex escalation)
+ * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/nvidia QA)
  */
 
+// 계층별 에이전트는 tier-policy.ts(LAYER_TIER_AGENTS)가 단일 소스.
+// Brain(유료)=management/quality, Worker(무료 로컬)=execution.
 const LAYERS = {
   management: {
     name: 'Management',
-    agents: ['claude-code', 'opencode'],
+    agents: LAYER_TIER_AGENTS.management,
     role: 'Strategic planning, architecture decisions, final synthesis',
     canDelegateTo: ['information', 'execution', 'quality'],
   },
   information: {
     name: 'Information',
-    agents: ['copilot', 'openrouter'],
+    agents: LAYER_TIER_AGENTS.information,
     role: 'Research, data gathering, analysis',
     canDelegateTo: ['execution'],
   },
   execution: {
     name: 'Execution',
-    agents: ['codex', 'aider', 'gemini'],
+    agents: LAYER_TIER_AGENTS.execution,
     role: 'Code implementation, design, engineering',
     canDelegateTo: [],
   },
   quality: {
     name: 'Quality',
-    agents: ['cursor-agent', 'ollama'],
+    agents: LAYER_TIER_AGENTS.quality,
     role: 'Code review, validation, testing',
     canDelegateTo: ['execution'], // Can send back to execution for fixes
   },
@@ -215,11 +218,18 @@ class Commander {
     const enabledIds = new Set(agentManager.listEnabledIds());
 
     for (const agentId of layerAgents) {
-      if (enabledIds.has(agentId)) return agentId;
+      if (enabledIds.has(agentId)) {
+        log.info({ layer, agentId, tier: tierOf(agentId) },
+          `layer ${layer} → ${agentId} (${tierOf(agentId)})`);
+        return agentId;
+      }
     }
 
-    // Fallback: any enabled agent
-    return agentManager.listEnabledIds()[0] || layerAgents[0];
+    // Fallback: any enabled agent (모든 우선 에이전트 불가 시)
+    const fallback = agentManager.listEnabledIds()[0] || layerAgents[0];
+    log.warn({ layer, fallback, tier: tierOf(fallback) },
+      `layer ${layer}: 우선 에이전트 모두 불가 → fallback ${fallback}`);
+    return fallback;
   }
 
   private failResult(

@@ -4,6 +4,7 @@ import { getDb } from '../storage/database.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { createLogger } from '../utils/logger.js';
 import type { TaskType } from './quality-gate.js';
+import { classifyTier, orderByTier, LAYER_TIER_AGENTS, type Tier } from './tier-policy.js';
 
 const log = createLogger('smart-router');
 
@@ -14,6 +15,7 @@ interface RouteDecision {
   providers: string[];
   complexity: number;
   reasoning: string;
+  tier: Tier; // 두뇌(brain=유료 스마트) / 워커(worker=무료 로컬)
 }
 
 export class ProviderSelectionError extends Error {
@@ -43,17 +45,18 @@ const KEYWORD_TRIGGERS: Array<{ pattern: RegExp; mode: DiscussionMode; minAI: nu
   { pattern: /토론|debate|discuss/i, mode: 'discussion', minAI: 3 },
 ];
 
-// Role → preferred agents map (for commander layer assignment)
-const ROLE_MAP: Record<string, string[]> = {
-  management: ['claude-code', 'opencode'],
-  information: ['copilot', 'openrouter'],
-  execution: ['codex', 'aider', 'gemini'],
-  quality: ['cursor-agent', 'ollama'],
+// Role → preferred agents map (tier-policy.ts 단일 소스 참조).
+// Brain(유료)=management/quality, Worker(무료 로컬)=execution.
+const ROLE_MAP = {
+  management: LAYER_TIER_AGENTS.management,
+  information: LAYER_TIER_AGENTS.information,
+  execution: LAYER_TIER_AGENTS.execution,
+  quality: LAYER_TIER_AGENTS.quality,
 };
 
 /** Prefer local MLX first, then vLLM, then other free tiers. */
 export const PROVIDER_COST_ORDER = [
-  'mlx', 'vllm', 'openrouter', 'aider', 'copilot', 'codex', 'gemini', 'cursor-agent', 'opencode', 'claude-code',
+  'mlx', 'vllm', 'openrouter', 'aider', 'copilot', 'codex', 'cursor-agent', 'opencode', 'claude-code',
 ];
 
 export function sortProvidersByCostOrder(ids: string[]): string[] {
@@ -120,7 +123,7 @@ class SmartRouter {
   /**
    * Select optimal providers based on mode, availability, rate limits, and cost.
    */
-  async selectProviders(mode: DiscussionMode, count?: number): Promise<string[]> {
+  async selectProviders(mode: DiscussionMode, count?: number, tier?: Tier): Promise<string[]> {
     const allProviders = agentManager.listEnabledIds();
 
     // Filter out rate-limited agents
@@ -132,7 +135,9 @@ class SmartRouter {
     }
 
     const targetCount = count || this.getTargetCount(mode);
-    const sorted = sortProvidersByCostOrder(available);
+    // tier 지정 시 두뇌/워커 우선순위로 정렬, 없으면 기존 비용순.
+    // 두뇌 태스크 → 유료 스마트 우선, 워커 태스크 → 무료 로컬 우선 (반대 tier는 fallback).
+    const sorted = tier ? orderByTier(available, tier) : sortProvidersByCostOrder(available);
     const selected = sorted.slice(0, targetCount);
     const requiredMinimum = this.getMinimumCount(mode);
 
@@ -155,12 +160,13 @@ class SmartRouter {
   async dispatch(prompt: string): Promise<RouteDecision> {
     const complexity = this.analyzeComplexity(prompt);
     const mode = this.selectMode(prompt, complexity);
-    const providers = await this.selectProviders(mode);
+    const tier = classifyTier(prompt, complexity);
+    const providers = await this.selectProviders(mode, undefined, tier);
 
-    const reasoning = `Complexity ${complexity}/10 → mode: ${mode}, ${providers.length} provider(s): [${providers.join(', ')}]`;
-    log.info({ complexity, mode, providers }, reasoning);
+    const reasoning = `Complexity ${complexity}/10 → mode: ${mode}, tier: ${tier}(${tier === 'brain' ? '유료 두뇌' : '무료 워커'}), ${providers.length} provider(s): [${providers.join(', ')}]`;
+    log.info({ complexity, mode, tier, providers }, reasoning);
 
-    return { mode, providers, complexity, reasoning };
+    return { mode, providers, complexity, reasoning, tier };
   }
 
   /**
