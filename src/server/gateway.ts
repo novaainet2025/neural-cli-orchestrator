@@ -10,7 +10,8 @@ import { redisHealthCheck } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { validateDelegationPayload } from '../utils/delegation-payload.js';
-import { fleetGateway, hiveRelay, getPaInbox } from '../core/ported-integrations.js';
+import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
+import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
 import { requireEvidence } from '../security/evidence-gate.js';
 import { compressPlan, MAX_PLAN_CHARS } from '../core/context-budget.js';
@@ -981,6 +982,22 @@ export async function createGateway() {
   app.post('/api/evidence/check', async (req) => {
     const b = (req.body ?? {}) as any;
     return requireEvidence(b.evidence ?? {}, Array.isArray(b.requiredKinds) ? b.requiredKinds : []);
+  });
+  // P2-10 — PA 수명주기 비용 노브
+  app.get('/api/lifecycle', async () => ({
+    defaultMode: paLifecycle.defaultMode,
+    stickyTtlMs: paLifecycle.stickyTtlMs,
+    warm: paLifecycle.snapshot(),
+    evictable: paLifecycle.evictable(Date.now()),
+  }));
+  app.post('/api/lifecycle/:agentId/:mode', async (req, reply) => {
+    const { agentId, mode } = req.params as { agentId: string; mode: string };
+    if (mode !== 'always-on' && mode !== 'sticky' && mode !== 'on-demand') {
+      reply.code(400);
+      return { error: `invalid mode '${mode}' (always-on|sticky|on-demand)` };
+    }
+    paLifecycle.setMode(agentId, mode as LifecycleMode);
+    return { ok: true, agentId, mode: paLifecycle.modeOf(agentId) };
   });
 
   // ═══ SSE Event Stream ═════════════════════════════════

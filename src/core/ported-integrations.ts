@@ -13,6 +13,7 @@ import { getDb } from '../storage/database.js';
 import { createFleetGateway } from './fleet-gateway.js';
 import { createHiveRelay } from './hive-relay.js';
 import { createPaInbox, type PaInbox } from './pa-inbox.js';
+import { createPaLifecycle } from './pa-lifecycle.js';
 
 /** 협업16 — fleet 노드 게이트웨이 (인메모리, 부팅 시 생성 안전) */
 export const fleetGateway = createFleetGateway();
@@ -33,3 +34,12 @@ export function getPaInbox(): PaInbox {
   }
   return _paInbox;
 }
+
+/**
+ * P2-10 — PA 수명주기 비용 노브. 기본 sticky(반복 위임 cold-start 절감).
+ * brain 계열(유료·고지능)은 always-on 성향, on-demand는 필요 시 setMode로.
+ */
+export const paLifecycle = createPaLifecycle({
+  defaultMode: 'sticky',
+  modes: { 'claude-code': 'always-on' },
+});
