@@ -12,11 +12,16 @@ import { agentManager } from '../agent/agent-manager.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { sharedState, type AgentState } from '../core/shared-state.js';
 import { eventBus, type NCOEvent } from '../core/event-bus.js';
+import { discoverAcquisitions } from '../core/acquisition-discovery.js';
+import { installAcquiredPackage } from '../core/acquisition-installer.js';
+import { acquisitionRegistry, type AcquisitionRecord } from '../core/acquisition-registry.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
 import { taskQueue } from '../core/task-queue.js';
 import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
+import { checkResponseQuality } from '../verification/response-quality.js';
+import { vetAcquisitionCandidate } from '../security/acquisition-vetting.js';
 import {
   circuitBreakerRegistry,
   type ProviderAvailabilitySnapshot,
@@ -204,6 +209,7 @@ const MeshSendBodySchema = z.object({
 type MeshRouteType = z.infer<typeof MeshRouteTypeSchema>;
 type RetryTaskPayload = {
   ai?: string;
+  parentTaskId?: string;
   prompt: string;
   mode?: z.infer<typeof CreateTaskInput.shape.mode>;
   workspaceId?: string;
@@ -214,6 +220,15 @@ type RetryTaskPayload = {
 type RetryTaskResult =
   | { ok: true; newTaskId: string; sourceTaskId: string; retryCount: number }
   | { ok: false; statusCode: number; body: Record<string, unknown> };
+type RetryPayloadOptions = {
+  allowCompletedSource?: boolean;
+};
+
+type RetryTaskOptions = {
+  overrideAi?: string;
+  allowCompletedSource?: boolean;
+  reason?: string;
+};
 
 interface CommGraphEdge {
   from: string;
@@ -239,9 +254,192 @@ const CommGraphConfigSchema = z.object({
 const RetryTaskBodySchema = z.object({
   ai: CreateTaskInput.shape.ai.optional(),
 });
+const AcquisitionDiscoverBodySchema = z.object({
+  packageName: z.string().min(1).optional(),
+  version: z.string().min(1).optional(),
+  goal: z.string().min(1).optional(),
+  limit: z.number().int().min(1).max(20).optional(),
+}).refine(value => Boolean(value.packageName || value.goal), {
+  message: 'packageName or goal is required',
+});
+const AcquisitionApproveBodySchema = z.object({
+  approvedBy: z.string().min(1).optional(),
+}).optional();
+const AcquisitionDecisionFilterSchema = z.enum([
+  'discovered',
+  'vet_passed',
+  'approval_required',
+  'rejected',
+  'installed',
+  'install_failed',
+  'registration_failed',
+  'active',
+]);
 
 let cachedCommGraph: CommGraphConfig | null = null;
 let cachedCommGraphWarning: string | null = null;
+
+const readRetryCount = (db: ReturnType<typeof getDb>, taskId: string) => db.prepare(`
+  SELECT count
+  FROM retry_counts
+  WHERE task_id=?
+`).get(taskId) as { count: number } | undefined;
+
+const reserveRetry = (db: ReturnType<typeof getDb>, taskId: string) => db.transaction((sourceTaskId: string) => {
+  const row = readRetryCount(db, sourceTaskId);
+  const count = row?.count ?? 0;
+  if (count >= 3) {
+    return { allowed: false as const, count };
+  }
+  db.prepare(`
+    INSERT INTO retry_counts (task_id, count)
+    VALUES (?, 1)
+    ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
+  `).run(sourceTaskId);
+  const updated = readRetryCount(db, sourceTaskId) as { count: number };
+  return { allowed: true as const, count: updated.count };
+});
+
+const rollbackRetryReservation = (db: ReturnType<typeof getDb>, taskId: string) => {
+  db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(taskId);
+};
+
+const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
+  const taskLineage = db.prepare(`
+    SELECT parent_task_id
+    FROM tasks
+    WHERE id=?
+  `).get(taskId) as { parent_task_id: string | null } | undefined;
+  return taskLineage?.parent_task_id ?? taskId;
+};
+
+const parseRetryTaskAi = (value: string | null | undefined): string | undefined => {
+  if (!value) return undefined;
+  const parsed = CreateTaskInput.shape.ai.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+};
+
+export const loadRetryPayload = (
+  db: ReturnType<typeof getDb>,
+  taskId: string,
+  opts?: RetryPayloadOptions,
+): RetryTaskPayload | null => {
+  const deadLetter = db.prepare(`
+    SELECT ai, prompt
+    FROM dead_letter_tasks
+    WHERE task_id=?
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(taskId) as { ai: string | null; prompt: string | null } | undefined;
+  const verifierRow = db.prepare(`
+    SELECT verifier_json, verifier_result_json
+    FROM tasks
+    WHERE id=?
+  `).get(taskId) as {
+    verifier_json: string | null;
+    verifier_result_json: string | null;
+  } | undefined;
+  const sourceStatusFilter = opts?.allowCompletedSource
+    ? "status IN ('failed', 'timed_out', 'completed')"
+    : "status IN ('failed', 'timed_out')";
+  const sourceTask = deadLetter ? undefined : db.prepare(`
+    SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
+    FROM tasks
+    WHERE id=? AND ${sourceStatusFilter}
+  `).get(taskId) as {
+    assigned_to: string | null;
+    prompt: string;
+    mode: z.infer<typeof CreateTaskInput.shape.mode> | null;
+    workspace_id: string | null;
+    priority: number | null;
+    system_prompt: string | null;
+  } | undefined;
+
+  const parsedVerifier = (() => {
+    if (!verifierRow?.verifier_json) return undefined;
+    try {
+      return JSON.parse(verifierRow.verifier_json) as z.infer<NonNullable<typeof CreateTaskInput.shape.verifier>>;
+    } catch {
+      return undefined;
+    }
+  })();
+
+  const payload = deadLetter
+    ? { ai: parseRetryTaskAi(deadLetter.ai), prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
+    : sourceTask
+      ? {
+          ai: parseRetryTaskAi(sourceTask.assigned_to),
+          prompt: sourceTask.prompt,
+          mode: sourceTask.mode ?? undefined,
+          workspaceId: sourceTask.workspace_id ?? undefined,
+          priority: sourceTask.priority ?? undefined,
+          systemPrompt: sourceTask.system_prompt ?? undefined,
+          verifier: parsedVerifier,
+        }
+      : null;
+
+  if (!payload || !payload.prompt) {
+    return null;
+  }
+
+  if (verifierRow?.verifier_result_json) {
+    try {
+      const parsed = JSON.parse(verifierRow.verifier_result_json) as {
+        passed?: boolean;
+        outputSnippet?: string;
+        command?: string;
+        timedOut?: boolean;
+        spawnError?: string | null;
+        exitCode?: number | null;
+      };
+      if (parsed.passed === false && parsed.outputSnippet) {
+        payload.prompt += `\n\n[Previous verifier failure]\nCommand: ${parsed.command}\nExit: ${parsed.timedOut ? 'timeout' : parsed.spawnError ? 'spawn-error' : parsed.exitCode}\nOutput:\n${parsed.outputSnippet}`;
+      }
+    } catch {}
+  }
+
+  try {
+    const handoffRow = db.prepare(`
+      SELECT packet_json
+      FROM handoff_packets
+      WHERE task_id = ? AND accepted = 1
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1
+    `).get(taskId) as { packet_json: string } | undefined;
+
+    if (handoffRow?.packet_json) {
+      const packet = JSON.parse(handoffRow.packet_json);
+      let handoffInfo = `\n\n[Handoff Resume Info]\nOutcome: ${packet.outcome}\nSummary: ${packet.summary}`;
+      if (packet.evidence && packet.evidence.length > 0) {
+        handoffInfo += `\nEvidence:\n` + packet.evidence.map((e: any) => `- [${e.tier}] ${e.claim}`).join('\n');
+      }
+      payload.prompt += handoffInfo;
+    }
+  } catch {}
+
+  return payload;
+};
+
+function updateTaskQualityMetadata(
+  db: ReturnType<typeof getDb>,
+  taskId: string,
+  heuristics: string[],
+): void {
+  const row = db.prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as { metadata_json: string | null } | undefined;
+  let metadata: Record<string, unknown> = {};
+  if (row?.metadata_json) {
+    try {
+      metadata = JSON.parse(row.metadata_json) as Record<string, unknown>;
+    } catch {}
+  }
+  metadata.qualityRejected = true;
+  metadata.qualityHeuristics = heuristics;
+  db.prepare(`
+    UPDATE tasks
+    SET metadata_json=?, updated_at=datetime('now')
+    WHERE id=?
+  `).run(JSON.stringify(metadata), taskId);
+}
 
 function getMeshCommGraphMode(): MeshCommGraphMode {
   const raw = (process.env.NCO_MESH_COMM_GRAPH_MODE ?? 'shadow').toLowerCase();
@@ -316,6 +514,108 @@ function rejectWhileDraining(reply: FastifyReply) {
   return { error: 'draining: new tasks rejected' };
 }
 
+async function resolveAcquisitionVersion(packageName: string, requestedVersion?: string): Promise<string> {
+  if (requestedVersion) return requestedVersion;
+
+  const response = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`, {
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) {
+    throw new Error(`npm registry ${response.status} for ${packageName}`);
+  }
+
+  const packument = await response.json() as {
+    'dist-tags'?: { latest?: unknown };
+  };
+  const latest = packument?.['dist-tags']?.latest;
+  if (typeof latest !== 'string' || latest.length === 0) {
+    throw new Error(`latest dist-tag missing for ${packageName}`);
+  }
+  return latest;
+}
+
+function serializeAcquisitionRecord(record: AcquisitionRecord) {
+  return {
+    ...record,
+    discovered_from: safeJsonParse(record.discovered_from_json),
+    vet_results: safeJsonParse(record.vet_results_json),
+  };
+}
+
+function safeJsonParse(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+async function processAcquisitionCandidate(input: {
+  packageName: string;
+  version?: string | null;
+  sourceType: string;
+  sourceRef: string | null;
+  evidence: Record<string, unknown>;
+  discoveredFrom: Record<string, unknown>;
+}) {
+  const version = await resolveAcquisitionVersion(input.packageName, input.version ?? undefined);
+  const record = acquisitionRegistry.createDiscovery({
+    packageName: input.packageName,
+    version,
+    sourceType: input.sourceType,
+    sourceRef: input.sourceRef,
+  }, {
+    ...input.discoveredFrom,
+    evidence: input.evidence,
+  });
+
+  const vetting = await vetAcquisitionCandidate(
+    {
+      packageName: input.packageName,
+      version,
+      sourceType: input.sourceType,
+      sourceRef: input.sourceRef,
+    },
+    {
+      getTrustedPackageNames: () => acquisitionRegistry.listTrustedPackageNames(),
+      getPreviousMaintainers: (packageName) => acquisitionRegistry.getLatestMaintainers(packageName),
+    },
+  );
+
+  let currentRecord = acquisitionRegistry.saveVetting(record.id, vetting);
+  let install: { installDir: string; packageDir: string; packageSha256: string } | null = null;
+  let dynamicSkill: { id: string; name: string; description: string } | null = null;
+
+  if (vetting.decision === 'auto_pass') {
+    try {
+      install = await installAcquiredPackage({ packageName: input.packageName, version });
+      currentRecord = acquisitionRegistry.markInstalled(record.id, install.packageDir, install.packageSha256);
+    } catch (error) {
+      currentRecord = acquisitionRegistry.markInstallFailed(record.id, error instanceof Error ? error.message : String(error));
+      return { record: serializeAcquisitionRecord(currentRecord), vetting, install, skill: dynamicSkill };
+    }
+
+    try {
+      const registration = await acquisitionRegistry.registerDynamicSkill(record.id);
+      currentRecord = registration.record;
+      dynamicSkill = {
+        id: registration.skill.id,
+        name: registration.skill.name,
+        description: registration.skill.description,
+      };
+    } catch (error) {
+      currentRecord = acquisitionRegistry.markRegistrationFailed(record.id, error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return {
+    record: serializeAcquisitionRecord(currentRecord),
+    vetting,
+    install,
+    skill: dynamicSkill,
+  };
+}
+
 // ─── Lazy-cached dynamic imports (avoid repeated await import() per request) ─
 let _cliMeshMod: Awaited<typeof import('../core/cli-mesh.js')> | null = null;
 async function getCliMesh() {
@@ -377,140 +677,6 @@ export async function createGateway() {
     return { ok: true, killed, status: 'cancelled' };
   };
 
-  const readRetryCount = (db: ReturnType<typeof getDb>, taskId: string) => db.prepare(`
-    SELECT count
-    FROM retry_counts
-    WHERE task_id=?
-  `).get(taskId) as { count: number } | undefined;
-
-  const reserveRetry = (db: ReturnType<typeof getDb>, taskId: string) => db.transaction((sourceTaskId: string) => {
-    const row = readRetryCount(db, sourceTaskId);
-    const count = row?.count ?? 0;
-    if (count >= 3) {
-      return { allowed: false as const, count };
-    }
-    db.prepare(`
-      INSERT INTO retry_counts (task_id, count)
-      VALUES (?, 1)
-      ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
-    `).run(sourceTaskId);
-    const updated = readRetryCount(db, sourceTaskId) as { count: number };
-    return { allowed: true as const, count: updated.count };
-  });
-
-  const rollbackRetryReservation = (db: ReturnType<typeof getDb>, taskId: string) => {
-    db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(taskId);
-  };
-
-  const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
-    const taskLineage = db.prepare(`
-      SELECT parent_task_id
-      FROM tasks
-      WHERE id=?
-    `).get(taskId) as { parent_task_id: string | null } | undefined;
-    return taskLineage?.parent_task_id ?? taskId;
-  };
-
-  const parseRetryTaskAi = (value: string | null | undefined): string | undefined => {
-    if (!value) return undefined;
-    const parsed = CreateTaskInput.shape.ai.safeParse(value);
-    return parsed.success ? parsed.data : undefined;
-  };
-
-  const loadRetryPayload = (db: ReturnType<typeof getDb>, taskId: string): RetryTaskPayload | null => {
-    const deadLetter = db.prepare(`
-      SELECT ai, prompt
-      FROM dead_letter_tasks
-      WHERE task_id=?
-      ORDER BY id DESC
-      LIMIT 1
-    `).get(taskId) as { ai: string | null; prompt: string | null } | undefined;
-    const verifierRow = db.prepare(`
-      SELECT verifier_json, verifier_result_json
-      FROM tasks
-      WHERE id=?
-    `).get(taskId) as {
-      verifier_json: string | null;
-      verifier_result_json: string | null;
-    } | undefined;
-    const failedTask = deadLetter ? undefined : db.prepare(`
-      SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
-      FROM tasks
-      WHERE id=? AND status IN ('failed', 'timed_out')
-    `).get(taskId) as {
-      assigned_to: string | null;
-      prompt: string;
-      mode: z.infer<typeof CreateTaskInput.shape.mode> | null;
-      workspace_id: string | null;
-      priority: number | null;
-      system_prompt: string | null;
-    } | undefined;
-
-    const parsedVerifier = (() => {
-      if (!verifierRow?.verifier_json) return undefined;
-      try {
-        return JSON.parse(verifierRow.verifier_json) as z.infer<NonNullable<typeof CreateTaskInput.shape.verifier>>;
-      } catch {
-        return undefined;
-      }
-    })();
-
-    const payload = deadLetter
-      ? { ai: parseRetryTaskAi(deadLetter.ai), prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
-      : failedTask
-        ? {
-            ai: parseRetryTaskAi(failedTask.assigned_to),
-            prompt: failedTask.prompt,
-            mode: failedTask.mode ?? undefined,
-            workspaceId: failedTask.workspace_id ?? undefined,
-            priority: failedTask.priority ?? undefined,
-            systemPrompt: failedTask.system_prompt ?? undefined,
-            verifier: parsedVerifier,
-          }
-        : null;
-
-    if (!payload || !payload.prompt) {
-      return null;
-    }
-
-    if (verifierRow?.verifier_result_json) {
-      try {
-        const parsed = JSON.parse(verifierRow.verifier_result_json) as {
-          passed?: boolean;
-          outputSnippet?: string;
-          command?: string;
-          timedOut?: boolean;
-          spawnError?: string | null;
-          exitCode?: number | null;
-        };
-        if (parsed.passed === false && parsed.outputSnippet) {
-          payload.prompt += `\n\n[Previous verifier failure]\nCommand: ${parsed.command}\nExit: ${parsed.timedOut ? 'timeout' : parsed.spawnError ? 'spawn-error' : parsed.exitCode}\nOutput:\n${parsed.outputSnippet}`;
-        }
-      } catch {}
-    }
-
-    try {
-      const handoffRow = db.prepare(`
-        SELECT packet_json
-        FROM handoff_packets
-        WHERE task_id = ? AND accepted = 1
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1
-      `).get(taskId) as { packet_json: string } | undefined;
-      
-      if (handoffRow?.packet_json) {
-        const packet = JSON.parse(handoffRow.packet_json);
-        let handoffInfo = `\n\n[Handoff Resume Info]\nOutcome: ${packet.outcome}\nSummary: ${packet.summary}`;
-        if (packet.evidence && packet.evidence.length > 0) {
-          handoffInfo += `\nEvidence:\n` + packet.evidence.map((e: any) => `- [${e.tier}] ${e.claim}`).join('\n');
-        }
-        payload.prompt += handoffInfo;
-      }
-    } catch {}
-
-    return payload;
-  };
-
   const validateRetryOverrideAgent = (ai: string | undefined): { ok: true } | { ok: false; body: Record<string, unknown> } => {
     if (!ai) return { ok: true };
     if (!agentManager.getProvider(ai) || !agentManager.listEnabledIds().includes(ai)) {
@@ -521,11 +687,11 @@ export async function createGateway() {
 
   const createRetryTask = async (
     taskId: string,
-    options?: { overrideAi?: string },
+    options?: RetryTaskOptions,
   ): Promise<RetryTaskResult> => {
     const db = getDb();
     const sourceTaskId = resolveRetrySourceTaskId(db, taskId);
-    const payload = loadRetryPayload(db, taskId);
+    const payload = loadRetryPayload(db, taskId, { allowCompletedSource: options?.allowCompletedSource });
     if (!payload) {
       return { ok: false, statusCode: 404, body: { error: 'Retry source not found' } };
     }
@@ -538,6 +704,11 @@ export async function createGateway() {
     const finalPayload: RetryTaskPayload = {
       ...payload,
       ai: options?.overrideAi ?? payload.ai,
+      // lineage를 생성 시점에 세팅 — 사후 UPDATE 비원자성으로 인한 retry cap 우회 방지
+      parentTaskId: sourceTaskId,
+      prompt: options?.reason
+        ? `[Quality-gate reject: ${options.reason}]\n\n${payload.prompt}`
+        : payload.prompt,
     };
     const retryReservation = reserveRetry(db, sourceTaskId)(sourceTaskId);
     if (!retryReservation.allowed) {
@@ -551,12 +722,7 @@ export async function createGateway() {
       return { ok: false, statusCode: created.statusCode, body: body as Record<string, unknown> };
     }
 
-    db.prepare(`
-      UPDATE tasks
-      SET parent_task_id=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(sourceTaskId, body.taskId);
-
+    // parent_task_id는 finalPayload.parentTaskId로 생성 시점에 세팅됨 (원자성 — 사후 UPDATE 제거)
     return { ok: true, newTaskId: body.taskId, sourceTaskId, retryCount: retryReservation.count };
   };
 
@@ -624,6 +790,41 @@ export async function createGateway() {
       fromAgent: taskRow.assigned_to,
       toAgent,
       reason: failure.error ?? failure.status ?? 'retryable_failure',
+      retryCount: created.retryCount,
+    });
+  };
+
+  const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
+    const db = getDb();
+    const taskRow = db.prepare(`
+      SELECT assigned_to, verifier_json
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as { assigned_to: string | null; verifier_json: string | null } | undefined;
+    if (!taskRow) return;
+
+    const quality = checkResponseQuality(response, {
+      requireProtocolPrefix: Boolean(taskRow.verifier_json),
+    });
+    if (quality.pass) return;
+
+    updateTaskQualityMetadata(db, taskId, quality.heuristics);
+    const created = await createRetryTask(taskId, {
+      allowCompletedSource: true,
+      reason: `quality_rejected: ${quality.heuristics.join(',')}`,
+    });
+    if (!created.ok) {
+      log.warn({ taskId, heuristics: quality.heuristics, statusCode: created.statusCode, body: created.body }, 'Quality gate rejected completed task but retry creation failed');
+      return;
+    }
+
+    await eventBus.publish({
+      type: 'task:failover',
+      taskId: created.newTaskId,
+      sourceTaskId: created.sourceTaskId,
+      fromAgent: taskRow.assigned_to ?? undefined,
+      toAgent: undefined,
+      reason: 'quality_rejected',
       retryCount: created.retryCount,
     });
   };
@@ -807,9 +1008,9 @@ export async function createGateway() {
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, last_activity_at)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, datetime('now'))
-      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson);
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, parent_task_id, last_activity_at)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, datetime('now'))
+      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson, input.parentTaskId ?? null);
     } catch (dbErr) {
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
       reply.code(500); return { error: 'Failed to create task' };
@@ -859,6 +1060,9 @@ export async function createGateway() {
           });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
+          } else if (nextStatus === 'completed') {
+            void handleCompletedTaskQualityGate(taskId, response)
+              .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed task quality gate failed'));
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
         if (nextStatus !== 'completed' && nextStatus !== 'cancelled') {
@@ -941,6 +1145,104 @@ export async function createGateway() {
       lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
       liveness: runtime.liveness,
     };
+  });
+
+  app.post('/api/acquisitions/discover', async (req, reply) => {
+    const parsed = AcquisitionDiscoverBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(issue => issue.message) };
+    }
+
+    const input = parsed.data;
+    const discovered = await discoverAcquisitions(input);
+    const results = [];
+    for (const candidate of discovered) {
+      results.push(await processAcquisitionCandidate({
+        packageName: candidate.packageName,
+        version: candidate.version,
+        sourceType: candidate.sourceType,
+        sourceRef: candidate.sourceRef,
+        evidence: candidate.evidence,
+        discoveredFrom: {
+          request: input,
+          sourceType: candidate.sourceType,
+          sourceRef: candidate.sourceRef,
+        },
+      }));
+    }
+
+    return {
+      count: results.length,
+      acquisitions: results,
+    };
+  });
+
+  app.post('/api/acquisitions/:id/approve', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const record = acquisitionRegistry.getById(id);
+    if (!record) {
+      reply.code(404);
+      return { error: 'Acquisition not found' };
+    }
+    if (record.decision !== 'approval_required' || record.approval_state !== 'required') {
+      reply.code(409);
+      return { error: 'Acquisition is not pending approval' };
+    }
+
+    let currentRecord = record;
+    let install: { installDir: string; packageDir: string; packageSha256: string } | null = null;
+    let skill: { id: string; name: string; description: string } | null = null;
+
+    try {
+      install = await installAcquiredPackage({
+        packageName: record.package_name,
+        version: record.version,
+      });
+      currentRecord = acquisitionRegistry.markInstalled(id, install.packageDir, install.packageSha256);
+    } catch (error) {
+      currentRecord = acquisitionRegistry.markInstallFailed(id, error instanceof Error ? error.message : String(error));
+      reply.code(502);
+      return { record: serializeAcquisitionRecord(currentRecord), install, skill };
+    }
+
+    try {
+      const registration = await acquisitionRegistry.registerDynamicSkill(id);
+      currentRecord = registration.record;
+      skill = {
+        id: registration.skill.id,
+        name: registration.skill.name,
+        description: registration.skill.description,
+      };
+    } catch (error) {
+      currentRecord = acquisitionRegistry.markRegistrationFailed(id, error instanceof Error ? error.message : String(error));
+      reply.code(502);
+    }
+
+    return {
+      record: serializeAcquisitionRecord(currentRecord),
+      install,
+      skill,
+    };
+  });
+
+  app.get('/api/acquisitions', async (req, reply) => {
+    const query = req.query as { decision?: string; limit?: string | number };
+    const decision = query.decision
+      ? AcquisitionDecisionFilterSchema.safeParse(query.decision)
+      : null;
+    if (decision && !decision.success) {
+      reply.code(400);
+      return { error: 'Invalid decision filter' };
+    }
+
+    const limitRaw = typeof query.limit === 'number' ? query.limit : Number(query.limit ?? 100);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 500) : 100;
+    const records = acquisitionRegistry.list(limit)
+      .filter(record => !decision || record.decision === decision.data)
+      .map(serializeAcquisitionRecord);
+
+    return { acquisitions: records };
   });
 
   app.post('/api/tasks/:id/cancel', async (req, reply) => {
@@ -2062,6 +2364,10 @@ export async function createGateway() {
                   evidence_json=COALESCE(?, evidence_json)
               WHERE id=?
             `).run(cStatus, cResp, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
+            if (cStatus === 'completed') {
+              void handleCompletedTaskQualityGate(taskId, cResp ?? '')
+                .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed conductor task quality gate failed'));
+            }
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {

@@ -41,6 +41,8 @@ export const CreateTaskInput = z.object({
   priority: z.number().int().min(0).max(10).optional().default(0),
   timeout: z.number().int().min(1000).max(1_800_000).optional(), // per-task wall-clock ms (max 30min)
   systemPrompt: z.string().optional(),
+  // retry/failover lineage — 생성 시점에 세팅해 비원자 사후 UPDATE로 인한 cap 우회 방지
+  parentTaskId: z.string().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   verifier: z.object({
     type: z.literal('run'),
