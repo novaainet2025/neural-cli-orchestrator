@@ -65,6 +65,20 @@ async function getOrCreateIndex(agentId: string): Promise<any> {
   if (existsSync(path)) {
     try {
       idx.readIndexSync(path, false);
+      try {
+        const currentMaxElements = idx.getMaxElements();
+        if (currentMaxElements > MAX_ELEMENTS) {
+          const resizedMaxElements = Math.max(MAX_ELEMENTS, idx.getCurrentCount());
+          idx.resizeIndex(resizedMaxElements);
+          indexDirty.set(agentId, true);
+          log.info(
+            { agentId, from: currentMaxElements, to: resizedMaxElements },
+            'HNSW index max_elements reduced after load',
+          );
+        }
+      } catch (error) {
+        log.warn({ agentId, err: error }, 'HNSW index resize after load failed; using loaded index as-is');
+      }
       log.info({ agentId, path, count: idx.getCurrentCount() }, 'HNSW index loaded from disk');
     } catch {
       idx.initIndex(MAX_ELEMENTS, HNSW_M, HNSW_EF);
