@@ -19,6 +19,7 @@ import { invocationTracker } from './invocation-tracker.js';
 import { CommandGate } from '../security/command-gate.js';
 import { extractTaskEvidenceJson } from './task-evidence.js';
 import { requireEvidence } from '../security/evidence-gate.js';
+import { paLifecycle } from './ported-integrations.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -552,6 +553,8 @@ class TaskQueueManager {
       const classified = classifyResult(finalized);
       const gated = await applyVerifierGate(task, classified, controller.signal);
       const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
+      // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
+      paLifecycle.markUsed(task.agentId, Date.now());
       if (invocationId) {
         const summary = (terminal.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
@@ -754,6 +757,8 @@ class TaskQueueManager {
       const classified = classifyResult(finalized);
       const gated = await applyVerifierGate(task, classified, controller.signal);
       const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
+      // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
+      paLifecycle.markUsed(task.agentId, Date.now());
       if (terminal.success) entry.completed++;
       else entry.failed++;
       if (invocationId) {
