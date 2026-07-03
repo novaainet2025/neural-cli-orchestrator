@@ -9,6 +9,11 @@ import { createLogger } from '../utils/logger.js';
 import { redisHealthCheck } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
+import { validateDelegationPayload } from '../utils/delegation-payload.js';
+import { fleetGateway, hiveRelay, getPaInbox } from '../core/ported-integrations.js';
+import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
+import { requireEvidence } from '../security/evidence-gate.js';
+import { compressPlan, MAX_PLAN_CHARS } from '../core/context-budget.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { sharedState, type AgentState } from '../core/shared-state.js';
 import { eventBus, type NCOEvent } from '../core/event-bus.js';
@@ -928,6 +933,56 @@ export async function createGateway() {
     };
   });
 
+  // ═══ 이식 6종 라이브 라우트 (fleet-gateway/hive-relay/pa-inbox/recursive-decomposer/evidence-gate) ═══
+  // 협업16 — fleet 노드 게이트웨이
+  app.get('/api/fleet/nodes', async () => ({
+    routable: fleetGateway.selectRoutableNodes(),
+    snapshot: fleetGateway.snapshot(Date.now()),
+  }));
+  app.post('/api/fleet/:name/:action', async (req, reply) => {
+    const { name, action } = req.params as { name: string; action: string };
+    try {
+      if (action === 'register') fleetGateway.registerNode(name, ((req.body as any) ?? { host: 'unknown' }));
+      else if (action === 'activate') fleetGateway.activate(name);
+      else if (action === 'drain') fleetGateway.drain(name);
+      else if (action === 'cordon') fleetGateway.cordon(name);
+      else if (action === 'restart') fleetGateway.restart(name);
+      else { reply.code(400); return { error: `unknown action '${action}'` }; }
+      return { ok: true, node: fleetGateway.getNode(name) };
+    } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  // 협업17 — Hive Relay
+  app.get('/api/hive/sessions', async () => ({
+    sessions: hiveRelay.listSessions(),
+    sharedKnowledge: hiveRelay.getSharedKnowledge(),
+  }));
+  app.post('/api/hive/join', async (req, reply) => {
+    const b = (req.body ?? {}) as any;
+    const r = hiveRelay.joinSession(String(b.inviteCode ?? ''), {
+      id: String(b.id ?? ''), name: String(b.name ?? ''), role: b.role, capabilities: b.capabilities,
+    });
+    if (!r.ok) { reply.code(400); return r; }
+    return r;
+  });
+  // 협업15 — PA inbox
+  app.post('/api/inbox/:slug', async (req) => ({
+    enqueued: getPaInbox().enqueue((req.params as any).slug, String((req.body as any)?.body ?? '')),
+  }));
+  app.post('/api/inbox/:slug/drain', async (req) => ({
+    messages: getPaInbox().drain((req.params as any).slug),
+  }));
+  // P2-11 — 재귀 분해
+  app.post('/api/decompose', async (req) => {
+    const b = (req.body ?? {}) as any;
+    const tree = decompose(String(b.task ?? ''), { maxDepth: b.maxDepth, maxNodes: b.maxNodes });
+    return { tree, leaves: getLeaves(tree).length, nodes: countNodes(tree) };
+  });
+  // P1-6 — 증거 게이트(체크 엔드포인트; 완료경로 하드차단은 opt-in으로 미적용)
+  app.post('/api/evidence/check', async (req) => {
+    const b = (req.body ?? {}) as any;
+    return requireEvidence(b.evidence ?? {}, Array.isArray(b.requiredKinds) ? b.requiredKinds : []);
+  });
+
   // ═══ SSE Event Stream ═════════════════════════════════
   app.get('/api/events/stream', async (request, reply) => {
     reply.raw.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
@@ -1024,6 +1079,21 @@ export async function createGateway() {
       return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
     }
     const input = parsed.data;
+    // 협업19 이식(agency-swarm): 위임 payload ai를 동적 등록 에이전트로 접수차단 검증.
+    // 정적 enum(CreateTaskInput)은 통과했으나 런타임 미등록인 ai를 intake에서 차단
+    // (기존: queued 접수 후 실행 시점에 "Unknown agent" 지연 실패 — claude-1 T1 관측).
+    if (input.ai) {
+      const knownAgents = agentManager.listEnabledIds();
+      const dp = validateDelegationPayload({ ai: input.ai, prompt: input.prompt }, knownAgents);
+      if (!dp.ok) {
+        reply.code(400);
+        return { error: 'delegation_payload_rejected', detail: dp.error, knownAgents };
+      }
+    }
+    // P2-13 이식(context-budget): 초대형 프롬프트(>100KB)는 결정론적 압축으로 컨텍스트 예산 보호.
+    if (typeof input.prompt === 'string' && input.prompt.length > MAX_PLAN_CHARS) {
+      input.prompt = compressPlan(input.prompt);
+    }
     const taskId = createTaskId();
     const requestedProvider = input.ai ?? 'claude-code';
     const allowProviderFailover = input.metadata?.allowProviderFailover === true;
