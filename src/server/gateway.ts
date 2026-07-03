@@ -855,6 +855,14 @@ export async function createGateway() {
     });
   });
 
+  // Serve agent card JSON
+  app.get('/.well-known/agent-card.json', async (req, reply) => {
+    const { buildAgentCards } = await import('../core/agent-card.js');
+    const cards = await buildAgentCards();
+    reply.type('application/json').code(200);
+    return { agents: cards };
+  });
+
   // ═══ Health ═══════════════════════════════════════
   app.get('/health', async () => {
     const agents = await sharedState.getAllAgentStates();

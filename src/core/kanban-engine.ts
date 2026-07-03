@@ -2,6 +2,9 @@ import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
+import { createTaskId } from '../utils/id.js';
+import { classifyResult, applyVerifierGate } from './task-queue.js';
+import { transitionTask } from './task-state.js';
 
 const log = createLogger('kanban-engine');
 
@@ -130,29 +133,250 @@ class KanbanEngine {
     return { executed, results };
   }
 
+  public createRetryTaskRef: ((taskId: string, options?: { overrideAi?: string }) => Promise<any>) | null = null;
+
+  /**
+   * [신규] 실행 완료된 Task DB 레코드로부터 Verifier 통과 여부 검증 및 피드백 추출
+   */
+  private async getVerifierStatus(
+    db: any,
+    taskId: string,
+    agentSuccess: boolean
+  ): Promise<{ passed: boolean; feedback: string }> {
+    const row = db.prepare('SELECT verifier_result_json, error FROM tasks WHERE id=?').get(taskId) as { verifier_result_json?: string; error?: string } | undefined;
+    if (!row || !row.verifier_result_json) {
+      return { passed: agentSuccess, feedback: row?.error || '' };
+    }
+    try {
+      const verifierResult = JSON.parse(row.verifier_result_json);
+      return {
+        passed: verifierResult.passed === true,
+        feedback: verifierResult.outputSnippet || row.error || '',
+      };
+    } catch {
+      return { passed: agentSuccess, feedback: row?.error || '' };
+    }
+  }
+
+  /**
+   * [신규] 이전 시도의 실패 정보를 반영하여 프롬프트 재생성
+   */
+  private injectFeedbackToPrompt(
+    originalPrompt: string,
+    feedback: string,
+    currentAttempt: number,
+    maxAttempts: number
+  ): string {
+    const sliced = feedback.length > 1500 ? '... [truncated] ...\n' + feedback.slice(-1500) : feedback;
+    return `${originalPrompt}\n\n[Previous Attempt ${currentAttempt}/${maxAttempts} Failed]\nFeedback:\n${sliced}`;
+  }
+
+  /**
+   * [신규] 최대 재시도 횟수 도달 시 시스템 메타데이터 기록 및 알림 이벤트 발행
+   */
+  private async triggerHumanEscalation(
+    db: any,
+    kanbanTaskId: string,
+    lastTaskId: string,
+    reason: string
+  ): Promise<void> {
+    this.moveTask(kanbanTaskId, 'review');
+
+    const taskRow = db.prepare('SELECT metadata_json FROM tasks WHERE id=?').get(lastTaskId) as { metadata_json?: string } | undefined;
+    let metadata: Record<string, any> = {};
+    if (taskRow?.metadata_json) {
+      try {
+        metadata = JSON.parse(taskRow.metadata_json);
+      } catch {}
+    }
+    metadata.escalated_to_human = true;
+    metadata.escalation_reason = reason;
+
+    db.prepare('UPDATE tasks SET metadata_json=? WHERE id=?').run(
+      JSON.stringify(metadata),
+      lastTaskId
+    );
+
+    await eventBus.publish({
+      type: 'kanban:task_escalated',
+      kanbanTaskId,
+      lastTaskId,
+      reason,
+    });
+    await eventBus.publish({
+      type: 'task:escalated',
+      kanbanTaskId,
+      lastTaskId,
+      reason,
+    });
+  }
+
   /**
    * Execute a single kanban task via agent manager.
    */
   private async executeKanbanTask(task: any): Promise<any> {
     const db = getDb();
 
-    // Move to in_progress
+    // 1. Move to in_progress
     this.moveTask(task.id, 'in_progress');
 
-    try {
-      // Pick agent: assigned_to or first available
-      const agentId = task.assigned_to || agentManager.listEnabledIds()[0];
-      if (!agentId) throw new Error('No agent available');
+    let verifierConfig: any = null;
+    let maxRetries = 3;
+    if (task.description) {
+      try {
+        const parsed = JSON.parse(task.description);
+        if (parsed) {
+          if (parsed.verifier) verifierConfig = parsed.verifier;
+          if (typeof parsed.maxRetries === 'number') maxRetries = parsed.maxRetries;
+          else if (typeof parsed.maxAttempts === 'number') maxRetries = parsed.maxAttempts;
+        }
+      } catch {}
+    }
 
-      const result = await agentManager.executeTask(agentId, task.title, {});
-
-      // Move to done on success
-      this.moveTask(task.id, result.success ? 'done' : 'review');
-
-      return { taskId: task.id, agentId, success: result.success, output: result.output?.slice(0, 500) };
-    } catch (err: any) {
+    const agentId = task.assigned_to || agentManager.listEnabledIds()[0];
+    if (!agentId) {
       this.moveTask(task.id, 'review');
-      return { taskId: task.id, error: err.message };
+      throw new Error('No agent available');
+    }
+
+    let attempt = 0;
+    let currentPrompt = task.title;
+    let lastTaskId = '';
+    let success = false;
+    let errorMsg = '';
+    let lastOutput = '';
+
+    while (true) {
+      if (attempt === 0) {
+        // Initial attempt
+        lastTaskId = createTaskId();
+        const verifierJson = verifierConfig ? JSON.stringify(verifierConfig) : null;
+
+        db.prepare(`
+          INSERT INTO tasks (id, mode, prompt, assigned_to, status, verifier_json, last_activity_at)
+          VALUES (?, 'task', ?, ?, 'running', ?, datetime('now'))
+        `).run(lastTaskId, currentPrompt, agentId, verifierJson);
+
+        db.prepare('UPDATE kanban_tasks SET task_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(lastTaskId, task.id);
+
+        try {
+          const executeResult = await agentManager.executeTask(agentId, currentPrompt, { taskId: lastTaskId });
+          lastOutput = executeResult.output || '';
+          
+          const finalizedResult = {
+            success: executeResult.success,
+            output: executeResult.output,
+            error: executeResult.error,
+          };
+
+          const classified = classifyResult(finalizedResult);
+          const controller = new AbortController();
+          const gated = await applyVerifierGate({
+            taskId: lastTaskId,
+            agentId,
+            prompt: currentPrompt,
+            verifier: verifierConfig,
+          }, classified, controller.signal);
+
+          success = gated.success;
+          errorMsg = gated.error || '';
+
+          const finalStatus = success ? 'completed' : 'failed';
+          transitionTask(db, lastTaskId, finalStatus, {
+            response: gated.output || undefined,
+            error: gated.error || undefined,
+            completedAt: success,
+          });
+        } catch (err: any) {
+          success = false;
+          errorMsg = err.message;
+          transitionTask(db, lastTaskId, 'failed', {
+            error: err.message,
+            completedAt: false,
+          });
+        }
+      } else {
+        // Retry attempt
+        if (!this.createRetryTaskRef) {
+          throw new Error('createRetryTaskRef is not registered on KanbanEngine');
+        }
+
+        const retryResult = await this.createRetryTaskRef(lastTaskId);
+        if (!retryResult.ok) {
+          success = false;
+          errorMsg = retryResult.body?.error || 'Retry limit exceeded or failed to spawn';
+          await this.triggerHumanEscalation(
+            db,
+            task.id,
+            lastTaskId,
+            `Retry failed: ${errorMsg}`
+          );
+          return { taskId: task.id, lastTaskId, success: false, error: errorMsg };
+        }
+
+        const newTaskId = retryResult.newTaskId;
+        db.prepare('UPDATE kanban_tasks SET task_id = ?, updated_at = datetime(\'now\') WHERE id = ?').run(newTaskId, task.id);
+        lastTaskId = newTaskId;
+
+        // Poll for completion with a timeout limit (Issue ③)
+        let polledTask: any = null;
+        let pollCount = 0;
+        const maxPollAttempts = 3000; // 5 minutes with 100ms intervals
+        let pollingTimedOut = false;
+        while (true) {
+          polledTask = db.prepare('SELECT status, response, error FROM tasks WHERE id=?').get(newTaskId);
+          if (polledTask && ['completed', 'failed', 'timed_out', 'cancelled'].includes(polledTask.status)) {
+            break;
+          }
+          pollCount++;
+          if (pollCount >= maxPollAttempts) {
+            pollingTimedOut = true;
+            break;
+          }
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        if (pollingTimedOut) {
+          success = false;
+          errorMsg = 'Polling timed out waiting for task completion';
+          await this.triggerHumanEscalation(
+            db,
+            task.id,
+            newTaskId,
+            'Polling timed out: task did not reach terminal state within limit.'
+          );
+          return { taskId: task.id, lastTaskId: newTaskId, success: false, error: errorMsg };
+        }
+
+        success = polledTask.status === 'completed';
+        errorMsg = polledTask.error || '';
+        lastOutput = polledTask.response || '';
+      }
+
+      // Check loop conditions
+      if (success) {
+        this.moveTask(task.id, 'done');
+        return { taskId: task.id, lastTaskId, success: true, output: lastOutput.slice(0, 500) };
+      }
+
+      // If failed, check retry budget
+      if (attempt >= maxRetries) {
+        await this.triggerHumanEscalation(
+          db,
+          task.id,
+          lastTaskId,
+          `Max verifier retries (${maxRetries}) exceeded on verification gate.`
+        );
+        return { taskId: task.id, lastTaskId, success: false, error: errorMsg };
+      }
+
+      // Increment attempt and inject feedback for next loop iteration
+      attempt++;
+      const verifierStatus = await this.getVerifierStatus(db, lastTaskId, false);
+      currentPrompt = this.injectFeedbackToPrompt(task.title, verifierStatus.feedback, attempt, maxRetries);
+
+      // We update the prompt of the failed task in the DB so that the next createRetryTask call reads this prompt
+      db.prepare('UPDATE tasks SET prompt=? WHERE id=?').run(currentPrompt, lastTaskId);
     }
   }
 }
