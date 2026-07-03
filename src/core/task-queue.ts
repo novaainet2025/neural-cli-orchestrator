@@ -933,10 +933,16 @@ class TaskQueueManager {
             ? 'completed'
             : 'failed'
     );
-    const error = result.error
-      || runtime.abortReason
-      || (!result.success ? 'unknown: execution failed' : undefined);
-    return { ...result, output, error, status };
+    // Aborted tasks can never be successes: Type B loops swallow a canceled CLI
+    // call into a "[<agent>: CLI failed ...]" output string and finish with
+    // success=true, which used to early-return in enqueue() before the
+    // stall-retry check ever ran (2026-07-03 task_fjmW7ww5 실측).
+    const aborted = runtime.abortReason != null;
+    const success = aborted ? false : result.success;
+    const error = aborted
+      ? (runtime.abortReason || result.error)
+      : (result.error || (!result.success ? 'unknown: execution failed' : undefined));
+    return { ...result, success, output, error, status };
   }
 
   private applyRuntimeMetadata(result: TaskExecutionResult, finalized: TaskExecutionResult): TaskExecutionResult {
