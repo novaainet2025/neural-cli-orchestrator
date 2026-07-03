@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "updated": "2026-07-02",
+  "updated": "2026-07-03",
   "providers": [
     {
       "id": "remote-mlx",
@@ -397,7 +397,7 @@
     {
       "id": "ollama",
       "name": "Ollama",
-      "enabled": false,
+      "enabled": true,
       "type": "api",
       "role": "Engineer",
       "score": 80,
@@ -443,9 +443,7 @@
         "url": "http://localhost:11434/api/tags",
         "timeout": 5000
       },
-      "updated": "2026-07-02",
-      "_disabled_reason": "ollama 미응답(localhost:11434)",
-      "_disabled_at": "2026-07-02"
+      "updated": "2026-07-03"
     },
     {
       "id": "mlx",
