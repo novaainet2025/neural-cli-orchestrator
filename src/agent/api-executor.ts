@@ -9,6 +9,7 @@ import { buildApiAgentSystemPrompt, getNcoOpenAiTools, buildCompactSystemPrompt 
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
+import { taskQueue } from '../core/task-queue.js';
 import { getApiKeys, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -63,6 +64,27 @@ function isLikelyToolsUnsupportedError(err: unknown): boolean {
   );
 }
 
+function withAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new Error(signal.reason instanceof Error ? signal.reason.message : 'cancelled'));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new Error(signal.reason instanceof Error ? signal.reason.message : 'cancelled'));
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      value => {
+        signal.removeEventListener('abort', onAbort);
+        resolve(value);
+      },
+      err => {
+        signal.removeEventListener('abort', onAbort);
+        reject(err);
+      },
+    );
+  });
+}
+
 /**
  * Type C Executor: API-based agents (OpenRouter, Gemini API).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
@@ -85,7 +107,7 @@ export class ApiExecutor {
     }
   }
 
-  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean }): Promise<ApiResult> {
+  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean, signal?: AbortSignal, timeoutMs?: number }): Promise<ApiResult> {
     const agentId = this.provider.id;
     let iterations = 0;
     let rateLimitRotations = 0;
@@ -126,6 +148,10 @@ export class ApiExecutor {
     try {
       while (iterations < MAX_ITERATIONS) {
         iterations++;
+        taskQueue.recordActivity(taskId);
+        if (options?.signal?.aborted) {
+          throw new Error(taskQueue.getAbortReason(taskId) || 'cancelled');
+        }
 
         // Token optimization: Trim conversation history (keeping system + first user + last N)
         if (messages.length > MAX_HISTORY + 2) {
@@ -153,7 +179,7 @@ export class ApiExecutor {
             createParams.tool_choice = 'auto';
           }
 
-          const response = await client.chat.completions.create(createParams);
+          const response = await withAbortSignal(client.chat.completions.create(createParams), options?.signal);
           usage.promptTokens += response.usage?.prompt_tokens ?? 0;
           usage.completionTokens += response.usage?.completion_tokens ?? 0;
           usage.totalTokens += response.usage?.total_tokens ?? 0;
@@ -201,6 +227,7 @@ export class ApiExecutor {
             chunk: textContent,
             iteration: iterations,
           });
+          taskQueue.recordActivity(taskId, textContent);
 
           if (useNativeTools && msg.tool_calls?.length) {
             messages.push({
@@ -218,6 +245,7 @@ export class ApiExecutor {
                 tool: tc.function.name,
                 args,
               });
+              taskQueue.recordActivity(taskId, `[tool:${tc.function.name}]`);
               const outRaw = result.output || result.error || '';
               log.debug({ agentId, tool: tc.function.name, ok: result.ok, outputLen: outRaw.length }, 'Tool result');
               const truncated = outRaw.length > MAX_OUTPUT_LEN
@@ -240,6 +268,7 @@ export class ApiExecutor {
             for (const call of fromText) {
               totalToolCalls++;
               const result = await toolExecutor.execute(call);
+              taskQueue.recordActivity(taskId, `[tool:${call.tool}]`);
               const outRaw = result.output || result.error || '';
               const truncated = outRaw.length > MAX_OUTPUT_LEN 
                 ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`

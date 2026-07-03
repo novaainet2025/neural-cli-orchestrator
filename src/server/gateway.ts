@@ -54,6 +54,21 @@ function detectFailedCompletion(response: string | null | undefined): boolean {
   }
   return patterns.some(p => p.test(response));
 }
+
+function buildFailureError(result: { error?: string; output?: string }): string {
+  return result.error
+    || (result.output && detectFailedCompletion(result.output) ? 'unknown: failure pattern in output' : undefined)
+    || 'unknown: execution failed';
+}
+
+function withTaskRuntime<T extends { id: string; last_activity_at?: string | null }>(task: T) {
+  const runtime = taskQueue.getTaskSnapshot(task.id);
+  return {
+    ...task,
+    lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
+    liveness: runtime.liveness,
+  };
+}
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { registerCircuitRoutes } from './routes/circuit.js';
@@ -306,8 +321,8 @@ export async function createGateway() {
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?)
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, last_activity_at)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, datetime('now'))
       `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson);
     } catch (dbErr) {
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
@@ -339,18 +354,30 @@ export async function createGateway() {
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { invocationId } })
       .then(result => {
-        const response = (result.output != null && result.output !== '') ? result.output : (result.error || '(에이전트 응답 없음)');
-        const honest = result.success && !detectFailedCompletion(response) ? 'completed' : 'failed';
+        const response = (result.output != null && result.output !== '') ? result.output : '';
+        const classifiedFailure = detectFailedCompletion(response);
+        const nextStatus = result.status === 'cancelled'
+          ? 'cancelled'
+          : result.status === 'timed_out' || result.error === 'timeout(idle)' || result.error === 'timeout(hardcap)'
+            ? 'timed_out'
+            : result.success && !classifiedFailure
+              ? 'completed'
+              : 'failed';
+        const error = nextStatus === 'completed' ? undefined : buildFailureError(result);
         try {
-          const moved = transitionTask(db, taskId, honest, { response, completedAt: true });
+          const moved = transitionTask(db, taskId, nextStatus, {
+            response: response || undefined,
+            error,
+            completedAt: nextStatus !== 'cancelled',
+          });
           if (!moved.ok) {
-            log.info({ taskId, prev: moved.prev, next: honest }, 'Skipped terminal completion update');
+            log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
       })
       .catch(err => {
         try {
-          const moved = transitionTask(db, taskId, 'failed', { error: err.message });
+          const moved = transitionTask(db, taskId, 'failed', { error: err.message || 'unknown: enqueue failure' });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: 'failed' }, 'Skipped terminal failure update');
           }
@@ -385,24 +412,34 @@ export async function createGateway() {
       params.unshift(query.workspaceId);
     }
 
-    const tasks = db.prepare(sql).all(...params);
+    const tasks = (db.prepare(sql).all(...params) as Array<{ id: string; last_activity_at?: string | null }>)
+      .map(task => withTaskRuntime(task));
     return { tasks };
   });
 
   app.get('/api/tasks/:id', async (req, reply) => {
     const { id } = req.params as any;
     const db = getDb();
-    const task = db.prepare('SELECT * FROM tasks WHERE id=?').get(id);
+    const task = db.prepare('SELECT * FROM tasks WHERE id=?').get(id) as { id: string; last_activity_at?: string | null } | undefined;
     if (!task) { reply.code(404); return { error: 'Task not found' }; }
-    return { task };
+    return { task: withTaskRuntime(task) };
   });
 
   app.get('/api/tasks/:id/status', async (req, reply) => {
     const { id } = req.params as any;
     const db = getDb();
-    const task = db.prepare('SELECT id, status, progress, response, error, updated_at FROM tasks WHERE id=?').get(id) as any;
+    const task = db.prepare('SELECT id, status, progress, response, error, updated_at, last_activity_at FROM tasks WHERE id=?').get(id) as any;
     if (!task) { reply.code(404); return { error: 'Task not found' }; }
-    return { taskId: task.id, status: task.status, progress: task.progress, result: task.response, updatedAt: task.updated_at };
+    const runtime = taskQueue.getTaskSnapshot(task.id);
+    return {
+      taskId: task.id,
+      status: task.status,
+      progress: task.progress,
+      result: task.response,
+      updatedAt: task.updated_at,
+      lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
+      liveness: runtime.liveness,
+    };
   });
 
   app.post('/api/tasks/:id/cancel', async (req, reply) => {

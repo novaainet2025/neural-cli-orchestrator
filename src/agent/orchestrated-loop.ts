@@ -7,6 +7,7 @@ import { parseToolCalls, extractThinking } from './tool-parser.js';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
+import { taskQueue } from '../core/task-queue.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
@@ -99,6 +100,7 @@ export class OrchestratedLoop {
     try {
       while (iterations < MAX_ITERATIONS) {
       iterations++;
+      taskQueue.recordActivity(taskId);
 
       // Check abort signal
       if (this.abortSignal?.aborted) {
@@ -117,7 +119,8 @@ export class OrchestratedLoop {
         status: iterations === 1 ? 'thinking' : 'working',
       });
 
-      const aiResponse = await this.callCLI(fullSystem, history);
+      const aiResponse = await this.callCLI(taskId, fullSystem, history);
+      taskQueue.recordActivity(taskId, aiResponse);
 
       // Stream the response
       await eventBus.publish({
@@ -141,6 +144,7 @@ export class OrchestratedLoop {
       const results: string[] = [];
       for (const call of toolCalls) {
         totalToolCalls++;
+        taskQueue.recordActivity(taskId, `[tool:${call.tool}]`);
         log.debug({ agentId, tool: call.tool, args: call.args }, 'Executing tool');
 
         const result = await this.toolExecutor.execute(call);
@@ -190,7 +194,7 @@ export class OrchestratedLoop {
     }
   }
 
-  private async callCLI(system: string, history: Array<{ role: string; content: string }>): Promise<string> {
+  private async callCLI(taskId: string, system: string, history: Array<{ role: string; content: string }>): Promise<string> {
     const command = this.provider.command!;
     const args = [...(this.provider.args || [])];
 
@@ -215,14 +219,31 @@ export class OrchestratedLoop {
 
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
-      const result = await execa(command, finalArgs, {
+      const subprocess = execa(command, finalArgs, {
         ...(useStdin ? { input: combined } : { stdin: 'ignore' }),
         ...(this.abortSignal ? { cancelSignal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
         forceKillAfterDelay: 3000,
+        detached: process.platform !== 'win32',
         maxBuffer: 10 * 1024 * 1024,
         env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
         reject: false,
       });
+      taskQueue.recordChildProcess(taskId, subprocess.pid);
+      subprocess.stdout?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
+      subprocess.stderr?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
+      this.abortSignal?.addEventListener('abort', () => {
+        if (!subprocess.pid || process.platform === 'win32') return;
+        try {
+          process.kill(-subprocess.pid, 'SIGKILL');
+        } catch {
+          try {
+            process.kill(subprocess.pid, 'SIGKILL');
+          } catch {
+            // already gone
+          }
+        }
+      }, { once: true });
+      const result = await subprocess;
 
       if (lastMessageFile) {
         try {

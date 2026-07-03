@@ -5,6 +5,7 @@ import { verificationGate } from '../security/verification-gate.js';
 import { circuitBreakerRegistry, classifyCircuitError } from '../security/circuit-breaker-registry.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
+import { taskQueue } from '../core/task-queue.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { createTaskId } from '../utils/id.js';
@@ -18,6 +19,20 @@ function promptSummary(s: string): boolean {
 function getTaskTimeoutMs(): number {
   const v = Number(process.env.NCO_TASK_TIMEOUT_MS);
   return Number.isFinite(v) && v >= 60_000 ? v : 1_200_000;
+}
+
+function killProcessGroup(pid: number | undefined): void {
+  if (!pid) return;
+  if (process.platform === 'win32') return;
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // already gone
+    }
+  }
 }
 
 // ─── Agent Type Classification ────────────────────────
@@ -122,10 +137,16 @@ class AgentManager {
 
     try {
       const agentType = classifyAgent(provider);
+      const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
+      const wallClock = AbortSignal.timeout(timeoutMs);
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, wallClock])
+        : wallClock;
       let output: string;
       let iterations = 0;
       let toolCalls = 0;
       let usage: TaskResult['usage'];
+      taskQueue.recordActivity(taskId);
 
       // ── HNSW Vector Memory: Pre-task semantic recall ─────
       try {
@@ -144,38 +165,31 @@ class AgentManager {
         case 'A': {
           // Type A: Claude Code native — delegate to subprocess, monitor only
           const { execa } = await import('execa');
-          // Build a merged abort signal: caller's signal OR a hard wall-clock timeout
-          const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
-          const wallClock = AbortSignal.timeout(timeoutMs);
-          const signal = options?.signal
-            ? AbortSignal.any([options.signal, wallClock])
-            : wallClock;
-          // provider.args: extra Claude CLI flags (e.g. --dangerously-skip-permissions) so
-          // headless NCO runs can use tools without an interactive permission prompt.
-          const result = await execa(provider.command!, [
+          const subprocess = execa(provider.command!, [
             ...(provider.args ?? []),
             '-p', prompt,
             '--output-format', 'text',
           ], {
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
+            detached: process.platform !== 'win32',
             // NCO 재귀보호 (2026-06-30, fleet 6a748e4): 서브에이전트 claude가 NCO 훅 재트리거 → 무한재귀 방지
             env: { ...process.env, ...provider.env, NCO_HOOK_DISABLED: '1' },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
           });
-          output = result.stdout || result.stderr || '';
+          taskQueue.recordChildProcess(taskId, subprocess.pid);
+          subprocess.stdout?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
+          subprocess.stderr?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
+          signal.addEventListener('abort', () => killProcessGroup(subprocess.pid), { once: true });
+          const result = await subprocess;
+          output = result.stdout || result.stderr || taskQueue.getBufferedOutput(taskId);
           iterations = 1;
           break;
         }
 
         case 'B': {
           // Type B: NCO orchestrated loop
-          const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
-          const wallClock = AbortSignal.timeout(timeoutMs);
-          const signal = options?.signal
-            ? AbortSignal.any([options.signal, wallClock])
-            : wallClock;
           const loop = new OrchestratedLoop(provider, sandbox, signal);
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
@@ -193,6 +207,8 @@ class AgentManager {
           const result = await executor.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
+            signal,
+            timeoutMs,
           });
           output = result.output;
           iterations = result.iterations;
@@ -283,7 +299,13 @@ class AgentManager {
 
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
-      circuitBreakerRegistry.recordFailure(agentId, err?.message);
+      const abortReason = taskQueue.getAbortReason(taskId);
+      const partialOutput = taskQueue.getBufferedOutput(taskId);
+      const errorMessage = abortReason || err?.message || 'unknown: execution failed';
+      const terminalOutput = partialOutput || '';
+      if (abortReason !== 'cancelled') {
+        circuitBreakerRegistry.recordFailure(agentId, errorMessage);
+      }
 
       // 상태 복구 — 실패/타임아웃 시 idle로 복원
       await sharedState.setAgentState(agentId, {
@@ -294,7 +316,7 @@ class AgentManager {
 
       await eventBus.publish({
         type: 'task:failed', taskId, agentId,
-        error: err.message, durationMs,
+        error: errorMessage, durationMs,
       });
       this.recordLatency(agentId, durationMs);
 
@@ -305,8 +327,14 @@ class AgentManager {
       } catch { /* non-critical */ }
 
       return {
-        taskId, agentId, output: '', iterations: 0, toolCalls: 0,
-        success: false, error: err.message, durationMs,
+        taskId,
+        agentId,
+        output: terminalOutput,
+        iterations: 0,
+        toolCalls: 0,
+        success: false,
+        error: errorMessage,
+        durationMs,
       };
     }
   }
