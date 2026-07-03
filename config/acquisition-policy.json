@@ -1,0 +1,41 @@
+{
+  "defaultPolicy": "deny",
+  "ecosystems": ["npm"],
+  "scorecard": {
+    "rejectBelow": 3,
+    "approvalBelow": 5,
+    "failMode": "closed"
+  },
+  "licenses": {
+    "allow": ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"],
+    "failMode": "closed"
+  },
+  "scripts": {
+    "defaultInstallMode": "ignore",
+    "approvalOnPresence": true,
+    "rejectPatternsFrom": "src/security/command-gate.ts",
+    "failMode": "closed"
+  },
+  "typosquat": {
+    "maxAutoDistance": 0,
+    "approvalDistance": 2,
+    "requirePopularityCheck": true,
+    "failMode": "closed"
+  },
+  "maintainers": {
+    "approvalOnChange": true,
+    "failMode": "closed"
+  },
+  "popularPackages": [
+    "react",
+    "express",
+    "lodash",
+    "axios",
+    "typescript",
+    "vite",
+    "next",
+    "chalk",
+    "commander",
+    "zod"
+  ]
+}

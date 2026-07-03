@@ -3,8 +3,14 @@
  * Wraps NCO API (localhost:6200) as MCP tools
  */
 
+import { createInterface } from 'readline';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { acquisitionRegistry } from '../core/acquisition-registry.js';
+import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
+
 const NCO_API = process.env.NCO_API_URL || 'http://localhost:6200';
 const TIMEOUT = 30_000;
+const DYNAMIC_POLL_INTERVAL_MS = 250;
 
 async function ncoFetch(path: string, options?: RequestInit): Promise<any> {
   const url = `${NCO_API}${path}`;
@@ -82,8 +88,106 @@ const TOOLS = [
   { name: 'nco_evolver_stats', description: 'Get agent evolution stats and persona suggestions', params: ['agentId'] },
 ];
 
+type StaticTool = typeof TOOLS[number];
+type McpTool = {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: Record<string, { type: 'string' }>;
+  };
+};
+
+function toMcpTool(tool: StaticTool): McpTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: {
+      type: 'object',
+      properties: Object.fromEntries(tool.params.map(p => [p, { type: 'string' }])),
+    },
+  };
+}
+
+function toAcquiredMcpTool(tool: { name: string; description: string }): McpTool {
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string' },
+      },
+    },
+  };
+}
+
+export function listToolsWithAcquisitions(): McpTool[] {
+  const staticTools = TOOLS.map(toMcpTool);
+  const staticNames = new Set(staticTools.map(tool => tool.name));
+  const acquiredTools = acquisitionRegistry.listAcquiredSkillNames()
+    .filter(tool => !staticNames.has(tool.name))
+    .map(toAcquiredMcpTool);
+  return [...staticTools, ...acquiredTools];
+}
+
+function extractDynamicPrompt(args: Record<string, unknown>): string {
+  const prompt = args.prompt;
+  if (typeof prompt === 'string' && prompt.trim().length > 0) {
+    return prompt;
+  }
+  return JSON.stringify(args);
+}
+
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function executeAgentTask(agentId: string, prompt: string): Promise<string> {
+  const created = await ncoPost('/api/task', { ai: agentId, prompt });
+  if (!created?.taskId || typeof created.taskId !== 'string') {
+    throw new Error(typeof created?.error === 'string' ? created.error : 'dynamic skill task creation failed');
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < TIMEOUT) {
+    const status = await ncoFetch(`/api/tasks/${created.taskId}/status`);
+    if (status?.status === 'completed') {
+      return typeof status.result === 'string' ? status.result : JSON.stringify(status.result ?? '');
+    }
+    if (['failed', 'timed_out', 'cancelled'].includes(status?.status)) {
+      throw new Error(typeof status?.error === 'string' ? status.error : `dynamic skill task ${status.status}`);
+    }
+    await sleep(DYNAMIC_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(`dynamic skill task timeout: ${created.taskId}`);
+}
+
+async function handleDynamicTool(name: string, args: Record<string, unknown>): Promise<string | null> {
+  const skill = acquisitionRegistry.listAcquiredSkillNames().find(entry => entry.name === name);
+  if (!skill) return null;
+
+  const result = await dynamicSkillEngine.executeSkill(
+    skill.id,
+    extractDynamicPrompt(args),
+    executeAgentTask,
+  );
+
+  return JSON.stringify({
+    tool: name,
+    output: result.output,
+    quality: result.quality,
+    steps: result.steps,
+  });
+}
+
 // ─── Tool Handler ─────────────────────────────────────
-async function handleTool(name: string, args: any): Promise<string> {
+export async function handleTool(name: string, args: Record<string, unknown>): Promise<string> {
   switch (name) {
     // Collaboration
     case 'nco_task': {
@@ -139,13 +243,14 @@ case 'nco_mesh_send': {
       return JSON.stringify(await ncoFetch(`/api/invocations/session/${encodeURIComponent(sessionId)}`));
     }
     case 'nco_invocations': {
-      const limit = args.limit ? `?limit=${encodeURIComponent(args.limit)}` : '';
+      const limitValue = asOptionalString(args.limit);
+      const limit = limitValue ? `?limit=${encodeURIComponent(limitValue)}` : '';
       return JSON.stringify(await ncoFetch(`/api/invocations/overview${limit}`));
     }
     // Ollama / proxy debug
     case 'nco_ollama_debug': {
       const PROXY = process.env.OLLAMA_PROXY_URL || process.env.VLLM_PROXY_URL || 'http://localhost:4100';
-      const action = (args.action || 'status').toLowerCase();
+      const action = (asOptionalString(args.action) ?? 'status').toLowerCase();
       try {
         if (action === 'status' || action === 'errors') {
           const res = await fetch(`${PROXY}/debug/status`, { signal: AbortSignal.timeout(10_000) });
@@ -179,60 +284,66 @@ case 'nco_mesh_send': {
       }
     }
     // HNSW Vector Memory
-    case 'nco_memory_add': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/add`, { content: args.content }));
-    case 'nco_memory_search': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/search`, { query: args.query, k: args.k ? Number(args.k) : 5 }));
-    case 'nco_memory_list': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(args.agentId)}`));
-    case 'nco_memory_stats': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(args.agentId)}/stats`));
-    case 'nco_memory_rebuild': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(args.agentId)}/rebuild`, {}));
+    case 'nco_memory_add': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(asOptionalString(args.agentId) ?? '')}/add`, { content: args.content }));
+    case 'nco_memory_search': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(asOptionalString(args.agentId) ?? '')}/search`, { query: args.query, k: args.k ? Number(args.k) : 5 }));
+    case 'nco_memory_list': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(asOptionalString(args.agentId) ?? '')}`));
+    case 'nco_memory_stats': return JSON.stringify(await ncoFetch(`/api/memory/${encodeURIComponent(asOptionalString(args.agentId) ?? '')}/stats`));
+    case 'nco_memory_rebuild': return JSON.stringify(await ncoPost(`/api/memory/${encodeURIComponent(asOptionalString(args.agentId) ?? '')}/rebuild`, {}));
     case 'nco_memory_consolidate': return JSON.stringify(await ncoPost('/api/memory/consolidate', { agentId: args.agentId }));
     // AgentEvolver
-    case 'nco_evolver_stats': return JSON.stringify(await ncoFetch(`/api/evolver/${encodeURIComponent(args.agentId)}/stats`));
-    default: return JSON.stringify({ error: `Unknown tool: ${name}` });
+    case 'nco_evolver_stats': return JSON.stringify(await ncoFetch(`/api/evolver/${encodeURIComponent(String(args.agentId ?? ''))}/stats`));
+    default: {
+      const dynamicResult = await handleDynamicTool(name, args);
+      return dynamicResult ?? JSON.stringify({ error: `Unknown tool: ${name}` });
+    }
   }
 }
 
 // ─── Stdio MCP Protocol ──────────────────────────────
 // Simple JSON-RPC over stdin/stdout
-import { createInterface } from 'readline';
-
-const rl = createInterface({ input: process.stdin });
-
 function send(msg: any) {
   process.stdout.write(JSON.stringify(msg) + '\n');
 }
 
-rl.on('line', async (line) => {
-  try {
-    const req = JSON.parse(line);
+export function startStdioServer(): void {
+  const rl = createInterface({ input: process.stdin });
 
-    if (req.method === 'initialize') {
-      send({ jsonrpc: '2.0', id: req.id, result: {
-        protocolVersion: '2024-11-05',
-        capabilities: { tools: {} },
-        serverInfo: { name: 'nco-mcp-server', version: '1.0.0' },
-      }});
-    } else if (req.method === 'tools/list') {
-      send({ jsonrpc: '2.0', id: req.id, result: {
-        tools: TOOLS.map(t => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: {
-            type: 'object',
-            properties: Object.fromEntries(t.params.map(p => [p, { type: 'string' }])),
-          },
-        })),
-      }});
-    } else if (req.method === 'tools/call') {
-      const result = await handleTool(req.params.name, req.params.arguments || {});
-      send({ jsonrpc: '2.0', id: req.id, result: {
-        content: [{ type: 'text', text: result }],
-      }});
-    } else if (req.method === 'notifications/initialized') {
-      // No response needed
-    } else {
-      send({ jsonrpc: '2.0', id: req.id, error: { code: -32601, message: `Unknown method: ${req.method}` }});
+  rl.on('line', async (line) => {
+    try {
+      const req = JSON.parse(line);
+
+      if (req.method === 'initialize') {
+        send({ jsonrpc: '2.0', id: req.id, result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'nco-mcp-server', version: '1.0.0' },
+        }});
+      } else if (req.method === 'tools/list') {
+        send({ jsonrpc: '2.0', id: req.id, result: {
+          tools: listToolsWithAcquisitions(),
+        }});
+      } else if (req.method === 'tools/call') {
+        const result = await handleTool(req.params.name, req.params.arguments || {});
+        send({ jsonrpc: '2.0', id: req.id, result: {
+          content: [{ type: 'text', text: result }],
+        }});
+      } else if (req.method === 'notifications/initialized') {
+        // No response needed
+      } else {
+        send({ jsonrpc: '2.0', id: req.id, error: { code: -32601, message: `Unknown method: ${req.method}` }});
+      }
+    } catch (_err: any) {
+      // Ignore parse errors on notification lines
     }
-  } catch (err: any) {
-    // Ignore parse errors on notification lines
-  }
-});
+  });
+}
+
+function isMainModule(): boolean {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  return import.meta.url === pathToFileURL(argv1).href;
+}
+
+if (isMainModule()) {
+  startStdioServer();
+}

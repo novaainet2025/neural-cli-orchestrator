@@ -1545,6 +1545,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     // gateway.ts에서 이미 등록된 라우트는 catch-all에서 제외 — Fastify wildcard 우선순위 문제 우회
     const gatewayRoutes = [
+      /^\/api\/acquisitions(\/|$)/,
       /^\/api\/invocations(\/|$)/,
       /^\/api\/safety\//,
     ];
