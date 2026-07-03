@@ -584,6 +584,7 @@ export async function createGateway() {
             response: response || undefined,
             error,
             completedAt: nextStatus !== 'cancelled',
+            evidenceJson: nextStatus === 'completed' ? result.evidenceJson : undefined,
           });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
@@ -1884,8 +1885,15 @@ export async function createGateway() {
           try {
             const cResp = result.output || result.error;
             const cStatus = result.success && !detectFailedCompletion(cResp) ? 'completed' : 'failed';
-            db.prepare(`UPDATE tasks SET status=?, response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-              .run(cStatus, cResp, taskId);
+            db.prepare(`
+              UPDATE tasks
+              SET status=?,
+                  response=?,
+                  completed_at=datetime('now'),
+                  updated_at=datetime('now'),
+                  evidence_json=COALESCE(?, evidence_json)
+              WHERE id=?
+            `).run(cStatus, cResp, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {

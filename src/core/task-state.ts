@@ -27,7 +27,7 @@ export function transitionTask(
   db: Database.Database,
   taskId: string,
   next: string,
-  extra?: { response?: string; error?: string; completedAt?: boolean },
+  extra?: { response?: string; error?: string; completedAt?: boolean; evidenceJson?: string },
 ): { ok: boolean; prev?: string } {
   const allowedSources = ALLOWED_SOURCES_BY_TARGET.get(next) ?? [];
   if (allowedSources.length === 0) {
@@ -48,6 +48,10 @@ export function transitionTask(
   }
   if (extra?.completedAt) {
     sets.push("completed_at=datetime('now')");
+  }
+  if (extra?.evidenceJson !== undefined) {
+    sets.push('evidence_json=?');
+    params.push(extra.evidenceJson);
   }
 
   const placeholders = allowedSources.map(() => '?').join(', ');

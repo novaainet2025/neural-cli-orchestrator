@@ -17,6 +17,7 @@ import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { invocationTracker } from './invocation-tracker.js';
 import { CommandGate } from '../security/command-gate.js';
+import { extractTaskEvidenceJson } from './task-evidence.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -85,6 +86,7 @@ type TaskExecutionResult = {
   output: string;
   error?: string;
   status?: 'completed' | 'failed' | 'timed_out' | 'cancelled';
+  evidenceJson?: string;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -521,7 +523,7 @@ class TaskQueueManager {
       const finalized = this.finalizeRuntime(task.taskId, result);
       const classified = classifyResult(finalized);
       const gated = await applyVerifierGate(task, classified, controller.signal);
-      const terminal = this.applyRuntimeMetadata(gated, finalized);
+      const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
       if (invocationId) {
         const summary = (terminal.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
@@ -723,7 +725,7 @@ class TaskQueueManager {
       const finalized = this.finalizeRuntime(task.taskId, result);
       const classified = classifyResult(finalized);
       const gated = await applyVerifierGate(task, classified, controller.signal);
-      const terminal = this.applyRuntimeMetadata(gated, finalized);
+      const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
       if (terminal.success) entry.completed++;
       else entry.failed++;
       if (invocationId) {
@@ -945,13 +947,20 @@ class TaskQueueManager {
     return { ...result, success, output, error, status };
   }
 
-  private applyRuntimeMetadata(result: TaskExecutionResult, finalized: TaskExecutionResult): TaskExecutionResult {
-    return {
+  private applyRuntimeMetadata(taskId: string, result: TaskExecutionResult, finalized: TaskExecutionResult): TaskExecutionResult {
+    const terminal = {
       ...result,
       output: result.output || finalized.output,
       error: result.error || finalized.error,
       status: result.status || finalized.status,
     };
+    const evidence = extractTaskEvidenceJson(terminal.output || '');
+    if (evidence.warning) {
+      log.warn({ taskId, warning: evidence.warning }, 'Ignoring invalid task evidence');
+    }
+    return evidence.evidenceJson
+      ? { ...terminal, evidenceJson: evidence.evidenceJson }
+      : terminal;
   }
 
   private flushActivityToDb(runtime: TaskRuntimeEntry, chunk?: string): void {
