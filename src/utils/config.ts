@@ -166,7 +166,11 @@ export const env = {
   PORT: Number(process.env.PORT || topology.ports.apiGateway),
   WS_PORT: Number(process.env.WS_PORT || topology.ports.websocket),
   NODE_ENV: process.env.NODE_ENV || 'development',
-  DATABASE_PATH: resolve(ROOT, process.env.DATABASE_PATH || topology.paths.database),
+  // lazy getter: 테스트가 beforeAll에서 process.env.DATABASE_PATH를 설정해도 반영되도록
+  // import 시점 고정 대신 조회 시점 resolve (getDb()가 첫 호출 때 읽음)
+  get DATABASE_PATH(): string {
+    return resolve(ROOT, process.env.DATABASE_PATH || topology.paths.database);
+  },
   REDIS_URL: process.env.REDIS_URL || `redis://127.0.0.1:${topology.ports.redis}`,
   STATE_FILE_PATH: resolve(ROOT, process.env.STATE_FILE_PATH || topology.paths.stateFile),
   DASHBOARD_URL: process.env.DASHBOARD_URL || `http://localhost:${topology.ports.dashboard}`,
