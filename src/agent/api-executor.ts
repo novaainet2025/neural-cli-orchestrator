@@ -12,6 +12,7 @@ import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
 import { getApiKeys, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
+import { trajectoryGuard } from '../security/trajectory-guard.js';
 
 const log = createLogger('api-executor');
 
@@ -134,6 +135,7 @@ export class ApiExecutor {
     const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId);
 
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
+    trajectoryGuard.beginTask(taskId, agentId);
 
     const systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
     const messages: ChatCompletionMessageParam[] = [
@@ -241,10 +243,26 @@ export class ApiExecutor {
               totalToolCalls++;
               const args = jsonArgsToStringRecord(tc.function.arguments ?? '');
               log.debug({ agentId, tool: tc.function.name, args: JSON.stringify(args).slice(0, 200) }, 'Tool call');
+              const decision = await trajectoryGuard.beforeTool(
+                { taskId, agentId, sandbox: this.sandbox },
+                { tool: tc.function.name, toAgent: tc.function.name === 'sendMessage' ? args.to : null },
+              );
+              if (!decision.allowed) {
+                messages.push({
+                  role: 'tool',
+                  tool_call_id: tc.id,
+                  content: `[${tc.function.name}] ERROR: ${decision.reason}`,
+                });
+                continue;
+              }
               const result = await toolExecutor.execute({
                 tool: tc.function.name,
                 args,
               });
+              await trajectoryGuard.afterTool(
+                { taskId, agentId, sandbox: this.sandbox },
+                { tool: tc.function.name, ok: result.ok, error: result.error ?? null },
+              );
               taskQueue.recordActivity(taskId, `[tool:${tc.function.name}]`);
               const outRaw = result.output || result.error || '';
               log.debug({ agentId, tool: tc.function.name, ok: result.ok, outputLen: outRaw.length }, 'Tool result');
@@ -267,7 +285,19 @@ export class ApiExecutor {
             const results: string[] = [];
             for (const call of fromText) {
               totalToolCalls++;
+              const decision = await trajectoryGuard.beforeTool(
+                { taskId, agentId, sandbox: this.sandbox },
+                { tool: call.tool, toAgent: call.tool === 'sendMessage' ? call.args.to : null },
+              );
+              if (!decision.allowed) {
+                results.push(`[${call.tool}] ERROR: ${decision.reason}`);
+                continue;
+              }
               const result = await toolExecutor.execute(call);
+              await trajectoryGuard.afterTool(
+                { taskId, agentId, sandbox: this.sandbox },
+                { tool: call.tool, ok: result.ok, error: result.error ?? null },
+              );
               taskQueue.recordActivity(taskId, `[tool:${call.tool}]`);
               const outRaw = result.output || result.error || '';
               const truncated = outRaw.length > MAX_OUTPUT_LEN 
@@ -329,6 +359,7 @@ export class ApiExecutor {
         }
       }
     } finally {
+      trajectoryGuard.endTask(taskId, agentId);
       await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
     }
 

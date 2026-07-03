@@ -11,6 +11,7 @@ import { taskQueue } from '../core/task-queue.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
+import { trajectoryGuard } from '../security/trajectory-guard.js';
 
 const log = createLogger('orchestrated-loop');
 
@@ -87,6 +88,7 @@ export class OrchestratedLoop {
       status: 'working',
       currentTask: taskId,
     });
+    trajectoryGuard.beginTask(taskId, agentId);
 
     const teamState = await this.buildTeamContext();
     const systemBase = options?.systemPrompt || this.provider.persona.systemPrompt;
@@ -147,7 +149,20 @@ export class OrchestratedLoop {
         taskQueue.recordActivity(taskId, `[tool:${call.tool}]`);
         log.debug({ agentId, tool: call.tool, args: call.args }, 'Executing tool');
 
+        const decision = await trajectoryGuard.beforeTool(
+          { taskId, agentId, sandbox: this.sandbox },
+          { tool: call.tool, toAgent: call.tool === 'sendMessage' ? call.args.to : null },
+        );
+        if (!decision.allowed) {
+          results.push(`[Tool: ${call.tool}] ERROR: ${decision.reason}`);
+          continue;
+        }
+
         const result = await this.toolExecutor.execute(call);
+        await trajectoryGuard.afterTool(
+          { taskId, agentId, sandbox: this.sandbox },
+          { tool: call.tool, ok: result.ok, error: result.error ?? null },
+        );
         const outRaw = result.output || result.error || '';
         const truncated = outRaw.length > MAX_OUTPUT_LEN 
           ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
@@ -186,6 +201,7 @@ export class OrchestratedLoop {
 
       return { output, iterations, toolCalls: totalToolCalls, artifacts };
     } finally {
+      trajectoryGuard.endTask(taskId, agentId);
       await sharedState.setAgentState(agentId, {
         status: 'idle',
         currentTask: null,
