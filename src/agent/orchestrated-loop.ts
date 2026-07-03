@@ -287,9 +287,13 @@ export class OrchestratedLoop {
           // 출력되는 CLI(codex)에서 사유가 유실돼 하류 분류기(circuit/quality gate)가
           // 못 보는 문제 방지 (실측 2026-07-03: "hit your usage limit"이 stdout으로만 출력)
           // tail 300자 사용 — head는 CLI 배너/프롬프트 에코가 차지해 실제 오류 문구(끝부분)가
-          // 유실됨 (E2E 실측 2026-07-03: head 300엔 배너만 담기고 usage limit 문구 누락)
+          // 유실됨 (E2E 실측 2026-07-03: head 300엔 배너만 담기고 usage limit 문구 누락).
+          // stderr도 마커에는 tail을 쓴다 — codex는 배너·에코·ERROR 전부를 stderr로 내보내며
+          // (stdout 빈 값), head 500은 배너·에코에 잠식되어 꼬리의 quota 문구가 또 잘렸음
+          // (라이브 E2E 실측 2026-07-03: 응답 545자 = 마커+stderr head, usage limit 미노출).
+          const stderrTail = stripAnsi(result.stderr || '').trim().slice(-300);
           const stdoutSummary = stripAnsi(result.stdout || '').trim().slice(-300);
-          const parts = [stderrSummary, stdoutSummary].filter(Boolean).join(' | ');
+          const parts = [stderrTail, stdoutSummary].filter(Boolean).join(' | ');
           const suffix = parts ? ` — ${parts}` : '';
           return `[codex: no final response — process ${status}]${suffix}`;
         }
