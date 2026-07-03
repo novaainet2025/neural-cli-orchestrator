@@ -16,6 +16,19 @@ interface RouteDecision {
   reasoning: string;
 }
 
+export class ProviderSelectionError extends Error {
+  constructor(
+    message: string,
+    readonly mode: DiscussionMode,
+    readonly requiredMinimum: number,
+    readonly eligibleProviders: string[],
+    readonly availableProviders: string[],
+  ) {
+    super(message);
+    this.name = 'ProviderSelectionError';
+  }
+}
+
 // Keyword → mode trigger map
 const KEYWORD_TRIGGERS: Array<{ pattern: RegExp; mode: DiscussionMode; minAI: number }> = [
   { pattern: /아키텍처|architecture|설계|design/i, mode: 'discussion', minAI: 3 },
@@ -118,24 +131,22 @@ class SmartRouter {
       }
     }
 
-    if (available.length === 0) {
-      const localFallback = sortProvidersByCostOrder(
-        allProviders.filter(id => id === 'ollama' || id === 'mlx'),
+    const targetCount = count || this.getTargetCount(mode);
+    const sorted = sortProvidersByCostOrder(available);
+    const selected = sorted.slice(0, targetCount);
+    const requiredMinimum = this.getMinimumCount(mode);
+
+    if (selected.length < requiredMinimum) {
+      throw new ProviderSelectionError(
+        `insufficient available providers for ${mode}`,
+        mode,
+        requiredMinimum,
+        selected,
+        sorted,
       );
-      if (localFallback.length > 0) {
-        log.warn({ providers: localFallback }, 'All providers unavailable — using local fallback');
-        return localFallback.slice(0, count || localFallback.length);
-      }
-      log.warn('No available providers — falling back to all enabled');
-      return allProviders.slice(0, count || 1);
     }
 
-    // Determine count by mode
-    const targetCount = count || this.getTargetCount(mode);
-
-    const sorted = sortProvidersByCostOrder(available);
-
-    return sorted.slice(0, targetCount);
+    return selected;
   }
 
   /**
@@ -187,6 +198,16 @@ class SmartRouter {
       case 'hive': return 9;
       case 'broadcast': return 9;
       case 'commander': return 5;
+      default: return 1;
+    }
+  }
+
+  private getMinimumCount(mode: DiscussionMode): number {
+    switch (mode) {
+      case 'parallel': return 2;
+      case 'discussion': return 3;
+      case 'consensus': return 3;
+      case 'hive': return 2;
       default: return 1;
     }
   }

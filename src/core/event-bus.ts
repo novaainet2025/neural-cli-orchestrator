@@ -26,6 +26,7 @@ const PERSIST_TYPES = new Set([
   'discussion:started', 'discussion:completed',
   'discussion:round_completed', 'discussion:consensus_reached',
   'system:error', 'system:rate_limit',
+  'provider:available',
 ]);
 
 export class EventBus {

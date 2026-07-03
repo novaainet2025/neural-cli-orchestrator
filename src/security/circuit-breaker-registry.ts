@@ -1,5 +1,6 @@
 import { getDb } from '../storage/database.js';
 import { sharedState } from '../core/shared-state.js';
+import { eventBus } from '../core/event-bus.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('circuit-breaker-registry');
@@ -21,6 +22,23 @@ export interface ClassifiedCircuitError {
   immediateOpen: boolean;
   resetTime: number | null;
   matchedText: string;
+}
+
+export type ProviderAvailability =
+  | 'available'
+  | 'gated:quota'
+  | 'gated:rate-limit'
+  | 'gated:auth'
+  | 'gated:generic'
+  | 'probe';
+
+export interface ProviderAvailabilitySnapshot {
+  agentId: string;
+  status: ProviderAvailability;
+  available: boolean;
+  reason: CircuitReason | null;
+  circuitState: CircuitState;
+  cooldownUntil: string | null;
 }
 
 interface CircuitRow {
@@ -200,6 +218,16 @@ class CircuitBreakerRegistry {
       reason: null,
     };
     this.commit(next, 'Circuit closed after success');
+
+    if (current.state === 'half-open' || current.state === 'open') {
+      void eventBus.publish({
+        type: 'provider:available',
+        agentId,
+        previousState: current.state,
+        state: 'closed',
+        reasonCleared: current.reason,
+      });
+    }
   }
 
   recordFailure(agentId: string, rawError?: string): void {
@@ -256,6 +284,35 @@ class CircuitBreakerRegistry {
 
   getSnapshot(agentId: string): CircuitSnapshot {
     return { ...this.ensure(agentId) };
+  }
+
+  getAvailability(agentId: string): ProviderAvailabilitySnapshot {
+    const snapshot = this.ensure(agentId);
+    const isOpenProbeEligible = snapshot.state === 'open'
+      && snapshot.reason !== 'auth'
+      && snapshot.cooldownUntil != null
+      && Date.now() >= snapshot.cooldownUntil;
+    const status = snapshot.state === 'half-open'
+      || isOpenProbeEligible
+      ? 'probe'
+      : snapshot.state === 'closed'
+        ? 'available'
+        : snapshot.reason === 'quota'
+          ? 'gated:quota'
+          : snapshot.reason === 'rate-limit'
+            ? 'gated:rate-limit'
+            : snapshot.reason === 'auth'
+              ? 'gated:auth'
+              : 'gated:generic';
+
+    return {
+      agentId,
+      status,
+      available: status === 'available',
+      reason: snapshot.reason,
+      circuitState: snapshot.state,
+      cooldownUntil: snapshot.cooldownUntil == null ? null : new Date(snapshot.cooldownUntil).toISOString(),
+    };
   }
 
   listSnapshots(agentIds?: string[]): CircuitSnapshot[] {

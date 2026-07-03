@@ -14,6 +14,10 @@ import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
 import { taskQueue } from '../core/task-queue.js';
 import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
+import {
+  circuitBreakerRegistry,
+  type ProviderAvailabilitySnapshot,
+} from '../security/circuit-breaker-registry.js';
 
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
 function detectFailedCompletion(response: string | null | undefined): boolean {
@@ -69,6 +73,84 @@ function withTaskRuntime<T extends { id: string; last_activity_at?: string | nul
     liveness: runtime.liveness,
   };
 }
+
+function listAvailableProviders(exclude: string[] = []): string[] {
+  const excluded = new Set(exclude);
+  return sortProvidersByCostOrder(agentManager.listEnabledIds())
+    .filter(agentId => !excluded.has(agentId))
+    .filter(agentId => circuitBreakerRegistry.getAvailability(agentId).status === 'available');
+}
+
+function toGateResponse(availability: ProviderAvailabilitySnapshot) {
+  return {
+    status: availability.status,
+    reason: availability.reason,
+    circuitState: availability.circuitState,
+    cooldownUntil: availability.cooldownUntil,
+  };
+}
+
+function buildProviderGatedBody(requestedProvider: string) {
+  const availability = circuitBreakerRegistry.getAvailability(requestedProvider);
+  const availableProviders = listAvailableProviders([requestedProvider]);
+  return {
+    error: 'provider_gated',
+    requestedProvider,
+    gate: toGateResponse(availability),
+    availableProviders,
+    suggestedProvider: availableProviders[0] ?? null,
+    canFailover: availableProviders.length > 0,
+  };
+}
+
+function selectTaskProvider(requestedProvider: string, allowProviderFailover: boolean) {
+  const availability = circuitBreakerRegistry.getAvailability(requestedProvider);
+  if (availability.status === 'available' || availability.status === 'probe') {
+    return { agentId: requestedProvider };
+  }
+
+  const availableProviders = listAvailableProviders([requestedProvider]);
+  if (!allowProviderFailover || availableProviders.length === 0) {
+    return { error: buildProviderGatedBody(requestedProvider) };
+  }
+
+  return {
+    agentId: availableProviders[0],
+    failover: {
+      applied: true,
+      originalProvider: requestedProvider,
+      originalGate: availability.status,
+    },
+  };
+}
+
+function resolveRealtimeProviders(mode: RealtimeGateMode, requestedProviders?: string[]) {
+  const requiredMinimum = REALTIME_MINIMUMS[mode];
+  const providers = requestedProviders && requestedProviders.length > 0
+    ? requestedProviders
+    : listAvailableProviders().slice(0, Math.max(requiredMinimum, 3));
+  const gatedProviders = providers
+    .map(id => ({ id, gate: circuitBreakerRegistry.getAvailability(id) }))
+    .filter(entry => entry.gate.status !== 'available')
+    .map(entry => ({ id: entry.id, gate: entry.gate.status }));
+  const eligibleProviders = providers.filter(id => circuitBreakerRegistry.getAvailability(id).status === 'available');
+
+  if (eligibleProviders.length < requiredMinimum) {
+    return {
+      ok: false as const,
+      body: {
+        error: 'insufficient_available_providers',
+        mode,
+        requestedProviders: providers,
+        eligibleProviders,
+        gatedProviders,
+        requiredMinimum,
+      },
+    };
+  }
+
+  return { ok: true as const, providers: eligibleProviders };
+}
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
 import { registerCircuitRoutes } from './routes/circuit.js';
@@ -78,10 +160,19 @@ import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
-import { sortProvidersByCostOrder } from '../core/smart-router.js';
+import { ProviderSelectionError, sortProvidersByCostOrder } from '../core/smart-router.js';
 
 const log = createLogger('gateway');
 let draining = false;
+
+const REALTIME_MINIMUMS = {
+  parallel: 2,
+  discussion: 3,
+  consensus: 3,
+  hive: 2,
+} as const;
+
+type RealtimeGateMode = keyof typeof REALTIME_MINIMUMS;
 
 function rejectWhileDraining(reply: FastifyReply) {
   reply.code(503);
@@ -303,7 +394,14 @@ export async function createGateway() {
     }
     const input = parsed.data;
     const taskId = createTaskId();
-    const agentId = input.ai ?? 'claude-code';
+    const requestedProvider = input.ai ?? 'claude-code';
+    const allowProviderFailover = input.metadata?.allowProviderFailover === true;
+    const providerSelection = selectTaskProvider(requestedProvider, allowProviderFailover);
+    if ('error' in providerSelection) {
+      reply.code(409);
+      return providerSelection.error;
+    }
+    const agentId = providerSelection.agentId;
 
     // Extract caller context for invocation tracking
     const body = req.body as any;
@@ -385,7 +483,14 @@ export async function createGateway() {
       });
 
     reply.code(202);
-    return { taskId, status: 'queued', agentId, invocationId };
+    return {
+      taskId,
+      status: 'queued',
+      agentId,
+      invocationId,
+      requestedProvider: providerSelection.failover ? requestedProvider : undefined,
+      failover: providerSelection.failover,
+    };
   });
 
   app.post('/api/tasks', async (req, reply) => {
@@ -637,6 +742,11 @@ export async function createGateway() {
     }
 
     const input = CreateDiscussionInput.parse(req.body);
+    const gated = resolveRealtimeProviders('discussion', input.providers);
+    if (!gated.ok) {
+      reply.code(409);
+      return gated.body;
+    }
     reply.code(202);
 
     // Pre-create sessionId and inject it — both client and DB use the same ID
@@ -646,7 +756,7 @@ export async function createGateway() {
     discussionEngine.startDiscussion({
       topic: input.prompt,
       mode: input.mode as any,
-      providers: input.providers,
+      providers: gated.providers,
       maxRounds: input.maxRounds,
       consensusThreshold: input.consensusThreshold,
       sessionId,
@@ -666,7 +776,7 @@ export async function createGateway() {
       })
       .catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
 
-    return { sessionId, status: 'started', mode: input.mode };
+    return { sessionId, status: 'started', mode: input.mode, providers: gated.providers };
   });
 
   app.post('/api/realtime/parallel', async (req, reply) => {
@@ -675,7 +785,12 @@ export async function createGateway() {
     }
 
     const body = req.body as any;
-    const providers = body.providers || sortProvidersByCostOrder(agentManager.listEnabledIds()).slice(0, 3);
+    const gated = resolveRealtimeProviders('parallel', body.providers);
+    if (!gated.ok) {
+      reply.code(409);
+      return gated.body;
+    }
+    const providers = gated.providers;
     reply.code(202);
 
     const db = getDb();
@@ -703,6 +818,11 @@ export async function createGateway() {
     }
 
     const input = CreateDiscussionInput.parse(req.body);
+    const gated = resolveRealtimeProviders('consensus', input.providers);
+    if (!gated.ok) {
+      reply.code(409);
+      return gated.body;
+    }
     reply.code(202);
 
     const sessionId = createSessionId();
@@ -711,7 +831,7 @@ export async function createGateway() {
     discussionEngine.startDiscussion({
       topic: input.prompt,
       mode: 'consensus',
-      providers: input.providers,
+      providers: gated.providers,
       consensusThreshold: input.consensusThreshold,
       sessionId,
     })
@@ -726,7 +846,7 @@ export async function createGateway() {
       })
       .catch(err => log.error({ err: err.message, sessionId }, 'Consensus failed'));
 
-    return { sessionId, status: 'started', mode: 'consensus' };
+    return { sessionId, status: 'started', mode: 'consensus', providers: gated.providers };
   });
 
   app.post('/api/discussion/create', async (req, reply) => {
@@ -1388,7 +1508,12 @@ export async function createGateway() {
 
     const { prompt, providers } = req.body as any;
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
-    const allProviders = providers || agentManager.listEnabledIds();
+    const gated = resolveRealtimeProviders('hive', providers);
+    if (!gated.ok) {
+      reply.code(409);
+      return gated.body;
+    }
+    const allProviders = gated.providers;
     reply.code(202);
 
     const sessionId = createSessionId();
@@ -1537,7 +1662,26 @@ export async function createGateway() {
     const { prompt } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
 
-    const decision = await smartRouter.dispatch(prompt);
+    let decision;
+    try {
+      decision = await smartRouter.dispatch(prompt);
+    } catch (err) {
+      if (err instanceof ProviderSelectionError) {
+        reply.code(409);
+        return {
+          error: 'insufficient_available_providers',
+          mode: err.mode,
+          requestedProviders: err.availableProviders,
+          eligibleProviders: err.eligibleProviders,
+          gatedProviders: agentManager.listEnabledIds()
+            .filter(id => !err.availableProviders.includes(id))
+            .map(id => ({ id, gate: circuitBreakerRegistry.getAvailability(id).status }))
+            .filter(entry => entry.gate !== 'available'),
+          requiredMinimum: err.requiredMinimum,
+        };
+      }
+      throw err;
+    }
 
     // Delegate to the appropriate mode endpoint handler
     const db = getDb();

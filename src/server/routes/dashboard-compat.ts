@@ -588,6 +588,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const avgDurationMs = stats?.avg_ms ? Math.round(stats.avg_ms) : 0;
       // CircuitBreaker 상태 수집 — registry가 단일 진실원 (구 sandbox breaker는 registry와 불일치, kangnote 2026-07-02 보고)
       const cb = circuitBreakerRegistry.getSnapshot(p.id);
+      const availability = circuitBreakerRegistry.getAvailability(p.id);
       // 마지막 실패 이유: DB 태스크 response에서 추출
       const rawLastError = lastFailMap.get(p.id) ?? null;
       const lastError = rawLastError
@@ -622,6 +623,12 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         failedLast24h: fail24hMap.get(p.id) ?? 0,
         status: agentStatus,
         health,
+        gate: {
+          status: availability.status,
+          reason: availability.reason,
+          available: availability.available,
+          cooldownUntil: availability.cooldownUntil,
+        },
       };
     });
 
