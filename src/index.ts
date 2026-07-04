@@ -7,6 +7,7 @@ import { eventBus } from './core/event-bus.js';
 import { sharedState } from './core/shared-state.js';
 import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
+import { circuitBreakerRegistry } from './security/circuit-breaker-registry.js';
 import { sessionManager } from './agent/session-manager.js';
 import { taskQueue } from './core/task-queue.js';
 import { transitionTask } from './core/task-state.js';
@@ -30,6 +31,25 @@ interface OrphanRequeue {
 
 /** poison task(재시작을 유발한 태스크)의 무한 재큐잉을 막는 상한 */
 const MAX_ORPHAN_REQUEUE = 2;
+
+/**
+ * B: 위임 대상 프로바이더가 가용하지 않으면(circuit open 등) 건강한 대체 프로바이더를 고른다.
+ * 같은 role 우선, 없으면 아무 available. 하나도 없으면 null(→ 재큐잉 보류).
+ * "리밋/다운 걸린 프로바이더에 위임하지 않는다"의 핵심 로직.
+ */
+function pickHealthyProvider(preferredId: string): string | null {
+  const isUp = (id: string): boolean => {
+    if (!agentManager.listEnabledIds().includes(id)) return false;
+    const s = circuitBreakerRegistry.getAvailability(id).status;
+    return s === 'available' || s === 'probe';
+  };
+  if (isUp(preferredId)) return preferredId;
+  const preferredRole = agentManager.getProvider(preferredId)?.role;
+  const healthy = agentManager.listEnabledIds().filter(isUp);
+  if (healthy.length === 0) return null;
+  const sameRole = healthy.find(id => agentManager.getProvider(id)?.role === preferredRole);
+  return sameRole ?? healthy[0];
+}
 
 /**
  * 부팅 시 in-flight(queued/assigned/running/streaming) 태스크 복구.
@@ -148,16 +168,29 @@ async function boot(): Promise<void> {
   });
   await taskQueue.init(loadEnabledProviders());
 
-  // 7b-2. orphan 재큐잉: 큐 준비 후 실제 enqueue (A: 재시작 in-flight 태스크를 fail 대신 재실행)
+  // 7b-2. orphan 재큐잉: 큐 준비 후 실제 enqueue (A: 재시작 in-flight 태스크를 fail 대신 재실행).
+  //        B: 원래 프로바이더가 죽어있으면 건강한 대체로 재라우팅(죽은 곳 재큐잉 루프 방지).
+  let reEnqueued = 0, reRouted = 0;
   for (const o of orphanRecovery.requeued) {
+    const target = pickHealthyProvider(o.agentId);
+    if (!target) {
+      log.warn({ taskId: o.taskId, agent: o.agentId }, 'orphan re-enqueue보류 — 건강한 프로바이더 없음(다음 부팅 재시도)');
+      continue;
+    }
+    if (target !== o.agentId) {
+      try { getDb().prepare('UPDATE tasks SET assigned_to=? WHERE id=?').run(target, o.taskId); } catch { /* best-effort */ }
+      log.info({ taskId: o.taskId, from: o.agentId, to: target }, 'orphan re-routed to healthy provider');
+      reRouted++;
+    }
     try {
-      taskQueue.enqueue({ taskId: o.taskId, agentId: o.agentId, prompt: o.prompt, systemPrompt: o.systemPrompt, verifier: o.verifier });
+      taskQueue.enqueue({ taskId: o.taskId, agentId: target, prompt: o.prompt, systemPrompt: o.systemPrompt, verifier: o.verifier });
+      reEnqueued++;
     } catch (e) {
       log.warn({ taskId: o.taskId, err: (e as Error).message }, 'orphan re-enqueue failed');
     }
   }
-  if (orphanRecovery.requeued.length > 0) {
-    log.info({ count: orphanRecovery.requeued.length }, 'Orphaned tasks re-enqueued for retry');
+  if (reEnqueued > 0) {
+    log.info({ reEnqueued, reRouted }, 'Orphaned tasks re-enqueued for retry');
   }
 
   // 7c. Internal cron jobs

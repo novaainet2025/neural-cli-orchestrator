@@ -123,13 +123,20 @@ function selectTaskProvider(requestedProvider: string, allowProviderFailover: bo
     return { agentId: requestedProvider };
   }
 
+  // B2: 요청 프로바이더가 gated(리밋/다운/circuit open)면 — allowProviderFailover 여부와 무관하게 —
+  //     건강한 '같은 role' 프로바이더로 자동 failover한다. 같은 role 건강한 곳이 없으면 409로 명확히 거부
+  //     (엉뚱한 role로 크로스 라우팅해 '가짜 성공' 내는 것 방지). "리밋 걸린 곳엔 위임 안 한다"의 인테이크 구현.
   const availableProviders = listAvailableProviders([requestedProvider]);
-  if (!allowProviderFailover || availableProviders.length === 0) {
+  const requestedRole = agentManager.getProvider(requestedProvider)?.role;
+  const sameRoleHealthy = availableProviders.filter(id => agentManager.getProvider(id)?.role === requestedRole);
+  const failoverTarget = sameRoleHealthy[0]
+    ?? (allowProviderFailover ? availableProviders[0] : undefined); // 명시적 opt-in 시에만 크로스role 허용
+  if (!failoverTarget) {
     return { error: buildProviderGatedBody(requestedProvider) };
   }
 
   return {
-    agentId: availableProviders[0],
+    agentId: failoverTarget,
     failover: {
       applied: true,
       originalProvider: requestedProvider,
