@@ -4,6 +4,7 @@ import { kanbanEngine } from './kanban-engine.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
 import { LAYER_TIER_AGENTS, tierOf } from './tier-policy.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 const log = createLogger('commander');
 
@@ -216,17 +217,22 @@ class Commander {
   private pickAvailableAgent(layer: LayerName): string {
     const layerAgents = LAYERS[layer].agents;
     const enabledIds = new Set(agentManager.listEnabledIds());
+    // 사용가능 = enabled + circuit open 아님. circuit-open(에러/한도초과) 에이전트를
+    // 건너뛰어 같은 tier 다음 후보로 폴백한다 (예: quality에서 cursor-agent 한도초과 → ollama).
+    const usable = (id: string): boolean =>
+      enabledIds.has(id) && circuitBreakerRegistry.getSnapshot(id).state !== 'open';
 
     for (const agentId of layerAgents) {
-      if (enabledIds.has(agentId)) {
+      if (usable(agentId)) {
         log.info({ layer, agentId, tier: tierOf(agentId) },
           `layer ${layer} → ${agentId} (${tierOf(agentId)})`);
         return agentId;
       }
     }
 
-    // Fallback: any enabled agent (모든 우선 에이전트 불가 시)
-    const fallback = agentManager.listEnabledIds()[0] || layerAgents[0];
+    // 계층 후보 전부 불가 → enabled+circuit닫힘 아무거나, 그것도 없으면 enabled 첫번째
+    const anyUsable = agentManager.listEnabledIds().find(usable);
+    const fallback = anyUsable || agentManager.listEnabledIds()[0] || layerAgents[0];
     log.warn({ layer, fallback, tier: tierOf(fallback) },
       `layer ${layer}: 우선 에이전트 모두 불가 → fallback ${fallback}`);
     return fallback;
