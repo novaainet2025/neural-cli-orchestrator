@@ -95,8 +95,12 @@ export const LAYER_TIER_AGENTS: Record<string, string[]> = {
   management: ['claude-code', 'opencode'],
   // 두뇌 리서치 + 무료 fallback
   information: ['copilot', 'openrouter', 'nvidia'],
-  // 워커: 무료 로컬 대량 구현. 전부 불가 시 codex(유료)로 escalation
-  execution: ['mlx', 'ollama', 'hermes', 'aider', 'codex'],
+  // 워커: 무료 전체를 로컬우선→무료클라우드 순으로 나열(WORKER_TIER 그대로 재사용).
+  // 머신에 로컬 LLM이 없으면(저사양 원격: subnote/kangnote 등) mlx/ollama/hermes가
+  // enabled 안 돼 자동으로 무료 클라우드(nvidia/openrouter)로 폴백, 무료가 전무하면
+  // codex(유료)로 escalation. pickAvailableAgent가 enabled+circuit로 필터하므로
+  // 머신별 자동 적응 — 하드코딩 없이 사양별 유연 배정 ([[feedback_ollama_lowspec_exclude]]).
+  execution: [...WORKER_TIER, 'codex'],
   // 두뇌 리뷰 + 무료 QA fallback
   quality: ['cursor-agent', 'ollama', 'nvidia'],
 };
