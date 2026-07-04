@@ -19,40 +19,77 @@ import { getTopologyHTML } from './server/topology.js';
 
 const log = createLogger('main');
 
-function recoverOrphanedTasks(): number {
+/** 재큐잉 대상 orphan (부팅 후 taskQueue 준비되면 실제 enqueue) */
+interface OrphanRequeue {
+  taskId: string;
+  agentId: string;
+  prompt: string;
+  systemPrompt?: string;
+  verifier?: { type: 'run'; command: string; timeoutMs?: number };
+}
+
+/** poison task(재시작을 유발한 태스크)의 무한 재큐잉을 막는 상한 */
+const MAX_ORPHAN_REQUEUE = 2;
+
+/**
+ * 부팅 시 in-flight(queued/assigned/running/streaming) 태스크 복구.
+ * 기존: 전부 failed+dead-letter로 종결(재시작마다 대량 실패 발생 — task 실패 근본원인 A).
+ * 변경: 재큐잉 카운트 < MAX면 status='queued'로 되돌리고 재큐잉 목록에 담아 반환한다.
+ *       (부팅 후 taskQueue.enqueue로 실제 재실행). agent 없음/poison(상한 초과)만 dead-letter.
+ */
+function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: number } {
   const db = getDb();
   const orphans = db.prepare(`
-    SELECT id, assigned_to, prompt
+    SELECT id, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
     FROM tasks
     WHERE status IN ('queued', 'assigned', 'running', 'streaming')
-  `).all() as Array<{ id: string; assigned_to: string | null; prompt: string }>;
+  `).all() as Array<{
+    id: string; assigned_to: string | null; prompt: string;
+    system_prompt: string | null; verifier_json: string | null; orphan_requeue_count: number;
+  }>;
 
   const insertDeadLetter = db.prepare(`
     INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
     VALUES (?, ?, ?, ?)
   `);
+  const requeueStmt = db.prepare(`
+    UPDATE tasks
+    SET status='queued', orphan_requeue_count = orphan_requeue_count + 1,
+        error=NULL, updated_at=datetime('now')
+    WHERE id=?
+  `);
 
-  const recoverOne = db.transaction((task: { id: string; assigned_to: string | null; prompt: string }) => {
-    const moved = transitionTask(db, task.id, 'failed', {
-      error: 'orphaned: server restart',
-      completedAt: true,
-    });
-    if (!moved.ok) {
-      return false;
+  const requeued: OrphanRequeue[] = [];
+  let deadLettered = 0;
+
+  const handleOne = db.transaction((task: typeof orphans[number]): OrphanRequeue | null => {
+    // agent 미지정 or poison(재큐잉 상한 초과) → dead-letter (기존 동작 유지)
+    if (!task.assigned_to || (task.orphan_requeue_count ?? 0) >= MAX_ORPHAN_REQUEUE) {
+      const reason = !task.assigned_to
+        ? 'orphaned: server restart (no agent)'
+        : `orphaned: server restart (poison — requeued ${task.orphan_requeue_count}x)`;
+      const moved = transitionTask(db, task.id, 'failed', { error: reason, completedAt: true });
+      if (moved.ok) insertDeadLetter.run(task.id, task.assigned_to, task.prompt, reason);
+      deadLettered++;
+      return null;
     }
-
-    insertDeadLetter.run(task.id, task.assigned_to, task.prompt, 'orphaned: server restart');
-    return true;
+    // 재큐잉: status를 queued로 되돌리고 카운트 증가. 실제 enqueue는 부팅 후.
+    requeueStmt.run(task.id);
+    return {
+      taskId: task.id,
+      agentId: task.assigned_to,
+      prompt: task.prompt,
+      systemPrompt: task.system_prompt ?? undefined,
+      verifier: task.verifier_json ? JSON.parse(task.verifier_json) : undefined,
+    };
   });
 
-  let recovered = 0;
   for (const task of orphans) {
-    if (recoverOne(task)) {
-      recovered++;
-    }
+    const r = handleOne(task);
+    if (r) requeued.push(r);
   }
 
-  return recovered;
+  return { requeued, deadLettered };
 }
 
 async function boot(): Promise<void> {
@@ -67,8 +104,8 @@ async function boot(): Promise<void> {
   log.info('Initializing database...');
   const db = getDb();
   runMigrations();
-  const orphanedCount = recoverOrphanedTasks();
-  log.warn({ count: orphanedCount }, 'Startup orphan recovery processed');
+  const orphanRecovery = recoverOrphanedTasks();
+  log.warn({ requeue: orphanRecovery.requeued.length, deadLetter: orphanRecovery.deadLettered }, 'Startup orphan recovery processed');
 
   // 2. Redis
   log.info('Connecting to Redis...');
@@ -110,6 +147,18 @@ async function boot(): Promise<void> {
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
   await taskQueue.init(loadEnabledProviders());
+
+  // 7b-2. orphan 재큐잉: 큐 준비 후 실제 enqueue (A: 재시작 in-flight 태스크를 fail 대신 재실행)
+  for (const o of orphanRecovery.requeued) {
+    try {
+      taskQueue.enqueue({ taskId: o.taskId, agentId: o.agentId, prompt: o.prompt, systemPrompt: o.systemPrompt, verifier: o.verifier });
+    } catch (e) {
+      log.warn({ taskId: o.taskId, err: (e as Error).message }, 'orphan re-enqueue failed');
+    }
+  }
+  if (orphanRecovery.requeued.length > 0) {
+    log.info({ count: orphanRecovery.requeued.length }, 'Orphaned tasks re-enqueued for retry');
+  }
 
   // 7c. Internal cron jobs
   loadCronJobs();
