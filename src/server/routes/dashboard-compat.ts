@@ -13,6 +13,8 @@ import { discussionEngine } from '../../core/discussion-engine.js';
 import { createTaskId, createSessionId, createMessageId } from '../../utils/id.js';
 import { env } from '../../utils/config.js';
 import { getPushReports } from './fleet-ops.js';
+import type { FleetReportActivitySummary } from './fleet-ops.js';
+import { summarizeTeamWorkflow } from './teams.js';
 import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -825,9 +827,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       'SELECT assigned_to, status FROM tasks ORDER BY created_at DESC LIMIT 500'
     ).all() as any[];
 
-    // 실행 중인 태스크 맵
+    // 실행 중 + 최근 완료(잔광 10초) 태스크 맵 — 빠른 작업 가시성(afterglow):
+    // 폴 주기(5~15초) 사이에 끝난 hermes/mlx 검증도 잠깐 working 으로 보이게 한다.
     const activeTasks = db.prepare(
-      "SELECT assigned_to, prompt FROM tasks WHERE status IN ('running','streaming','assigned') ORDER BY created_at DESC"
+      `SELECT assigned_to, prompt, status FROM tasks
+       WHERE status IN ('running','streaming','assigned')
+          OR (status='completed' AND completed_at IS NOT NULL AND completed_at > datetime('now','-10 seconds'))
+       ORDER BY created_at DESC`
     ).all() as any[];
     const activeMap = new Map<string, string>();
     for (const t of activeTasks) {
@@ -835,6 +841,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         activeMap.set(t.assigned_to, t.prompt?.slice(0, 80) ?? '');
       }
     }
+    // CLI 세션 → 대상 provider 위임 집계 (spawned_by_cli 귀속) — 최근 30분
+    const delegRows = db.prepare(
+      `SELECT spawned_by_cli, assigned_to, status FROM tasks
+       WHERE spawned_by_cli IS NOT NULL AND assigned_to IS NOT NULL
+         AND created_at > datetime('now','-30 minutes')
+       ORDER BY created_at DESC LIMIT 500`
+    ).all() as any[];
 
     // sharedState도 참조
     const states = await sharedState.getAllAgentStates();
@@ -984,9 +997,50 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         }
       });
 
-      // 사람 세션 → claude-code 엣지 (기본 연결)
+      // 세션 → 실제 위임 대상 provider 엣지 (spawned_by_cli 귀속).
+      // spawned_by_cli(예: 'claude-1')를 session 노드로 해석:
+      //   inter-session 이름은 <device>-claude-N, NCO_NAME은 claude-N 이므로
+      //   'claude-1' → session:claude-1 (직접) 또는 session:<device>-claude-1 (suffix) 매칭.
+      const resolveSessionNode = (cli: string): string | null => {
+        if (!cli) return null;
+        const direct = `session:${cli}`;
+        if (sessionNodeIds.includes(direct)) return direct;
+        return sessionNodeIds.find(id => id.endsWith(`-${cli}`)) ?? null;
+      };
+      // (세션,provider) → {count, active}
+      const delegAgg = new Map<string, { src: string; tgt: string; count: number; active: boolean }>();
+      const workingSessions = new Set<string>();
+      for (const d of delegRows) {
+        const src = resolveSessionNode(String(d.spawned_by_cli));
+        const tgt = String(d.assigned_to);
+        if (!src || !nodeIds.has(tgt)) continue;
+        const isActive = d.status === 'running' || d.status === 'streaming' || d.status === 'assigned';
+        const key = `${src}::${tgt}`;
+        const cur = delegAgg.get(key) ?? { src, tgt, count: 0, active: false };
+        cur.count += 1;
+        cur.active = cur.active || isActive;
+        delegAgg.set(key, cur);
+        if (isActive) workingSessions.add(src);
+      }
+      // 위임 엣지 추가 — 실제 오케스트레이션(누가 무엇에 위임했는지) 표시
+      for (const { src, tgt, count, active } of delegAgg.values()) {
+        (edges as any[]).push({
+          id: `e-spawn-${src}-${tgt}`,
+          source: src,
+          target: tgt,
+          animated: active,
+          data: { collaborationCount: count, type: 'spawn', active },
+          style: { strokeWidth: Math.min(1 + Math.floor(count / 2), 5), stroke: '#a78bfa' },
+        });
+      }
+      // 세션 working 상태 반영 + claude-code fallback 엣지(위임 이력 없는 세션만 — 무분별한 붕괴 방지)
+      const sessionsWithDeleg = new Set([...delegAgg.values()].map(d => d.src));
       for (const sid of sessionNodeIds) {
-        if (nodeIds.has('claude-code')) {
+        if (workingSessions.has(sid)) {
+          const sn = (nodes as any[]).find(n => n.id === sid);
+          if (sn) sn.data.status = 'working';
+        }
+        if (!sessionsWithDeleg.has(sid) && nodeIds.has('claude-code')) {
           (edges as any[]).push({
             id: `e-${sid}-claude-code`,
             source: sid,
@@ -994,6 +1048,172 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             animated: false,
             data: { collaborationCount: 1, type: 'session' },
             style: { strokeWidth: 1 },
+          });
+        }
+      }
+    } catch {}
+
+    try {
+      const organizationRows = db.prepare(`
+        SELECT
+          o.id,
+          o.name,
+          o.graph_type,
+          o.parent_id,
+          COUNT(t.id) AS teamCount
+        FROM organizations o
+        LEFT JOIN teams t ON t.organization_id = o.id
+        GROUP BY o.id, o.name, o.graph_type, o.parent_id
+        ORDER BY o.created_at ASC, o.name ASC
+      `).all() as Array<{
+        id: string;
+        name: string;
+        graph_type: string;
+        parent_id: string | null;
+        teamCount: number;
+      }>;
+      const teamRows = db.prepare(`
+        SELECT id, organization_id, name, color, created_at
+        FROM teams
+        ORDER BY created_at ASC, name ASC
+      `).all() as Array<{
+        id: string;
+        organization_id: string | null;
+        name: string;
+        color: string | null;
+        created_at: string | null;
+      }>;
+      const memberRows = db.prepare(`
+        SELECT team_id, member_type, member_ref
+        FROM team_members
+        ORDER BY created_at ASC, id ASC
+      `).all() as Array<{
+        team_id: string;
+        member_type: 'provider' | 'session' | 'nco-session';
+        member_ref: string;
+      }>;
+      const teamTaskRows = db.prepare(`
+        SELECT team_id, mode, status, prompt, created_at
+        FROM tasks
+        WHERE team_id IS NOT NULL
+        ORDER BY created_at DESC
+      `).all() as Array<{
+        team_id: string | null;
+        mode: string | null;
+        status: string | null;
+        prompt: string | null;
+        created_at: string | null;
+      }>;
+
+      const membersByTeam = new Map<string, Array<{ member_type: 'provider' | 'session' | 'nco-session'; member_ref: string }>>();
+      for (const row of memberRows) {
+        const list = membersByTeam.get(row.team_id) ?? [];
+        list.push({ member_type: row.member_type, member_ref: row.member_ref });
+        membersByTeam.set(row.team_id, list);
+      }
+
+      const tasksByTeam = new Map<string, Array<{
+        team_id: string | null;
+        mode: string | null;
+        status: string | null;
+        prompt: string | null;
+        created_at: string | null;
+      }>>();
+      for (const row of teamTaskRows) {
+        if (!row.team_id) continue;
+        const list = tasksByTeam.get(row.team_id) ?? [];
+        list.push(row);
+        tasksByTeam.set(row.team_id, list);
+      }
+
+      const activeTeamsByOrg = new Map<string, number>();
+      const graphNodeIds = new Set((nodes as any[]).map((node: any) => node.id));
+
+      organizationRows.forEach((org, i) => {
+        const x = 400 + (i - ((organizationRows.length - 1) / 2)) * 240;
+        (nodes as any[]).push({
+          id: `org:${org.id}`,
+          type: org.graph_type || 'nova-ax',
+          position: { x, y: 80 },
+          data: {
+            label: org.name,
+            teamCount: org.teamCount,
+            activeTeams: 0,
+          },
+        });
+      });
+
+      teamRows.forEach((team, i) => {
+        const relatedTasks = tasksByTeam.get(team.id) ?? [];
+        const workflow = summarizeTeamWorkflow(relatedTasks);
+        const activeTask = relatedTasks.find(t => ['assigned', 'running', 'streaming', 'reviewing'].includes(String(t.status ?? '')))?.prompt?.slice(0, 60) ?? null;
+        const isWorking = activeTask !== null;
+        if (isWorking && team.organization_id) {
+          activeTeamsByOrg.set(team.organization_id, (activeTeamsByOrg.get(team.organization_id) ?? 0) + 1);
+        }
+
+        (nodes as any[]).push({
+          id: `team:${team.id}`,
+          type: 'team',
+          position: { x: 200 + (i * 220), y: 170 },
+          data: {
+            label: team.name,
+            color: team.color,
+            members: (membersByTeam.get(team.id) ?? []).map(member => member.member_ref),
+            organizationId: team.organization_id,
+            workflow,
+            activeTask,
+            status: isWorking ? 'working' : 'idle',
+          },
+        });
+      });
+
+      for (const org of organizationRows) {
+        const node = (nodes as any[]).find((entry: any) => entry.id === `org:${org.id}`);
+        if (node) node.data.activeTeams = activeTeamsByOrg.get(org.id) ?? 0;
+
+        if (org.parent_id) {
+          (edges as any[]).push({
+            id: `e-org-parent-${org.parent_id}-${org.id}`,
+            source: `org:${org.parent_id}`,
+            target: `org:${org.id}`,
+            animated: false,
+            data: { type: 'org-parent-child', collaborationCount: 1 },
+            style: { strokeWidth: 3, stroke: '#6366f1', strokeDasharray: '4,4', opacity: 0.8 },
+          });
+        }
+      }
+
+      const postTeamNodeIds = new Set((nodes as any[]).map((node: any) => node.id));
+      for (const team of teamRows) {
+        if (team.organization_id) {
+          (edges as any[]).push({
+            id: `e-org-${team.organization_id}-${team.id}`,
+            source: `org:${team.organization_id}`,
+            target: `team:${team.id}`,
+            animated: false,
+            data: { type: 'ax', collaborationCount: 1 },
+            style: { strokeWidth: 2, opacity: 0.5 },
+          });
+        }
+
+        const teamNode = (nodes as any[]).find((entry: any) => entry.id === `team:${team.id}`);
+        const teamWorking = teamNode?.data?.status === 'working';
+        for (const member of membersByTeam.get(team.id) ?? []) {
+          const memberNodeId = member.member_type === 'provider'
+            ? member.member_ref
+            : member.member_type === 'session'
+              ? `session:${member.member_ref}`
+              : `nco-session:${member.member_ref}`;
+          if (!postTeamNodeIds.has(memberNodeId)) continue;
+          if (!graphNodeIds.has(memberNodeId) && !memberNodeId.startsWith('session:') && !memberNodeId.startsWith('nco-session:')) continue;
+          (edges as any[]).push({
+            id: `e-team-${team.id}-${member.member_type}-${member.member_ref}`,
+            source: `team:${team.id}`,
+            target: memberNodeId,
+            animated: Boolean(teamWorking),
+            data: { type: 'team', collaborationCount: 1 },
+            style: { strokeWidth: 1.5, opacity: 0.6 },
           });
         }
       }
@@ -1125,7 +1345,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       } catch { /* log not available */ }
 
       // host → 최신 fleet 응답
-      const hostMap = new Map<string, { host: string; agents: any[]; from: string; ts: string }>();
+      const hostMap = new Map<string, {
+        host: string;
+        agents: any[];
+        activity?: FleetReportActivitySummary;
+        from: string;
+        ts: string;
+      }>();
       const STALE_MS = 2 * 60 * 60 * 1000; // 2시간 이상 오래된 응답은 제외
       const now = Date.now();
 
@@ -1186,7 +1412,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                 const existing = hostMap.get(key);
                 const existTs = existing?.ts ? new Date(existing.ts).getTime() : 0;
                 if (!existing || (tsMs > 0 && tsMs > existTs)) {
-                  hostMap.set(key, { host: (data.host as string).toLowerCase(), agents: data.agents, from: fromName, ts });
+                  hostMap.set(key, {
+                    host: (data.host as string).toLowerCase(),
+                    agents: data.agents,
+                    activity: data.activity,
+                    from: fromName,
+                    ts,
+                  });
                 }
                 continue;
               }
@@ -1204,7 +1436,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
                 const parsed = parseTextProviders(txt);
                 // providers=all-ok → empty list이면 기존 에이전트 목록 유지
                 const agents = (parsed && parsed.length > 0) ? parsed : (existing?.agents ?? []);
-                hostMap.set(key, { host: hostName, agents, from: fromName, ts });
+                hostMap.set(key, { host: hostName, agents, activity: existing?.activity, from: fromName, ts });
               }
               continue;
             }
@@ -1228,7 +1460,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
               const existing = hostMap.get(key);
               const existTs = existing?.ts ? new Date(existing.ts).getTime() : 0;
               if (!existing || (tsMs > 0 && tsMs > existTs)) {
-                hostMap.set(key, { host: hostName, agents, from: fromName, ts });
+                hostMap.set(key, { host: hostName, agents, activity: existing?.activity, from: fromName, ts });
               }
             }
           }
@@ -1243,7 +1475,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         const existTs = existing?.ts ? new Date(existing.ts).getTime() : 0;
         const prTs = new Date(pr.ts).getTime();
         if (!existing || prTs > existTs) {
-          hostMap.set(key, { host: pr.host, agents: pr.agents as any, from: pr.from ?? `${pr.host}-push`, ts: pr.ts });
+          hostMap.set(key, {
+            host: pr.host,
+            agents: pr.agents as any,
+            activity: pr.activity,
+            from: pr.from ?? `${pr.host}-push`,
+            ts: pr.ts,
+          });
         }
       }
 
@@ -1567,7 +1805,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     if (urlPath === '/api/memory/overview' && req.method === 'GET') {
       const { vectorMemory } = await import('../../core/vector-memory.js');
       const agentIds = ['agy','claude-2','claude-code','codex','copilot','cursor-agent',
-                        'gemini','hermes','mlx','nvidia','openclaw','opencode','openrouter'];
+                        'hermes','mlx','nvidia','openclaw','opencode','openrouter'];
       const byAgent = agentIds.map(id => {
         try { return { agentId: id, ...(vectorMemory.stats(id) ?? {}) }; }
         catch { return { agentId: id, total: 0, semantic_count: 0, indexLoaded: false }; }
