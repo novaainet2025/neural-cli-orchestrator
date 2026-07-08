@@ -20,6 +20,14 @@ const RETRYABLE_FAILOVER_PATTERNS = [
   /timeout waiting/i,
   // executor 레벨 AbortSignal 타임아웃 — status=failed로 귀결되는 실전 최다 패턴 (E2E task_Iu1JtUsJR6tf8auo에서 실측)
   /aborted due to timeout/i,
+  // 로컬 LLM(ollama/mlx) 백엔드 다운/미기동 시 OpenAI SDK가 던지는 연결 실패 —
+  // 이게 retryable로 안 잡히면 로컬 primary → CLI 폴백이 발화하지 않는다 (2026-07-03 실측: hermes 로컬화)
+  /connection error/i,
+  /fetch failed/i,
+  /ECONNREFUSED/i,
+  /socket hang up/i,
+  /stream disconnected/i,
+  /error sending request/i,
 ];
 
 export function loadFailoverChainsConfig(): FailoverChainsConfig | null {

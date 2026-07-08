@@ -65,15 +65,26 @@ function isLikelyToolsUnsupportedError(err: unknown): boolean {
   );
 }
 
-function withAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
-  if (!signal) return promise;
+function withAbortSignal<T>(
+  operation: (signal?: AbortSignal) => Promise<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  if (!signal) return operation();
+
+  const requestController = new AbortController();
   if (signal.aborted) {
+    requestController.abort(signal.reason);
     return Promise.reject(new Error(signal.reason instanceof Error ? signal.reason.message : 'cancelled'));
   }
+
   return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(new Error(signal.reason instanceof Error ? signal.reason.message : 'cancelled'));
+    const onAbort = () => {
+      requestController.abort(signal.reason);
+      reject(new Error(signal.reason instanceof Error ? signal.reason.message : 'cancelled'));
+    };
+
     signal.addEventListener('abort', onAbort, { once: true });
-    promise.then(
+    operation(requestController.signal).then(
       value => {
         signal.removeEventListener('abort', onAbort);
         resolve(value);
@@ -87,7 +98,7 @@ function withAbortSignal<T>(promise: Promise<T>, signal?: AbortSignal): Promise<
 }
 
 /**
- * Type C Executor: API-based agents (OpenRouter, Gemini API).
+ * Type C Executor: API-based agents (OpenRouter, NVIDIA, etc.).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
  */
 export class ApiExecutor {
@@ -137,7 +148,15 @@ export class ApiExecutor {
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
     trajectoryGuard.beginTask(taskId, agentId);
 
-    const systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
+    let systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
+    // [2026-07-07] mlx 품질 강화: tool 형식 금지 + 요청 포맷 정확 준수(사족 금지).
+    if (this.provider.id === 'mlx') {
+      systemContent += '\n\n[출력 규칙 — 엄격] 1) 도구/함수 호출 형식(<function=...>, [tool:...])을 절대 쓰지 마라. '
+        + '2) 평문으로 직접 답하라. 3) 사용자 형식을 정확히 지켜라. 4) 설명·사족·검증문구·괄호주석([Verification...], [Note...] 등)을 절대 붙이지 마라. '
+        + '예시:\n Q: "2+2? 숫자만" → A: 4\n Q: "합은? 숫자만" → A: 15\n'
+        + ' Q: "hello 대문자? 결과만" → A: HELLO\n Q: "코드만" → A: (코드블록만)\n'
+        + 'Answer with ONLY the requested content. No preamble, no verification, no brackets, no extra text.';
+    }
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemContent },
       { role: 'user', content: prompt },
@@ -145,7 +164,9 @@ export class ApiExecutor {
 
     const tools = getNcoOpenAiTools();
     let finalOutput = '';
-    let useNativeTools = true;
+    // [2026-07-07] mlx(로컬 Qwen3-Coder)는 native tool_call을 못 하고 텍스트로 "<function=runCommand>"
+    // 를 흉내내 뱉어 품질 저하(단순 질문도 tool 오용). tool 비활성 → 순수 텍스트 응답만 하게.
+    let useNativeTools = this.provider.id !== 'mlx';
 
     try {
       while (iterations < MAX_ITERATIONS) {
@@ -176,12 +197,23 @@ export class ApiExecutor {
             max_tokens: 4096,
             stream: false,
           };
+          // [2026-07-07] mlx(로컬 Qwen3-Coder-30B) 반복생성 억제 — EOS 못 만나 답 뒤에
+          // 빈줄 폭주 + [tool:runCommand] 무한반복 → "consecutive tool errors 6" 실패(성공률56%)의 근본.
+          // mlx_lm.server가 지원하는 repetition_penalty/temperature로 반복 차단.
+          if (this.provider.id === 'mlx') {
+            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.25;
+            (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
+            createParams.temperature = 0.1;
+          }
           if (useNativeTools) {
             createParams.tools = tools;
             createParams.tool_choice = 'auto';
           }
 
-          const response = await withAbortSignal(client.chat.completions.create(createParams), options?.signal);
+          const response = await withAbortSignal(
+            requestSignal => client.chat.completions.create(createParams, { signal: requestSignal }),
+            options?.signal,
+          );
           usage.promptTokens += response.usage?.prompt_tokens ?? 0;
           usage.completionTokens += response.usage?.completion_tokens ?? 0;
           usage.totalTokens += response.usage?.total_tokens ?? 0;
