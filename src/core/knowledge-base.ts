@@ -199,9 +199,18 @@ class KnowledgeBase {
    * Semantic similarity search: uses embedding API (localhost:6270) when available,
    * falls back to Jaccard coefficient for lexical matching.
    */
-  async findSimilarAsync(query: string, limit = 5): Promise<KnowledgeEntry[]> {
+  async findSimilarAsync(
+    query: string,
+    limit = 5,
+    scope?: Pick<KnowledgeEntry, 'projectPath' | 'category'>,
+  ): Promise<KnowledgeEntry[]> {
     const db = getDb();
-    const rows = db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
+    const rows = scope
+      ? db.prepare(`
+        SELECT * FROM knowledge_base
+        WHERE project_path = ? AND category = ?
+      `).all(scope.projectPath, scope.category) as Record<string, unknown>[]
+      : db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
     if (rows.length === 0) return [];
 
     const queryEmbedding = await fetchEmbedding(query);
@@ -226,16 +235,25 @@ class KnowledgeBase {
     }
 
     // Fallback: lexical Jaccard
-    return this.findSimilar(query, limit);
+    return this.findSimilar(query, limit, scope);
   }
 
   /**
    * Lexical similarity search without embeddings: token overlap via Jaccard coefficient
    * (lightweight stand-in for TF–IDF cosine on bag-of-words).
    */
-  findSimilar(query: string, limit = 5): KnowledgeEntry[] {
+  findSimilar(
+    query: string,
+    limit = 5,
+    scope?: Pick<KnowledgeEntry, 'projectPath' | 'category'>,
+  ): KnowledgeEntry[] {
     const db = getDb();
-    const rows = db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
+    const rows = scope
+      ? db.prepare(`
+        SELECT * FROM knowledge_base
+        WHERE project_path = ? AND category = ?
+      `).all(scope.projectPath, scope.category) as Record<string, unknown>[]
+      : db.prepare('SELECT * FROM knowledge_base').all() as Record<string, unknown>[];
     const qSet = this.tokenWordSet(query);
     const scored: { row: Record<string, unknown>; sim: number }[] = [];
     for (const row of rows) {
@@ -344,7 +362,10 @@ class KnowledgeBase {
       return { action: 'merged', id, similarity: 1 };
     }
 
-    const candidates = await this.findSimilarAsync(entry.content, 5);
+    const candidates = await this.findSimilarAsync(entry.content, 5, {
+      projectPath: entry.projectPath,
+      category: entry.category,
+    });
     let best: KnowledgeEntry | null = null;
     let bestSimilarity = 0;
     for (const candidate of candidates) {

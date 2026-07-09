@@ -57,6 +57,13 @@ export function decideAcquisitionPolicy(
   gateResults: Record<string, AcquisitionGateResult>,
   policy: AcquisitionPolicy,
 ): AcquisitionPolicyDecision {
+  if (Object.keys(gateResults).length === 0 && policy.defaultPolicy === 'deny') {
+    return {
+      decision: 'approval_required',
+      reasons: ['default deny: no acquisition gates evaluated'],
+    };
+  }
+
   const rejects = Object.entries(gateResults).filter(([, result]) => result.status === 'reject');
   if (rejects.length > 0) {
     return {

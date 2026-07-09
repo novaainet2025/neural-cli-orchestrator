@@ -10,7 +10,9 @@ const log = createLogger('event-bus');
 
 const CHANNEL = 'nco:events';
 const STREAM = 'nco:event-stream';
+const DLQ_STREAM = 'nco:event-stream:dlq';
 const MAX_STREAM_LEN = 10000;
+const MAX_CONSUMER_RETRIES = 3;
 /** Cap localEmittedIds (echo suppression) — trim oldest batch when exceeded. */
 const LOCAL_EMITTED_IDS_MAX = 5000;
 const LOCAL_EMITTED_IDS_PRUNE_BATCH = 1000;
@@ -81,7 +83,18 @@ export class EventBus {
           const redis = await getRedis();
           await redis.ping();
           for (const row of pending) {
-            await redis.publish(row.channel, row.payload);
+            const event = JSON.parse(row.payload) as NCOEvent;
+            const tx = redis.multi();
+            tx.xadd(
+              STREAM,
+              'MAXLEN', '~', String(MAX_STREAM_LEN),
+              '*',
+              'type', event.type,
+              'data', row.payload,
+              'retry_count', '0',
+            );
+            tx.publish(row.channel, row.payload);
+            await tx.exec();
             db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
           }
         } catch { }
@@ -101,41 +114,47 @@ export class EventBus {
     };
 
     this.sequence++;
+    const payload = JSON.stringify(enriched);
+    let localEchoTracked = false;
 
-    // 1. Local emit (always works) — track ID to suppress Redis echo
-    if (this.localEmittedIds.size > LOCAL_EMITTED_IDS_MAX) {
-      Array.from(this.localEmittedIds)
-        .slice(0, LOCAL_EMITTED_IDS_PRUNE_BATCH)
-        .forEach((id) => this.localEmittedIds.delete(id));
-    }
+    this.trimLocalEmittedIdsIfNeeded();
     this.localEmittedIds.add(enriched.id);
-    setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
-    this.local.emit(enriched.type, enriched);
-    this.local.emit('*', enriched);
+    localEchoTracked = true;
 
-    // 2. Redis Pub/Sub + Streams
+    // 1. Redis Pub/Sub + Streams
     if (isRedisConnected()) {
       try {
         const redis = await getRedis();
-        const payload = JSON.stringify(enriched);
-
-        // Pub/Sub for real-time
-        await redis.publish(CHANNEL, payload);
-
-        // Streams for sequence + replay
-        await redis.xadd(STREAM, 'MAXLEN', '~', String(MAX_STREAM_LEN),
+        const tx = redis.multi();
+        tx.xadd(STREAM, 'MAXLEN', '~', String(MAX_STREAM_LEN),
           '*',
           'type', enriched.type,
-          'data', payload
+          'data', payload,
+          'retry_count', '0'
         );
+        tx.publish(CHANNEL, payload);
+        await tx.exec();
       } catch (err) {
+        if (localEchoTracked) {
+          this.localEmittedIds.delete(enriched.id);
+          localEchoTracked = false;
+        }
         log.error({ err, type: enriched.type }, 'Redis publish failed');
         try {
           const db = getDb();
-          db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, JSON.stringify(enriched));
+          db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, payload);
         } catch { }
+
+        this.trimLocalEmittedIdsIfNeeded();
+        this.localEmittedIds.add(enriched.id);
+        localEchoTracked = true;
       }
     }
+
+    // 2. Local emit after remote commit / local fallback enqueue
+    setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
+    this.local.emit(enriched.type, enriched);
+    this.local.emit('*', enriched);
 
     // 3. SQLite persist (important events)
     if (PERSIST_TYPES.has(enriched.type)) {
@@ -200,10 +219,13 @@ export class EventBus {
 
         for (const [, entries] of results) {
           for (const [msgId, fields] of entries) {
+            const dataIdx = fields.indexOf('data');
+            const retryIdx = fields.indexOf('retry_count');
+            const payload = dataIdx >= 0 ? fields[dataIdx + 1] : null;
+            const retryCount = retryIdx >= 0 ? Number.parseInt(fields[retryIdx + 1] || '0', 10) || 0 : 0;
             try {
-              const dataIdx = fields.indexOf('data');
-              if (dataIdx >= 0) {
-                const event = JSON.parse(fields[dataIdx + 1]) as NCOEvent;
+              if (payload) {
+                const event = JSON.parse(payload) as NCOEvent;
                 // Emit only if not already emitted locally
                 if (!this.localEmittedIds.has(event.id)) {
                   this.local.emit(event.type, event);
@@ -213,7 +235,32 @@ export class EventBus {
               // Acknowledge the message regardless
               await redis.xack(STREAM, GROUP, msgId);
             } catch (err) {
-              log.error({ err, msgId }, 'Consumer group message processing failed');
+              try {
+                if (payload && retryCount < MAX_CONSUMER_RETRIES) {
+                  await redis.xadd(
+                    STREAM,
+                    'MAXLEN', '~', String(MAX_STREAM_LEN),
+                    '*',
+                    'type', 'retry',
+                    'data', payload,
+                    'retry_count', String(retryCount + 1),
+                  );
+                } else {
+                  await redis.xadd(
+                    DLQ_STREAM,
+                    'MAXLEN', '~', String(MAX_STREAM_LEN),
+                    '*',
+                    'data', payload ?? '',
+                    'error', err instanceof Error ? err.message : String(err),
+                    'source_msg_id', msgId,
+                    'retry_count', String(retryCount),
+                  );
+                }
+                await redis.xack(STREAM, GROUP, msgId);
+              } catch (isolationErr) {
+                log.error({ err: isolationErr, msgId }, 'Consumer group failure isolation failed');
+              }
+              log.error({ err, msgId, retryCount }, 'Consumer group message processing failed');
             }
           }
         }

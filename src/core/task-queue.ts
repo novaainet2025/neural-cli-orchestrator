@@ -718,20 +718,89 @@ class TaskQueueManager {
       attempts: 3,
     });
     entry.waiting++;
+    let leftWaiting = false;
 
     try {
+      await this.waitForJobActive(job, entry.queueEvents!);
+      entry.waiting = Math.max(0, entry.waiting - 1);
+      leftWaiting = true;
       const result = await job.waitUntilFinished(
         entry.queueEvents!,
         this.getBullWaitTimeoutMs(task.timeoutMs),
       );
-      entry.waiting = Math.max(0, entry.waiting - 1);
       entry.completed++;
       return result as { success: boolean; output: string };
     } catch (err: any) {
-      entry.waiting = Math.max(0, entry.waiting - 1);
+      // waiting 감소는 대기 이탈 시 1회만 — active 진입 후 실행 실패에서 이중 감소 금지 (리뷰 MED)
+      if (!leftWaiting) entry.waiting = Math.max(0, entry.waiting - 1);
       entry.failed++;
       return { success: false, output: '', error: err.message };
     }
+  }
+
+  private async waitForJobActive(
+    job: Job<QueuedTask>,
+    queueEvents: QueueEvents,
+    maxWaitMs = this.getQueueWaitMaxMs(),
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      let timer: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        queueEvents.off('active', onActive);
+      };
+
+      const resolveOnce = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      const rejectOnce = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      const onActive = ({ jobId }: { jobId: string }) => {
+        if (jobId === job.id) {
+          resolveOnce();
+        }
+      };
+
+      queueEvents.on('active', onActive);
+      timer = setTimeout(() => {
+        const message = `queue_wait_timeout: provider ${job.data.agentId} busy for ${maxWaitMs}ms`;
+        void job.remove().catch(() => {});
+        rejectOnce(new Error(message));
+      }, maxWaitMs);
+
+      void job.getState()
+        .then(state => {
+          if (state === 'active' || state === 'completed' || state === 'failed') {
+            resolveOnce();
+            return;
+          }
+          // waiting/delayed/prioritized/waiting-children → active 이벤트 대기 유지.
+          // unknown = job이 이미 제거됨/조회불가 — 실행 예산을 태우지 말고 즉시 실패,
+          // queue_wait_timeout 접두어로 failover 패턴에 걸리게 한다 (리뷰 MED).
+          if (state === 'unknown') {
+            rejectOnce(new Error(
+              `queue_wait_timeout: job state unknown for provider ${job.data.agentId} (removed?)`,
+            ));
+          }
+        })
+        .catch(err => {
+          rejectOnce(err instanceof Error ? err : new Error(String(err)));
+        });
+    });
   }
 
   private async enqueueSemaphore(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
@@ -932,6 +1001,11 @@ class TaskQueueManager {
   private getFirstActivityTimeoutMs(): number {
     const raw = Number(process.env.NCO_FIRST_ACTIVITY_TIMEOUT_MS);
     return Number.isFinite(raw) && raw >= 60_000 ? raw : 180_000;
+  }
+
+  private getQueueWaitMaxMs(): number {
+    const raw = Number(process.env.NCO_QUEUE_WAIT_MAX_MS);
+    return Number.isFinite(raw) && raw > 0 ? raw : 1_800_000;
   }
 
   private getBullWaitTimeoutMs(taskTimeoutMs?: number): number {

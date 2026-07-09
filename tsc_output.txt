@@ -1,0 +1,593 @@
+src/server/gateway.ts(1695,23): error TS1127: Invalid character.
+src/server/gateway.ts(1695,24): error TS1136: Property assignment expected.
+src/server/gateway.ts(1712,21): error TS1005: ',' expected.
+src/server/gateway.ts(1712,28): error TS1005: ',' expected.
+src/server/gateway.ts(1712,34): error TS1005: ',' expected.
+src/server/gateway.ts(1712,38): error TS1005: ',' expected.
+src/server/gateway.ts(1712,67): error TS1109: Expression expected.
+src/server/gateway.ts(1712,68): error TS1109: Expression expected.
+src/server/gateway.ts(1712,127): error TS1005: ',' expected.
+src/server/gateway.ts(1712,133): error TS1005: ',' expected.
+src/server/gateway.ts(1712,136): error TS1109: Expression expected.
+src/server/gateway.ts(1729,27): error TS1005: ':' expected.
+src/server/gateway.ts(1729,32): error TS1005: ',' expected.
+src/server/gateway.ts(1729,42): error TS1127: Invalid character.
+src/server/gateway.ts(1729,45): error TS1005: ',' expected.
+src/server/gateway.ts(1729,50): error TS1005: ',' expected.
+src/server/gateway.ts(1729,58): error TS1005: ',' expected.
+src/server/gateway.ts(1729,60): error TS1005: ',' expected.
+src/server/gateway.ts(1729,63): error TS1005: ',' expected.
+src/server/gateway.ts(1729,65): error TS1127: Invalid character.
+src/server/gateway.ts(1729,69): error TS1005: ',' expected.
+src/server/gateway.ts(1729,72): error TS1005: ',' expected.
+src/server/gateway.ts(1729,77): error TS1005: ',' expected.
+src/server/gateway.ts(1729,89): error TS1127: Invalid character.
+src/server/gateway.ts(1729,94): error TS1005: ',' expected.
+src/server/gateway.ts(1729,97): error TS1005: ',' expected.
+src/server/gateway.ts(1730,23): error TS1005: ',' expected.
+src/server/gateway.ts(1730,30): error TS1005: ',' expected.
+src/server/gateway.ts(1730,36): error TS1005: ',' expected.
+src/server/gateway.ts(1730,40): error TS1005: ',' expected.
+src/server/gateway.ts(1730,69): error TS1109: Expression expected.
+src/server/gateway.ts(1730,70): error TS1109: Expression expected.
+src/server/gateway.ts(1730,129): error TS1005: ',' expected.
+src/server/gateway.ts(1730,135): error TS1005: ',' expected.
+src/server/gateway.ts(1730,138): error TS1109: Expression expected.
+src/server/gateway.ts(1732,23): error TS1005: ':' expected.
+src/server/gateway.ts(1732,30): error TS1005: ',' expected.
+src/server/gateway.ts(1732,36): error TS1005: ',' expected.
+src/server/gateway.ts(1732,40): error TS1005: ',' expected.
+src/server/gateway.ts(1732,63): error TS1109: Expression expected.
+src/server/gateway.ts(1732,64): error TS1109: Expression expected.
+src/server/gateway.ts(1732,93): error TS1005: ',' expected.
+src/server/gateway.ts(1732,99): error TS1005: ',' expected.
+src/server/gateway.ts(1732,102): error TS1109: Expression expected.
+src/server/gateway.ts(1748,29): error TS1005: ':' expected.
+src/server/gateway.ts(1748,42): error TS1005: ',' expected.
+src/server/gateway.ts(1748,47): error TS1005: ',' expected.
+src/server/gateway.ts(1748,50): error TS1005: ',' expected.
+src/server/gateway.ts(1748,53): error TS1127: Invalid character.
+src/server/gateway.ts(1748,58): error TS1005: ',' expected.
+src/server/gateway.ts(1748,61): error TS1005: ',' expected.
+src/server/gateway.ts(1748,63): error TS1005: ',' expected.
+src/server/gateway.ts(1748,66): error TS1005: ',' expected.
+src/server/gateway.ts(1748,73): error TS1005: ',' expected.
+src/server/gateway.ts(1748,80): error TS1005: ',' expected.
+src/server/gateway.ts(1748,81): error TS1127: Invalid character.
+src/server/gateway.ts(1748,104): error TS1005: ';' expected.
+src/server/gateway.ts(1748,114): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(1749,25): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1749,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1749,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1749,71): error TS1109: Expression expected.
+src/server/gateway.ts(1749,72): error TS1109: Expression expected.
+src/server/gateway.ts(1749,131): error TS1005: ';' expected.
+src/server/gateway.ts(1749,140): error TS1109: Expression expected.
+src/server/gateway.ts(1759,25): error TS1005: ':' expected.
+src/server/gateway.ts(1759,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1759,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1759,65): error TS1109: Expression expected.
+src/server/gateway.ts(1759,66): error TS1109: Expression expected.
+src/server/gateway.ts(1759,95): error TS1005: ';' expected.
+src/server/gateway.ts(1759,104): error TS1109: Expression expected.
+src/server/gateway.ts(1759,113): error TS1005: ':' expected.
+src/server/gateway.ts(1759,127): error TS1005: ';' expected.
+src/server/gateway.ts(1759,129): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1759,132): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1759,136): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(1763,41): error TS1005: ';' expected.
+src/server/gateway.ts(1763,44): error TS1127: Invalid character.
+src/server/gateway.ts(1763,46): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1763,77): error TS1127: Invalid character.
+src/server/gateway.ts(1763,84): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1764,23): error TS1005: ';' expected.
+src/server/gateway.ts(1764,30): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1764,36): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1764,69): error TS1109: Expression expected.
+src/server/gateway.ts(1764,70): error TS1109: Expression expected.
+src/server/gateway.ts(1764,129): error TS1005: ';' expected.
+src/server/gateway.ts(1764,138): error TS1109: Expression expected.
+src/server/gateway.ts(1766,23): error TS1005: ':' expected.
+src/server/gateway.ts(1766,30): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1766,36): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1766,63): error TS1109: Expression expected.
+src/server/gateway.ts(1766,64): error TS1109: Expression expected.
+src/server/gateway.ts(1766,93): error TS1005: ';' expected.
+src/server/gateway.ts(1766,102): error TS1109: Expression expected.
+src/server/gateway.ts(1775,25): error TS1005: ':' expected.
+src/server/gateway.ts(1775,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1775,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1775,49): error TS1109: Expression expected.
+src/server/gateway.ts(1775,50): error TS1109: Expression expected.
+src/server/gateway.ts(1775,61): error TS1109: Expression expected.
+src/server/gateway.ts(1775,62): error TS1109: Expression expected.
+src/server/gateway.ts(1775,121): error TS1005: ';' expected.
+src/server/gateway.ts(1775,130): error TS1109: Expression expected.
+src/server/gateway.ts(1781,25): error TS1005: ':' expected.
+src/server/gateway.ts(1781,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1781,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1781,65): error TS1109: Expression expected.
+src/server/gateway.ts(1781,66): error TS1109: Expression expected.
+src/server/gateway.ts(1781,95): error TS1005: ';' expected.
+src/server/gateway.ts(1781,104): error TS1109: Expression expected.
+src/server/gateway.ts(1796,25): error TS1005: ':' expected.
+src/server/gateway.ts(1796,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1796,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1796,71): error TS1109: Expression expected.
+src/server/gateway.ts(1796,72): error TS1109: Expression expected.
+src/server/gateway.ts(1796,131): error TS1005: ';' expected.
+src/server/gateway.ts(1796,140): error TS1109: Expression expected.
+src/server/gateway.ts(1802,25): error TS1005: ':' expected.
+src/server/gateway.ts(1802,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1802,38): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(1802,65): error TS1109: Expression expected.
+src/server/gateway.ts(1802,66): error TS1109: Expression expected.
+src/server/gateway.ts(1802,95): error TS1005: ';' expected.
+src/server/gateway.ts(1802,104): error TS1109: Expression expected.
+src/server/gateway.ts(1908,7): error TS1005: ':' expected.
+src/server/gateway.ts(1908,21): error TS1005: ';' expected.
+src/server/gateway.ts(1909,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1909,31): error TS1109: Expression expected.
+src/server/gateway.ts(1910,13): error TS1005: ':' expected.
+src/server/gateway.ts(1910,16): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,7): error TS1005: ':' expected.
+src/server/gateway.ts(1969,44): error TS1005: ';' expected.
+src/server/gateway.ts(1969,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,55): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,82): error TS1005: ';' expected.
+src/server/gateway.ts(1969,88): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,91): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,102): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1969,107): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1972,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1972,44): error TS1005: ';' expected.
+src/server/gateway.ts(1972,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1972,61): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1972,85): error TS1005: ';' expected.
+src/server/gateway.ts(1975,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,58): error TS1005: ';' expected.
+src/server/gateway.ts(1975,63): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,69): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,75): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,119): error TS1005: ';' expected.
+src/server/gateway.ts(1975,125): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,128): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,139): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1975,144): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,9): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,33): error TS1005: ';' expected.
+src/server/gateway.ts(1980,50): error TS1005: ';' expected.
+src/server/gateway.ts(1980,70): error TS1005: ';' expected.
+src/server/gateway.ts(1980,73): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,83): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(1980,88): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,103): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,109): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,112): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,123): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1980,128): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(1981,7): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2015,17): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2015,34): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2017,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2017,14): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2018,15): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,16): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,18): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,19): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,21): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,22): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,24): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,25): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,27): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,28): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,30): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,31): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,33): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,34): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,36): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,37): error TS1135: Argument expression expected.
+src/server/gateway.ts(2018,39): error TS1135: Argument expression expected.
+src/server/gateway.ts(2019,5): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2050,33): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2051,34): error TS1005: ';' expected.
+src/server/gateway.ts(2051,49): error TS1005: ';' expected.
+src/server/gateway.ts(2051,69): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2054,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,32): error TS1005: ';' expected.
+src/server/gateway.ts(2054,53): error TS1005: ';' expected.
+src/server/gateway.ts(2054,68): error TS1005: ';' expected.
+src/server/gateway.ts(2054,88): error TS1005: ';' expected.
+src/server/gateway.ts(2054,93): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,100): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,110): error TS1005: ';' expected.
+src/server/gateway.ts(2054,124): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,130): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,133): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2054,143): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,13): error TS1005: ':' expected.
+src/server/gateway.ts(2058,31): error TS1005: ';' expected.
+src/server/gateway.ts(2058,68): error TS1005: ';' expected.
+src/server/gateway.ts(2058,105): error TS1005: ';' expected.
+src/server/gateway.ts(2058,126): error TS1005: ';' expected.
+src/server/gateway.ts(2058,129): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,139): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2058,144): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,150): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,160): error TS1005: ';' expected.
+src/server/gateway.ts(2058,166): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,169): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2058,180): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,13): error TS1005: ':' expected.
+src/server/gateway.ts(2062,34): error TS1005: ';' expected.
+src/server/gateway.ts(2062,72): error TS1005: ';' expected.
+src/server/gateway.ts(2062,108): error TS1005: ';' expected.
+src/server/gateway.ts(2062,129): error TS1005: ';' expected.
+src/server/gateway.ts(2062,132): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,142): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2062,147): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,156): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,166): error TS1005: ';' expected.
+src/server/gateway.ts(2062,172): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,175): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2062,186): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,13): error TS1005: ':' expected.
+src/server/gateway.ts(2066,37): error TS1005: ';' expected.
+src/server/gateway.ts(2066,73): error TS1005: ';' expected.
+src/server/gateway.ts(2066,88): error TS1005: ';' expected.
+src/server/gateway.ts(2066,109): error TS1005: ';' expected.
+src/server/gateway.ts(2066,112): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,122): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2066,127): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,139): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,149): error TS1005: ';' expected.
+src/server/gateway.ts(2066,155): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,158): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2066,169): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,13): error TS1005: ':' expected.
+src/server/gateway.ts(2070,38): error TS1005: ';' expected.
+src/server/gateway.ts(2070,76): error TS1005: ';' expected.
+src/server/gateway.ts(2070,105): error TS1005: ';' expected.
+src/server/gateway.ts(2070,110): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,128): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,138): error TS1005: ';' expected.
+src/server/gateway.ts(2070,152): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,158): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,161): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2070,171): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2162,7): error TS1005: ':' expected.
+src/server/gateway.ts(2163,15): error TS1109: Expression expected.
+src/server/gateway.ts(2163,16): error TS1109: Expression expected.
+src/server/gateway.ts(2164,18): error TS1005: ',' expected.
+src/server/gateway.ts(2164,23): error TS1005: ',' expected.
+src/server/gateway.ts(2164,44): error TS1005: ',' expected.
+src/server/gateway.ts(2164,49): error TS1005: ',' expected.
+src/server/gateway.ts(2164,51): error TS1005: ',' expected.
+src/server/gateway.ts(2164,56): error TS1005: ',' expected.
+src/server/gateway.ts(2164,58): error TS1005: ',' expected.
+src/server/gateway.ts(2165,18): error TS1005: ',' expected.
+src/server/gateway.ts(2165,23): error TS1005: ',' expected.
+src/server/gateway.ts(2165,41): error TS1005: ',' expected.
+src/server/gateway.ts(2165,46): error TS1005: ',' expected.
+src/server/gateway.ts(2165,48): error TS1005: ',' expected.
+src/server/gateway.ts(2165,53): error TS1005: ',' expected.
+src/server/gateway.ts(2165,55): error TS1005: ',' expected.
+src/server/gateway.ts(2166,18): error TS1005: ',' expected.
+src/server/gateway.ts(2166,23): error TS1005: ',' expected.
+src/server/gateway.ts(2166,30): error TS1005: ',' expected.
+src/server/gateway.ts(2166,57): error TS1005: ',' expected.
+src/server/gateway.ts(2167,68): error TS1005: ',' expected.
+src/server/gateway.ts(2167,73): error TS1005: ',' expected.
+src/server/gateway.ts(2167,75): error TS1005: ',' expected.
+src/server/gateway.ts(2167,80): error TS1005: ',' expected.
+src/server/gateway.ts(2167,82): error TS1005: ',' expected.
+src/server/gateway.ts(2168,7): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2180,15): error TS1109: Expression expected.
+src/server/gateway.ts(2180,16): error TS1109: Expression expected.
+src/server/gateway.ts(2181,18): error TS1005: ',' expected.
+src/server/gateway.ts(2181,23): error TS1005: ',' expected.
+src/server/gateway.ts(2181,44): error TS1005: ',' expected.
+src/server/gateway.ts(2181,49): error TS1005: ',' expected.
+src/server/gateway.ts(2181,51): error TS1005: ',' expected.
+src/server/gateway.ts(2181,56): error TS1005: ',' expected.
+src/server/gateway.ts(2181,58): error TS1005: ',' expected.
+src/server/gateway.ts(2182,18): error TS1005: ',' expected.
+src/server/gateway.ts(2182,23): error TS1005: ',' expected.
+src/server/gateway.ts(2182,41): error TS1005: ',' expected.
+src/server/gateway.ts(2182,46): error TS1005: ',' expected.
+src/server/gateway.ts(2182,48): error TS1005: ',' expected.
+src/server/gateway.ts(2182,53): error TS1005: ',' expected.
+src/server/gateway.ts(2182,55): error TS1005: ',' expected.
+src/server/gateway.ts(2183,7): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2184,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2184,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2184,36): error TS1005: ',' expected.
+src/server/gateway.ts(2184,39): error TS1005: ',' expected.
+src/server/gateway.ts(2184,44): error TS1005: ',' expected.
+src/server/gateway.ts(2184,51): error TS1005: ',' expected.
+src/server/gateway.ts(2184,57): error TS1005: ',' expected.
+src/server/gateway.ts(2194,15): error TS1109: Expression expected.
+src/server/gateway.ts(2194,16): error TS1109: Expression expected.
+src/server/gateway.ts(2195,18): error TS1005: ',' expected.
+src/server/gateway.ts(2195,23): error TS1005: ',' expected.
+src/server/gateway.ts(2195,44): error TS1005: ',' expected.
+src/server/gateway.ts(2195,49): error TS1005: ',' expected.
+src/server/gateway.ts(2195,51): error TS1005: ',' expected.
+src/server/gateway.ts(2195,56): error TS1005: ',' expected.
+src/server/gateway.ts(2195,58): error TS1005: ',' expected.
+src/server/gateway.ts(2196,18): error TS1005: ',' expected.
+src/server/gateway.ts(2196,23): error TS1005: ',' expected.
+src/server/gateway.ts(2196,41): error TS1005: ',' expected.
+src/server/gateway.ts(2196,46): error TS1005: ',' expected.
+src/server/gateway.ts(2196,48): error TS1005: ',' expected.
+src/server/gateway.ts(2196,53): error TS1005: ',' expected.
+src/server/gateway.ts(2196,55): error TS1005: ',' expected.
+src/server/gateway.ts(2197,18): error TS1005: ',' expected.
+src/server/gateway.ts(2197,23): error TS1005: ',' expected.
+src/server/gateway.ts(2197,36): error TS1005: ',' expected.
+src/server/gateway.ts(2197,39): error TS1005: ',' expected.
+src/server/gateway.ts(2197,43): error TS1005: ',' expected.
+src/server/gateway.ts(2198,11): error TS1005: ',' expected.
+src/server/gateway.ts(2199,11): error TS1005: ',' expected.
+src/server/gateway.ts(2199,16): error TS1005: ',' expected.
+src/server/gateway.ts(2199,21): error TS1005: ',' expected.
+src/server/gateway.ts(2200,7): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2201,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2201,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2201,25): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2201,28): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2202,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2202,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2203,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2203,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2203,16): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2204,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2210,15): error TS1109: Expression expected.
+src/server/gateway.ts(2210,16): error TS1109: Expression expected.
+src/server/gateway.ts(2211,18): error TS1005: ',' expected.
+src/server/gateway.ts(2211,23): error TS1005: ',' expected.
+src/server/gateway.ts(2211,44): error TS1005: ',' expected.
+src/server/gateway.ts(2211,49): error TS1005: ',' expected.
+src/server/gateway.ts(2211,51): error TS1005: ',' expected.
+src/server/gateway.ts(2211,56): error TS1005: ',' expected.
+src/server/gateway.ts(2211,58): error TS1005: ',' expected.
+src/server/gateway.ts(2212,18): error TS1005: ',' expected.
+src/server/gateway.ts(2212,23): error TS1005: ',' expected.
+src/server/gateway.ts(2212,41): error TS1005: ',' expected.
+src/server/gateway.ts(2212,46): error TS1005: ',' expected.
+src/server/gateway.ts(2212,48): error TS1005: ',' expected.
+src/server/gateway.ts(2212,53): error TS1005: ',' expected.
+src/server/gateway.ts(2212,55): error TS1005: ',' expected.
+src/server/gateway.ts(2213,7): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2214,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2215,9): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2215,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2215,25): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2216,18): error TS1005: ',' expected.
+src/server/gateway.ts(2216,21): error TS1005: ',' expected.
+src/server/gateway.ts(2216,26): error TS1005: ',' expected.
+src/server/gateway.ts(2216,33): error TS1005: ',' expected.
+src/server/gateway.ts(2216,39): error TS1005: ',' expected.
+src/server/gateway.ts(2218,5): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2228,33): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2273,22): error TS1005: ';' expected.
+src/server/gateway.ts(2286,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2286,14): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2286,20): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(2288,7): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2288,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2359,25): error TS1005: ';' expected.
+src/server/gateway.ts(2359,32): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2359,35): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2359,42): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2359,129): error TS1005: ';' expected.
+src/server/gateway.ts(2359,137): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,138): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,152): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,153): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,155): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,156): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,171): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,172): error TS1135: Argument expression expected.
+src/server/gateway.ts(2359,207): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2517,56): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2531,20): error TS1005: ';' expected.
+src/server/gateway.ts(2539,10): error TS1005: ';' expected.
+src/server/gateway.ts(2539,51): error TS1005: ';' expected.
+src/server/gateway.ts(2540,10): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2540,16): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2540,19): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2540,31): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2540,36): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2540,44): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2542,19): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2542,26): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2542,43): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2542,49): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2548,21): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2548,24): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2548,33): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2548,54): error TS1005: ')' expected.
+src/server/gateway.ts(2548,81): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(2548,82): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2553,10): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2553,36): error TS1109: Expression expected.
+src/server/gateway.ts(2553,37): error TS1109: Expression expected.
+src/server/gateway.ts(2553,46): error TS1005: ';' expected.
+src/server/gateway.ts(2554,10): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,10): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,16): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,19): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,31): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,37): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,40): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,44): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2555,56): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2559,23): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,26): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,33): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,52): error TS1005: ')' expected.
+src/server/gateway.ts(2559,59): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,60): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(2559,62): error TS1127: Invalid character.
+src/server/gateway.ts(2559,64): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,67): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,70): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2559,75): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2565,10): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2565,17): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2565,58): error TS1005: ';' expected.
+src/server/gateway.ts(2565,87): error TS1135: Argument expression expected.
+src/server/gateway.ts(2565,88): error TS1135: Argument expression expected.
+src/server/gateway.ts(2565,90): error TS1135: Argument expression expected.
+src/server/gateway.ts(2565,92): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2566,14): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2566,24): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2566,30): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,8): error TS1005: ';' expected.
+src/server/gateway.ts(2579,37): error TS1005: ';' expected.
+src/server/gateway.ts(2579,42): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,68): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,74): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,77): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,89): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,94): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2579,101): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2640,35): error TS1005: ';' expected.
+src/server/gateway.ts(2640,61): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2640,77): error TS1109: Expression expected.
+src/server/gateway.ts(2640,85): error TS1005: ':' expected.
+src/server/gateway.ts(2640,88): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2640,104): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2641,35): error TS1005: ';' expected.
+src/server/gateway.ts(2641,61): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2641,67): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2641,70): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2641,86): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2649,47): error TS1005: ';' expected.
+src/server/gateway.ts(2649,73): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2649,88): error TS1109: Expression expected.
+src/server/gateway.ts(2651,8): error TS1005: ':' expected.
+src/server/gateway.ts(2652,8): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2652,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2652,31): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2652,46): error TS1109: Expression expected.
+src/server/gateway.ts(2652,54): error TS1005: ':' expected.
+src/server/gateway.ts(2652,57): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2652,68): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2652,73): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2652,81): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2663,20): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2682,63): error TS1005: ';' expected.
+src/server/gateway.ts(2682,71): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2682,80): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2686,16): error TS1005: ';' expected.
+src/server/gateway.ts(2686,23): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2687,24): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,25): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,27): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,28): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,30): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,31): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,33): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,34): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,36): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,37): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,39): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,40): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,42): error TS1135: Argument expression expected.
+src/server/gateway.ts(2687,44): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2691,16): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2691,23): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2692,24): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,25): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,27): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,28): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,30): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,31): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,39): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,40): error TS1135: Argument expression expected.
+src/server/gateway.ts(2692,42): error TS1135: Argument expression expected.
+src/server/gateway.ts(2693,53): error TS1005: ';' expected.
+src/server/gateway.ts(2706,30): error TS1005: ';' expected.
+src/server/gateway.ts(2706,44): error TS1005: ';' expected.
+src/server/gateway.ts(2706,62): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2706,75): error TS1109: Expression expected.
+src/server/gateway.ts(2706,83): error TS1005: ':' expected.
+src/server/gateway.ts(2727,8): error TS1005: ';' expected.
+src/server/gateway.ts(2728,21): error TS1109: Expression expected.
+src/server/gateway.ts(2728,22): error TS1109: Expression expected.
+src/server/gateway.ts(2729,8): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2729,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,31): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,37): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,40): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,55): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,58): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2729,72): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2740,17): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2740,38): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2743,10): error TS1005: ';' expected.
+src/server/gateway.ts(2743,17): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2744,18): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,19): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,21): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,22): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,24): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,25): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,27): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,28): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,30): error TS1135: Argument expression expected.
+src/server/gateway.ts(2744,32): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2756,8): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2757,8): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2757,13): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2757,33): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2757,51): error TS1005: ';' expected.
+src/server/gateway.ts(2757,57): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2757,60): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2757,75): error TS1443: Module declaration names may only use ' or " quoted strings.
+src/server/gateway.ts(2766,43): error TS1005: ';' expected.
+src/server/gateway.ts(2766,63): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2766,72): error TS1109: Expression expected.
+src/server/gateway.ts(2776,34): error TS1005: ':' expected.
+src/server/gateway.ts(2776,41): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2776,44): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2776,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2776,69): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2776,78): error TS1109: Expression expected.
+src/server/gateway.ts(2787,17): error TS1005: ':' expected.
+src/server/gateway.ts(2787,24): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2787,44): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(2787,48): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2787,69): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2787,78): error TS1109: Expression expected.
+src/server/gateway.ts(2788,33): error TS1005: ':' expected.
+src/server/gateway.ts(2788,47): error TS1005: ';' expected.
+src/server/gateway.ts(2788,67): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2788,76): error TS1109: Expression expected.
+src/server/gateway.ts(2796,34): error TS1005: ':' expected.
+src/server/gateway.ts(2796,41): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2796,44): error TS1435: Unknown keyword or identifier. Did you mean 'from'?
+src/server/gateway.ts(2796,49): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2796,69): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2796,78): error TS1109: Expression expected.
+src/server/gateway.ts(2798,17): error TS1005: ':' expected.
+src/server/gateway.ts(2798,24): error TS1434: Unexpected keyword or identifier.
+src/server/gateway.ts(2798,44): error TS1435: Unknown keyword or identifier. Did you mean 'set'?
+src/server/gateway.ts(2798,60): error TS1005: ';' expected.
+src/server/gateway.ts(2798,69): error TS1109: Expression expected.
+src/server/gateway.ts(3061,12): error TS1005: ':' expected.
+src/server/gateway.ts(3064,27): error TS1005: ';' expected.
+src/server/gateway.ts(3065,32): error TS1005: ';' expected.
+src/server/gateway.ts(3066,13): error TS1109: Expression expected.
+src/server/gateway.ts(3066,14): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(3068,11): error TS1109: Expression expected.
+src/server/gateway.ts(3069,9): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(3090,9): error TS1005: 'try' expected.
+src/server/gateway.ts(3093,5): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(3111,3): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(3111,4): error TS1128: Declaration or statement expected.
+src/server/gateway.ts(3983,1): error TS1128: Declaration or statement expected.

@@ -1,0 +1,9 @@
+---
+created_at: 2026-06-27T11:56:37.910Z
+updated_at: 2026-06-27T11:56:37.910Z
+tags:
+  - improvement
+  - improvement-note
+---
+## 현재 상태 진단
+- 전체 태스크 100개 중 97개 완료, 성공률 97%\n- 실패 태스크 0개, 하지만 3개가 오래 머물며 스틱(카고) 상태\n- false_report_count: 1 (오류 보고 검증 필요)\n- Obsidian 문서 10,040개, 개선 노트 979개 누적\n\n## 핵심 개선 목표 (3가지)\n1. **스틱 태스크 자동 해제 및 재시도 메커니즘 구축** – 장기 지연 최소화\n2. **오류·잘못된 보고 검증 자동화** – false_report_count 0으로 감소\n3. **지식 관리 자동화 및 개선 노트 활용 효율화** – 문서·노트 연계 강화\n\n## 구체적 실행 계획 (각 목표별)\n### 목표 1: 스틱 태스크 자동 해제 및 재시도\n- 태스크 메타에 `lastUpdated` 타임스탬프 추가 (SQLite migration)\n- 백그라운드 워커(`src/core/taskStuckWatcher.ts`) 구현: 매 5분마다 `tasks_stuck > 0` 확인 → `lastUpdated > 10분`인 태스크 재큐\n- 재시도 횟수 제한(`maxRetries:3`) 및 로그 기록\n- 모니터 대시보드에 스틱 태스크 실시간 차트 추가\n\n### 목표 2: 오류·잘못된 보고 검증 자동화\n- `false_report_count`를 감시하는 이벤트 핸들러(`src/security/FalseReportGuard.ts`) 구현\n- 검증 단계에서 T1 증거(파일 존재·DB 레코드) 확인 후만 보고 허용\n- 검증 실패 시 자동 알림(Discord/Slack) 및 자동 롤백 시나리오\n- 정기 보고서에 `false_report_rate` 지표 포함\n\n### 목표 3: 지식 관리 자동화·노트 활용 효율화\n- Obsidian Vault와 SQLite 동기화 스크립트(`src/utils/obsidianSync.ts`) 구축 – 새 문서 자동 인덱싱\n- 개선 노트 자동 태깅(`#improvement`) 및 메타 데이터(`tasksAffected`) 삽입\n- 주간 집계 스크립트(`src/utils/improvementMetrics.ts`) – 문서당 연관 태스크 수, 최신 업데이트 시각 등\n- UI 대시보드에 `obsidianDocs`, `improvementNotes` KPI 시각화\n\n## 자동화 가능한 부분\n- **스틱 태스크 워처**: `cron`(node-cron) 기반 자동 재시도\n- **False Report Guard**: 이벤트‑driven 자동 차단 및 알림\n- **Obsidian Sync**: 파일 시스템 감시(`chokidar`) → DB 자동 반영\n- **KPI 대시보드**: Grafana‑style 위젯 자동 업데이트\n\n## 다음 사이클 측정 지표\n- `tasks_stuck` → 0 (목표)\n- `false_report_count` → 0\n- `success_rate` → ≥ 99%\n- `obsidian_docs` 증가율: 월 2%\n- `improvement_notes` 활용도: 연관 태스크당 평균 1.2개 노트\n- 신규 KPI: `avgTaskCompletionTime`, `stuckResolutionTime`\n

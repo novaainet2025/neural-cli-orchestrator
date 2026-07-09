@@ -136,18 +136,18 @@ async function main() {
   // ═══ 4. 에이전트 간 메시지 교환 ═══
   console.log('\n=== 4. 에이전트 간 메시지 교환 ===');
 
-  await test('메시지', 'codex → gemini: 코드 리뷰 요청', async () => {
+  await test('메시지', 'codex → openrouter: 코드 리뷰 요청', async () => {
     const r = await post('/api/collaboration/message', {
-      from: 'codex', to: 'gemini',
+      from: 'codex', to: 'openrouter',
       message: '파일 src/core/event-bus.ts 리뷰 부탁합니다',
       type: 'review',
     });
     assert(r.data.ok, 'send failed');
   });
 
-  await test('메시지', 'gemini → codex: 리뷰 응답', async () => {
+  await test('메시지', 'openrouter → codex: 리뷰 응답', async () => {
     const r = await post('/api/collaboration/message', {
-      from: 'gemini', to: 'codex',
+      from: 'openrouter', to: 'codex',
       message: 'event-bus.ts 검토 완료, 이벤트 버퍼링 로직 좋습니다',
       type: 'direct',
     });
@@ -172,10 +172,10 @@ async function main() {
   await test('메시지', '메시지 이력 DB 저장 확인', async () => {
     const r = await api('/api/messages?limit=10');
     const review = r.data.messages.find((m: any) =>
-      m.from_agent === 'codex' && m.to_agent === 'gemini' && m.message_type === 'review');
+      m.from_agent === 'codex' && m.to_agent === 'openrouter' && m.message_type === 'review');
     assert(!!review, 'review message not in DB');
     const reply = r.data.messages.find((m: any) =>
-      m.from_agent === 'gemini' && m.to_agent === 'codex');
+      m.from_agent === 'openrouter' && m.to_agent === 'codex');
     assert(!!reply, 'reply not in DB');
   });
 
@@ -302,7 +302,7 @@ async function main() {
   await test('토론', '협업 세션 생성 → ID 발급', async () => {
     const r = await post('/api/collaboration/sessions', {
       title: '팀 토론: 에러 핸들링 전략',
-      participants: ['claude-code', 'codex', 'gemini'],
+      participants: ['claude-code', 'codex', 'openrouter'],
     });
     assert(!!r.data.session.id, 'no session id');
   });

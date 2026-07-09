@@ -188,6 +188,20 @@ export class DelegationManager {
       return;
     }
 
+    const delegation = rowToDelegation(row);
+    const canComplete =
+      delegation.acceptanceStatus === 'accepted' &&
+      (delegation.workStatus === 'waiting' || delegation.workStatus === 'in_progress');
+
+    if (!canComplete) {
+      log.warn({
+        delegationId,
+        acceptanceStatus: delegation.acceptanceStatus,
+        workStatus: delegation.workStatus,
+      }, 'complete: invalid state transition');
+      return;
+    }
+
     db.prepare(`
       UPDATE delegations
       SET work_status = 'completed',

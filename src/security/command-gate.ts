@@ -1,3 +1,5 @@
+import { accessSync, constants, existsSync, realpathSync } from 'fs';
+import { basename, isAbsolute, resolve } from 'path';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('command-gate');
@@ -29,6 +31,20 @@ const GLOBAL_DENIED_PATTERNS = [
   /\bpython[23]?\s+-c\s/,         // arbitrary python exec
 ];
 
+const TRUSTED_EXEC_DIRS = [
+  '/bin',
+  '/sbin',
+  '/usr/bin',
+  '/usr/sbin',
+  '/usr/local/bin',
+  '/usr/local/sbin',
+  '/opt/homebrew/bin',
+  '/opt/homebrew/sbin',
+  '/home/linuxbrew/.linuxbrew/bin',
+  '/home/linuxbrew/.linuxbrew/sbin',
+  resolve(process.cwd(), 'node_modules/.bin'),
+];
+
 export class CommandGate {
   private allowed: Set<string>;
   private denied: string[];
@@ -40,23 +56,33 @@ export class CommandGate {
 
   validate(command: string, args: string[] = []): { ok: boolean; reason?: string } {
     const fullCmd = [command, ...args].join(' ');
+    const baseCmd = basename(command);
+    const resolvedCommand = this.resolveExecutable(command);
 
-    // 1. Extract base command
-    const baseCmd = command.split('/').pop() || command;
-
-    // 2. Allowed command check
+    // 1. Allowed command check
     if (this.allowed.size > 0 && !this.allowed.has(baseCmd)) {
       return { ok: false, reason: `Command not in allowlist: ${baseCmd}` };
     }
 
-    // 3. Custom denied patterns
+    if (this.allowed.size > 0) {
+      if (!resolvedCommand) {
+        return { ok: false, reason: `Command executable not found: ${command}` };
+      }
+      if (!this.isTrustedExecutablePath(resolvedCommand)) {
+        return { ok: false, reason: `Command path not trusted: ${resolvedCommand}` };
+      }
+    } else if ((command.includes('/') || isAbsolute(command)) && resolvedCommand && !this.isTrustedExecutablePath(resolvedCommand)) {
+      return { ok: false, reason: `Command path not trusted: ${resolvedCommand}` };
+    }
+
+    // 2. Custom denied patterns
     for (const pattern of this.denied) {
       if (fullCmd.includes(pattern)) {
         return { ok: false, reason: `Command matches denied pattern: ${pattern}` };
       }
     }
 
-    // 4. Global dangerous patterns
+    // 3. Global dangerous patterns
     for (const regex of GLOBAL_DENIED_PATTERNS) {
       if (regex.test(fullCmd)) {
         return { ok: false, reason: `Command matches dangerous pattern: ${regex.source}` };
@@ -72,5 +98,37 @@ export class CommandGate {
       log.warn({ command, args, reason: result.reason }, 'Command blocked');
       throw new Error(`CommandGate: ${result.reason}`);
     }
+  }
+
+  private resolveExecutable(command: string): string | null {
+    const candidates: string[] = [];
+
+    if (command.includes('/') || isAbsolute(command)) {
+      candidates.push(isAbsolute(command) ? command : resolve(command));
+    } else {
+      const pathEntries = (process.env.PATH || '').split(':').filter(Boolean);
+      for (const entry of pathEntries) {
+        candidates.push(resolve(entry, command));
+      }
+    }
+
+    for (const candidate of candidates) {
+      if (!existsSync(candidate)) {
+        continue;
+      }
+
+      try {
+        accessSync(candidate, constants.X_OK);
+        return realpathSync(candidate);
+      } catch {
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  private isTrustedExecutablePath(executablePath: string): boolean {
+    return TRUSTED_EXEC_DIRS.some(dir => executablePath === dir || executablePath.startsWith(`${dir}/`));
   }
 }

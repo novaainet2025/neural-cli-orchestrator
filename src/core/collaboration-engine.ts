@@ -1,6 +1,7 @@
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { cliMesh } from './cli-mesh.js';
+import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('collaboration-engine');
@@ -33,6 +34,25 @@ export interface Contribution {
   createdAt: string;
 }
 
+export type CollaborationJoinFailureReason =
+  | 'not_found'
+  | 'closed'
+  | 'already_joined'
+  | 'max_participants';
+
+export type CollaborationJoinResult =
+  | { joined: true }
+  | { joined: false; reason: CollaborationJoinFailureReason };
+
+export type CollaborationContributeFailureReason =
+  | 'not_found'
+  | 'closed'
+  | 'not_participant';
+
+export type CollaborationContributeResult =
+  | { contributionId: string; reason?: undefined }
+  | { contributionId: null; reason: CollaborationContributeFailureReason };
+
 function rowToCollaboration(row: Record<string, unknown>): Collaboration {
   return {
     id: row.id as string,
@@ -44,7 +64,9 @@ function rowToCollaboration(row: Record<string, unknown>): Collaboration {
     creatorAgentId: row.creator_agent_id as string,
     participantSessionIds: JSON.parse((row.participant_session_ids as string) || '[]'),
     minParticipants: (row.min_participants as number) ?? 2,
-    maxParticipants: row.max_participants as number | undefined,
+    // SQLite NULL은 JS null — undefined로 정규화하지 않으면 joinTx의 `!== undefined` 가드를
+    // 통과해 `length >= null(→0)`이 항상 참 → 모든 join이 조용히 거부됨 (T1 확증 버그)
+    maxParticipants: (row.max_participants ?? undefined) as number | undefined,
     result: row.result as string | undefined,
     resultMethod: row.result_method as string | undefined,
     createdAt: row.created_at as string,
@@ -66,6 +88,69 @@ function rowToContribution(row: Record<string, unknown>): Contribution {
 }
 
 export class CollaborationEngine {
+  private readonly joinTx = getDb().transaction((collaborationId: string, sessionId: string) => {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT * FROM collaborations WHERE id = ?`
+    ).get(collaborationId) as Record<string, unknown> | undefined;
+
+    if (!row) return { changed: false, reason: 'not_found' } as const;
+
+    const collab = rowToCollaboration(row);
+    if (collab.status === 'closed') return { changed: false, reason: 'closed' } as const;
+    if (collab.participantSessionIds.includes(sessionId)) return { changed: false, reason: 'already_joined' } as const;
+    if (collab.maxParticipants !== undefined && collab.participantSessionIds.length >= collab.maxParticipants) {
+      return { changed: false, reason: 'max_participants' } as const;
+    }
+
+    const updated = [...collab.participantSessionIds, sessionId];
+    db.prepare(`
+      UPDATE collaborations
+      SET participant_session_ids = ?
+      WHERE id = ?
+    `).run(JSON.stringify(updated), collaborationId);
+
+    return { changed: true } as const;
+  });
+
+  private readonly contributeTx = getDb().transaction((params: {
+    id: string;
+    collaborationId: string;
+    sessionId: string;
+    agentId: string;
+    content: string;
+    contentType: Contribution['contentType'];
+  }) => {
+    const db = getDb();
+    const row = db.prepare(
+      `SELECT * FROM collaborations WHERE id = ?`
+    ).get(params.collaborationId) as Record<string, unknown> | undefined;
+
+    if (!row) return { inserted: false, reason: 'not_found' } as const;
+
+    const collab = rowToCollaboration(row);
+    if (collab.status === 'closed') return { inserted: false, reason: 'closed' } as const;
+    if (!collab.participantSessionIds.includes(params.sessionId)) {
+      return { inserted: false, reason: 'not_participant' } as const;
+    }
+
+    db.prepare(`
+      INSERT INTO collab_contributions
+        (id, collaboration_id, session_id, agent_id, content, content_type, score, created_at)
+      VALUES
+        (?, ?, ?, ?, ?, ?, 0, datetime('now'))
+    `).run(
+      params.id,
+      params.collaborationId,
+      params.sessionId,
+      params.agentId,
+      params.content,
+      params.contentType,
+    );
+
+    return { inserted: true, participants: collab.participantSessionIds } as const;
+  });
+
   /**
    * 새 협업 세션 생성 + 초대 mesh 메시지 브로드캐스트
    */
@@ -130,47 +215,47 @@ export class CollaborationEngine {
       }
     }
 
+    await eventBus.publish({
+      type: 'collab:created',
+      collaborationId: id,
+      title: params.title,
+      collaborationType: type,
+      status: 'open',
+      creatorSessionId: params.creatorSessionId,
+      creatorAgentId: params.creatorAgentId,
+      participantCount: initialParticipants.length,
+      inviteCount: inviteIds.length,
+      minParticipants,
+      maxParticipants: params.maxParticipants ?? null,
+    });
+
     return id;
   }
 
   /**
    * 협업에 참여 (participant_session_ids에 추가)
    */
-  async join(collaborationId: string, sessionId: string, agentId: string): Promise<void> {
-    const db = getDb();
-    const row = db.prepare(
-      `SELECT * FROM collaborations WHERE id = ?`
-    ).get(collaborationId) as Record<string, unknown> | undefined;
-
-    if (!row) {
+  async join(collaborationId: string, sessionId: string, agentId: string): Promise<CollaborationJoinResult> {
+    const result = this.joinTx(collaborationId, sessionId);
+    if (result.reason === 'not_found') {
       log.warn({ collaborationId }, 'join: collaboration not found');
-      return;
+      return { joined: false, reason: result.reason };
     }
-
-    const collab = rowToCollaboration(row);
-    if (collab.status === 'closed') {
+    if (result.reason === 'closed') {
       log.warn({ collaborationId, sessionId }, 'join: collaboration is already closed');
-      return;
+      return { joined: false, reason: result.reason };
     }
-
-    if (collab.participantSessionIds.includes(sessionId)) {
+    if (result.reason === 'already_joined') {
       log.debug({ collaborationId, sessionId }, 'join: session already a participant');
-      return;
+      return { joined: false, reason: result.reason };
     }
-
-    if (collab.maxParticipants !== undefined && collab.participantSessionIds.length >= collab.maxParticipants) {
+    if (result.reason === 'max_participants') {
       log.warn({ collaborationId, sessionId }, 'join: collaboration is at max participants');
-      return;
+      return { joined: false, reason: result.reason };
     }
-
-    const updated = [...collab.participantSessionIds, sessionId];
-    db.prepare(`
-      UPDATE collaborations
-      SET participant_session_ids = ?
-      WHERE id = ?
-    `).run(JSON.stringify(updated), collaborationId);
 
     log.info({ collaborationId, sessionId, agentId }, 'Session joined collaboration');
+    return { joined: true };
   }
 
   /**
@@ -182,51 +267,58 @@ export class CollaborationEngine {
     agentId: string;
     content: string;
     contentType?: Contribution['contentType'];
-  }): Promise<string> {
-    const db = getDb();
+  }): Promise<CollaborationContributeResult> {
     const id = createId('contrib');
     const contentType = params.contentType ?? 'text';
-
-    db.prepare(`
-      INSERT INTO collab_contributions
-        (id, collaboration_id, session_id, agent_id, content, content_type, score, created_at)
-      VALUES
-        (?, ?, ?, ?, ?, ?, 0, datetime('now'))
-    `).run(
+    const result = this.contributeTx({
       id,
-      params.collaborationId,
-      params.sessionId,
-      params.agentId,
-      params.content,
+      collaborationId: params.collaborationId,
+      sessionId: params.sessionId,
+      agentId: params.agentId,
+      content: params.content,
       contentType,
-    );
+    });
+
+    if (!result.inserted) {
+      log.warn({
+        collaborationId: params.collaborationId,
+        sessionId: params.sessionId,
+        reason: result.reason,
+      }, 'contribute: contribution rejected');
+      return { contributionId: null, reason: result.reason };
+    }
 
     log.info({ id, collaborationId: params.collaborationId, agentId: params.agentId, contentType }, 'Contribution submitted');
 
     // Broadcast COLLAB_CONTRIBUTION to all participants
-    const row = db.prepare(
-      `SELECT * FROM collaborations WHERE id = ?`
-    ).get(params.collaborationId) as Record<string, unknown> | undefined;
-
-    if (row) {
-      const collab = rowToCollaboration(row);
-      for (const participantSessionId of collab.participantSessionIds) {
-        if (participantSessionId === params.sessionId) continue;
-        try {
-          await cliMesh.sendMessage(
-            params.sessionId,
-            params.agentId,
-            participantSessionId,
-            `COLLAB_CONTRIBUTION:${params.collaborationId}:${id}`,
-            'info',
-          );
-        } catch (err) {
-          log.warn({ err, id, participantSessionId }, 'Failed to send COLLAB_CONTRIBUTION');
-        }
+    for (const participantSessionId of result.participants) {
+      if (participantSessionId === params.sessionId) continue;
+      try {
+        await cliMesh.sendMessage(
+          params.sessionId,
+          params.agentId,
+          participantSessionId,
+          `COLLAB_CONTRIBUTION:${params.collaborationId}:${id}`,
+          'info',
+        );
+      } catch (err) {
+        log.warn({ err, id, participantSessionId }, 'Failed to send COLLAB_CONTRIBUTION');
       }
     }
 
-    return id;
+    await eventBus.publish({
+      type: 'collab:contributed',
+      collaborationId: params.collaborationId,
+      contributionId: id,
+      collabSessionId: params.sessionId,
+      // agentId는 WS 라우팅 키(구독자-한정 분기 유발) — 브로드캐스트 되도록 contributorId 사용
+      contributorId: params.agentId,
+      contentType,
+      contentPreview: params.content.slice(0, 200),
+      participantCount: result.participants.length,
+    });
+
+    return { contributionId: id };
   }
 
   /**
@@ -267,6 +359,15 @@ export class CollaborationEngine {
     `).run(newScore, contributionId);
 
     log.debug({ contributionId, voterSessionId, vote, newScore }, 'Vote recorded');
+
+    await eventBus.publish({
+      type: 'collab:voted',
+      collaborationId,
+      contributionId,
+      voterSessionId,
+      vote,
+      score: newScore,
+    });
   }
 
   /**
@@ -303,6 +404,16 @@ export class CollaborationEngine {
         log.warn({ err, collaborationId, participantSessionId }, 'Failed to send COLLAB_VOTING_START');
       }
     }
+
+    await eventBus.publish({
+      type: 'collab:voting_started',
+      collaborationId,
+      title: collab.title,
+      collaborationType: collab.type,
+      participantCount: collab.participantSessionIds.length,
+      creatorSessionId: collab.creatorSessionId,
+      creatorAgentId: collab.creatorAgentId,
+    });
   }
 
   /**
@@ -378,7 +489,20 @@ export class CollaborationEngine {
       `SELECT * FROM collaborations WHERE id = ?`
     ).get(collaborationId) as Record<string, unknown>;
 
-    return rowToCollaboration(updatedRow);
+    const updatedCollab = rowToCollaboration(updatedRow);
+
+    await eventBus.publish({
+      type: 'collab:closed',
+      collaborationId: updatedCollab.id,
+      title: updatedCollab.title,
+      collaborationType: updatedCollab.type,
+      status: updatedCollab.status,
+      participantCount: updatedCollab.participantSessionIds.length,
+      resultPreview: updatedCollab.result?.slice(0, 200),
+      closedAt: updatedCollab.closedAt ?? null,
+    });
+
+    return updatedCollab;
   }
 
   /**

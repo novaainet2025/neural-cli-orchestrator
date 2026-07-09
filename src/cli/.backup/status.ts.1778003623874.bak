@@ -1,0 +1,67 @@
+// src/cli/status.ts
+// Simple CLI utility to print a summary of the NCO system state.
+// It fetches the list of agents, their current status, and any tasks that are currently running.
+
+import { sharedState } from '../core/shared-state.js';
+import { taskQueue } from '../core/task-queue.js';
+import { createLogger } from '../utils/logger.js';
+import { getDb } from '../storage/database.js';
+
+const log = createLogger('status');
+
+async function printAgentStates() {
+  // Assuming agents are stored in Redis via SharedState
+  // We don't have a direct method to list all agents, so we query the SQLite DB where agents are persisted.
+  const db = getDb();
+  const rows = db.prepare('SELECT id, status, currentTask FROM agents').all();
+
+  if (rows.length === 0) {
+    console.log('No agents registered.');
+    return;
+  }
+
+  console.log('Agents:');
+  for (const row of rows) {
+    console.log(`- ${row.id}: status=${row.status}, currentTask=${row.currentTask || 'idle'}`);
+  }
+}
+
+async function printRunningTasks() {
+  // TaskQueue maintains a list of pending/active jobs in Redis (BullMQ).
+  // We can query the queue for active jobs.
+  const active = await taskQueue.getActiveJobs();
+  const waiting = await taskQueue.getWaitingJobs();
+
+  const totalRunning = active.length;
+  const totalQueued = waiting.length;
+
+  console.log(`\nTasks:`);
+  console.log(`- Running: ${totalRunning}`);
+  if (totalRunning > 0) {
+    active.forEach((job) => {
+      console.log(`  * [${job.id}] agent=${job.data.agentId} prompt="${job.data.prompt.slice(0, 30)}..."`);
+    });
+  }
+  console.log(`- Queued: ${totalQueued}`);
+  if (totalQueued > 0) {
+    waiting.forEach((job) => {
+      console.log(`  * [${job.id}] agent=${job.data.agentId} prompt="${job.data.prompt.slice(0, 30)}..."`);
+    });
+  }
+}
+
+async function main() {
+  try {
+    console.log('=== NCO System Summary ===\n');
+    await printAgentStates();
+    await printRunningTasks();
+    console.log('\n=== End of Summary ===');
+  } catch (err) {
+    log.error({ err }, 'Failed to retrieve system status');
+    process.exit(1);
+  }
+}
+
+if (require.main === module) {
+  main();
+}

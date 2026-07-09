@@ -154,6 +154,7 @@ class QualityGate {
 
     let lastOutput = '';
     let lastQuality: QualityResult | null = null;
+    let bestCandidate: { agentId: string; output: string; quality: QualityResult; attempt: number } | null = null;
 
     for (let i = 0; i < agentChain.length; i++) {
       const agentId = agentChain[i];
@@ -173,6 +174,9 @@ class QualityGate {
 
         lastOutput = output;
         lastQuality = quality;
+        if (!bestCandidate || quality.score > bestCandidate.quality.score) {
+          bestCandidate = { agentId, output, quality, attempt: i + 1 };
+        }
 
         if (i < agentChain.length - 1) {
           log.warn({ agentId, score: quality.score, threshold, next: agentChain[i + 1] }, 'Quality gate failed — falling back');
@@ -183,16 +187,25 @@ class QualityGate {
         log.error({ agentId, err: e.message }, 'Agent execution failed');
         lastOutput = `[ERROR] ${e.message}`;
         lastQuality = this.evaluate(lastOutput, prompt, taskType, threshold);
+        if (!bestCandidate || lastQuality.score > bestCandidate.quality.score) {
+          bestCandidate = { agentId, output: lastOutput, quality: lastQuality, attempt: i + 1 };
+        }
       }
     }
 
     // 모든 에이전트 실패 — 마지막 결과 반환
     log.warn({ attempts: agentChain.length }, 'All agents in fallback chain failed quality gate — returning best available');
-    return {
+    const fallback = bestCandidate ?? {
       agentId: agentChain[agentChain.length - 1],
       output: lastOutput,
       quality: lastQuality ?? this.evaluate(lastOutput, prompt, taskType, threshold),
-      attempts: agentChain.length,
+      attempt: agentChain.length,
+    };
+    return {
+      agentId: fallback.agentId,
+      output: fallback.output,
+      quality: fallback.quality,
+      attempts: fallback.attempt,
     };
   }
 

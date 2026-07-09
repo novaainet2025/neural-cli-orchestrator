@@ -40,8 +40,14 @@ function createClient(name: string): Redis {
 
 export async function getRedis(): Promise<Redis> {
   if (!client) {
-    client = createClient('main');
-    await client.connect();
+    const nextClient = createClient('main');
+    try {
+      await nextClient.connect();
+      client = nextClient;
+    } catch (error) {
+      client = null;
+      throw error;
+    }
   }
   return client;
 }

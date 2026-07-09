@@ -51,7 +51,7 @@ function extractClaims(text: string): string[] {
 
 // ── 컨텍스트 기반 그라운딩 점수 ──────────────────────────────────────────
 function computeGrounding(response: string, context?: string): number {
-  if (!context || context.trim().length < 10) return 0.7; // 컨텍스트 없으면 중립
+  if (!context || context.trim().length < 10) return 0.1; // 무맥락 응답은 낮은 기본값으로 시작
 
   const responseWords = new Set(
     response.toLowerCase().replace(/[^a-z0-9가-힣\s]/g, ' ').split(/\s+/).filter(w => w.length > 3)

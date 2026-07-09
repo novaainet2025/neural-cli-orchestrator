@@ -6,7 +6,7 @@ import { resolve } from 'path';
 import { z } from 'zod/v4';
 import { env } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
-import { redisHealthCheck } from '../storage/redis.js';
+import { getRedis, isRedisConnected, redisHealthCheck } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { validateDelegationPayload } from '../utils/delegation-payload.js';
@@ -36,41 +36,41 @@ import {
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
 function detectFailedCompletion(response: string | null | undefined): boolean {
   if (!response) return false;
-  if (/^Error:\s/i.test(response)) return true;
+  const text = response.trim();
+  if (/^Error:\s/i.test(text)) return true;
 
-  const longSuccessPrefix = /^(?:done|status|answer):/i;
-  const hasLongSuccessPrefix = longSuccessPrefix.test(response) && response.length >= 200;
-  const patterns = [
-    /\b(?:error|exception)\b.*\b(?:occurred|happened|encountered)\b/i,
-    /\bfailed\s+(?:to|with)\b/i,
-    /\b(?:exceeded|over)\b.*\b(?:limit|quota|rate)\b/i,
-    /\bAPI\s*(?:key|quota|limit)\b.*\b(?:invalid|expired|exceeded)\b/i,
-    /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
-    /\b(?:streaming|execution)\s+error\b/i,
-    /\busage.*exceeded\b/i,
-    /\btimeout\b.*\b(?:error|exceeded|after)\b/i,
+  // HARD 시그니처: 정상 콘텐츠(코드리뷰·작업로그)에 등장하지 않는 강한 실패 신호.
+  // 위치/길이 무관하게 실패로 판정한다.
+  const hard = [
     /\bActionRequiredError\b/i,
-    /\busage\s+limit\b/i,
     /\bProviderModelNotFoundError\b/i,
+    /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
     /\brequest\s+timed\s+out\b/i,
+    // 오케스트레이터가 붙이는 선두 래퍼("[codex: no final response — process failed]")만.
+    // 리뷰가 이 문자열을 인용하는 경우(본문 중간)는 제외하려고 ^ 앵커 사용.
+    /^\[[\w-]+:[^\]]*\bno final response\b/i,
+    /^\s*ERROR:\s/im,
+    /^status:\s*failed\b/im,
+  ];
+  if (hard.some(p => p.test(text))) return true;
+
+  // SOFT 시그니처: 정상 텍스트에도 등장할 수 있는 단어들(error/failed/usage limit 등).
+  // 긴 substantive 출력의 본문 중간 등장은 오탐이므로, 짧은 출력 전체 또는 긴 출력의
+  // 선두 200자에서만 판정한다. 근접 제한(.{0,N})으로 span-매칭 오탐도 차단.
+  const soft = [
+    /\bfailed\s+(?:to|with)\b/i,
+    /\b(?:error|exception)\b.{0,15}\b(?:occurred|happened|encountered)\b/i,
+    /\b(?:exceeded|over)\b.{0,20}\b(?:limit|quota|rate)\b/i,
+    /\bAPI\s*(?:key|quota|limit)\b.{0,20}\b(?:invalid|expired|exceeded)\b/i,
+    /\b(?:streaming|execution)\s+error\b/i,
+    /\busage.{0,20}exceeded\b/i,
+    /\btimeout\b.{0,20}\b(?:error|exceeded|after)\b/i,
+    /\busage\s+limit\b/i,
     /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
   ];
-  if (hasLongSuccessPrefix) {
-    const leadingSegment = response.slice(0, 300);
-    const strongLeadingFailurePatterns = [
-      /\b(?:error|exception)\b.*\b(?:occurred|happened|encountered)\b/i,
-      /\bfailed\s+(?:to|with)\b/i,
-      /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
-      /\b(?:streaming|execution)\s+error\b/i,
-      /\btimeout\b.*\b(?:error|exceeded|after)\b/i,
-      /\bActionRequiredError\b/i,
-      /\bProviderModelNotFoundError\b/i,
-      /\brequest\s+timed\s+out\b/i,
-      /^status:\s*failed\b/i,
-    ];
-    return strongLeadingFailurePatterns.some(p => p.test(leadingSegment));
-  }
-  return patterns.some(p => p.test(response));
+  const SHORT_OUTPUT = 500;
+  const target = text.length <= SHORT_OUTPUT ? text : text.slice(0, 200);
+  return soft.some(p => p.test(target));
 }
 
 function buildFailureError(result: { error?: string; output?: string }): string {
@@ -88,11 +88,55 @@ function withTaskRuntime<T extends { id: string; last_activity_at?: string | nul
   };
 }
 
+function parseStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+// ── R1: 품질-인지 라우팅 — failover 시 성공률 높은 프로바이더 우선 ──
+// tasks 테이블 기반 프로바이더별 성공률을 TTL 캐시(5분)해 라우터 hot-path 부담 최소화.
+// 표본<10건은 중립(0.5)으로 두어 sparse 노이즈가 cost-order를 해치지 않게 한다.
+// adaptive-scorer는 데이터 테이블 미존재로 no-op이라, 라이브 tasks 집계를 직접 사용.
+let _provQualityCache: { at: number; map: Map<string, number> } | null = null;
+function getProviderSuccessRates(): Map<string, number> {
+  const now = Date.now();
+  if (_provQualityCache && now - _provQualityCache.at < 300_000) return _provQualityCache.map;
+  const map = new Map<string, number>();
+  try {
+    const rows = getDb().prepare(`
+      SELECT assigned_to AS ai,
+             COUNT(*) AS total,
+             SUM(CASE WHEN status IN ('completed','done') THEN 1 ELSE 0 END) AS ok
+      FROM tasks
+      WHERE assigned_to IS NOT NULL AND created_at > datetime('now','-14 days')
+      GROUP BY assigned_to
+    `).all() as Array<{ ai: string; total: number; ok: number }>;
+    for (const r of rows) {
+      map.set(r.ai, r.total >= 10 ? r.ok / r.total : 0.5);
+    }
+  } catch { /* DB 실패 시 빈 맵 → cost-order 유지(안전) */ }
+  _provQualityCache = { at: now, map };
+  return map;
+}
+
 function listAvailableProviders(exclude: string[] = []): string[] {
   const excluded = new Set(exclude);
-  return sortProvidersByCostOrder(agentManager.listEnabledIds())
+  const avail = sortProvidersByCostOrder(agentManager.listEnabledIds())
     .filter(agentId => !excluded.has(agentId))
     .filter(agentId => circuitBreakerRegistry.getAvailability(agentId).status === 'available');
+  // R1: 성공률 내림차순 정렬. 동률·데이터없음(0.5)은 원래 cost-order 유지(stable).
+  const sr = getProviderSuccessRates();
+  return avail
+    .map((id, i) => ({ id, i, q: sr.get(id) ?? 0.5 }))
+    .sort((a, b) => (b.q - a.q) || (a.i - b.i))
+    .map(x => x.id);
 }
 
 function toGateResponse(availability: ProviderAvailabilitySnapshot) {
@@ -174,10 +218,14 @@ function resolveRealtimeProviders(mode: RealtimeGateMode, requestedProviders?: s
 }
 import { injectContext } from '../core/conversation-context.js';
 import { registerDashboardRoutes } from './routes/dashboard-compat.js';
+import { registerMathRoutes } from './routes/math.js';
 import { registerCircuitRoutes } from './routes/circuit.js';
 import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerHandoffRoutes } from './routes/handoff.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
+import { registerTeamsRoutes } from './routes/teams.js';
+import { registerWorkReportRoutes } from './routes/work-reports.js';
+import { registerAuditRoutes } from './routes/audit.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
@@ -288,6 +336,71 @@ const AcquisitionDecisionFilterSchema = z.enum([
   'registration_failed',
   'active',
 ]);
+const DiscussionRouteBodySchema = z.object({
+  topic: z.string().min(1),
+  participants: z.array(z.string().min(1)).min(1).optional(),
+  providers: z.array(z.string().min(1)).min(1).optional(),
+  rounds: z.number().int().min(1).max(10).optional(),
+  maxRounds: z.number().int().min(1).max(10).optional(),
+  consensusThreshold: z.number().min(0).max(1).optional(),
+  mode: z.enum(['discussion', 'consensus', 'hive']).optional().default('discussion'),
+  initiator: z.string().min(1).optional(),
+  sessionId: z.string().min(1).optional(),
+}).refine(value => !(value.participants && value.providers), {
+  message: 'Use either participants or providers, not both',
+  path: ['participants'],
+});
+const ParallelRouteBodySchema = z.object({
+  prompt: z.string().min(1),
+  providers: z.array(z.string().min(1)).min(1),
+});
+const CreateCollabBodySchema = z.object({
+  title: z.string().min(1),
+  type: z.enum(['brainstorm', 'consensus', 'parallel_work', 'review']).optional(),
+  description: z.string().min(1).optional(),
+  createdBy: z.string().min(1).optional(),
+});
+const JoinCollabBodySchema = z.object({
+  agentId: z.string().min(1),
+});
+const ContributeCollabBodySchema = z.object({
+  agentId: z.string().min(1),
+  content: z.string().min(1),
+});
+const VoteCollabBodySchema = z.object({
+  agentId: z.string().min(1),
+  choice: z.string().min(1),
+  vote: z.union([z.literal(-1), z.literal(1)]).optional(),
+});
+const ListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
+type ActiveLock = {
+  path: string;
+  holder: string;
+  ttlMs: number | null;
+};
+
+const LOCK_KEY_PREFIX = 'nco:lock:file:';
+
+async function listActiveLocks(): Promise<ActiveLock[]> {
+  if (!isRedisConnected()) return [];
+  const redis = await getRedis();
+  const keys = await redis.keys(`${LOCK_KEY_PREFIX}*`);
+  const locks = await Promise.all(keys.map(async (key) => {
+    const [holder, ttlMs] = await Promise.all([redis.get(key), redis.pttl(key)]);
+    if (!holder) return null;
+    return {
+      path: key.slice(LOCK_KEY_PREFIX.length),
+      holder,
+      ttlMs: ttlMs >= 0 ? ttlMs : null,
+    };
+  }));
+  return locks
+    .filter((lock): lock is ActiveLock => lock !== null)
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
 
 let cachedCommGraph: CommGraphConfig | null = null;
 let cachedCommGraphWarning: string | null = null;
@@ -910,6 +1023,11 @@ export async function createGateway() {
     return { agents: cards };
   });
 
+  // Root greeting route
+  app.get('/', async () => {
+    return { message: 'NCO Backend is running', status: 'ok' };
+  });
+
   // ═══ Health ═══════════════════════════════════════
   app.get('/health', async () => {
     const agents = await sharedState.getAllAgentStates();
@@ -1144,8 +1262,16 @@ export async function createGateway() {
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
-      const metadataJson = input.requiredEvidence && input.requiredEvidence.length > 0
-        ? JSON.stringify({ requiredEvidence: input.requiredEvidence })
+      // metadata 병합 지속: projectDir 등 실행 옵션이 input.metadata로 유입돼도 유실 방지
+      // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
+      const mergedMetadata = {
+        ...(input.metadata ?? {}),
+        ...(input.requiredEvidence && input.requiredEvidence.length > 0
+          ? { requiredEvidence: input.requiredEvidence }
+          : {}),
+      };
+      const metadataJson = Object.keys(mergedMetadata).length > 0
+        ? JSON.stringify(mergedMetadata)
         : null;
       db.prepare(`
         INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
@@ -1179,7 +1305,7 @@ export async function createGateway() {
       : input.systemPrompt;
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { invocationId } })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : '';
         const classifiedFailure = detectFailedCompletion(response);
@@ -1249,17 +1375,65 @@ export async function createGateway() {
     const rawLimit = Number(query.limit || 100);
     const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 500);
     const db = getDb();
-    let sql = 'SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?';
-    const params: any[] = [limit];
+    const where: string[] = [];
+    const params: any[] = [];
 
     if (query.workspaceId) {
-      sql = 'SELECT * FROM tasks WHERE workspace_id=? ORDER BY created_at DESC LIMIT ?';
-      params.unshift(query.workspaceId);
+      where.push('workspace_id=?');
+      params.push(query.workspaceId);
     }
+
+    if (query.provider) {
+      where.push('assigned_to=?');
+      params.push(query.provider);
+    }
+
+    const whereClause = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
+    const sql = `SELECT * FROM tasks${whereClause} ORDER BY created_at DESC LIMIT ?`;
+    params.push(limit);
 
     const tasks = (db.prepare(sql).all(...params) as Array<{ id: string; last_activity_at?: string | null }>)
       .map(task => withTaskRuntime(task));
     return { tasks };
+  });
+
+  app.get('/api/task/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const db = getDb();
+    const task = db.prepare(`
+      SELECT id, status, assigned_to, progress, prompt, response, error, created_at, completed_at
+      FROM tasks
+      WHERE id=?
+    `).get(id) as {
+      id: string;
+      status: string | null;
+      assigned_to: string | null;
+      progress: string | null;
+      prompt: string | null;
+      response: string | null;
+      error: string | null;
+      created_at: string | null;
+      completed_at: string | null;
+    } | undefined;
+
+    if (!task) {
+      reply.code(404);
+      return { error: 'not found' };
+    }
+
+    return {
+      task: {
+        id: task.id,
+        status: task.status,
+        assigned_to: task.assigned_to,
+        progress: task.progress,
+        prompt: task.prompt?.slice(0, 200) ?? null,
+        response: task.response?.slice(0, 20_000) ?? null,
+        error: task.error,
+        created_at: task.created_at,
+        completed_at: task.completed_at,
+      },
+    };
   });
 
   app.get('/api/tasks/:id', async (req, reply) => {
@@ -1473,6 +1647,105 @@ export async function createGateway() {
     return { intent: result };
   });
 
+  app.post('/api/discussion', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const parsed = DiscussionRouteBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const body = parsed.data;
+    const sessionId = body.sessionId ?? createSessionId();
+    const providers = body.participants ?? body.providers;
+
+    discussionEngine.startDiscussion({
+      topic: body.topic,
+      mode: body.mode,
+      providers,
+      maxRounds: body.rounds ?? body.maxRounds,
+      consensusThreshold: body.consensusThreshold,
+      initiator: body.initiator,
+      sessionId,
+    }).catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
+
+    reply.code(202);
+    return { sessionId, status: 'started', mode: body.mode, participants: providers ?? null };
+  });
+
+  app.get('/api/consensus', async (req, reply) => {
+    const parsed = ListQuerySchema.safeParse(req.query ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid query', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT id, topic, mode, status, participants_json, consensus_rate, created_at, ended_at
+      FROM discussions
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(parsed.data.limit) as Array<{
+      id: string;
+      topic: string;
+      mode: string | null;
+      status: string | null;
+      participants_json: string;
+      consensus_rate: number | null;
+      created_at: string | null;
+      ended_at: string | null;
+    }>;
+
+    const discussions = rows.map((row) => {
+      let participants: string[] = [];
+      try {
+        const parsedParticipants = JSON.parse(row.participants_json) as unknown;
+        participants = Array.isArray(parsedParticipants)
+          ? parsedParticipants.filter((value): value is string => typeof value === 'string')
+          : [];
+      } catch {
+        participants = [];
+      }
+
+      return {
+        id: row.id,
+        topic: row.topic,
+        mode: row.mode,
+        status: row.status,
+        consensusRate: row.consensus_rate,
+        participantCount: participants.length,
+        participants,
+        createdAt: row.created_at,
+        endedAt: row.ended_at,
+      };
+    });
+
+    return { discussions };
+  });
+
+  app.post('/api/parallel', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const parsed = ParallelRouteBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const body = parsed.data;
+    discussionEngine.executeParallel(body.prompt, body.providers)
+      .catch(err => log.error({ err: err.message }, 'Parallel failed'));
+
+    reply.code(202);
+    return { status: 'started', providers: body.providers };
+  });
+
   // ═══ Discussions / Realtime ═══════════════════════
   app.post('/api/realtime/discussion', async (req, reply) => {
     if (draining) {
@@ -1633,12 +1906,99 @@ export async function createGateway() {
     return { discussions: db.prepare('SELECT * FROM discussions ORDER BY created_at DESC LIMIT 50').all() };
   });
 
-  app.get('/api/discussions/:id', async (req, reply) => {
-    const { id } = req.params as any;
+  const getDiscussionById = async (req: any, reply: FastifyReply) => {
+    const { id } = req.params as { id: string };
     const db = getDb();
-    const disc = db.prepare('SELECT * FROM discussions WHERE id=?').get(id);
-    if (!disc) { reply.code(404); return { error: 'Not found' }; }
-    return { discussion: disc };
+    const discussion = db.prepare(`
+      SELECT
+        id,
+        topic,
+        mode,
+        status,
+        current_round,
+        max_rounds,
+        consensus_threshold,
+        consensus_rate,
+        participants_json,
+        initiator,
+        result_json,
+        report,
+        task_id,
+        created_at,
+        ended_at
+      FROM discussions
+      WHERE id=?
+    `).get(id) as {
+      id: string;
+      topic: string;
+      mode: string | null;
+      status: string | null;
+      current_round: number | null;
+      max_rounds: number | null;
+      consensus_threshold: number | null;
+      consensus_rate: number | null;
+      participants_json: string | null;
+      initiator: string | null;
+      result_json: string | null;
+      report: string | null;
+      task_id: string | null;
+      created_at: string | null;
+      ended_at: string | null;
+    } | undefined;
+
+    if (!discussion) {
+      reply.code(404);
+      return { error: 'not found' };
+    }
+
+    const messages = db.prepare(`
+      SELECT id, discussion_id, agent_id, round, message_type, content, scores_json, vote_choice, vote_reason, created_at
+      FROM (
+        SELECT *
+        FROM discussion_messages
+        WHERE discussion_id=?
+        ORDER BY created_at DESC
+        LIMIT 50
+      )
+      ORDER BY created_at ASC
+    `).all(id) as Array<{
+      id: string;
+      discussion_id: string;
+      agent_id: string | null;
+      round: number | null;
+      message_type: string | null;
+      content: string;
+      scores_json: string | null;
+      vote_choice: string | null;
+      vote_reason: string | null;
+      created_at: string | null;
+    }>;
+
+    return {
+      discussion: {
+        id: discussion.id,
+        topic: discussion.topic,
+        mode: discussion.mode,
+        status: discussion.status,
+        current_round: discussion.current_round,
+        max_rounds: discussion.max_rounds,
+        consensus_threshold: discussion.consensus_threshold,
+        consensus_rate: discussion.consensus_rate,
+        participants: parseStringArray(discussion.participants_json),
+        initiator: discussion.initiator,
+        result_json: discussion.result_json,
+        report: discussion.report,
+        task_id: discussion.task_id,
+        created_at: discussion.created_at,
+        ended_at: discussion.ended_at,
+      },
+      messages,
+    };
+  };
+
+  app.get('/api/discussion/:id', getDiscussionById);
+  app.get('/api/discussions/:id', async (req, reply) => {
+    return getDiscussionById(req, reply);
   });
 
   app.get('/api/discussions/:id/messages', async (req) => {
@@ -1998,54 +2358,107 @@ export async function createGateway() {
   });
 
   // ═══ Group Intelligence: Collaboration (Phase 3) ════════════════════
-  app.post('/api/collab/create', async (req) => {
-    const { creatorSessionId, creatorAgentId, title, description, type, inviteSessionIds, minParticipants, maxParticipants, resultMethod } = req.body as any;
-    if (!creatorSessionId || !title) return { error: 'creatorSessionId and title are required' };
+  app.post('/api/collab', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const parsed = CreateCollabBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const body = parsed.data;
+    const creatorId = body.createdBy ?? 'unknown';
+    const creatorSessionId = body.createdBy ?? createSessionId();
     const id = await collaborationEngine.create({
-      creatorSessionId, creatorAgentId: creatorAgentId || 'unknown',
-      title, description, type, inviteSessionIds, minParticipants, maxParticipants, resultMethod,
+      creatorSessionId,
+      creatorAgentId: creatorId,
+      title: body.title,
+      description: body.description,
+      type: body.type,
     });
+
+    reply.code(201);
     return { id, status: 'created' };
   });
 
-  app.post('/api/collab/:id/join', async (req) => {
-    const { id } = req.params as any;
-    const { sessionId, agentId } = req.body as any;
-    if (!sessionId) return { error: 'sessionId is required' };
-    await collaborationEngine.join(id, sessionId, agentId || 'unknown');
-    return { id, sessionId, joined: true };
-  });
-
-  app.post('/api/collab/:id/contribute', async (req) => {
-    const { id } = req.params as any;
-    const { sessionId, agentId, content, contentType } = req.body as any;
-    if (!sessionId || !content) return { error: 'sessionId and content are required' };
-    const contributionId = await collaborationEngine.contribute({
-      collaborationId: id, sessionId, agentId: agentId || 'unknown', content, contentType,
-    });
-    return { contributionId };
-  });
-
-  app.post('/api/collab/:id/vote', async (req) => {
-    const { id } = req.params as any;
-    const { contributionId, voterSessionId, vote } = req.body as any;
-    if (!contributionId || !voterSessionId || ![-1, 1].includes(vote)) {
-      return { error: 'contributionId, voterSessionId, vote(1|-1) are required' };
+  app.post('/api/collab/:id/join', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
     }
-    await collaborationEngine.vote(contributionId, voterSessionId, vote);
-    return { ok: true };
+
+    const parsed = JoinCollabBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const { id } = req.params as any;
+    const { agentId } = parsed.data;
+    const result = await collaborationEngine.join(id, agentId, agentId);
+    if (!result.joined) {
+      reply.code(409);
+      return { error: 'Join rejected', reason: result.reason };
+    }
+    return { id, agentId, joined: true };
   });
 
-  app.post('/api/collab/:id/voting', async (req) => {
+  app.post('/api/collab/:id/contribute', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const parsed = ContributeCollabBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
     const { id } = req.params as any;
-    await collaborationEngine.startVoting(id);
-    return { id, status: 'voting' };
+    const { agentId, content } = parsed.data;
+    const result = await collaborationEngine.contribute({
+      collaborationId: id,
+      sessionId: agentId,
+      agentId,
+      content,
+    });
+    if (result.contributionId === null) {
+      reply.code(409);
+      return { error: 'Contribution rejected', reason: result.reason };
+    }
+    return { contributionId: result.contributionId };
   });
 
-  app.post('/api/collab/:id/close', async (req) => {
+  app.post('/api/collab/:id/vote', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const parsed = VoteCollabBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
     const { id } = req.params as any;
-    const { result } = req.body as any;
-    const collab = await collaborationEngine.close(id, result);
+    const { agentId, choice, vote = 1 } = parsed.data;
+    const collab = collaborationEngine.get(id);
+    if (collab?.status === 'open') {
+      await collaborationEngine.startVoting(id);
+    }
+    await collaborationEngine.vote(choice, agentId, vote);
+    return { id, choice, agentId, vote, ok: true };
+  });
+
+  app.post('/api/collab/:id/close', async (req, reply) => {
+    if (draining) {
+      return rejectWhileDraining(reply);
+    }
+
+    const { id } = req.params as any;
+    const collab = await collaborationEngine.close(id);
     return { id, status: 'closed', result: collab.result };
   });
 
@@ -2063,6 +2476,59 @@ export async function createGateway() {
     const collab = collaborationEngine.get(id);
     if (!collab) return { error: 'not found' };
     return { collab, contributions: collaborationEngine.getContributions(id) };
+  });
+
+  app.get('/api/collaborations', async (req, reply) => {
+    const parsed = ListQuerySchema.safeParse(req.query ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid query', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+
+    const limit = parsed.data.limit;
+    const collaborations = collaborationEngine.getAll(limit);
+    if (collaborations.length === 0) {
+      return { collaborations: [] };
+    }
+
+    const db = getDb();
+    const placeholders = collaborations.map(() => '?').join(', ');
+    const countRows = db.prepare(`
+      SELECT
+        c.id AS collaboration_id,
+        COUNT(DISTINCT ct.id) AS contribution_count,
+        COUNT(DISTINCT cv.id) AS vote_count
+      FROM collaborations c
+      LEFT JOIN collab_contributions ct ON ct.collaboration_id = c.id
+      LEFT JOIN collab_votes cv ON cv.collaboration_id = c.id
+      WHERE c.id IN (${placeholders})
+      GROUP BY c.id
+    `).all(...collaborations.map(collab => collab.id)) as Array<{
+      collaboration_id: string;
+      contribution_count: number;
+      vote_count: number;
+    }>;
+
+    const counts = new Map(countRows.map(row => [
+      row.collaboration_id,
+      { contributionCount: row.contribution_count, voteCount: row.vote_count },
+    ]));
+
+    return {
+      collaborations: collaborations.map(collab => ({
+        ...collab,
+        participantCount: collab.participantSessionIds.length,
+        contributionCount: counts.get(collab.id)?.contributionCount ?? 0,
+        voteCount: counts.get(collab.id)?.voteCount ?? 0,
+      })),
+    };
+  });
+
+  app.get('/api/locks', async () => {
+    return {
+      locks: await listActiveLocks(),
+      redisConnected: isRedisConnected(),
+    };
   });
 
   // ═══ Mesh Flow Timeline (monitoring) ════════════════════════════════
@@ -2697,6 +3163,11 @@ export async function createGateway() {
   // ═══ Fleet Ops (push 텔레메트리 + edit-lease) ═══════════
   await registerFleetOpsRoutes(app);
   await registerHandoffRoutes(app);
+  await registerTeamsRoutes(app);
+  await registerWorkReportRoutes(app);
+  await registerMathRoutes(app);
+  // audit.ts는 구현만 있고 미마운트였음(emergency-stop이 compat 스텁으로 응답 — claude-1 T1 제보 2026-07-08)
+  await registerAuditRoutes(app);
 
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);

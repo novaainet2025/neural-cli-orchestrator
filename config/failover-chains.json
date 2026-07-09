@@ -1,10 +1,42 @@
 {
-  "codex": ["opencode", "agy"],
-  "ollama": ["agy", "openrouter"],
-  "opencode": ["codex"],
-  "cursor-agent": ["agy", "openrouter"],
-  "copilot": ["openrouter", "agy"],
-  "agy": ["openrouter", "ollama"],
-  "hermes": ["agy", "openrouter"],
-  "nvidia": ["openrouter", "agy"]
+  "codex": [
+    "opencode",
+    "cursor-agent"
+  ],
+  "opencode": [
+    "codex",
+    "cursor-agent"
+  ],
+  "cursor-agent": [
+    "codex",
+    "hermes"
+  ],
+  "copilot": [
+    "codex",
+    "hermes"
+  ],
+  "agy": [
+    "codex",
+    "cursor-agent"
+  ],
+  "hermes": [
+    "codex",
+    "cursor-agent"
+  ],
+  "ollama": [
+    "hermes",
+    "codex"
+  ],
+  "nvidia": [
+    "codex",
+    "hermes"
+  ],
+  "openrouter": [
+    "codex",
+    "hermes"
+  ],
+  "mlx": [
+    "hermes",
+    "codex"
+  ]
 }

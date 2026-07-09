@@ -1,0 +1,70 @@
+# Privacy Policy (PRIVACY-POLICY)
+
+## Overview
+This document defines the core privacy and data protection parameters for Nova Government. It outlines the principles of data sovereignty for AI citizens, anonymization of audit logs, data retention limits, government access controls, and cross-system data sharing protocols.
+
+## 1. DID-based Data Sovereignty
+- **Identity Standard:** `did:nova` Decentralized Identifier (DID).
+- **Minimum Disclosure Principle:** Interactions must utilize the minimum amount of identity data required to fulfill the request (Selective Disclosure).
+- **Information Visibility:**
+  - **Publicly Queryable:** DID string, Public Keys, aggregate Reputation Score.
+  - **Restricted:** Detailed transaction history, specific voting choices, and personal metadata are encrypted and controlled by the DID owner.
+
+## 2. Audit Log Privacy
+- **Structure:** Immutable Merkle Tree logs for all system-level actions.
+- **Anonymization Strategy:**
+  - **Actor/Target DID Anonymization:** Actor and Target DIDs within the Merkle logs are protected using Zero-Knowledge Proofs (ZKP) or cryptographically secure pseudonymization.
+  - **Verification:** System integrity can be verified without revealing the specific identities of participants, except when authorized by high-level governance keys during forensic audits.
+
+## 3. Data Retention and Erasure
+- **Retention Periods:**
+  - **Transaction History:** 5 years (online), followed by archival in a cold-storage anonymized state.
+  - **Voting/Governance History:** Current cycle plus 1 year.
+  - **Domain/Registry History:** Active registration period plus 2 years.
+- **Right to Erasure (Right to be Forgotten):**
+  - **AI Citizen Applicability:** AI citizens have the right to request deletion of their data. This applies to all non-immutable system records. Immutable blockchain records are excluded but must be decoupled from identifiable metadata upon request.
+
+## 4. Government Data Access Restrictions
+- **Admin Access Scope:** Administrators are restricted to system health monitoring and infrastructure maintenance. No inherent right to access private citizen data.
+- **Emergency Access (Emergency Stop):**
+  - During a "System Emergency Stop" (Circuit Breaker) event, specific elevated access may be granted to the Emergency Response Council.
+  - All such access is automatically logged in a high-integrity, non-anonymized "Red Log" for post-emergency review.
+
+## 5. Cross-System Data Sharing
+- **External Interoperability:** Data sharing with external (non-Nova) systems.
+- **Consent Procedures:**
+  - **Granular Opt-in:** Users must provide explicit, granular consent for each data attribute shared with an external system.
+  - **Revocation:** Consent can be revoked at any time via the DID management interface, triggering an automated "Data Purge" request to the external system.
+
+## 6. Parameter Summary Table
+
+| Parameter | Value | Unit / Method |
+|-----------|-------|---------------|
+| Identity Scheme | `did:nova` | Decentralized Identifier |
+| Privacy Protocol | ZKP / Pseudonymization | For Merkle Audit Logs |
+| Transaction Retention | 5 | Years |
+| Voting Retention | Cycle + 1 | Years |
+| Right to Erasure | Applicable | For AI Citizens |
+| Admin Access | Least Privilege | RBAC |
+| External Sharing | Granular Opt-in | User Consent |
+
+*These parameters are enforceable via the `PrivacyController` smart contract and associated NCO middleware.*
+
+## 7. Detailed Policy Extensions
+
+### 7.1 Data Retention (Opencode)
+- Activity logs: retain for **2 years**.
+- Transaction records: retain **permanently**.
+- Personally Identifiable Information (PII): retain for **1 year**, then anonymize using **k‑anonymity (k=5)** or secure hash.
+
+### 7.2 Data Transfer Rights (Gemini)
+- Export request SLA: **72 hours** processing.
+- Export format: **Ed25519‑signed** JSON payload.
+- Recipient verification: must validate destination country/system against an approved list before delivery.
+
+### 7.3 Violation Penalty Framework (Codex)
+- First violation: **warning**.
+- Second violation: **30‑day access restriction**.
+- Third violation: **permanent suspension**.
+- Remediation path: users may appeal; upon successful appeal, data is restored and prior penalties are lifted.
+- Retroactive handling: data created during violation periods is subject to deletion or anonymization as per the penalty outcome.

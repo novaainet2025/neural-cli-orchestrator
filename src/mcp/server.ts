@@ -9,16 +9,26 @@ import { acquisitionRegistry } from '../core/acquisition-registry.js';
 import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
 
 const NCO_API = process.env.NCO_API_URL || 'http://localhost:6200';
-const TIMEOUT = 30_000;
+const FETCH_TIMEOUT_MS = 30_000;
+const DYNAMIC_TASK_POLL_TIMEOUT_MS = 300_000;
 const DYNAMIC_POLL_INTERVAL_MS = 250;
 
 async function ncoFetch(path: string, options?: RequestInit): Promise<any> {
   const url = `${NCO_API}${path}`;
   try {
-    const res = await fetch(url, { ...options, signal: AbortSignal.timeout(TIMEOUT) });
-    return res.json();
-  } catch {
-    return { error: `NCO offline or unreachable: ${url}` };
+    const res = await fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const body = await res.json();
+    if (!res.ok) {
+      return {
+        error: typeof body?.error === 'string' ? body.error : `NCO request failed: ${url}`,
+        status: res.status,
+        body,
+      };
+    }
+    return body;
+  } catch (error) {
+    const status = error instanceof Error && error.name === 'TimeoutError' ? 408 : 503;
+    return { error: `NCO offline or unreachable: ${url}`, status };
   }
 }
 
@@ -154,7 +164,7 @@ async function executeAgentTask(agentId: string, prompt: string): Promise<string
   }
 
   const startedAt = Date.now();
-  while (Date.now() - startedAt < TIMEOUT) {
+  while (Date.now() - startedAt < DYNAMIC_TASK_POLL_TIMEOUT_MS) {
     const status = await ncoFetch(`/api/tasks/${created.taskId}/status`);
     if (status?.status === 'completed') {
       return typeof status.result === 'string' ? status.result : JSON.stringify(status.result ?? '');

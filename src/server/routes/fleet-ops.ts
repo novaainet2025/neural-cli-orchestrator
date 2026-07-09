@@ -32,9 +32,15 @@ export interface FleetReportAgent {
   taskId?: string;
   since?: string;
 }
+export interface FleetReportActivitySummary {
+  taskCount: number;
+  recentCompletedAt: string | null;
+  agentCounts: Record<string, number>;
+}
 export interface FleetReport {
   host: string;
   agents: FleetReportAgent[];
+  activity?: FleetReportActivitySummary;
   from?: string;
   ts: string;
 }
@@ -58,15 +64,72 @@ function persistPushReport(report: FleetReport): void {
   `).run(report.host, JSON.stringify(report), report.ts);
 }
 
-export function getPushReports(): FleetReport[] {
-  const now = Date.now();
-  for (const [k, r] of pushReports) {
-    if (now - new Date(r.ts).getTime() > PUSH_TTL_MS) {
-      pushReports.delete(k);
-      deletePersistedPushReport(k);
+function evictExpiredPushReports(now = Date.now()): void {
+  for (const [host, report] of pushReports) {
+    if (now - new Date(report.ts).getTime() > PUSH_TTL_MS) {
+      pushReports.delete(host);
+      deletePersistedPushReport(host);
     }
   }
+}
+
+export function getPushReports(): FleetReport[] {
+  evictExpiredPushReports();
   return Array.from(pushReports.values());
+}
+
+function normalizeActivitySummary(value: unknown): FleetReportActivitySummary | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const raw = value as {
+    taskCount?: unknown;
+    recentCompletedAt?: unknown;
+    agentCounts?: unknown;
+  };
+  const taskCount = Number(raw.taskCount);
+  const recentCompletedAt = typeof raw.recentCompletedAt === 'string' && raw.recentCompletedAt.length > 0
+    ? raw.recentCompletedAt
+    : null;
+  const agentCounts: Record<string, number> = {};
+  if (raw.agentCounts && typeof raw.agentCounts === 'object') {
+    for (const [agentId, count] of Object.entries(raw.agentCounts as Record<string, unknown>)) {
+      const parsed = Number(count);
+      if (agentId && Number.isFinite(parsed) && parsed >= 0) {
+        agentCounts[agentId] = Math.floor(parsed);
+      }
+    }
+  }
+  return {
+    taskCount: Number.isFinite(taskCount) && taskCount >= 0 ? Math.floor(taskCount) : 0,
+    recentCompletedAt,
+    agentCounts,
+  };
+}
+
+function collectRecentActivitySummary(): FleetReportActivitySummary {
+  const rows = getDb().prepare(`
+    SELECT assigned_to, completed_at
+    FROM tasks
+    WHERE assigned_to IS NOT NULL
+      AND assigned_to != ''
+      AND julianday('now') - julianday(COALESCE(last_activity_at, completed_at, updated_at, created_at)) <= 1
+    ORDER BY COALESCE(last_activity_at, completed_at, updated_at, created_at) DESC
+    LIMIT 200
+  `).all() as Array<{ assigned_to: string; completed_at: string | null }>;
+
+  let recentCompletedAt: string | null = null;
+  const agentCounts: Record<string, number> = {};
+  for (const row of rows) {
+    agentCounts[row.assigned_to] = (agentCounts[row.assigned_to] ?? 0) + 1;
+    if (row.completed_at && (!recentCompletedAt || row.completed_at > recentCompletedAt)) {
+      recentCompletedAt = row.completed_at;
+    }
+  }
+
+  return {
+    taskCount: rows.length,
+    recentCompletedAt,
+    agentCounts,
+  };
 }
 
 export async function collectAgentSnapshots(): Promise<FleetReportAgent[]> {
@@ -174,6 +237,7 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
             taskId: typeof a.taskId === 'string' && a.taskId.length > 0 ? a.taskId : undefined,
             since: typeof a.since === 'string' && a.since.length > 0 ? a.since : undefined,
           })),
+        activity: normalizeActivitySummary(parsed.activity),
         from: typeof parsed.from === 'string' ? parsed.from : undefined,
         ts: row.ts,
       });
@@ -201,18 +265,25 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
         currentTask: a.currentTask ?? null,
         taskId: typeof a.taskId === 'string' && a.taskId.length > 0 ? a.taskId : undefined,
         since: typeof a.since === 'string' && a.since.length > 0 ? a.since : undefined,
-      }));
+      }))
+      .slice(0, 100);
     if (valid.length === 0) {
       reply.code(400);
       return { ok: false, error: 'no valid agents' };
     }
-    if (valid.length > 100) valid.length = 100; // 호스트당 상한
+    evictExpiredPushReports();
     if (!pushReports.has(host) && pushReports.size >= PUSH_MAX_HOSTS) {
       reply.code(429);
       return { ok: false, error: 'too many hosts' };
     }
     const ts = new Date().toISOString();
-    const report = { host, agents: valid, from: (body?.from ?? `${host}-push`), ts };
+    const report = {
+      host,
+      agents: valid,
+      activity: normalizeActivitySummary(body?.activity),
+      from: (body?.from ?? `${host}-push`),
+      ts,
+    };
     pushReports.set(host, report);
     persistPushReport(report);
     await eventBus.publish({
@@ -225,6 +296,7 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
         taskId: agent.taskId,
         since: agent.since,
       })),
+      activity: report.activity,
       agentCount: valid.length,
       ts,
     });
@@ -295,10 +367,11 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
     const pushOnce = async () => {
       try {
         const agents = await collectAgentSnapshots();
+        const activity = collectRecentActivitySummary();
         await fetch(`${central}/api/fleet/report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ host: myHost, agents, from: `${myHost}-nco-push` }),
+          body: JSON.stringify({ host: myHost, agents, activity, from: `${myHost}-nco-push` }),
           signal: AbortSignal.timeout(5000),
         });
       } catch (err) {

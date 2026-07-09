@@ -62,14 +62,25 @@ export function runMigrations(): void {
   const insertMigration = database.prepare(
     'INSERT INTO schema_migrations (filename) VALUES (?)'
   );
+  const applyMigration = database.transaction((file: string, sql: string) => {
+    database.exec(sql);
+    insertMigration.run(file);
+  });
 
   let count = 0;
   for (const file of files) {
     if (applied.has(file)) continue;
 
-    const sql = readFileSync(resolve(migrationsDir, file), 'utf-8');
-    database.exec(sql);
-    insertMigration.run(file);
+    const migrationPath = resolve(migrationsDir, file);
+    let sql: string;
+    try {
+      sql = readFileSync(migrationPath, 'utf-8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to read migration ${file} at ${migrationPath}: ${message}`);
+    }
+
+    applyMigration(file, sql);
     count++;
     log.info({ file }, 'Migration applied');
   }

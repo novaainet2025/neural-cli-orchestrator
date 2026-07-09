@@ -75,6 +75,9 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
             const task = state.tasks.get(value ?? '');
             return task ? { status: task.status, response: task.response, error: task.error } : undefined;
           }
+          if (normalized === 'SELECT * FROM kanban_tasks WHERE id = ?') {
+            return state.kanbanTasks.get(value ?? '');
+          }
           throw new Error(`Unsupported get SQL: ${normalized}`);
         },
         run: (...args: any[]) => {
@@ -129,6 +132,14 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
             const task = state.tasks.get(taskId);
             if (!task) return { changes: 0 };
             task.metadata_json = metadataJson;
+            return { changes: 1 };
+          }
+          if (normalized.startsWith("UPDATE kanban_tasks SET column_status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND column_status NOT IN")) {
+            const [kanbanTaskId] = args;
+            const task = state.kanbanTasks.get(kanbanTaskId);
+            if (!task) return { changes: 0 };
+            if (task.column_status === 'in_progress' || task.column_status === 'done') return { changes: 0 };
+            task.column_status = 'in_progress';
             return { changes: 1 };
           }
           throw new Error(`Unsupported run SQL: ${normalized}`);

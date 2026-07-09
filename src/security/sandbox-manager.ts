@@ -22,6 +22,16 @@ const DEFAULT_ALLOWED_COMMANDS = [
   'echo', 'date', 'pwd',
   'vitest', 'jest', 'mocha',
   'python3', 'pip3',
+  // curl: 검증 태스크의 로컬 API 확인(:6200/:11434 등)에 필수 — 차단 시 hermes/ollama
+  // 검증이 "Command not in allowlist"로 실패 (2026-07-08 실측). node/python3가 이미
+  // 허용이라 curl 추가는 신규 네트워크 권한이 아님.
+  'curl',
+];
+
+const COMMANDER_ALLOWED_COMMANDS = [
+  ...DEFAULT_ALLOWED_COMMANDS,
+  'sed', 'awk', 'sort', 'uniq', 'cut', 'xargs',
+  'mkdir', 'cp', 'mv', 'touch',
 ];
 
 export class SandboxManager {
@@ -87,6 +97,9 @@ export class SandboxManager {
   }
 }
 
+// 로컬 추론 프로바이더 — 프롬프트 처리+생성이 클라우드 API보다 느려 별도 타임아웃 필요
+const LOCAL_LLM_IDS = new Set(['mlx', 'mlx-instruct', 'hermes', 'ollama']);
+
 // ─── Factory: Create sandbox for a provider ───────────
 export function createSandbox(
   agentId: string,
@@ -103,7 +116,8 @@ export function createSandbox(
         projectDir,
         ncoRoot,
         '/tmp',
-        ...(isCommander ? ['/home'] : []),
+        '/Users/nova-ai/nova-cli',
+        ...(isCommander ? ['/home', '/Users'] : []),
       ],
       deniedPaths: [
         '/etc', '/var', '/usr',
@@ -112,12 +126,16 @@ export function createSandbox(
       ],
     },
     commands: {
-      allowedCommands: isCommander ? [] : DEFAULT_ALLOWED_COMMANDS, // empty = allow all for Commander
+      allowedCommands: isCommander ? COMMANDER_ALLOWED_COMMANDS : DEFAULT_ALLOWED_COMMANDS,
       deniedCommands: [],
     },
     resources: {
       maxConcurrentActions: isCommander ? 8 : 4,
-      maxExecutionTime: isCommander ? 300_000 : 120_000,
+      // [2026-07-09] 로컬 LLM(mlx 등)은 프롬프트 처리+생성에 120s를 상시 초과
+      // (mlx 역대 평균 170s) → "Request timed out" 실패 누적의 근본 원인. 360s로 확대.
+      maxExecutionTime: isCommander ? 300_000
+        : LOCAL_LLM_IDS.has(agentId) ? 360_000
+        : 120_000,
     },
   });
 }

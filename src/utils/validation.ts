@@ -33,7 +33,10 @@ export const MessageTypeSchema = z.enum([
 
 // ─── API Input ────────────────────────────────────────
 export const CreateTaskInput = z.object({
-  ai: z.enum(['claude-code', 'opencode', 'codex', 'cursor-agent', 'copilot', 'openrouter', 'ollama', 'mlx', 'agy', 'hermes', 'openclaw', 'higgsfield', 'nvidia']).optional(),
+  // 정적 enum 제거 (2026-07-08): 신규 프로바이더(mlx-instruct 실측)가 영구 400 차단되던 결함.
+  // 실검증은 gateway intake의 validateDelegationPayload(agentManager.listEnabledIds() 대조)가
+  // 런타임 레지스트리 기준으로 수행 — 여기서는 형식만 본다.
+  ai: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]{0,39}$/, 'invalid provider id format').optional(),
   prompt: z.string().min(1),
   mode: TaskModeSchema.optional().default('task'),
   providers: z.array(z.string()).optional(),

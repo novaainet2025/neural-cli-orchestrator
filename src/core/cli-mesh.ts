@@ -27,7 +27,7 @@ const MESH_TTL = 300; // 5min — sessions expire if no heartbeat
 /**
  * CLI Mesh — Real-time awareness between running CLI sessions.
  *
- * Each CLI (claude-code, codex, gemini, etc.) registers with the mesh:
+ * Each CLI (claude-code, codex, etc.) registers with the mesh:
  *   - Who am I (agent id, PID)
  *   - What am I working on (current task description, files being edited)
  *   - Status (thinking, coding, idle, reviewing)

@@ -156,7 +156,7 @@ function publishTeamEvent(type: string, payload: Record<string, unknown>): void 
 
 export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
   app.post('/api/organizations', async (req, reply) => {
-    const body = (req.body as { name?: unknown; slug?: unknown; manager?: unknown; parentId?: unknown } | null) ?? {};
+    const body = (req.body as { name?: unknown; slug?: unknown; manager?: unknown; parentId?: unknown; isAlwaysOn?: boolean; isActive?: boolean } | null) ?? {};
     const name = parseName(body.name);
     if (!name) return reply.code(400).send({ error: 'name required (1-80 chars)' });
 
@@ -172,6 +172,9 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: `parent organization not found: ${parentId}` });
     }
 
+    const isAlwaysOn = body.isAlwaysOn !== false;
+    const isActive = body.isActive !== false;
+
     const organization = {
       id: `org_${slug}`,
       name,
@@ -179,14 +182,16 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       graph_type: 'nova-ax',
       manager: normalizeOptionalText(body.manager),
       parent_id: parentId,
+      is_always_on: isAlwaysOn ? 1 : 0,
+      is_active: isActive ? 1 : 0,
     };
 
     try {
       const db = getDb();
       db.prepare(`
-        INSERT INTO organizations (id, name, slug, graph_type, manager, parent_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(organization.id, organization.name, organization.slug, organization.graph_type, organization.manager, organization.parent_id);
+        INSERT INTO organizations (id, name, slug, graph_type, manager, parent_id, is_always_on, is_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(organization.id, organization.name, organization.slug, organization.graph_type, organization.manager, organization.parent_id, organization.is_always_on, organization.is_active);
       publishTeamEvent('organization:created', { organizationId: organization.id });
       reply.code(201);
       return {
@@ -197,6 +202,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           graphType: organization.graph_type,
           manager: organization.manager,
           parentId: organization.parent_id,
+          isAlwaysOn: isAlwaysOn,
+          isActive: isActive,
         },
       };
     } catch (err) {
@@ -209,22 +216,22 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/organizations', async () => {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT o.id, o.name, o.slug, o.manager, o.parent_id as parentId, COUNT(t.id) AS teamCount
+      SELECT o.id, o.name, o.slug, o.manager, o.parent_id as parentId, COUNT(t.id) AS teamCount, o.is_always_on as isAlwaysOn, o.is_active as isActive
       FROM organizations o
       LEFT JOIN teams t ON t.organization_id = o.id
       GROUP BY o.id, o.name, o.slug, o.manager, o.parent_id
       ORDER BY o.created_at ASC, o.name ASC
-    `).all() as Array<{ id: string; name: string; slug: string; manager: string | null; parentId: string | null; teamCount: number }>;
-    return { organizations: rows };
+    `).all() as Array<{ id: string; name: string; slug: string; manager: string | null; parentId: string | null; teamCount: number; isAlwaysOn: number; isActive: number }>;
+    return { organizations: rows.map(r => ({ ...r, isAlwaysOn: !!r.isAlwaysOn, isActive: !!r.isActive })) };
   });
 
   // 조직 관리 주체/이름 수정
   app.patch<{ Params: { id: string } }>('/api/organizations/:id', async (req, reply) => {
     const { id } = req.params;
-    const body = (req.body as { name?: unknown; manager?: unknown; parentId?: unknown } | null) ?? {};
+    const body = (req.body as { name?: unknown; manager?: unknown; parentId?: unknown; isAlwaysOn?: boolean; isActive?: boolean } | null) ?? {};
     const db = getDb();
-    const existing = db.prepare('SELECT id, name, manager, parent_id FROM organizations WHERE id=?').get(id) as
-      { id: string; name: string; manager: string | null; parent_id: string | null } | undefined;
+    const existing = db.prepare('SELECT id, name, manager, parent_id, is_always_on, is_active FROM organizations WHERE id=?').get(id) as
+      { id: string; name: string; manager: string | null; parent_id: string | null; is_always_on: number; is_active: number } | undefined;
     if (!existing) return reply.code(404).send({ error: `organization not found: ${id}` });
 
     const nextName = body.name === undefined ? existing.name : parseName(body.name);
@@ -239,10 +246,13 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: `parent organization not found: ${nextParentId}` });
     }
 
-    db.prepare("UPDATE organizations SET name=?, manager=?, parent_id=?, updated_at=datetime('now') WHERE id=?")
-      .run(nextName, nextManager, nextParentId, id);
+    const nextIsAlwaysOn = body.isAlwaysOn === undefined ? existing.is_always_on : (body.isAlwaysOn ? 1 : 0);
+    const nextIsActive = body.isActive === undefined ? existing.is_active : (body.isActive ? 1 : 0);
+
+    db.prepare("UPDATE organizations SET name=?, manager=?, parent_id=?, is_always_on=?, is_active=?, updated_at=datetime('now') WHERE id=?")
+      .run(nextName, nextManager, nextParentId, nextIsAlwaysOn, nextIsActive, id);
     publishTeamEvent('organization:updated', { organizationId: id });
-    return { organization: { id, name: nextName, manager: nextManager, parentId: nextParentId } };
+    return { organization: { id, name: nextName, manager: nextManager, parentId: nextParentId, isAlwaysOn: !!nextIsAlwaysOn, isActive: !!nextIsActive } };
   });
 
   app.delete<{ Params: { id: string } }>('/api/organizations/:id', async (req) => {
@@ -263,6 +273,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       members?: unknown;
       lead?: unknown;
       charter?: unknown;
+      isAlwaysOn?: boolean;
+      isActive?: boolean;
     } | null) ?? {};
     const name = parseName(body.name);
     if (!name) return reply.code(400).send({ error: 'name required (1-80 chars)' });
@@ -286,6 +298,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const color = normalizeOptionalText(body.color);
     const lead = normalizeOptionalText(body.lead);
     const charter = normalizeOptionalText(body.charter);
+    const isAlwaysOn = body.isAlwaysOn !== false;
+    const isActive = body.isActive !== false;
     const team = {
       id: `team_${slug}`,
       organizationId,
@@ -295,15 +309,17 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       color,
       lead,
       charter,
+      isAlwaysOn,
+      isActive,
     };
 
     try {
       const db = getDb();
       const tx = db.transaction(() => {
         db.prepare(`
-          INSERT INTO teams (id, organization_id, name, slug, description, color, lead, charter)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(team.id, team.organizationId, team.name, team.slug, team.description, team.color, team.lead, team.charter);
+          INSERT INTO teams (id, organization_id, name, slug, description, color, lead, charter, is_always_on, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(team.id, team.organizationId, team.name, team.slug, team.description, team.color, team.lead, team.charter, team.isAlwaysOn ? 1 : 0, team.isActive ? 1 : 0);
         const insertMember = db.prepare(`
           INSERT OR IGNORE INTO team_members (id, team_id, member_type, member_ref)
           VALUES (?, ?, ?, ?)
@@ -331,7 +347,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/teams', async () => {
     const db = getDb();
     const teams = db.prepare(`
-      SELECT id, organization_id, name, slug, description, color, lead, charter, created_at, updated_at
+      SELECT id, organization_id, name, slug, description, color, lead, charter, created_at, updated_at, is_always_on, is_active
       FROM teams
       ORDER BY created_at ASC, name ASC
     `).all() as Array<{
@@ -345,6 +361,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       charter: string | null;
       created_at: string;
       updated_at: string;
+      is_always_on: number;
+      is_active: number;
     }>;
     const memberRows = db.prepare(`
       SELECT team_id, member_type, member_ref
@@ -394,6 +412,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           charter: team.charter,
           createdAt: team.created_at,
           updatedAt: team.updated_at,
+          isAlwaysOn: !!team.is_always_on,
+          isActive: !!team.is_active,
           members: membersByTeam.get(team.id) ?? [],
           workflow: summarizeTeamWorkflow(relatedTasks),
           activeTask,
@@ -412,10 +432,12 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       color?: unknown;
       lead?: unknown;
       charter?: unknown;
+      isAlwaysOn?: boolean;
+      isActive?: boolean;
     } | null) ?? {};
     const db = getDb();
     const existing = db.prepare(`
-      SELECT id, organization_id, name, slug, description, color, lead, charter, created_at, updated_at
+      SELECT id, organization_id, name, slug, description, color, lead, charter, created_at, updated_at, is_always_on, is_active
       FROM teams
       WHERE id=?
     `).get(id) as {
@@ -429,6 +451,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       charter: string | null;
       created_at: string;
       updated_at: string;
+      is_always_on: number;
+      is_active: number;
     } | undefined;
     if (!existing) return reply.code(404).send({ error: `team not found: ${id}` });
 
@@ -448,15 +472,17 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const nextColor = body.color === undefined ? existing.color : normalizeOptionalText(body.color);
     const nextLead = body.lead === undefined ? existing.lead : normalizeOptionalText(body.lead);
     const nextCharter = body.charter === undefined ? existing.charter : normalizeOptionalText(body.charter);
+    const nextIsAlwaysOn = body.isAlwaysOn === undefined ? existing.is_always_on : (body.isAlwaysOn ? 1 : 0);
+    const nextIsActive = body.isActive === undefined ? existing.is_active : (body.isActive ? 1 : 0);
 
     db.prepare(`
       UPDATE teams
-      SET name=?, organization_id=?, description=?, color=?, lead=?, charter=?, updated_at=datetime('now')
+      SET name=?, organization_id=?, description=?, color=?, lead=?, charter=?, is_always_on=?, is_active=?, updated_at=datetime('now')
       WHERE id=?
-    `).run(nextName, nextOrganizationId, nextDescription, nextColor, nextLead, nextCharter, id);
+    `).run(nextName, nextOrganizationId, nextDescription, nextColor, nextLead, nextCharter, nextIsAlwaysOn, nextIsActive, id);
 
     const updated = db.prepare(`
-      SELECT id, organization_id, name, slug, description, color, created_at, updated_at
+      SELECT id, organization_id, name, slug, description, color, created_at, updated_at, is_always_on, is_active
       FROM teams
       WHERE id=?
     `).get(id) as {
@@ -468,6 +494,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       color: string | null;
       created_at: string;
       updated_at: string;
+      is_always_on: number;
+      is_active: number;
     };
 
     publishTeamEvent('team:updated', { teamId: id, organizationId: updated.organization_id });
@@ -481,6 +509,8 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
         color: updated.color,
         createdAt: updated.created_at,
         updatedAt: updated.updated_at,
+        isAlwaysOn: !!updated.is_always_on,
+        isActive: !!updated.is_active,
         members: readTeamMembers(id),
       },
     };

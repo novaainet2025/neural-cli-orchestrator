@@ -201,15 +201,20 @@ class SleepConsolidator {
     `).run(agentId).changes;
 
     const total = (db.prepare('SELECT COUNT(*) as n FROM mem0_entries WHERE agent_id = ?').get(agentId) as { n: number }).n;
+    let trimmed = 0;
     const MAX_PER_AGENT = 10_000;
     if (total > MAX_PER_AGENT) {
       const toDelete = total - MAX_PER_AGENT;
-      db.prepare(`
+      trimmed = db.prepare(`
         DELETE FROM mem0_entries WHERE id IN (
           SELECT id FROM mem0_entries WHERE agent_id = ?
           ORDER BY importance ASC, created_at ASC LIMIT ?
         )
-      `).run(agentId, toDelete);
+      `).run(agentId, toDelete).changes;
+    }
+
+    if (pruned + trimmed > 0) {
+      await vectorMemory.rebuildIndex(agentId);
     }
 
     const finalCount = (db.prepare('SELECT COUNT(*) as n FROM mem0_entries WHERE agent_id = ?').get(agentId) as { n: number }).n;
@@ -217,7 +222,7 @@ class SleepConsolidator {
     return {
       agentId,
       boosted,
-      pruned,
+      pruned: pruned + trimmed,
       total: finalCount,
       durationMs: Date.now() - start,
     };

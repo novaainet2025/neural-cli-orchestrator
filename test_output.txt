@@ -1,0 +1,224 @@
+╔══════════════════════════════════════════════════════════════════╗
+║      NCO 종합 기능 테스트 (22개 카테고리, 전체 기능 검증)        ║
+║      실행일시: 2026. 5. 20. 오후 1:18:11                           ║
+╚══════════════════════════════════════════════════════════════════╝
+
+═══ T01. 서버 인프라 & 헬스 체크 ═══
+  ✅ [246ms] GET /health → healthy
+  ✅ [64ms] GET /api/health → healthy:true
+  ✅ [83ms] Redis 연결 확인
+  ✅ [46ms] providerCount === 9
+  ✅ [84ms] WebSocket 포트 6201 연결
+  ✅ [118ms] GET /monitor → HTML 응답
+
+═══ T02. AI 프로바이더 관리 ═══
+  ✅ [240ms] 9개 프로바이더 등록
+  ❌ [131ms] 필수 프로바이더 존재 (claude-code, ollama, openrouter): 프로바이더 없음: ollama
+  ❌ [507ms] 프로바이더 역할 검증 (Commander/Architect/Validator): ollama role: undefined
+  ✅ [265ms] enabled 프로바이더 필터
+  ✅ [123ms] 프로바이더 상태 조회 (/api/ai-providers/status)
+  ✅ [519ms] 프로바이더 역할별 score 순서 (Commander=95 최고)
+  ✅ [251ms] 프로바이더 capabilities 필드 존재
+  ✅ [5ms] 프로바이더 permissions 구조 검증
+
+═══ T03. 개별 통신 (Single / Unicast) ═══
+  ✅ [10ms] POST /api/task — 단일 에이전트 작업 요청
+  ✅ [13ms] POST /api/task — 알 수 없는 에이전트 → fallback to Commander
+  ✅ [3ms] POST /api/collaboration/message — 단일 메시지 전송 (message 필드)
+  ✅ [80ms] GET /api/collaboration/sessions — 세션 목록
+
+═══ T04. 단방향 통신 (Broadcast) ═══
+  ✅ [43ms] POST /api/broadcast — 전체 브로드캐스트 (message 필드)
+  ✅ [71ms] POST /api/broadcast — mode:broadcast 응답 확인
+  ✅ [1094ms] WebSocket 브로드캐스트 수신 확인
+  ✅ [12ms] POST /api/broadcast — message 없이 → 400 에러
+
+═══ T05. 양방향 통신 (Bidirectional) ═══
+  ✅ [15ms] POST /api/discussion/create — 토론 세션 생성 (양방향 기반)
+  ✅ [43ms] GET /api/discussions — 세션 목록 조회
+  ✅ [8ms] GET /api/realtime-sessions — 실시간 세션 목록
+  ❌ [2ms] POST /api/chat/messages — 채팅 메시지 전송: HTTP 400
+  ✅ [2ms] GET /api/chat/messages — 메시지 이력 조회
+  ✅ [1ms] GET /api/messages — 전체 메시지 조회
+
+═══ T06. 병렬 통신 (Parallel Execution) ═══
+  ✅ [1ms] POST /api/realtime/parallel — 병렬 실행 요청
+  ✅ [2ms] POST /api/realtime/parallel — 비동기 시작 응답 구조
+  ✅ [20ms] 병렬 실행 - 동시 여러 작업 독립성 확인 (API 레벨)
+  ✅ [4ms] POST /api/hive — Hive 모드 (전체 병렬)
+
+═══ T07. 순차 통신 (Sequential Execution) ═══
+     plan_id: plan_s9Se_j7GQXJbrAqn
+  ✅ [4ms] POST /api/plan/create — 순차 실행 계획 생성
+  ✅ [1ms] GET /api/plans — 플랜 목록 조회
+  ✅ [5ms] GET /api/kanban — 칸반 보드 순서 확인
+  ✅ [268ms] POST /api/plan/execute — 순차 실행 (태스크 없는 플랜 = executed:0)
+  ✅ [45ms] Kanban 태스크 컬럼 이동 (todo → in_progress)
+
+═══ T08. 토론 (Discussion) ═══
+  ✅ [6ms] POST /api/discussion/create — mode: discussion
+  ✅ [8ms] POST /api/realtime/discussion — 실시간 토론 (prompt 필드, 2+명 필수)
+  ✅ [134ms] GET /api/discussions — 토론 이력 조회
+  ✅ [189ms] DiscussionMode 열거형 검증 (task/parallel/discussion/consensus/hive/broadcast/commander)
+
+═══ T09. 합의 & 동의 (Consensus / Agreement) ═══
+  ✅ [27ms] POST /api/realtime/consensus — 합의 요청 (prompt 필드, 2+명 필수)
+  ✅ [46ms] POST /api/discussion/create — mode: consensus
+  ✅ [42ms] 합의 임계값 (consensusThreshold) 필드 전송 검증
+  ✅ [30ms] POST /api/agent/:sessionId/approve — 에이전트 승인
+  ✅ [45ms] POST /api/agent/:sessionId/reject — 에이전트 거부
+
+═══ T10. Agent 기능 실행 ═══
+  ✅ [66ms] POST /api/agent/start — 에이전트 시작
+  ✅ [39ms] GET /api/agent/sessions — 에이전트 세션 목록
+  ✅ [129ms] GET /api/agent-actions — 에이전트 액션 이력
+  ✅ [6ms] GET /api/history — 작업 이력 조회
+  ✅ [98ms] 에이전트 상태 조회 (/api/agent/:sessionId/status)
+  ❌ [265ms] 에이전트 타입 분류 (A/B/C) — 설정 검증: Cannot read properties of undefined (reading 'type')
+
+═══ T11. Team 작업 실행 (Commander 4-Layer) ═══
+  ✅ [43ms] GET /api/commander/layers — 4계층 구조 조회
+  ✅ [228ms] POST /api/commander — Commander endpoint 존재 확인 (prompt 필수)
+  ✅ [17ms] POST /api/conductor — Conductor Smart Router 실행
+  ❌ [4ms] 4계층 에이전트 역할 매핑 검증: Execution 에이전트: 2
+  ✅ [144ms] POST /api/discussion/create — mode: commander
+
+═══ T12. 충돌 감지 (Conflict Detection) ═══
+  ✅ [130ms] POST /api/mesh/status — 메시 세션 등록 (A)
+  ✅ [2ms] POST /api/mesh/status — 메시 세션 등록 (B, 동일 파일 편집)
+  ✅ [48ms] POST /api/mesh/check — 파일 충돌 감지 (sessionId 필수)
+  ✅ [4ms] GET /api/mesh/sessions — 활성 세션 목록 (충돌 참여자 확인)
+  ✅ [7ms] 충돌 감지 — 동일 작업(task) 충돌
+  ✅ [158ms] POST /api/mesh/complete — 충돌 해소 (작업 완료)
+
+═══ T13. 의존성 감지 (Dependency Detection) ═══
+  ✅ [100ms] 의존성 있는 플랜 생성
+  ✅ [8ms] GET /api/kanban — 의존성 태스크 구조 확인
+  ✅ [28ms] GET /api/kanban/tasks — 태스크 depends_on 필드 확인
+  ✅ [16ms] POST /api/plan/execute — auto 전략 (빈 플랜으로 구조 검증)
+  ✅ [134ms] Kanban 태스크 depends_on 처리 — 완료 전 선행 실행 방지
+
+═══ T14. 맥락 유지 (Context Retention) ═══
+  ✅ [22ms] 채팅 워크스페이스 생성
+  ❌ [31ms] 첫 번째 메시지 전송 (맥락 설정): HTTP 400
+  ❌ [0ms] 두 번째 메시지 전송 (이전 맥락 참조): HTTP 400
+  ✅ [9ms] 메시지 이력 조회 (맥락 보존 확인)
+  ✅ [7ms] SharedState — 에이전트 상태 저장/조회 (Redis)
+  ✅ [3ms] GET /api/learn/context — 지식 컨텍스트 조회
+  ✅ [1ms] POST /api/learn/save — 지식 저장
+  ✅ [0ms] POST /api/learn/query — 지식 쿼리
+
+═══ T15. 작업 명확성 (Smart Router) ═══
+  ✅ [3ms] POST /api/conductor — 복잡도 분석 (단순 질문)
+  ✅ [12ms] POST /api/conductor — 복잡도 분석 (아키텍처 키워드)
+  ✅ [7ms] POST /api/conductor — 복잡도 분석 (보안 키워드)
+  ✅ [3ms] POST /api/conductor — 배포 키워드 → consensus 모드
+  ✅ [379ms] Smart Router 응답 구조 — mode/providers/reasoning 포함
+
+═══ T16. 위임 기능 (Delegation) ═══
+  ✅ [761ms] Commander → 하위 계층 위임 구조 확인 (canDelegateToOthers)
+  ✅ [199ms] POST /api/plan/create + execute — 위임 기반 실행 (빈 플랜 구조 검증)
+  ✅ [13ms] Kanban 태스크 assigned_to 필드 검증
+  ✅ [913ms] 위임 승인 권한 — Commander만 canFinalApprove
+  ✅ [67ms] POST /api/collaboration/message — 위임 메시지 전송 (message 필드)
+
+═══ T17. 요청 기능 (Request / Hive) ═══
+  ✅ [5ms] POST /api/hive — 전체 AI 병렬 요청
+  ✅ [5ms] POST /api/collaboration/message — 요청 타입 메시지 (message 필드)
+  ✅ [12ms] POST /api/collaboration/message — 응답 타입 메시지 (message 필드)
+  ✅ [23ms] POST /api/mesh/send — 특정 에이전트에게 직접 메시지 (fromSessionId 필드)
+  ✅ [3ms] GET /api/mesh/messages/:sessionId — 특정 세션 메시지 조회
+  ✅ [821ms] GET /api/mesh/team — 팀 구성 조회
+
+═══ T18. Kanban & Plan 관리 ═══
+  ✅ [25ms] GET /api/kanban — 칸반 보드 4컬럼 구조
+  ✅ [80ms] POST /api/kanban/tasks — 태스크 생성
+  ✅ [201ms] POST /api/kanban/move — todo → in_progress
+  ✅ [101ms] POST /api/kanban/move — in_progress → review
+  ✅ [185ms] POST /api/kanban/move — review → done
+  ✅ [117ms] POST /api/kanban/move — 잘못된 컬럼 → moved:false 반환
+  ⏭️  플랜 상세: [SKIPPED] 플랜 없음
+  ✅ [3ms] GET /api/plan/:id — 플랜 상세 조회
+
+═══ T19. CLI Mesh ═══
+  ✅ [12ms] POST /api/mesh/heartbeat — 세션 등록 (sessionId+agentId)
+  ✅ [2ms] GET /api/mesh/sessions — 활성 세션 목록
+  ✅ [29ms] POST /api/mesh/heartbeat — 반복 하트비트 (keepalive)
+  ✅ [14ms] GET /api/mesh/summary — Mesh 요약 정보
+  ✅ [14ms] POST /api/mesh/send — 에이전트 간 직접 메시지 (fromSessionId)
+  ✅ [10ms] GET /api/mesh/messages/:sessionId — 메시지 이력
+  ✅ [168ms] POST /api/mesh/complete — 작업 완료 처리
+  ✅ [24ms] POST /api/mesh/disconnect — 세션 해제 (sessionId)
+
+═══ T20. 관찰성 & 메트릭 ═══
+  ✅ [137ms] GET /api/observability/metrics — 전체 메트릭
+  ✅ [49ms] GET /api/observability/leaderboard — 리더보드
+  ✅ [23ms] GET /api/stats — 전체 통계
+  ✅ [429ms] GET /api/queue/metrics — 큐 메트릭
+  ✅ [6ms] GET /api/rate-limits — 레이트 리밋 현황
+  ✅ [18ms] GET /api/task-master/stats — 태스크마스터 통계
+  ✅ [147ms] GET /api/learning — 학습 이력
+
+═══ T21. 보안 & 안전 게이트 ═══
+  ✅ [105ms] GET /api/safety/backups — 백업 목록
+  ✅ [5ms] GET /api/checkpoints — 체크포인트 목록
+  ✅ [41ms] GET /api/rate-limits/state — 레이트 리밋 상태
+  ✅ [243ms] 레이트 리밋 — 과도한 요청 시 제어
+  ✅ [298ms] 보안 — 에이전트 샌드박스 설정 확인
+
+═══ T22. WebSocket 실시간 이벤트 ═══
+  ✅ [765ms] WS 연결 후 ping 수신
+  ✅ [1166ms] WS — 브로드캐스트 이벤트 수신
+  ✅ [1114ms] WS — discussion 시작 이벤트
+  ✅ [1138ms] WS — 다중 클라이언트 동시 연결
+  ✅ [439ms] WS — 연결 해제 후 재연결
+
+
+╔══════════════════════════════════════════════════════════════════╗
+║                    NCO 종합 테스트 결과                          ║
+╠══════════════════════════════════════════════════════════════════╣
+║  ✅ T01      — 통과: 6, 실패: 0, 건너뜀: 0                                ║
+║  ❌ T02      — 통과: 6, 실패: 2, 건너뜀: 0                                ║
+║  ✅ T03      — 통과: 4, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T04      — 통과: 4, 실패: 0, 건너뜀: 0                                ║
+║  ❌ T05      — 통과: 5, 실패: 1, 건너뜀: 0                                ║
+║  ✅ T06      — 통과: 4, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T07      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T08      — 통과: 4, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T09      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ❌ T10      — 통과: 5, 실패: 1, 건너뜀: 0                                ║
+║  ❌ T11      — 통과: 4, 실패: 1, 건너뜀: 0                                ║
+║  ✅ T12      — 통과: 6, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T13      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ❌ T14      — 통과: 6, 실패: 2, 건너뜀: 0                                ║
+║  ✅ T15      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T16      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T17      — 통과: 6, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T18      — 통과: 7, 실패: 0, 건너뜀: 1                                ║
+║  ✅ T19      — 통과: 8, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T20      — 통과: 7, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T21      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+║  ✅ T22      — 통과: 5, 실패: 0, 건너뜀: 0                                ║
+╠══════════════════════════════════════════════════════════════════╣
+║  총계: 통과 117개 / 실패 7개 / 건너뜀 1개                                    ║
+║  성공률: 94%                                                        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+─── 실패 목록 ───────────────────────────────────────────────────────
+  ❌ [T02] 필수 프로바이더 존재 (claude-code, ollama, openrouter)
+     → 프로바이더 없음: ollama
+  ❌ [T02] 프로바이더 역할 검증 (Commander/Architect/Validator)
+     → ollama role: undefined
+  ❌ [T05] POST /api/chat/messages — 채팅 메시지 전송
+     → HTTP 400
+  ❌ [T10] 에이전트 타입 분류 (A/B/C) — 설정 검증
+     → Cannot read properties of undefined (reading 'type')
+  ❌ [T11] 4계층 에이전트 역할 매핑 검증
+     → Execution 에이전트: 2
+  ❌ [T14] 첫 번째 메시지 전송 (맥락 설정)
+     → HTTP 400
+  ❌ [T14] 두 번째 메시지 전송 (이전 맥락 참조)
+     → HTTP 400
+
+─── 건너뜀 목록 ─────────────────────────────────────────────────────
+  ⏭️  [T18] 플랜 상세: SKIP: 플랜 없음

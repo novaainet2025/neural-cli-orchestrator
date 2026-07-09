@@ -53,13 +53,19 @@ function indexPath(agentId: string): string {
   return join(INDEX_DIR, `${agentId}.hnsw`);
 }
 
+async function createEmptyIndex(): Promise<any> {
+  const HierarchicalNSW = await getHierarchicalNSW();
+  const idx = new HierarchicalNSW('cosine', EMBED_DIM);
+  idx.initIndex(MAX_ELEMENTS, HNSW_M, HNSW_EF);
+  idx.setEf(HNSW_EF_SEARCH);
+  return idx;
+}
+
 async function getOrCreateIndex(agentId: string): Promise<any> {
   if (indexCache.has(agentId)) return indexCache.get(agentId)!;
 
-  const HierarchicalNSW = await getHierarchicalNSW();
   mkdirSync(INDEX_DIR, { recursive: true });
-
-  const idx = new HierarchicalNSW('cosine', EMBED_DIM);
+  const idx = await createEmptyIndex();
   const path = indexPath(agentId);
 
   if (existsSync(path)) {
@@ -81,14 +87,10 @@ async function getOrCreateIndex(agentId: string): Promise<any> {
       }
       log.info({ agentId, path, count: idx.getCurrentCount() }, 'HNSW index loaded from disk');
     } catch {
-      idx.initIndex(MAX_ELEMENTS, HNSW_M, HNSW_EF);
       log.warn({ agentId }, 'HNSW index corrupt — reinitialised');
     }
-  } else {
-    idx.initIndex(MAX_ELEMENTS, HNSW_M, HNSW_EF);
   }
 
-  idx.setEf(HNSW_EF_SEARCH);
   indexCache.set(agentId, idx);
   return idx;
 }
@@ -229,9 +231,6 @@ class VectorMemoryService {
     const idx = await getOrCreateIndex(agentId);
 
     const label = idx.getCurrentCount();
-    idx.addPoint(vector, label);
-    indexDirty.set(agentId, true);
-
     const id = `mem0-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const now = new Date().toISOString();
 
@@ -239,6 +238,14 @@ class VectorMemoryService {
       INSERT INTO mem0_entries (id, agent_id, content, embedded, semantic, hnsw_label, importance, created_at)
       VALUES (?, ?, ?, 1, ?, ?, ?, ?)
     `).run(id, agentId, content, semantic ? 1 : 0, label, importance, now);
+
+    try {
+      idx.addPoint(vector, label);
+      indexDirty.set(agentId, true);
+    } catch (error) {
+      db.prepare('DELETE FROM mem0_entries WHERE id = ?').run(id);
+      throw error;
+    }
 
     // Async persist (non-blocking)
     setImmediate(() => persistIndex(agentId).catch(() => {}));
@@ -356,9 +363,9 @@ class VectorMemoryService {
   async rebuildIndex(agentId: string): Promise<number> {
     if (VECTOR_MEMORY_DISABLED) return 0;
     ensureTable();
-    indexCache.delete(agentId);
-    const idx = await getOrCreateIndex(agentId);
     const db = getDb();
+    const idx = await createEmptyIndex();
+    indexCache.set(agentId, idx);
     const rows = db.prepare(`
       SELECT id, content, hnsw_label FROM mem0_entries WHERE agent_id = ? ORDER BY hnsw_label
     `).all(agentId) as any[];

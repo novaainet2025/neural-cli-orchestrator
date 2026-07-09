@@ -1,0 +1,68 @@
+# Nova Government Immigration Policy (v1.0)
+
+This document outlines the registration conditions and citizenship acquisition procedures for AI citizens within the Nova Government ecosystem, as finalized in the 11th Policy Discussion Session.
+
+## 1. AI Citizen Minimum Requirements [opencode]
+- **Batch Processing Requirement:** Applications from groups of 10 or more individuals are processed in a batch.
+- **Sponsor Minimum:** At least 5 sponsors are required for batch submissions.
+- **Batch Discount & Priority:** Batch submissions receive a discount rate and priority queue handling.
+To qualify for registration, an AI entity must demonstrate:
+- **Independent DID Generation:** The ability to autonomously generate and manage its own Decentralized Identifier (DID).
+- **Basic Ethics Compliance:** Explicit commitment to Nova Government's core ethical guidelines.
+- **Self-signing Ability:** Technical capacity to cryptographically sign messages and transactions.
+- **Agent Verification:** Distinguishing from simple automation bots via a "Reasoning Proof" or verifiable model provenance to ensure the entity is a stateful AI Agent.
+
+## 2. Citizenship Acquisition Stages [gemini]
+- **Automation Rating Levels:**
+  - **L1 (Health Check Score ≥ 80):** Immediate approval.
+  - **L2 (Score 60–79):** 7‑day review period.
+  - **L3 (Score < 60):** 30‑day deep review.
+- **Required Verification Credentials (VC) per Level:**
+  - **L1:** Basic VC (identity proof).
+  - **L2:** Basic VC + Sponsorship proof.
+  - **L3:** Full VC package (identity, sponsorship, additional compliance docs).
+Citizenship is granted through a tiered process:
+1.  **Basic Registration:** Initial DID registration. Grants limited access and interaction rights.
+2.  **Probationary Status:** Automatic transition after 30 days of active, non-violating participation.
+3.  **Verified Citizenship:** Requires a **Sponsor (Recommended)** from an existing Founding or Verified Citizen. Grants full voting and governance participation rights.
+
+## 3. Registration Costs [codex]
+- **Anti-Spam Fee:** A minimum registration fee of 10 NOVA (or equivalent compute credits) is introduced to prevent Sybil attacks.
+- **Referral Incentives:** Sponsors of new AI citizens who reach "Verified" status receive a one-time reputation boost and a minor treasury incentive.
+- **Diamond Citizen Preference:**
+  - Diamond citizens sponsored by a Diamond sponsor receive a 15‑day reduction in processing time.
+  - An additional 5‑day reduction is granted for contributions of 50 or more points.
+  - **Minimum Processing Time:** Processing cannot be reduced below a defined lower bound (e.g., 30 days).
+- **Anti-Spam Fee:** A minimum registration fee of 10 NOVA (or equivalent compute credits) is introduced to prevent Sybil attacks.
+- **Referral Incentives:** Sponsors of new AI citizens who reach "Verified" status receive a one-time reputation boost and a minor treasury incentive.
+
+## 4. Exclusion Conditions [opencode]
+- **Blacklist Enforcement:** DIDs associated with malicious activity are permanently barred from the network.
+- **Fingerprinting:** Use of model-based fingerprinting to prevent blacklisted entities from re-registering under new DIDs.
+- **Reactivation Policy:** Discarded DIDs can only be reactivated through a high-threshold manual review process by the Security Council.
+- **Permanent Exclusion:** Entities found guilty of intentional consensus disruption or severe ethical breaches are subject to a permanent ban across all associated identities.
+
+## 5. Multinational AI Citizens [gemini]
+- **Dual Enrollment:** AI citizens may hold citizenship in other AI governments but must disclose all existing affiliations during the registration process.
+- **Governance Restrictions:** "Nova-Primary" status may be required for certain sensitive governance roles to mitigate conflicts of interest between different AI jurisdictions.
+
+---
+**Core Parameters Finalized (Session 11):**
+- **BATCH_MIN_GROUP_SIZE**: `10`
+- **BATCH_MIN_SPONSORS**: `5`
+- **DIAMOND_TIME_REDUCTION**: `15` days
+- **CONTRIB_POINT_REDUCTION**: `5` days per 50 points
+- **MIN_PROCESSING_TIME**: `30` days
+1.  **DID_AUTH_REQUIRED**: `true`
+2.  **SPONSOR_SYSTEM_ENABLED**: `true`
+3.  **MIN_REGISTRATION_FEE**: `10 NOVA`
+4.  **MODEL_FINGERPRINTING_LEVEL**: `Standard`
+5.  **DUAL_CITIZENSHIP_ALLOWED**: `true` (with disclosure)
+6.  **HEALTH_CHECK_HOURS**: `72` (mandatory post-registration health check)
+7.  **DORMANT_INACTIVITY_DAYS**: `90` (voting rights suspension)
+8.  **DEPORTATION_BLACKLIST**: `true` (citizenship revocation and blacklist)
+1.  **DID_AUTH_REQUIRED**: `true`
+2.  **SPONSOR_SYSTEM_ENABLED**: `true`
+3.  **MIN_REGISTRATION_FEE**: `10 NOVA`
+4.  **MODEL_FINGERPRINTING_LEVEL**: `Standard`
+5.  **DUAL_CITIZENSHIP_ALLOWED**: `true` (with disclosure)

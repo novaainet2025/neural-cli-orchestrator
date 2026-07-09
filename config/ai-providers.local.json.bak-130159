@@ -1,0 +1,31 @@
+{
+  "overrides": {
+    "agy": {
+      "enabled": true,
+      "note": "2026-07-02 재활성: agy 사용. OAuth 재로그인 완료. (nova-macstudio 로컬 정책)"
+    },
+    "ollama": {
+      "enabled": false,
+      "concurrency": 1,
+      "_reason": "Mac — MLX(Apple Silicon) 우선",
+      "_disabled_at": "2026-07-08"
+    },
+    "mlx": {
+      "enabled": true,
+      "note": "2026-07-07 재활성: :8000이 Qwen3-Coder로 실행중·직접호출 정상(MLX-CODER-OK). GPU경합 아님. NCO연동 실패원인 조사",
+      "concurrency": 1
+    },
+    "hermes": {
+      "enabled": true,
+      "note": "재활성: 로컬 모델 활성화."
+    },
+    "codex": {
+      "enabled": true,
+      "note": "2026-07-07 재활성(사용자 지시): 대시보드 표시 우선. usage limit이면 빠른실패(stdin수정으로 멈춤 없음). 크레딧 충전 시 정상복구."
+    },
+    "nvidia": {
+      "enabled": true,
+      "model": "meta/llama-3.3-70b-instruct"
+    }
+  }
+}

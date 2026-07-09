@@ -64,6 +64,54 @@ class KanbanEngine {
     return result.changes > 0;
   }
 
+  private claimTaskForExecution(taskId: string): any | null {
+    const db = getDb();
+    const claim = db.prepare(`
+      UPDATE kanban_tasks
+      SET column_status = 'in_progress', updated_at = datetime('now')
+      WHERE id = ?
+        AND column_status NOT IN ('in_progress', 'done')
+    `).run(taskId);
+
+    if (claim.changes === 0) {
+      return null;
+    }
+
+    return db.prepare('SELECT * FROM kanban_tasks WHERE id = ?').get(taskId) as any | null;
+  }
+
+  private dependenciesSatisfied(task: any): boolean {
+    const db = getDb();
+    let deps: string[] = [];
+    try {
+      deps = JSON.parse(task.depends_on_json || '[]');
+    } catch {
+      return false;
+    }
+
+    if (deps.length === 0) {
+      return true;
+    }
+
+    const readDependency = db.prepare(`
+      SELECT kt.column_status, kt.task_id, t.status AS task_status
+      FROM kanban_tasks kt
+      LEFT JOIN tasks t ON t.id = kt.task_id
+      WHERE kt.id = ?
+    `);
+
+    return deps.every((depId) => {
+      const dep = readDependency.get(depId) as { column_status?: string; task_id?: string | null; task_status?: string | null } | undefined;
+      if (!dep || dep.column_status !== 'done') {
+        return false;
+      }
+      if (!dep.task_id) {
+        return true;
+      }
+      return dep.task_status === 'completed';
+    });
+  }
+
   /**
    * Execute a plan — run kanban tasks via agent manager.
    * Respects depends_on for ordering, uses parallel for independent tasks.
@@ -88,7 +136,15 @@ class KanbanEngine {
     if (strategy === 'sequential' || (strategy === 'auto' && tasks.every(t => t.execution_type === 'sequential'))) {
       // Sequential execution
       for (const task of tasks) {
-        const result = await this.executeKanbanTask(task);
+        if (!this.dependenciesSatisfied(task)) {
+          results.push({ taskId: task.id, success: false, error: 'Dependencies not completed' });
+          continue;
+        }
+        const claimedTask = this.claimTaskForExecution(task.id);
+        if (!claimedTask) {
+          continue;
+        }
+        const result = await this.executeKanbanTask(claimedTask);
         results.push(result);
         executed++;
       }
@@ -105,7 +161,11 @@ class KanbanEngine {
 
       // Execute parallel batch
       if (parallelBatch.length > 0) {
-        const promises = parallelBatch.map(t => this.executeKanbanTask(t));
+        const promises = parallelBatch
+          .filter((task) => this.dependenciesSatisfied(task))
+          .map((task) => this.claimTaskForExecution(task.id))
+          .filter((task): task is any => task != null)
+          .map((task) => this.executeKanbanTask(task));
         const batchResults = await Promise.allSettled(promises);
         for (const r of batchResults) {
           results.push(r.status === 'fulfilled' ? r.value : { error: (r as any).reason?.message });
@@ -115,7 +175,15 @@ class KanbanEngine {
 
       // Then sequential
       for (const task of sequential) {
-        const result = await this.executeKanbanTask(task);
+        if (!this.dependenciesSatisfied(task)) {
+          results.push({ taskId: task.id, success: false, error: 'Dependencies not completed' });
+          continue;
+        }
+        const claimedTask = this.claimTaskForExecution(task.id);
+        if (!claimedTask) {
+          continue;
+        }
+        const result = await this.executeKanbanTask(claimedTask);
         results.push(result);
         executed++;
       }
@@ -216,9 +284,6 @@ class KanbanEngine {
    */
   private async executeKanbanTask(task: any): Promise<any> {
     const db = getDb();
-
-    // 1. Move to in_progress
-    this.moveTask(task.id, 'in_progress');
 
     let verifierConfig: any = null;
     let maxRetries = 3;

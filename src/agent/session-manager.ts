@@ -161,12 +161,12 @@ class AgentSessionManager {
         toolCall,
       });
 
-      // Auto-approve after 60s timeout to prevent blocking forever
+      // Dangerous tool approvals must fail closed on timeout.
       setTimeout(() => {
         if (session.pendingApproval) {
-          session.pendingApproval.resolve(true);
+          session.pendingApproval.resolve(false);
           session.pendingApproval = undefined;
-          log.info({ sessionId }, 'Approval auto-granted (timeout)');
+          log.warn({ sessionId }, 'Approval timed out and was rejected');
         }
       }, 60_000);
     });

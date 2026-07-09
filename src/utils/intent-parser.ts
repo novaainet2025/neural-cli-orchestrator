@@ -43,7 +43,6 @@ const TOOL_KEYWORDS: Record<string, string[]> = {
 const AGENT_KEYWORDS: Record<string, string[]> = {
   codex: ['codex', 'implement', 'write code'],
   opencode: ['opencode', 'architect', 'design'],
-  gemini: ['gemini', 'design', 'ui', 'ux'],
   aider: ['aider', 'edit', 'modify'],
   'cursor-agent': ['cursor', 'review', 'fix'],
   copilot: ['copilot', 'research', 'lookup'],
@@ -56,7 +55,7 @@ function normalize(text: string): string {
 }
 
 function extractPath(text: string): string | null {
-  const pathMatch = text.match(/(?:in|to|from|at|path:)\s+([^\s]+)/i) || text.match(/\/[\w.\-/]+/);
+  const pathMatch = text.match(/(?:in|to|from|at|path:)\s+([^\s]+)/i) || text.match(/(\/[\w.\-/]+)/);
   return pathMatch ? pathMatch[1] : null;
 }
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { listEnabledIds, getAgentState, dbGet } = vi.hoisted(() => ({
-  listEnabledIds: vi.fn(() => ['gemini', 'mlx', 'vllm', 'claude-code', 'unknown-provider']),
+  listEnabledIds: vi.fn(() => ['openrouter', 'mlx', 'vllm', 'claude-code', 'unknown-provider']),
   getAgentState: vi.fn(async (id: string) => {
     if (id === 'vllm') {
       return { health: { circuitState: 'open' } };
@@ -9,7 +9,7 @@ const { listEnabledIds, getAgentState, dbGet } = vi.hoisted(() => ({
     return { health: { circuitState: 'closed' } };
   }),
   dbGet: vi.fn((agentId: string) => {
-    if (agentId === 'gemini') {
+    if (agentId === 'openrouter') {
       return { is_limited: 1 };
     }
     return null;
@@ -53,8 +53,8 @@ describe('SmartRouter', () => {
 
   describe('sortProvidersByCostOrder', () => {
     it('sorts providers based on cost order', () => {
-      const input = ['gemini', 'mlx', 'claude-code', 'aider'];
-      const expected = ['mlx', 'aider', 'gemini', 'claude-code'];
+      const input = ['openrouter', 'mlx', 'claude-code', 'aider'];
+      const expected = ['mlx', 'openrouter', 'aider', 'claude-code'];
       expect(sortProvidersByCostOrder(input)).toEqual(expected);
     });
 
@@ -103,8 +103,8 @@ describe('SmartRouter', () => {
 
   describe('selectProviders', () => {
     it('filters out rate-limited or circuit-broken providers and sorts by cost', async () => {
-      // Available providers from mock: ['gemini', 'mlx', 'vllm', 'claude-code', 'unknown-provider']
-      // gemini: rate-limited (db returning is_limited: 1)
+      // Available providers from mock: ['openrouter', 'mlx', 'vllm', 'claude-code', 'unknown-provider']
+      // openrouter: rate-limited (db returning is_limited: 1)
       // vllm: circuit-broken (sharedState returning circuitState: 'open')
       // Available for routing should be: ['mlx', 'claude-code', 'unknown-provider']
       // Sorted by cost order: ['mlx', 'claude-code', 'unknown-provider']
@@ -114,8 +114,8 @@ describe('SmartRouter', () => {
     });
 
     it('fails explicitly when available providers do not meet the mode minimum', async () => {
-      // gemini is rate-limited, vllm is circuit-open → only mlx remains (1 < discussion minimum 3)
-      listEnabledIds.mockReturnValueOnce(['gemini', 'vllm', 'mlx']);
+      // openrouter is rate-limited, vllm is circuit-open → only mlx remains (1 < discussion minimum 3)
+      listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'mlx']);
       await expect(smartRouter.selectProviders('discussion', 3)).rejects.toBeInstanceOf(ProviderSelectionError);
     });
   });

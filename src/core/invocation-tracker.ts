@@ -183,6 +183,14 @@ class InvocationTracker {
       return;
     }
 
+    const claimed = db.prepare(
+      `UPDATE agent_invocations SET notified = 2 WHERE id = ? AND notified = 0`
+    ).run(invocationId);
+    if (claimed.changes === 0) {
+      log.debug(`Invocation ${invocationId} notification already claimed`);
+      return;
+    }
+
     const statusIcon = inv.status === 'completed' ? '✅' : inv.status === 'failed' ? '❌' : '⊘';
     const summary = inv.resultSummary ? ` — ${inv.resultSummary.slice(0, 120)}` : '';
     const durationStr = inv.durationMs != null ? ` (${(inv.durationMs / 1000).toFixed(1)}s)` : '';
@@ -197,14 +205,16 @@ class InvocationTracker {
         content,
         'info',
       );
+      db.prepare(
+        `UPDATE agent_invocations SET notified = 1 WHERE id = ?`
+      ).run(invocationId);
       log.debug(`Notified caller session ${inv.callerSessionId} for invocation ${invocationId}`);
     } catch (err) {
+      db.prepare(
+        `UPDATE agent_invocations SET notified = 0 WHERE id = ? AND notified = 2`
+      ).run(invocationId);
       log.warn(`Failed to notify caller for invocation ${invocationId}: ${err}`);
     }
-
-    db.prepare(
-      `UPDATE agent_invocations SET notified = 1 WHERE id = ?`
-    ).run(invocationId);
   }
 
   /**

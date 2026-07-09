@@ -12,6 +12,7 @@ import { sessionManager } from './agent/session-manager.js';
 import { taskQueue } from './core/task-queue.js';
 import { transitionTask } from './core/task-state.js';
 import { loadCronJobs } from './core/cron-scheduler.js';
+import { startWorkReportScheduler } from './core/work-report-scheduler.js';
 import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
@@ -19,6 +20,14 @@ import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
 
 const log = createLogger('main');
+const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
+const SHUTDOWN_POLL_INTERVAL_MS = 1_000;
+const IN_FLIGHT_SHUTDOWN_STATUSES = ['assigned', 'in_progress', 'running', 'streaming'] as const;
+const SHUTDOWN_ORPHAN_REASON = 'orphaned: graceful shutdown timeout';
+
+let gateway: Awaited<ReturnType<typeof createGateway>> | null = null;
+let shutdownPromise: Promise<void> | null = null;
+let stopWorkReportScheduler: (() => void) | null = null;
 
 /** 재큐잉 대상 orphan (부팅 후 taskQueue 준비되면 실제 enqueue) */
 interface OrphanRequeue {
@@ -112,6 +121,59 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
   return { requeued, deadLettered };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getInFlightTasks() {
+  const placeholders = IN_FLIGHT_SHUTDOWN_STATUSES.map(() => '?').join(', ');
+  return getDb().prepare(`
+    SELECT id, status, assigned_to
+    FROM tasks
+    WHERE status IN (${placeholders})
+    ORDER BY created_at ASC
+  `).all(...IN_FLIGHT_SHUTDOWN_STATUSES) as Array<{
+    id: string;
+    status: string;
+    assigned_to: string | null;
+  }>;
+}
+
+function markInFlightTasksAsOrphaned(tasks: Array<{ id: string }>): number {
+  if (tasks.length === 0) return 0;
+  const ids = tasks.map(task => task.id);
+  const placeholders = ids.map(() => '?').join(', ');
+  const statusPlaceholders = IN_FLIGHT_SHUTDOWN_STATUSES.map(() => '?').join(', ');
+  const result = getDb().prepare(`
+    UPDATE tasks
+    SET status = CASE WHEN status = 'in_progress' THEN 'assigned' ELSE status END,
+        error = ?,
+        updated_at = datetime('now')
+    WHERE id IN (${placeholders})
+      AND status IN (${statusPlaceholders})
+  `).run(
+    SHUTDOWN_ORPHAN_REASON,
+    ...ids,
+    ...IN_FLIGHT_SHUTDOWN_STATUSES,
+  );
+  return result.changes;
+}
+
+async function waitForInFlightDrain(timeoutMs: number): Promise<{ drained: boolean; remaining: Array<{ id: string; status: string; assigned_to: string | null }> }> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const remaining = getInFlightTasks();
+    if (remaining.length === 0) {
+      return { drained: true, remaining };
+    }
+    await sleep(Math.min(SHUTDOWN_POLL_INTERVAL_MS, Math.max(0, deadline - Date.now())));
+  }
+
+  const remaining = getInFlightTasks();
+  return { drained: remaining.length === 0, remaining };
+}
+
 async function boot(): Promise<void> {
   log.info('═══════════════════════════════════════');
   log.info('  NCO Backend — Neural CLI Orchestrator');
@@ -163,6 +225,7 @@ async function boot(): Promise<void> {
       systemPrompt: task.systemPrompt,
       signal,
       timeoutMs: task.timeoutMs,
+      projectDir: task.metadata?.projectDir as string | undefined,
     });
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
@@ -198,7 +261,7 @@ async function boot(): Promise<void> {
 
   // 8. Fastify Gateway (HTTP :6200)
   log.info('Starting API Gateway...');
-  const gateway = await createGateway();
+  gateway = await createGateway();
 
   // Monitor page
   gateway.get('/monitor', async (req, reply) => {
@@ -209,6 +272,8 @@ async function boot(): Promise<void> {
   gateway.get('/topology', async (req, reply) => {
     reply.type('text/html').send(getTopologyHTML(env.WS_PORT, env.PORT));
   });
+
+  stopWorkReportScheduler = startWorkReportScheduler(gateway);
 
   // 2026-07-02 사용자 승인: Tailscale 사설망 내 원격 NCO들의 fleet push 수신을 위해
   // 0.0.0.0 바인드 (HOST env로 재정의 가능 — 되돌리려면 HOST=127.0.0.1)
@@ -233,7 +298,31 @@ async function boot(): Promise<void> {
 
 // ─── Graceful Shutdown ────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = (async () => {
   log.info({ signal }, 'Shutting down...');
+  if (gateway) {
+    await gateway.close();
+    log.info('API Gateway closed to new requests');
+  }
+  if (stopWorkReportScheduler) {
+    stopWorkReportScheduler();
+    stopWorkReportScheduler = null;
+  }
+
+  const drainResult = await waitForInFlightDrain(SHUTDOWN_DRAIN_TIMEOUT_MS);
+  if (drainResult.drained) {
+    log.info('In-flight task drain completed before shutdown timeout');
+  } else {
+    const orphaned = markInFlightTasksAsOrphaned(drainResult.remaining);
+    log.warn({
+      timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS,
+      remaining: drainResult.remaining.length,
+      orphaned,
+      taskIds: drainResult.remaining.map(task => task.id),
+    }, 'Shutdown drain timed out; remaining in-flight tasks marked orphaned');
+  }
+
   wsBridge.stop();
   sessionManager.destroy();
   agentManager.destroy();
@@ -243,10 +332,12 @@ async function shutdown(signal: string): Promise<void> {
   await closeRedis();
   closeDb();
   process.exit(0);
+  })();
+  return shutdownPromise;
 }
 
-process.on('SIGINT', () => shutdown('SIGINT'));
-process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 // ─── Run ──────────────────────────────────────────────
 boot().catch(err => {

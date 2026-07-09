@@ -1,0 +1,19 @@
+{
+  "overrides": {
+    "agy": {
+      "enabled": true,
+      "note": "2026-07-02 재활성: agy 사용. OAuth 재로그인 완료. (nova-macstudio 로컬 정책)"
+    },
+    "ollama": {
+      "enabled": true
+    },
+    "mlx": {
+      "enabled": false,
+      "note": "2026-07-07 비활성: :8000 MLX 서버가 nova-voice TTS(Spark/Qwen3-TTS)에 점유돼 Qwen3-Coder 미로드 → 부전(0/2). TTS 우선. 코더 필요 시 별도 포트(:8001) 로드 후 재활성. (사양별 동적 정책)"
+    },
+    "hermes": {
+      "enabled": false,
+      "note": "2026-07-07 임시 비활성: 32B 로컬모델이 nova-voice TTS와 GPU 경합→반복 timeout(서킷 gated). 배정낭비 차단. TTS 유휴/부하해소 시 재활성(낮 92% 성공 이력). mlx와 동일 사양 트레이드오프."
+    }
+  }
+}

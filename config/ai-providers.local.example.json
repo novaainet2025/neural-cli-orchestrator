@@ -9,8 +9,5 @@
       "enabled": false,
       "_이유예시": "snt: 스펙 미달로 ollama 비활성 (2026-07-02 사용자 확정)"
     },
-    "gemini": {
-      "enabled": true
-    }
   }
 }

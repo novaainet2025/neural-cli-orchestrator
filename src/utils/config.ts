@@ -84,8 +84,26 @@ export function detectPlatform(): 'darwin' | 'wsl' | 'linux' {
   try {
     const v = readFileSync('/proc/version', 'utf-8').toLowerCase();
     if (v.includes('microsoft')) return 'wsl';
-  } catch { /* not linux or unreadable */ }
+  } catch (err) {
+    console.warn(`[config] /proc/version read failed, defaulting to linux: ${String(err)}`);
+  }
   return 'linux';
+}
+
+function parsePort(envVar: 'PORT' | 'WS_PORT', fallback: number): number {
+  const rawValue = process.env[envVar];
+  const resolvedValue = rawValue ?? String(fallback);
+  const port = Number(resolvedValue);
+
+  if (!Number.isInteger(port) || Number.isNaN(port)) {
+    throw new Error(`[config] ${envVar} must be an integer port, received: ${resolvedValue}`);
+  }
+
+  if (port < 1 || port > 65535) {
+    throw new Error(`[config] ${envVar} must be between 1 and 65535, received: ${resolvedValue}`);
+  }
+
+  return port;
 }
 
 interface LocalOverrides {
@@ -163,8 +181,8 @@ export function getProvider(id: string): ProviderConfig | undefined {
 
 // ─── Environment ──────────────────────────────────────
 export const env = {
-  PORT: Number(process.env.PORT || topology.ports.apiGateway),
-  WS_PORT: Number(process.env.WS_PORT || topology.ports.websocket),
+  PORT: parsePort('PORT', topology.ports.apiGateway),
+  WS_PORT: parsePort('WS_PORT', topology.ports.websocket),
   NODE_ENV: process.env.NODE_ENV || 'development',
   // lazy getter: 테스트가 beforeAll에서 process.env.DATABASE_PATH를 설정해도 반영되도록
   // import 시점 고정 대신 조회 시점 resolve (getDb()가 첫 호출 때 읽음)

@@ -1,0 +1,2 @@
+"""GEPA sidecar pilot package."""
+

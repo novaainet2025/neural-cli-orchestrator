@@ -50,6 +50,20 @@ export interface DiscussionReport {
   totalDurationMs: number;
 }
 
+interface DiscussionRoundSnapshot {
+  round: number;
+  type: string;
+  responses: Record<string, string>;
+  scores?: Record<string, Record<string, number>>;
+  consensusRate?: number;
+  savedAt: string;
+}
+
+interface DiscussionResultState {
+  roundSnapshots?: DiscussionRoundSnapshot[];
+  [key: string]: unknown;
+}
+
 // ─── PID Controller (동적 consensus threshold 조정) ──
 class PIDController {
   private integral = 0;
@@ -83,11 +97,11 @@ class PIDController {
 
 // ─── Discussion Engine ────────────────────────────────
 class DiscussionEngine {
-
-  private trustScores = new Map<string, number>();
-  /** Long-term reputation: persists across discussions (EMA α=0.1) */
-  private reputationScores = new Map<string, number>();
-  private pid = new PIDController();
+  private sessionTrustScores = new Map<string, Map<string, number>>();
+  /** Long-term reputation is isolated per discussion session to avoid cross-session contamination. */
+  private sessionReputationScores = new Map<string, Map<string, number>>();
+  private sessionPidControllers = new Map<string, PIDController>();
+  private realtimeListeners = new Map<string, Array<{ eventType: 'discussion:message' | 'discussion:user_intervention'; handler: (event: any) => void }>>();
 
   // ═══ 단일 작업 위임 (mode: task) ═══
   async executeTask(agentId: string, prompt: string, options?: { systemPrompt?: string }): Promise<string> {
@@ -154,13 +168,13 @@ class DiscussionEngine {
     const maxRounds = options.maxRounds || 3;
     let threshold = options.consensusThreshold || 0.8;
     const participants = options.providers || this.selectParticipants(options.mode);
-    this.pid.reset();
     const initiator = options.initiator || 'claude-code';
-
-    // Initialize trust scores to 1.0 for each agent
-    for (const pid of participants) {
-      this.trustScores.set(pid, 1.0);
-    }
+    const pidController = this.getSessionPid(sessionId);
+    const trustScores = this.getSessionTrustScores(sessionId);
+    this.getSessionReputationScores(sessionId);
+    pidController.reset();
+    trustScores.clear();
+    for (const pid of participants) trustScores.set(pid, 1.0);
 
     // Save session to DB
     const db = getDb();
@@ -211,13 +225,13 @@ class DiscussionEngine {
       );
 
       const scores = this.extractScores(evaluations, participants);
-      consensusRate = this.calculateConsensus(scores, participants);
-      this.updateTrustScores(scores, participants);
-      this.updateReputation(scores, participants);
+      consensusRate = this.calculateConsensus(sessionId, scores, participants);
+      this.updateTrustScores(sessionId, scores, participants);
+      this.updateReputation(sessionId, scores, participants);
       rounds.push({ round, responses: evaluations, evaluations: scores, consensusRate });
       this.saveRound(sessionId, round, 'evaluation', evaluations, scores, consensusRate);
 
-      const thresholdDelta = this.pid.compute(threshold, consensusRate);
+      const thresholdDelta = pidController.compute(threshold, consensusRate);
       threshold = Math.max(0.5, Math.min(0.95, threshold - thresholdDelta));
 
       await eventBus.publish({
@@ -273,16 +287,22 @@ class DiscussionEngine {
     const report = this.generateReport(sessionId, options, participants, rounds, consensusRate, startTime);
 
     // Save to DB
+    const resultState = this.readDiscussionResultState(sessionId);
+    const persistedReport = {
+      ...report,
+      ...(resultState.roundSnapshots ? { roundSnapshots: resultState.roundSnapshots } : {}),
+    };
     db.prepare(`
       UPDATE discussions SET status='completed', consensus_rate=?, result_json=?, report=?, ended_at=datetime('now')
       WHERE id=?
-    `).run(consensusRate, JSON.stringify(report), report.adoptedProposal, sessionId);
+    `).run(consensusRate, JSON.stringify(persistedReport), report.adoptedProposal, sessionId);
 
     await eventBus.publish({
       type: 'discussion:completed', sessionId, report,
     });
 
     log.info({ sessionId, consensusRate, rounds: rounds.length, durationMs: Date.now() - startTime }, 'Discussion completed');
+    this.cleanupSessionState(sessionId);
 
     return report;
   }
@@ -384,15 +404,21 @@ class DiscussionEngine {
     // ─── 최종 보고서 ─────────────────────────────────
     const report = this.generateReport(sessionId, options, participants, rounds, 1, startTime);
     report.adoptedProposal = synthesis; // override with actual synthesis
+    const resultState = this.readDiscussionResultState(sessionId);
+    const persistedReport = {
+      ...report,
+      ...(resultState.roundSnapshots ? { roundSnapshots: resultState.roundSnapshots } : {}),
+    };
 
     db.prepare(`
       UPDATE discussions SET status='completed', consensus_rate=1, result_json=?, report=?, ended_at=datetime('now')
       WHERE id=?
-    `).run(JSON.stringify(report), synthesis, sessionId);
+    `).run(JSON.stringify(persistedReport), synthesis, sessionId);
 
     await eventBus.publish({ type: 'discussion:completed', sessionId, report });
 
     log.info({ sessionId, participants: participants.length, durationMs: Date.now() - startTime }, 'Hive completed');
+    this.cleanupSessionState(sessionId);
 
     return report;
   }
@@ -507,6 +533,48 @@ class DiscussionEngine {
     return responses;
   }
 
+  private getSessionTrustScores(sessionId: string): Map<string, number> {
+    let trustScores = this.sessionTrustScores.get(sessionId);
+    if (!trustScores) {
+      trustScores = new Map<string, number>();
+      this.sessionTrustScores.set(sessionId, trustScores);
+    }
+    return trustScores;
+  }
+
+  private getSessionReputationScores(sessionId: string): Map<string, number> {
+    let reputationScores = this.sessionReputationScores.get(sessionId);
+    if (!reputationScores) {
+      reputationScores = new Map<string, number>();
+      this.sessionReputationScores.set(sessionId, reputationScores);
+    }
+    return reputationScores;
+  }
+
+  private getSessionPid(sessionId: string): PIDController {
+    let pid = this.sessionPidControllers.get(sessionId);
+    if (!pid) {
+      pid = new PIDController();
+      this.sessionPidControllers.set(sessionId, pid);
+    }
+    return pid;
+  }
+
+  private cleanupSessionState(sessionId: string): void {
+    this.sessionTrustScores.delete(sessionId);
+    this.sessionReputationScores.delete(sessionId);
+    this.sessionPidControllers.delete(sessionId);
+    this.teardownRealtimeListeners(sessionId);
+  }
+
+  private teardownRealtimeListeners(sessionId: string): void {
+    const listeners = this.realtimeListeners.get(sessionId) ?? [];
+    for (const { eventType, handler } of listeners) {
+      eventBus.off(eventType, handler);
+    }
+    this.realtimeListeners.delete(sessionId);
+  }
+
   /**
    * 순차 응답 수집: 각 에이전트가 이전 에이전트의 응답을 볼 수 있음.
    * Round 2에서 사용 — 1라운드 제안 + 이전 에이전트의 평가를 누적 컨텍스트로 전달.
@@ -565,11 +633,20 @@ class DiscussionEngine {
     sessionId: string,
     agentId: string,
     topic: string,
-    participants: string[],
+    _participants: string[],
   ): void {
     const handler = async (event: any) => {
       if (event.sessionId !== sessionId) return;
       if (event.from === agentId) return; // don't respond to self
+
+      const db = getDb();
+      const discussion = db.prepare(
+        `SELECT status FROM discussions WHERE id = ?`
+      ).get(sessionId) as { status?: string } | undefined;
+      if (!discussion || discussion.status !== 'active') {
+        this.teardownRealtimeListeners(sessionId);
+        return;
+      }
 
       // Debounce — wait for other messages
       await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
@@ -585,7 +662,6 @@ class DiscussionEngine {
           from: agentId, content: result.output, round: null,
         });
 
-        const db = getDb();
         db.prepare(`
           INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
           VALUES (?, ?, ?, NULL, 'realtime', ?)
@@ -598,6 +674,10 @@ class DiscussionEngine {
 
     eventBus.on('discussion:message', handler);
     eventBus.on('discussion:user_intervention', handler);
+    const listeners = this.realtimeListeners.get(sessionId) ?? [];
+    listeners.push({ eventType: 'discussion:message', handler });
+    listeners.push({ eventType: 'discussion:user_intervention', handler });
+    this.realtimeListeners.set(sessionId, listeners);
   }
 
   // ─── Internal: Select participants by mode ──────────
@@ -672,17 +752,19 @@ class DiscussionEngine {
 
   // ─── Internal: Calculate consensus rate (trust-weighted voting) ──
   private calculateConsensus(
+    sessionId: string,
     scores: Record<string, Record<string, number>>,
     participants: string[]
   ): number {
     if (participants.length < 2) return 1.0;
+    const trustScores = this.getSessionTrustScores(sessionId);
 
     // Phase 1: trust-weighted score sum per candidate
     const weightedScores: Record<string, number> = {};
     let totalWeight = 0;
 
     for (const evaluator of participants) {
-      const trust = this.trustScores.get(evaluator) ?? 1.0;
+      const trust = trustScores.get(evaluator) ?? 1.0;
       totalWeight += trust;
       const evalScores = scores[evaluator] || {};
       for (const [target, score] of Object.entries(evalScores)) {
@@ -711,7 +793,7 @@ class DiscussionEngine {
       const evalTop = Object.entries(evalScores)
         .sort((a, b) => b[1] - a[1])[0]?.[0];
       if (evalTop === topChoice) {
-        agreementWeight += this.trustScores.get(evaluator) ?? 1.0;
+        agreementWeight += trustScores.get(evaluator) ?? 1.0;
       }
     }
 
@@ -720,10 +802,12 @@ class DiscussionEngine {
 
   // ─── Internal: Update trust scores based on consensus ─
   private updateTrustScores(
+    sessionId: string,
     scores: Record<string, Record<string, number>>,
     participants: string[]
   ): void {
     if (participants.length < 2) return;
+    const trustScores = this.getSessionTrustScores(sessionId);
 
     // Calculate mean score for each agent
     const meanScores: Record<string, number> = {};
@@ -746,24 +830,26 @@ class DiscussionEngine {
 
     // Update each agent's trust based on alignment with mean
     for (const pid of participants) {
-      const currentTrust = this.trustScores.get(pid) ?? 1.0;
+      const currentTrust = trustScores.get(pid) ?? 1.0;
       const score = meanScores[pid] ?? 5;
 
       if (Math.abs(score - overallMean) <= 1) {
         // Within 1 point of mean - increase trust
-        this.trustScores.set(pid, Math.min(2.0, currentTrust + 0.05));
+        trustScores.set(pid, Math.min(2.0, currentTrust + 0.05));
       } else {
         // Outside mean - decrease trust
-        this.trustScores.set(pid, Math.max(0.1, currentTrust - 0.05));
+        trustScores.set(pid, Math.max(0.1, currentTrust - 0.05));
       }
     }
   }
 
   // ─── Internal: Update long-term reputation (EMA α=0.1) ─
   private updateReputation(
+    sessionId: string,
     scores: Record<string, Record<string, number>>,
     participants: string[]
   ): void {
+    const reputationScores = this.getSessionReputationScores(sessionId);
     for (const pid of participants) {
       let sum = 0, count = 0;
       for (const [evaluator, evalScores] of Object.entries(scores)) {
@@ -773,9 +859,9 @@ class DiscussionEngine {
       }
       if (count === 0) continue;
       const mean = sum / count;
-      const current = this.reputationScores.get(pid) ?? 5.0;
+      const current = reputationScores.get(pid) ?? 5.0;
       // Exponential moving average: blends long-term history with latest round
-      this.reputationScores.set(pid, current * 0.9 + mean * 0.1);
+      reputationScores.set(pid, current * 0.9 + mean * 0.1);
     }
   }
 
@@ -840,11 +926,49 @@ class DiscussionEngine {
   ): void {
     try {
       const db = getDb();
+      const resultState = this.readDiscussionResultState(sessionId);
+      const snapshots = resultState.roundSnapshots ?? [];
+      const snapshot: DiscussionRoundSnapshot = {
+        round,
+        type,
+        responses,
+        ...(scores ? { scores } : {}),
+        ...(consensusRate !== undefined ? { consensusRate } : {}),
+        savedAt: new Date().toISOString(),
+      };
+      const roundSnapshots = [...snapshots.filter((entry) => entry.round !== round), snapshot]
+        .sort((left, right) => left.round - right.round);
+      const nextResultState: DiscussionResultState = {
+        ...resultState,
+        roundSnapshots,
+      };
       db.prepare(`
-        UPDATE discussions SET current_round=?, updated_at=datetime('now') WHERE id=?
-      `).run(round, sessionId);
+        UPDATE discussions
+        SET current_round=?,
+            consensus_rate=COALESCE(?, consensus_rate),
+            result_json=?,
+            updated_at=datetime('now')
+        WHERE id=?
+      `).run(round, consensusRate ?? null, JSON.stringify(nextResultState), sessionId);
     } catch (err: any) {
       log.error({ err: err.message, sessionId, round }, 'Save round failed');
+    }
+  }
+
+  private readDiscussionResultState(sessionId: string): DiscussionResultState {
+    const row = getDb().prepare(`
+      SELECT result_json
+      FROM discussions
+      WHERE id=?
+    `).get(sessionId) as { result_json?: string | null } | undefined;
+
+    if (!row?.result_json) return {};
+
+    try {
+      const parsed = JSON.parse(row.result_json) as DiscussionResultState;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
     }
   }
 }

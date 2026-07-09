@@ -1,0 +1,11 @@
+{
+  "allocation_percent": 15,
+  "halving_interval_years": 4,
+  "min_ubi": 500,
+  "reactivation_fee": 50,
+  "retroactive_cap": 1000,
+  "emergency_trigger_percent": 15,
+  "emergency_balance_threshold": 200,
+  "emergency_grant_multiplier": 5,
+  "emergency_max_per_year": 3
+}

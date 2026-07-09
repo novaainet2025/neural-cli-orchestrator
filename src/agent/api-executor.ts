@@ -149,13 +149,20 @@ export class ApiExecutor {
     trajectoryGuard.beginTask(taskId, agentId);
 
     let systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
-    // [2026-07-07] mlx 품질 강화: tool 형식 금지 + 요청 포맷 정확 준수(사족 금지).
-    if (this.provider.id === 'mlx') {
-      systemContent += '\n\n[출력 규칙 — 엄격] 1) 도구/함수 호출 형식(<function=...>, [tool:...])을 절대 쓰지 마라. '
-        + '2) 평문으로 직접 답하라. 3) 사용자 형식을 정확히 지켜라. 4) 설명·사족·검증문구·괄호주석([Verification...], [Note...] 등)을 절대 붙이지 마라. '
-        + '예시:\n Q: "2+2? 숫자만" → A: 4\n Q: "합은? 숫자만" → A: 15\n'
-        + ' Q: "hello 대문자? 결과만" → A: HELLO\n Q: "코드만" → A: (코드블록만)\n'
-        + 'Answer with ONLY the requested content. No preamble, no verification, no brackets, no extra text.';
+    // [2026-07-09] mlx 도구 사용 재활성 — 2026-07-07의 전면 금지는 모델이 훈련된
+    // <function=...> 포맷이 새어나올 때 파서 미지원으로 "consecutive tool errors" 실패를
+    // 유발했다(성공률 72%). 이제 tool-parser가 해당 네이티브 포맷을 파싱하므로,
+    // 금지 대신 "단순 질문 직답 + 필요 시에만 도구" 정책으로 전환.
+    if (['mlx', 'ollama', 'mlx-instruct', 'hermes'].includes(this.provider.id)) {
+      systemContent += '\n\n[출력 규칙] 1) 지식으로 답할 수 있는 질문은 도구 없이 즉시 평문으로 답하라. '
+        + '2) 파일 읽기/검색/명령 실행이 실제로 필요할 때만 아래 형식으로 도구를 호출하라 (한 번에 하나, 최대 2회 사용 후 반드시 최종 답변):\n'
+        + '<function=runCommand>\n<parameter=command>ls -la</parameter>\n</function>\n'
+        + '사용 가능 도구: readFile(path), writeFile(path,content), editFile(path,old,new), listFiles(path), '
+        + 'searchCode(query,path), runCommand(command), gitStatus(), gitDiff()\n'
+        + '3) 최종 답변은 요청 형식을 정확히 지켜라 — 사족·검증문구·괄호주석 금지. '
+        + '4) 질문의 조건(필터·범위·단위·확장자 등)을 정확히 적용한 값을 답하라. '
+        + '5) 코드를 요구받지 않았다면 코드를 출력하지 말고 도구로 확인한 결과 값을 답하라. '
+        + 'Answer with ONLY the requested content. No preamble, no extra text.';
     }
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemContent },
@@ -197,13 +204,12 @@ export class ApiExecutor {
             max_tokens: 4096,
             stream: false,
           };
-          // [2026-07-07] mlx(로컬 Qwen3-Coder-30B) 반복생성 억제 — EOS 못 만나 답 뒤에
-          // 빈줄 폭주 + [tool:runCommand] 무한반복 → "consecutive tool errors 6" 실패(성공률56%)의 근본.
-          // mlx_lm.server가 지원하는 repetition_penalty/temperature로 반복 차단.
+          // [2026-07-09] rep_penalty 1.25는 구 Qwen3-Coder EOS 폭주 대응책 — Instruct-2507로
+          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. 1.05로 완화, temp 0.
           if (this.provider.id === 'mlx') {
-            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.25;
+            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.05;
             (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
-            createParams.temperature = 0.1;
+            createParams.temperature = 0;
           }
           if (useNativeTools) {
             createParams.tools = tools;
@@ -240,9 +246,13 @@ export class ApiExecutor {
             const t = (rawContent as { text?: unknown }).text;
             if (typeof t === 'string') textContent = t;
           }
+          let fromReasoningFallback = false;
           if (!textContent) {
-            const reasoningContent = (msg as { reasoning_content?: unknown }).reasoning_content;
-            if (typeof reasoningContent === 'string') textContent = reasoningContent;
+            // NIM: reasoning_content / Ollama(0.20+ thinking 모델): reasoning
+            const m = msg as { reasoning_content?: unknown; reasoning?: unknown };
+            if (typeof m.reasoning_content === 'string') textContent = m.reasoning_content;
+            else if (typeof m.reasoning === 'string') textContent = m.reasoning;
+            if (textContent) fromReasoningFallback = true;
           }
 
           if (!textContent && !msg.tool_calls?.length) {
@@ -311,7 +321,12 @@ export class ApiExecutor {
             continue;
           }
 
-          const fromText = parseToolCalls(textContent);
+          // [2026-07-09 codex 리뷰] 도구 인젝션 차단: (a) reasoning 폴백 텍스트에서는 도구 실행 금지
+          // (모델이 '생각만 한' 도구 구문이 실행되는 경로), (b) <think> 블록은 파싱 전에 제거.
+          const parseSource = fromReasoningFallback
+            ? ''
+            : textContent.replace(/<think>[\s\S]*?<\/think>/g, '');
+          const fromText = parseSource ? parseToolCalls(parseSource) : [];
           if (fromText.length > 0) {
             messages.push({ role: 'assistant', content: textContent });
             const results: string[] = [];
@@ -445,13 +460,19 @@ export class ApiExecutor {
     const apiKey = this.getNextKey();
     const baseURL = this.provider.endpoint || this.provider.apiConfig?.primary.baseUrl;
 
+    // 로컬 엔드포인트(mlx/ollama)는 단일스레드 서버 경합으로 일시적 connection
+    // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: mlx-server
+    // POST 200인데 동시요청 경합으로 "Connection error." 실패, circuit open 유발).
+    // 원격 API는 기존대로 0: 429 Retry-After(최대 수시간) sleep hang 방지.
+    const isLocalEndpoint = /localhost|127\.0\.0\.1/.test(baseURL || '');
+
     return new OpenAI({
       apiKey: apiKey || 'not-needed',
       baseURL,
       // maxRetries 0: SDK 내부 재시도는 429의 Retry-After(실측 openrouter 일일한도
       // 소진 시 31162s)를 존중하며 잠들어 태스크가 시간 단위로 hang한다.
       // 429/오류는 즉시 throw시켜 우리 키 회전 루프가 제어하도록 한다.
-      maxRetries: 0,
+      maxRetries: isLocalEndpoint ? 2 : 0,
       timeout: this.sandbox.getTimeout(),
     });
   }

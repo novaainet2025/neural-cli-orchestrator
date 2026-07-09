@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-NCO (Neural CLI Orchestrator) is a TypeScript backend that orchestrates 9 AI agents (Claude Code, Codex, Gemini CLI, Aider, OpenCode, Cursor Agent, Copilot, OpenRouter, Ollama) as a collaborative team. Agents are classified into three types:
+NCO (Neural CLI Orchestrator) is a TypeScript backend that orchestrates 9 AI agents (Claude Code, Codex, Aider, OpenCode, Cursor Agent, Copilot, OpenRouter, Ollama) as a collaborative team. Agents are classified into three types:
 
 - **Type A (Native)**: CLI agents with their own execution loop (claude-code)
-- **Type B (Orchestrated)**: CLI agents driven by NCO's loop with XML-based tool calls (codex, gemini, aider, opencode, cursor-agent, copilot)
+- **Type B (Orchestrated)**: CLI agents driven by NCO's loop with XML-based tool calls (codex, aider, opencode, cursor-agent, copilot)
 - **Type C (API-based)**: OpenAI-compatible API endpoints with key rotation (openrouter, ollama)
 
 Coordination modes: task (single agent), parallel (all agents), discussion (multi-round dialogue), consensus (voting), hive (unified entity), broadcast (message all).
@@ -101,11 +101,10 @@ Run a single test file: `npx vitest run tests/full-integration.ts`
 | 작업 유형 | 자동 호출 패턴 |
 |----------|--------------|
 | 새 API 엔드포인트 추가 | opencode(설계) → codex(구현) → cursor-agent(리뷰) → ollama(검증) |
-| 새 에이전트 타입 추가 | opencode(아키텍처) + gemini(인터페이스 설계) 병렬 → aider(파일 편집) |
+| 새 에이전트 타입 추가 | opencode(아키텍처) → aider(파일 편집) |
 | 보안 수정 | cursor-agent(감사) + ollama(검증) 병렬 |
 | 성능 최적화 | copilot(벤치마크 리서치) → codex(구현) → ollama(검증) |
 | 테스트 커버리지 확대 | codex(테스트 생성) + ollama(엣지케이스) 병렬 |
-| 모니터 UI 변경 | gemini(디자인 제안) → 나(구현) |
 | 전체 리팩토링 | `nco_commander` 단일 호출 |
 
 ### Supervisor 루프 — 이 프로젝트 기준

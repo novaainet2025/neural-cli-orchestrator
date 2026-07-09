@@ -91,10 +91,44 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
     if (job.taskType === 'nco_task') {
       const { ai, prompt } = job.payload as { ai: string; prompt: string };
+      const targetAi = ai || 'openrouter';
+
+      // gate-awareness: quota/circuit로 gated된 프로바이더에 배정하면 즉시 실패한다.
+      // 배정 전 gate.available을 확인하고, 불가하면 '실패'가 아니라 30분 지연 후 재시도한다.
+      // (gate 조회 자체가 실패하면 기존 동작으로 폴백 — 게이트 확인이 크론을 막지 않도록)
+      try {
+        const gateRes = await fetch(`${NCO_API}/api/agents`, { signal: AbortSignal.timeout(5_000) });
+        if (gateRes.ok) {
+          const { agents } = await gateRes.json() as {
+            agents: Array<{ id: string; gate?: { available?: boolean; status?: string } }>;
+          };
+          const target = agents.find(a => a.id === targetAi);
+          if (target?.gate?.available === false) {
+            updateJobStatus(job.id, 'delayed');
+            const handle = setTimeout(() => {
+              retryTimers.get(job.id)?.delete(handle);
+              if (!isJobEnabled(job.id)) return;
+              void executeJob(job);
+            }, 30 * 60 * 1000);
+            trackRetryTimer(job.id, handle);
+            await eventBus.publish({
+              type: 'cron:completed' as any,
+              taskId: job.id,
+              agentId: 'cron-scheduler',
+              output: `skipped:gated:${targetAi}:${target.gate.status ?? 'gated'}`,
+            });
+            log.warn({ jobId: job.id, targetAi, gate: target.gate.status }, 'Cron target gated — delayed, not fired');
+            return;
+          }
+        }
+      } catch {
+        // gate 조회 실패 → 폴백(발사)
+      }
+
       const res = await fetch(`${NCO_API}/api/task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
-        body: JSON.stringify({ ai: ai || 'openrouter', prompt, callerAgentId: 'cron-scheduler' }),
+        body: JSON.stringify({ ai: targetAi, prompt, callerAgentId: 'cron-scheduler' }),
         signal: AbortSignal.timeout(60_000),
       });
       result = await res.text();
@@ -183,7 +217,13 @@ function startTask(job: CronJobRecord): void {
     return;
   }
 
-  const task = nodeCron.schedule(job.schedule, () => executeJob(job), {
+  const task = nodeCron.schedule(job.schedule, () => {
+    // 발사 시점에 DB에서 enabled를 재확인한다. disable()이 in-memory task.stop()을
+    // 못 부른 경우(또는 다른 세션이 DB에서 disable한 경우)에도 비활성 크론이 발사되지
+    // 않도록 방어한다. (retry/delay 경로는 이미 isJobEnabled를 체크함 — 발사 경로만 누락)
+    if (!isJobEnabled(job.id)) return;
+    void executeJob(job);
+  }, {
     timezone: job.timezone || 'UTC',
   });
 

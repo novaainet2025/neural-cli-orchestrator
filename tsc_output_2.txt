@@ -1,0 +1,148 @@
+src/client/components/AgentDashboard.tsx(1,44): error TS2307: Cannot find module 'react' or its corresponding type declarations.
+src/client/components/AgentDashboard.tsx(35,23): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(35,23): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(35,38): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(38,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(38,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(39,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(39,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(39,37): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(40,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(40,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(41,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(41,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(41,19): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(42,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(42,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(44,13): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(44,13): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(46,13): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(48,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(49,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(50,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(50,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(51,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(51,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(51,25): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(52,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(52,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(52,32): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(53,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(54,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(54,7): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(55,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(55,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(55,24): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(56,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(56,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(56,35): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(57,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(57,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentDashboard.tsx(57,41): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(58,7): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentDashboard.tsx(59,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(1,44): error TS2307: Cannot find module 'react' or its corresponding type declarations.
+src/client/components/AgentMonitor.tsx(29,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(29,5): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentMonitor.tsx(30,20): error TS7006: Parameter 'agent' implicitly has an 'any' type.
+src/client/components/AgentMonitor.tsx(31,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(31,9): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentMonitor.tsx(32,11): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(32,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentMonitor.tsx(32,51): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(33,11): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(33,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentMonitor.tsx(33,36): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(34,11): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(34,11): error TS17004: Cannot use JSX unless the '--jsx' flag is provided.
+src/client/components/AgentMonitor.tsx(34,34): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(35,9): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/client/components/AgentMonitor.tsx(37,5): error TS7026: JSX element implicitly has type 'any' because no interface 'JSX.IntrinsicElements' exists.
+src/server/gateway.ts(1725,29): error TS2554: Expected 4-5 arguments, but got 2.
+src/server/gateway.ts(1762,25): error TS2554: Expected 4-5 arguments, but got 2.
+src/server/gateway.ts(2928,32): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(2928,37): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(2953,35): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(2953,40): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(2961,42): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(2961,47): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(2975,38): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(2975,43): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(2990,42): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(2990,47): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3014,48): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3014,53): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3022,75): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3022,80): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3031,36): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3031,41): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3040,44): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3040,49): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3098,17): error TS2339: Property 'FirecrawlApp' does not exist on type 'typeof import("/Users/nova-ai/project/nco/node_modules/@mendable/firecrawl-js/dist/index", { with: { "resolution-mode": "import" } })'.
+src/server/gateway.ts(3115,46): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3115,51): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3163,43): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3163,48): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3182,44): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3182,49): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3199,44): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3199,49): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3217,47): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3217,52): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3237,50): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3237,55): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3261,52): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3261,57): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3283,48): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3283,53): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3310,46): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3310,51): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3362,45): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3362,50): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3380,46): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3380,51): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3406,44): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3406,49): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3429,43): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3429,48): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3463,40): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3463,45): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3512,41): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3512,46): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3526,40): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3526,45): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3534,34): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3534,39): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3547,37): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3547,42): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3567,40): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3567,45): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3586,35): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3586,40): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3600,44): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3600,49): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3616,41): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3616,46): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3625,52): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3625,57): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3646,46): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3646,51): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3654,45): error TS2339: Property 'query' does not exist on type '{ retrieve: (args: WithAuth<GetDatabasePathParameters>) => Promise<GetDatabaseResponse>; create: (args: WithAuth<CreateDatabaseBodyParameters>) => Promise<...>; update: (args: WithAuth<...>) => Promise<...>; }'.
+src/server/gateway.ts(3667,47): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3667,52): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3752,37): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3752,42): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3823,36): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3823,41): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3872,45): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3872,50): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3892,48): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3892,53): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3920,47): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3920,52): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3936,39): error TS7006: Parameter 'req' implicitly has an 'any' type.
+src/server/gateway.ts(3936,44): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/gateway.ts(3952,38): error TS7006: Parameter '_req' implicitly has an 'any' type.
+src/server/gateway.ts(3952,44): error TS7006: Parameter 'reply' implicitly has an 'any' type.
+src/server/middleware/authJwt.ts(2,49): error TS2307: Cannot find module 'express' or its corresponding type declarations.
+src/server/middleware/authJwt.ts(3,17): error TS2307: Cannot find module 'jsonwebtoken' or its corresponding type declarations.

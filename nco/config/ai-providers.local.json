@@ -1,0 +1,41 @@
+{
+  "overrides": {
+    "agy": {
+      "enabled": true,
+      "note": "2026-07-02 재활성: agy 사용. OAuth 재로그인 완료. (nova-macstudio 로컬 정책)"
+    },
+    "ollama": {
+      "enabled": true,
+      "concurrency": 1,
+      "model": "qwen3:14b",
+      "note": "2026-07-09 재활성(사용자 지시: ollama 에이전트 능력 95%+): qwen3:14b(9GB) 설치, 콜드 9.9s·웜 5.2s·도구포맷 정상 T1 확인. KEEP_ALIVE=45m 유지. 이 파일 변경 시 fleet 공지 필수."
+    },
+    "mlx": {
+      "enabled": true,
+      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit",
+      "name": "MLX Local (Qwen3-30B-A3B-Instruct-2507)",
+      "note": "2026-07-09 모델 통일(claude-5): :8000 30B 2개 스왑이 Metal OOM 크래시(누적 8회)+스왑 재로드 30-50s 레이턴시의 근본원인(T1: mlx-server-error.log kIOGPUCommandBufferCallbackErrorOutOfMemory). mlx→Instruct-2507로 hermes/mlx-instruct와 단일화, 스왑 제거. Coder-30B는 디스크 보존. 이 파일 변경 시 fleet 공지 필수.",
+      "concurrency": 1
+    },
+    "hermes": {
+      "enabled": true,
+      "note": "2026-07-09 concurrency 2→1(claude-5): 업무보고 동시부하(hermes2+instruct1+mlx1=4동시)가 :8000 KV캐시 급증→Metal OOM 크래시(09:01 T1). :8000 계열 총동시 3으로 캡. 이 파일 변경 시 fleet 공지 필수.",
+      "endpoint": "http://127.0.0.1:8000/v1",
+      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit",
+      "concurrency": 1
+    },
+    "codex": {
+      "enabled": true,
+      "note": "2026-07-07 재활성(사용자 지시): 대시보드 표시 우선. usage limit이면 빠른실패(stdin수정으로 멈춤 없음). 크레딧 충전 시 정상복구."
+    },
+    "nvidia": {
+      "enabled": true,
+      "model": "meta/llama-3.3-70b-instruct"
+    },
+    "mlx-instruct": {
+      "enabled": true,
+      "concurrency": 1,
+      "note": "2026-07-09 명시(claude-5→advisor): 동시성 상한선 검증 — :8000 총동시 3 보증(mlx1+hermes1+instruct1). 기본값 미설정 시 OOM 위험."
+    }
+  }
+}

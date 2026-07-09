@@ -6,7 +6,7 @@ import { circuitBreakerRegistry, classifyCircuitError } from '../security/circui
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
-import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
+import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { createTaskId } from '../utils/id.js';
 
@@ -14,6 +14,10 @@ const log = createLogger('agent-manager');
 
 function promptSummary(s: string): boolean {
   return s.trim().length > 10;
+}
+
+function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
+  return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
 }
 
 function getTaskTimeoutMs(): number {
@@ -37,7 +41,7 @@ function killProcessGroup(pid: number | undefined): void {
 
 // ─── Agent Type Classification ────────────────────────
 // Type A: Native agent (claude-code) — has its own agent loop
-// Type B: Orchestrated (codex, gemini, aider, opencode, cursor-agent, copilot) — NCO external loop
+// Type B: Orchestrated (codex, aider, opencode, cursor-agent, copilot) — NCO external loop
 // Type C: API (ollama, openrouter) — OpenAI-compatible API
 
 type AgentType = 'A' | 'B' | 'C';
@@ -65,9 +69,13 @@ interface TaskResult {
 }
 
 class AgentManager {
+  private static readonly QUOTA_PROBE_INTERVAL_MS = 10 * 60_000;
+  private static readonly QUOTA_PROBE_TIMEOUT_MS = 10_000;
   private sandboxes = new Map<string, SandboxManager>();
   private latencyHistory = new Map<string, number[]>();
   private providers = new Map<string, ProviderConfig>();
+  private healthApiKeyCallCounts = new Map<string, number>();
+  private lastQuotaProbeAt = new Map<string, number>();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
 
   async init(): Promise<void> {
@@ -170,11 +178,17 @@ class AgentManager {
             '-p', prompt,
             '--output-format', 'text',
           ], {
+            cwd: options?.projectDir || undefined,
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
             detached: process.platform !== 'win32',
             // NCO 재귀보호 (2026-06-30, fleet 6a748e4): 서브에이전트 claude가 NCO 훅 재트리거 → 무한재귀 방지
-            env: { ...process.env, ...provider.env, NCO_HOOK_DISABLED: '1' },
+            env: { 
+              ...process.env, 
+              ...provider.env, 
+              NCO_HOOK_DISABLED: '1',
+              ...(options?.projectDir ? { PROJECT_DIR: options.projectDir } : {})
+            },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
           });
@@ -184,6 +198,15 @@ class AgentManager {
           signal.addEventListener('abort', () => killProcessGroup(subprocess.pid), { once: true });
           const result = await subprocess;
           output = result.stdout || result.stderr || taskQueue.getBufferedOutput(taskId);
+          if (!isSuccessfulResult(result)) {
+            const timedOut = Boolean((result as { timedOut?: boolean }).timedOut);
+            const isCanceled = Boolean((result as { isCanceled?: boolean }).isCanceled);
+            const reason = isCanceled
+              ? timedOut ? 'subprocess timed out' : 'subprocess cancelled'
+              : `subprocess exited with code ${result.exitCode ?? 'unknown'}`;
+            const detail = output.trim() || result.shortMessage || 'no process output';
+            throw new Error(`${reason}: ${detail}`);
+          }
           iterations = 1;
           break;
         }
@@ -194,10 +217,16 @@ class AgentManager {
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
+            projectDir: options?.projectDir,
           });
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
+          if (result.success === false) {
+            const loopError = new Error(result.error || 'orchestrated loop reported failure');
+            (loopError as Error & { partialOutput?: string }).partialOutput = result.output;
+            throw loopError;
+          }
           break;
         }
 
@@ -302,7 +331,7 @@ class AgentManager {
       const abortReason = taskQueue.getAbortReason(taskId);
       const partialOutput = taskQueue.getBufferedOutput(taskId);
       const errorMessage = abortReason || err?.message || 'unknown: execution failed';
-      const terminalOutput = partialOutput || '';
+      const terminalOutput = partialOutput || (err as { partialOutput?: string } | undefined)?.partialOutput || '';
       if (abortReason !== 'cancelled') {
         circuitBreakerRegistry.recordFailure(agentId, errorMessage);
       }
@@ -358,7 +387,16 @@ class AgentManager {
   private async healthCheck(): Promise<void> {
     for (const [id, provider] of this.providers) {
       if (provider.type === 'api') {
-        await this.healthCheckApiProvider(id, provider);
+        const healthOk = await this.healthCheckApiProvider(id, provider);
+        if (!healthOk) {
+          continue;
+        }
+        const availability = circuitBreakerRegistry.getAvailability(id);
+        // quota·rate-limit 게이트 복구는 completions 실증만 신뢰 (헬스 200으로 열지 않음 — 리뷰 LOW)
+        if (availability.status === 'probe'
+          && (availability.reason === 'quota' || availability.reason === 'rate-limit')) {
+          await this.probeGatedProvider(id, provider);
+        }
         continue;
       }
       const alive = await sharedState.isAgentAlive(id);
@@ -374,20 +412,18 @@ class AgentManager {
     }
   }
 
-  private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<void> {
+  private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<boolean> {
     // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider(예: remote-mlx) TypeError crash-loop 방지
     const url = typeof provider.healthCheck?.url === 'string' ? provider.healthCheck.url : null;
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });
-      return;
+      return false;
     }
     const timeout = typeof provider.healthCheck.timeout === 'number'
       ? provider.healthCheck.timeout
       : 5000;
     const headers: Record<string, string> = {};
-    const apiKey = provider.apiKeyRef
-      ? process.env[provider.apiKeyRef]?.split(',')[0]?.trim()
-      : undefined;
+    const apiKey = provider.apiKeyRef ? this.getNextHealthApiKey(id, provider.apiKeyRef) : undefined;
     if (apiKey) {
       headers.Authorization = `Bearer ${apiKey}`;
     }
@@ -401,10 +437,18 @@ class AgentManager {
         const body = await response.text();
         circuitBreakerRegistry.recordFailure(id, `HTTP ${response.status}: ${body}`);
         await sharedState.setAgentState(id, { status: 'offline' });
-        return;
+        return false;
+      }
+      const availability = circuitBreakerRegistry.getAvailability(id);
+      // 헬스 GET 200은 generic 게이트 복구 증거로만 충분 — quota/rate-limit은
+      // /health 200이어도 completions가 여전히 막혀 있을 수 있어 전용 프로브가 닫는다 (리뷰 LOW)
+      if (availability.status === 'probe'
+        && availability.reason !== 'quota' && availability.reason !== 'rate-limit') {
+        circuitBreakerRegistry.recordSuccess(id);
       }
       await sharedState.setAgentState(id, { status: 'idle' });
       await sharedState.heartbeat(id);
+      return true;
     } catch (e) {
       circuitBreakerRegistry.recordFailure(id, e instanceof Error ? e.message : String(e));
       await sharedState.setAgentState(id, { status: 'offline' });
@@ -412,6 +456,69 @@ class AgentManager {
         id,
         error: e instanceof Error ? e.message : String(e),
       }, 'API health probe failed');
+      return false;
+    }
+  }
+
+  private getNextHealthApiKey(providerId: string, envVar: string, purpose: 'health' | 'gated-probe' = 'health'): string | undefined {
+    const keys = getApiKeys(envVar);
+    if (keys.length === 0) {
+      return undefined;
+    }
+    // 카운터를 providerId+envVar+purpose로 분리 — 헬스 GET과 프로브 POST가 서로 다른
+    // 키 배열을 같은 카운터로 돌면 로테이션이 편향된다 (리뷰 MED)
+    const counterKey = `${providerId}:${envVar}:${purpose}`;
+    const callCount = this.healthApiKeyCallCounts.get(counterKey) ?? 0;
+    const key = keys[callCount % keys.length];
+    this.healthApiKeyCallCounts.set(counterKey, callCount + 1);
+    return key;
+  }
+
+  private async probeGatedProvider(id: string, provider: ProviderConfig): Promise<void> {
+    const now = Date.now();
+    const lastProbeAt = this.lastQuotaProbeAt.get(id) ?? 0;
+    if (now - lastProbeAt < AgentManager.QUOTA_PROBE_INTERVAL_MS) {
+      return;
+    }
+    this.lastQuotaProbeAt.set(id, now);
+
+    const baseUrl = provider.endpoint || provider.apiConfig?.primary.baseUrl;
+    if (!baseUrl) {
+      circuitBreakerRegistry.recordFailure(id, 'quota probe unavailable: missing provider endpoint');
+      return;
+    }
+
+    const probeUrl = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const apiKeyRef = provider.keyRotation?.enabled
+      ? provider.keyRotation.envVar
+      : provider.apiKeyRef;
+    const apiKey = apiKeyRef ? this.getNextHealthApiKey(id, apiKeyRef, 'gated-probe') : undefined;
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
+
+    try {
+      const response = await fetch(probeUrl, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: provider.model || provider.apiConfig?.primary.model || 'default',
+          messages: [{ role: 'user', content: 'ping' }],
+          max_tokens: 1,
+        }),
+        signal: AbortSignal.timeout(AgentManager.QUOTA_PROBE_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        const body = await response.text();
+        circuitBreakerRegistry.recordFailure(id, `HTTP ${response.status}: ${body}`);
+        return;
+      }
+      circuitBreakerRegistry.recordSuccess(id);
+    } catch (error) {
+      circuitBreakerRegistry.recordFailure(id, error instanceof Error ? error.message : String(error));
     }
   }
 

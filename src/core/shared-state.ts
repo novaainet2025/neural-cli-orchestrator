@@ -161,12 +161,18 @@ export class SharedState {
     if (!isRedisConnected()) return true;
     const redis = await getRedis();
     const key = `${LOCK_PREFIX}${path}`;
-    const holder = await redis.get(key);
-    if (holder === agentId) {
-      await redis.del(key);
-      return true;
-    }
-    return false;
+    const released = await redis.eval(
+      `
+        if redis.call('GET', KEYS[1]) == ARGV[1] then
+          return redis.call('DEL', KEYS[1])
+        end
+        return 0
+      `,
+      1,
+      key,
+      agentId,
+    );
+    return released === 1;
   }
 
   async getLockHolder(path: string): Promise<string | null> {

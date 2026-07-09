@@ -73,7 +73,7 @@ async function main() {
     r.data.providers.forEach((p: any) => roles[p.id] = p.role);
     assert(roles['claude-code'] === 'Commander', `claude: ${roles['claude-code']}`);
     assert(roles['opencode'] === 'Architect', `opencode: ${roles['opencode']}`);
-    assert(roles['gemini'] === 'Designer', `gemini: ${roles['gemini']}`);
+    assert(roles['openrouter'] === 'Designer', `openrouter: ${roles['openrouter']}`);
     assert(roles['codex'] === 'Engineer', `codex: ${roles['codex']}`);
     assert(roles['aider'] === 'Engineer', `aider: ${roles['aider']}`);
     assert(roles['cursor-agent'] === 'Reviewer', `cursor: ${roles['cursor-agent']}`);
@@ -208,14 +208,14 @@ async function main() {
     await new Promise(r => setTimeout(r, 300));
 
     const r = await post('/api/collaboration/message', {
-      from: 'codex', to: 'gemini', message: 'Code review 요청합니다', type: 'review',
+      from: 'codex', to: 'openrouter', message: 'Code review 요청합니다', type: 'review',
     });
     assert(r.data.ok === true, 'not ok');
 
     // DB에 저장 확인
     const msgsR = await api('/api/messages?limit=5');
     const found = msgsR.data.messages.find((m: any) =>
-      m.from_agent === 'codex' && m.to_agent === 'gemini' && m.content.includes('Code review')
+      m.from_agent === 'codex' && m.to_agent === 'openrouter' && m.content.includes('Code review')
     );
     assert(!!found, 'message not in DB');
     close();
@@ -239,7 +239,7 @@ async function main() {
   await test('토론', 'discussion/create → wsUrl 포함', async () => {
     const r = await post('/api/discussion/create', {
       mode: 'discussion',
-      providers: ['openrouter', 'codex', 'gemini'],
+      providers: ['openrouter', 'codex', 'openrouter'],
     });
     assert(!!r.data.session.wsUrl, 'no wsUrl');
     assert(r.data.session.wsUrl.includes('6201'), `wsUrl: ${r.data.session.wsUrl}`);

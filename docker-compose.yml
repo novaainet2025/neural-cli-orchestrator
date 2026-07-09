@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  nco-backend:
+    build: .
+    image: nco-backend:latest
+    ports:
+      - "6200:6200"
+      - "6201:6201"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_PATH=/app/db/nco.db
+    volumes:
+      - nco-data:/app/db
+    depends_on:
+      - redis
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: always
+
+volumes:
+  nco-data:
+  redis-data:

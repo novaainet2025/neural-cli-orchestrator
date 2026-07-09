@@ -1,5 +1,5 @@
-import { resolve, normalize, relative, isAbsolute } from 'path';
-import { realpathSync, existsSync, lstatSync } from 'fs';
+import { resolve, normalize, isAbsolute, dirname, basename } from 'path';
+import { realpathSync, existsSync } from 'fs';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('path-guard');
@@ -20,7 +20,7 @@ export class PathGuard {
   private denied: string[];
 
   constructor(policy: PathPolicy) {
-    this.allowed = policy.allowedPaths.map(p => resolve(p));
+    this.allowed = policy.allowedPaths.map(p => this.resolveExistingPath(resolve(p)));
     this.denied = [...GLOBAL_DENIED, ...policy.deniedPaths].map(p =>
       p.startsWith('**/') ? p : resolve(p)
     );
@@ -49,28 +49,36 @@ export class PathGuard {
       }
     }
 
-    // 3. Symlink resolution (prevent escape)
-    if (existsSync(abs)) {
-      try {
-        const stat = lstatSync(abs);
-        if (stat.isSymbolicLink()) {
-          const real = realpathSync(abs);
-          const realCheck = this.isUnderAllowed(real);
-          if (!realCheck) {
-            return { ok: false, reason: `Symlink escapes sandbox: ${abs} → ${real}` };
-          }
-        }
-      } catch {
-        // file doesn't exist yet (create), that's ok
-      }
-    }
+    // 3. Resolve the deepest existing parent to prevent symlink-based escapes.
+    const real = this.resolveExistingPath(abs);
 
     // 4. Allowed paths check
-    if (!this.isUnderAllowed(abs)) {
-      return { ok: false, reason: `Path not in allowed roots: ${abs}` };
+    if (!this.isUnderAllowed(real)) {
+      return { ok: false, reason: `Path not in allowed roots: ${abs} → ${real}` };
     }
 
     return { ok: true };
+  }
+
+  private resolveExistingPath(targetPath: string): string {
+    let current = targetPath;
+    const missingSegments: string[] = [];
+
+    while (!existsSync(current)) {
+      const parent = dirname(current);
+      if (parent === current) {
+        break;
+      }
+      missingSegments.unshift(basename(current));
+      current = parent;
+    }
+
+    if (!existsSync(current)) {
+      return targetPath;
+    }
+
+    const realBase = realpathSync(current);
+    return missingSegments.length > 0 ? resolve(realBase, ...missingSegments) : realBase;
   }
 
   private isUnderAllowed(abs: string): boolean {

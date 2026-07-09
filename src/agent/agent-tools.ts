@@ -78,18 +78,19 @@ export class AgentToolExecutor {
       case 'deleteFile': return this.deleteFile(call.args.path);
       case 'listFiles': return this.listFiles(call.args.path || call.args.dir);
       case 'runCommand': return this.runCommand(call.args.command || call.args.cmd);
-      case 'runTest': return this.runCommand(`npm test -- ${call.args.path || ''}`);
+      case 'runTest': return this.runCommand('npm', call.args.path ? ['test', '--', call.args.path] : ['test']);
       case 'searchCode': {
         const query = call.args.query;
         const path = call.args.path || '.';
-        // If query contains spaces and isn't quoted, it might be "query path"
-        // But for simplicity, we rely on the parser to split them if possible.
-        return this.runCommand(`grep -rnE "${query.replace(/"/g, '\\"')}" ${path}`);
+        return this.runCommand('grep', ['-rnE', query, path]);
       }
-      case 'searchFiles': return this.runCommand(`find . -name "${call.args.pattern}" -not -path "*/node_modules/*"`);
-      case 'gitDiff': return this.runCommand('git diff');
-      case 'gitStatus': return this.runCommand('git status --short');
-      case 'gitCommit': return this.runCommand(`git add -A && git commit -m "${call.args.message}"`);
+      case 'searchFiles': return this.runCommand('find', ['.', '-name', call.args.pattern, '-not', '-path', '*/node_modules/*']);
+      case 'gitDiff': return this.runCommand('git', ['diff']);
+      case 'gitStatus': return this.runCommand('git', ['status', '--short']);
+      case 'gitCommit': return this.runCommandSequence([
+        { command: 'git', args: ['add', '-A'] },
+        { command: 'git', args: ['commit', '-m', call.args.message] },
+      ]);
       case 'sendMessage': return this.sendMessage(call.args.to, call.args.content);
       case 'broadcast': return this.broadcastMsg(call.args.content);
       default:
@@ -212,25 +213,104 @@ export class AgentToolExecutor {
   }
 
   // ─── Command Execution ──────────────────────────────
-  private async runCommand(cmd: string): Promise<ToolResult> {
-    const parts = cmd.split(/\s+/);
-    const base = parts[0];
-    const args = parts.slice(1);
+  private async runCommand(commandOrCmd: string, providedArgs?: string[]): Promise<ToolResult> {
+    const parsed = providedArgs ? { command: commandOrCmd, args: providedArgs } : this.parseCommand(commandOrCmd);
+    if (!parsed) {
+      return { ok: false, output: '', error: 'Unsupported shell metacharacter in command' };
+    }
 
-    this.sandbox.assertCommand(base, args);
+    this.sandbox.assertCommand(parsed.command, parsed.args);
 
     try {
-      const { stdout, stderr } = await execa(base, args, {
-        shell: true,
+      const result = await execa(parsed.command, parsed.args, {
+        shell: false,
         timeout: this.sandbox.getTimeout(),
         maxBuffer: 5 * 1024 * 1024,
         reject: false,
       });
-      const output = [stdout, stderr].filter(Boolean).join('\n');
-      return { ok: true, output };
+      const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+      const ok = result.exitCode === 0 && !result.failed;
+      return {
+        ok,
+        output,
+        error: ok ? undefined : result.shortMessage || `Command exited with code ${result.exitCode ?? 'unknown'}`,
+      };
     } catch (err: any) {
       return { ok: false, output: err.stdout || '', error: err.message };
     }
+  }
+
+  private async runCommandSequence(commands: Array<{ command: string; args: string[] }>): Promise<ToolResult> {
+    const outputs: string[] = [];
+
+    for (const command of commands) {
+      const result = await this.runCommand(command.command, command.args);
+      if (result.output) outputs.push(result.output);
+      if (!result.ok) {
+        return {
+          ok: false,
+          output: outputs.join('\n'),
+          error: result.error,
+        };
+      }
+    }
+
+    return { ok: true, output: outputs.join('\n') };
+  }
+
+  private parseCommand(cmd: string): { command: string; args: string[] } | null {
+    const args: string[] = [];
+    let current = '';
+    let quote: '"' | "'" | null = null;
+    let escaping = false;
+
+    for (const ch of cmd.trim()) {
+      if (escaping) {
+        current += ch;
+        escaping = false;
+        continue;
+      }
+
+      if (ch === '\\') {
+        escaping = true;
+        continue;
+      }
+
+      if (quote) {
+        if (ch === quote) {
+          quote = null;
+        } else {
+          current += ch;
+        }
+        continue;
+      }
+
+      if (ch === '"' || ch === '\'') {
+        quote = ch;
+        continue;
+      }
+
+      if (/\s/.test(ch)) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+        continue;
+      }
+
+      if (';&|<>`$()'.includes(ch)) {
+        return null;
+      }
+
+      current += ch;
+    }
+
+    if (escaping || quote) return null;
+    if (current) args.push(current);
+    if (args.length === 0) return null;
+
+    const [command, ...rest] = args;
+    return { command, args: rest };
   }
 
   // ─── Messaging ──────────────────────────────────────

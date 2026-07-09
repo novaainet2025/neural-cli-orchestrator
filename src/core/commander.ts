@@ -105,6 +105,15 @@ class Commander {
         return this.failResult(commandId, prompt, layerResults, 'Management analysis failed');
       }
 
+      const isPlaceholder = !analysis.output ||
+        analysis.output.trim().length === 0 ||
+        analysis.output.includes('(작업 추가 필요)') ||
+        analysis.output.trim().startsWith('Error:');
+
+      if (isPlaceholder) {
+        return this.failResult(commandId, prompt, layerResults, 'empty or placeholder execution plan');
+      }
+
       // ─── Layer 2: Information — Research (optional) ──
       const needsResearch = /research|분석|조사|investigate|찾아|search/i.test(prompt);
       if (needsResearch) {
@@ -116,10 +125,23 @@ class Commander {
 
       // ─── Layer 3: Execution — Implement ────────────
       const execAgent = this.pickAvailableAgent('execution');
+      
+      // Sanitize plan list items (convert "1. " style to "- " style)
+      const sanitizedOutput = analysis.output
+        .split('\n')
+        .map(line => {
+          const trimmed = line.trim();
+          if (/^\d+\.\s+/.test(trimmed)) {
+            return trimmed.replace(/^\d+\.\s+/, '- ');
+          }
+          return line;
+        })
+        .join('\n');
+
       const execPrompt = [
         `Implement the following based on the Commander's plan:`,
         '',
-        analysis.output,
+        sanitizedOutput,
         '',
         `Original request: ${prompt}`,
       ].join('\n');
@@ -217,10 +239,15 @@ class Commander {
   private pickAvailableAgent(layer: LayerName): string {
     const layerAgents = LAYERS[layer].agents;
     const enabledIds = new Set(agentManager.listEnabledIds());
-    // 사용가능 = enabled + circuit open 아님. circuit-open(에러/한도초과) 에이전트를
-    // 건너뛰어 같은 tier 다음 후보로 폴백한다 (예: quality에서 cursor-agent 한도초과 → ollama).
-    const usable = (id: string): boolean =>
-      enabledIds.has(id) && circuitBreakerRegistry.getSnapshot(id).state !== 'open';
+    // 사용가능 = enabled + availability 허용. probe는 복구 확인용으로 허용하되,
+    // quota 게이트의 probe는 제외 — 복구 확인은 전용 1토큰 프로브(agent-manager)가 담당하며
+    // 사용자 태스크가 첫 희생양이 되면 안 된다 (리뷰 HIGH, 2026-07-08).
+    const usable = (id: string): boolean => {
+      const availability = circuitBreakerRegistry.getAvailability(id);
+      return enabledIds.has(id)
+        && (availability.available
+          || (availability.status === 'probe' && availability.reason !== 'quota'));
+    };
 
     for (const agentId of layerAgents) {
       if (usable(agentId)) {

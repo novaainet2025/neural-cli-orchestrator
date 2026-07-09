@@ -45,7 +45,7 @@ export class FileChangeGuard {
 
     // 70-90% → BACKUP then allow
     if (ratio >= this.backupThreshold) {
-      const backupPath = await this.createBackup(filePath, originalContent, agentId, taskId);
+      const backupPath = await this.createBackup(filePath, originalContent, agentId, taskId, ratio);
       const reason = `${(ratio * 100).toFixed(0)}% change — backup created: ${backupPath}`;
       log.info({ filePath, ratio, backupPath, agentId }, reason);
       return { action: 'backup_then_proceed', changeRatio: ratio, reason, backupPath };
@@ -55,28 +55,11 @@ export class FileChangeGuard {
     return { action: 'allow', changeRatio: ratio };
   }
 
-  /**
-   * Line-based change ratio.
-   * Counts lines that differ between original and modified.
-   */
   calculateChangeRatio(original: string, modified: string): number {
     if (original === modified) return 0;
-
-    const origLines = original.split('\n');
-    const modLines = modified.split('\n');
-    const maxLen = Math.max(origLines.length, modLines.length);
-    if (maxLen === 0) return 0;
-
-    let changedCount = 0;
-
-    // Count differing lines
-    for (let i = 0; i < maxLen; i++) {
-      if (origLines[i] !== modLines[i]) {
-        changedCount++;
-      }
-    }
-
-    return changedCount / maxLen;
+    const byteRatio = this.calculateSegmentChangeRatio(original, modified);
+    const lineRatio = this.calculateSegmentChangeRatio(original.split('\n'), modified.split('\n'));
+    return Math.min(1, Math.max(byteRatio, lineRatio));
   }
 
   /**
@@ -87,6 +70,7 @@ export class FileChangeGuard {
     content: string,
     agentId: string,
     taskId?: string,
+    changeRatio = 0,
   ): Promise<string> {
     const backupDir = join(dirname(filePath), '.backup');
     if (!existsSync(backupDir)) {
@@ -104,8 +88,8 @@ export class FileChangeGuard {
       const db = getDb();
       db.prepare(`
         INSERT INTO file_backups (id, agent_id, task_id, file_path, backup_path, change_ratio, original_size)
-        VALUES (?, ?, ?, ?, ?, 0, ?)
-      `).run(createId('bak'), agentId, taskId || null, filePath, backupPath, Buffer.byteLength(content));
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(createId('bak'), agentId, taskId || null, filePath, backupPath, changeRatio, Buffer.byteLength(content));
     } catch {
       // DB not critical — backup file already saved
     }
@@ -125,6 +109,29 @@ export class FileChangeGuard {
     } catch {
       return [];
     }
+  }
+
+  private calculateSegmentChangeRatio<T>(original: T[] | string, modified: T[] | string): number {
+    const originalLength = original.length;
+    if (originalLength === 0) return 0;
+
+    let prefix = 0;
+    const sharedLength = Math.min(original.length, modified.length);
+    while (prefix < sharedLength && original[prefix] === modified[prefix]) {
+      prefix++;
+    }
+
+    let suffix = 0;
+    while (
+      suffix < sharedLength - prefix &&
+      original[original.length - 1 - suffix] === modified[modified.length - 1 - suffix]
+    ) {
+      suffix++;
+    }
+
+    const changedOriginal = Math.max(0, original.length - prefix - suffix);
+    const changedModified = Math.max(0, modified.length - prefix - suffix);
+    return Math.max(changedOriginal, changedModified) / originalLength;
   }
 }
 

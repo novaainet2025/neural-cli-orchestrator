@@ -104,7 +104,7 @@ export const BridgeServerEchoSchema = z.object({
   timestamp: z.string(),
 });
 
-export const BridgeServerMessageSchema = z.union([
+export const BridgeServerMessageSchema = z.discriminatedUnion('type', [
   BridgeServerConnectedSchema,
   BridgeServerSubscribedSchema,
   BridgeServerUnsubscribedSchema,

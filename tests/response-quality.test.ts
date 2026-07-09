@@ -12,8 +12,7 @@ describe('response quality gate', () => {
 
   beforeAll(() => {
     closeDb();
-    originalDbPath = env.DATABASE_PATH;
-    (env as any).DATABASE_PATH = testDbPath;
+    originalDbPath = process.env.DATABASE_PATH || '';
     process.env.DATABASE_PATH = testDbPath;
     if (existsSync(testDbPath)) {
       unlinkSync(testDbPath);
@@ -24,7 +23,6 @@ describe('response quality gate', () => {
 
   afterAll(() => {
     closeDb();
-    (env as any).DATABASE_PATH = originalDbPath;
     process.env.DATABASE_PATH = originalDbPath;
     if (existsSync(testDbPath)) {
       unlinkSync(testDbPath);

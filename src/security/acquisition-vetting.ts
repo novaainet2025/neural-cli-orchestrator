@@ -13,6 +13,15 @@ const DEPS_PROJECT_BASE = 'https://api.deps.dev/v3alpha/projects';
 const NPM_REGISTRY_BASE = 'https://registry.npmjs.org';
 const FETCH_TIMEOUT_MS = 10_000;
 const INSTALL_SCRIPT_KEYS = ['preinstall', 'install', 'postinstall', 'prepare'];
+const INSTALL_SCRIPT_DENY_PATTERNS: Array<{ regex: RegExp; reason: string }> = [
+  { regex: /\bnode(?:js)?\b(?:\s+--?[a-z-]+(?:[=\s][^\s;&|]+)?)*\s+-e\b/i, reason: 'inline node execution' },
+  { regex: /\bperl\b(?:\s+-[a-zA-Z]+\b)*\s+-e\b/i, reason: 'inline perl execution' },
+  { regex: /\b(?:curl|wget)\b[^|\n]*\|\s*(?:ba)?sh\b/i, reason: 'remote script piped to shell' },
+  { regex: /\b(?:cp|cat|tar|zip|base64)\b[^\n]*\b(?:\.npmrc|\.env(?:\.[\w-]+)?|id_rsa|id_ed25519|\.git-credentials|credentials)\b/i, reason: 'credential file access or staging' },
+  { regex: /(?:^|[\s"'`])(?:~\/|\/)(?:home\/[^/\s]+\/)?\.(?:ssh|aws)(?:\/|[\s"'`]|$)/i, reason: 'credential directory access' },
+  { regex: /\b(?:NPM_TOKEN|GITHUB_TOKEN|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID|AWS_SESSION_TOKEN)\b/, reason: 'token environment variable access' },
+  { regex: /\bprocess\.env\b/, reason: 'process environment access' },
+];
 
 export interface AcquisitionCandidate {
   packageName: string;
@@ -285,6 +294,10 @@ function runScriptsGate(rawScripts: unknown): AcquisitionGateResult {
     if (!result.ok) {
       return rejectGate({ script: name, command, reason: result.reason }, 'npm version packument');
     }
+    const dangerousPattern = findDeniedInstallScriptPattern(command);
+    if (dangerousPattern) {
+      return rejectGate({ script: name, command, reason: dangerousPattern }, 'npm version packument');
+    }
   }
 
   return approvalGate({ installScripts }, 'npm version packument');
@@ -390,6 +403,15 @@ function normalizeScripts(rawScripts: unknown): Record<string, string> {
       .filter(([, value]) => typeof value === 'string')
       .map(([name, value]) => [name, value as string]),
   );
+}
+
+function findDeniedInstallScriptPattern(command: string): string | null {
+  for (const { regex, reason } of INSTALL_SCRIPT_DENY_PATTERNS) {
+    if (regex.test(command)) {
+      return `install script matches denied pattern: ${reason}`;
+    }
+  }
+  return null;
 }
 
 function normalizeForDistance(name: string): string {

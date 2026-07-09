@@ -23,6 +23,7 @@ Endpoints proxied:
 """
 
 import json
+import os
 import uuid
 import threading
 import time
@@ -180,11 +181,27 @@ def openai_response_to_anthropic(openai_resp, model="mlx-gemma"):
 
 
 def get_mlx_model():
-    """Fetch the first loaded model from MLX server."""
+    """Pick a chat-capable model from MLX server.
+
+    /v1/models 목록에는 TTS·embedding 등 chat 불가 모델이 섞여 있고, 이런
+    모델로 /chat/completions를 치면 MLX가 404를 반환한다. env MLX_MODEL로
+    강제 지정 가능하며, 없으면 chat 불가 모델을 제외하고 선택한다.
+    """
+    forced = os.environ.get("MLX_MODEL")
+    if forced:
+        return forced
     try:
         r = urlopen(f"{MLX_BASE}/models", timeout=5)
         data = json.loads(r.read())
-        return data["data"][0]["id"]
+        ids = [m["id"] for m in data.get("data", [])]
+        non_chat = ("tts", "embed", "whisper", "rerank")
+        chat_ids = [i for i in ids
+                    if not any(k in i.lower() for k in non_chat)]
+        preferred = ("coder", "instruct", "chat", "-it")
+        for i in chat_ids:
+            if any(k in i.lower() for k in preferred):
+                return i
+        return (chat_ids or ids or [None])[0]
     except Exception:
         return None
 
@@ -387,7 +404,10 @@ class ProxyHandler(BaseHTTPRequestHandler):
         stop_reason   = "end_turn"
         output_tokens = 0
         # Accumulate reasoning but don't stream it (confuses Claude Code)
-        # We stream content deltas only
+        # We stream content deltas only. Tool calls are accumulated and
+        # emitted as tool_use blocks after the text block — dropping them
+        # makes Claude Code fail with "tool call could not be parsed".
+        tool_calls = {}   # openai index -> {"id","name","args"}
 
         try:
             with urlopen(mlx_req, timeout=180) as resp:
@@ -414,6 +434,17 @@ class ProxyHandler(BaseHTTPRequestHandler):
                             "delta": {"type": "text_delta", "text": content_delta}
                         })
 
+                    for tc in (delta.get("tool_calls") or []):
+                        idx = tc.get("index", 0)
+                        entry = tool_calls.setdefault(idx, {"id": "", "name": "", "args": ""})
+                        if tc.get("id"):
+                            entry["id"] = tc["id"]
+                        fn = tc.get("function") or {}
+                        if fn.get("name"):
+                            entry["name"] += fn["name"]
+                        if fn.get("arguments"):
+                            entry["args"] += fn["arguments"]
+
                     if fr == "tool_calls":
                         stop_reason = "tool_use"
                     elif fr == "length":
@@ -430,6 +461,33 @@ class ProxyHandler(BaseHTTPRequestHandler):
             })
 
         sse("content_block_stop",  {"type": "content_block_stop", "index": 0})
+
+        # ── emit accumulated tool calls as Anthropic tool_use blocks ──
+        block_index = 1
+        for _, entry in sorted(tool_calls.items()):
+            if not entry["name"]:
+                continue
+            args_json = entry["args"].strip() or "{}"
+            try:
+                json.loads(args_json)
+            except Exception:
+                args_json = "{}"
+            sse("content_block_start", {
+                "type": "content_block_start", "index": block_index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": entry["id"] or f"toolu_{uuid.uuid4().hex[:24]}",
+                    "name": entry["name"], "input": {}
+                }
+            })
+            sse("content_block_delta", {
+                "type": "content_block_delta", "index": block_index,
+                "delta": {"type": "input_json_delta", "partial_json": args_json}
+            })
+            sse("content_block_stop", {"type": "content_block_stop", "index": block_index})
+            block_index += 1
+        if tool_calls and stop_reason == "end_turn":
+            stop_reason = "tool_use"
         sse("message_delta", {
             "type": "message_delta",
             "delta": {"stop_reason": stop_reason, "stop_sequence": None},

@@ -6,11 +6,13 @@ import { createLogger } from '../utils/logger.js';
 const log = createLogger('sync-engine');
 
 const SYNC_INTERVAL_MS = 5000;
+const RECOVERABLE_AGENT_STATUSES = new Set(['running', 'idle', 'busy']);
 
 class SyncEngine {
   private timer: ReturnType<typeof setInterval> | null = null;
   private pendingWrites: Array<{ id: string; status: string }> = [];
   private batchTimer: ReturnType<typeof setTimeout> | null = null;
+  private isFlushingWrites = false;
 
   configure(): void {
     const db = getDb();
@@ -20,6 +22,10 @@ class SyncEngine {
     try {
       (db as any).updateHook((type: string, _dbName: string, tableName: string, _rowId: number) => {
         if (tableName === 'agents') {
+          if (this.isFlushingWrites) {
+            log.debug({ type, tableName }, 'SQLite UPDATE_HOOK ignored during flush');
+            return;
+          }
           log.debug({ type, tableName }, 'SQLite UPDATE_HOOK → scheduling forward sync');
           this.forwardSync().catch(err => log.error({ err }, 'UPDATE_HOOK sync failed'));
         }
@@ -43,6 +49,7 @@ class SyncEngine {
     const batch = this.pendingWrites;
     this.pendingWrites = [];
 
+    this.isFlushingWrites = true;
     try {
       const db = getDb();
       const update = db.prepare(`
@@ -59,6 +66,8 @@ class SyncEngine {
       tx();
     } catch (err) {
       log.error({ err }, 'Flush writes failed');
+    } finally {
+      this.isFlushingWrites = false;
     }
   }
 
@@ -86,7 +95,11 @@ class SyncEngine {
       for (const agent of agents) {
         await sharedState.setAgentState(agent.id, {
           id: agent.id,
-          status: agent.status === 'online' ? 'idle' : 'offline',
+          status: agent.status === 'online'
+            ? 'idle'
+            : RECOVERABLE_AGENT_STATUSES.has(agent.status)
+              ? agent.status
+              : 'offline',
         });
       }
 

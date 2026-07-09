@@ -19,7 +19,7 @@ const MAX_ITERATIONS = 10;
 const MAX_HISTORY_TURNS = 10;
 const MAX_OUTPUT_LEN = 2500;
 
-// Strip ANSI escape codes from CLI output (opencode, gemini, etc. emit color codes)
+// Strip ANSI escape codes from CLI output (opencode, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
 function stripAnsi(str: string): string {
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').trim();
@@ -58,6 +58,24 @@ interface LoopResult {
   iterations: number;
   toolCalls: number;
   artifacts: string[];
+  success: boolean;
+  canceled?: boolean;
+  error?: string;
+}
+
+function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
+  return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
+}
+
+class CliExecutionError extends Error {
+  constructor(
+    message: string,
+    readonly output: string,
+    readonly canceled: boolean,
+  ) {
+    super(message);
+    this.name = 'CliExecutionError';
+  }
 }
 
 /**
@@ -67,6 +85,7 @@ interface LoopResult {
  */
 export class OrchestratedLoop {
   private toolExecutor: AgentToolExecutor;
+  private taskProjectDir?: string;
 
   constructor(
     private provider: ProviderConfig,
@@ -76,7 +95,8 @@ export class OrchestratedLoop {
     this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
   }
 
-  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean }): Promise<LoopResult> {
+  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean, projectDir?: string }): Promise<LoopResult> {
+    this.taskProjectDir = options?.projectDir;
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
@@ -107,7 +127,15 @@ export class OrchestratedLoop {
       // Check abort signal
       if (this.abortSignal?.aborted) {
         log.info({ agentId, iterations }, 'Loop aborted by signal');
-        break;
+        return {
+          output: '',
+          iterations,
+          toolCalls: totalToolCalls,
+          artifacts,
+          success: false,
+          canceled: true,
+          error: 'Loop cancelled by abort signal',
+        };
       }
 
       if (!this.sandbox.canExecute()) {
@@ -199,7 +227,7 @@ export class OrchestratedLoop {
         .filter(Boolean)
         .pop() || '';
 
-      return { output, iterations, toolCalls: totalToolCalls, artifacts };
+      return { output, iterations, toolCalls: totalToolCalls, artifacts, success: true };
     } finally {
       trajectoryGuard.endTask(taskId, agentId);
       await sharedState.setAgentState(agentId, {
@@ -235,13 +263,26 @@ export class OrchestratedLoop {
 
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
+      // [W18/stdin 2026-07-07] codex는 stdin:'ignore'면 "Reading additional input from stdin"에서
+      // 멈춰 timeout된다(codex 0.142.5). 빈 input('')을 주면 EOF를 받아 정상 진행한다.
+      // (T1: execa stdin:'ignore' → 멈춤 / input:'' → prompt 실행+정상 에러표시 재현)
+      const stdinOpt: Record<string, unknown> = this.provider.id === 'codex'
+        ? { input: '' }
+        : (useStdin ? { input: combined } : { stdin: 'ignore' });
       const subprocess = execa(command, finalArgs, {
-        ...(useStdin ? { input: combined } : { stdin: 'ignore' }),
+        ...stdinOpt,
+        cwd: this.taskProjectDir || undefined,
         ...(this.abortSignal ? { cancelSignal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
         forceKillAfterDelay: 3000,
         detached: process.platform !== 'win32',
         maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, ...this.provider.env, NO_COLOR: '1', TERM: 'dumb' },
+        env: { 
+          ...process.env, 
+          ...this.provider.env, 
+          NO_COLOR: '1', 
+          TERM: 'dumb',
+          ...(this.taskProjectDir ? { PROJECT_DIR: this.taskProjectDir } : {})
+        },
         reject: false,
       });
       taskQueue.recordChildProcess(taskId, subprocess.pid);
@@ -260,11 +301,11 @@ export class OrchestratedLoop {
         }
       }, { once: true });
       const result = await subprocess;
+      let lastMsg = '';
 
       if (lastMessageFile) {
         try {
-          const lastMsg = readFileSync(lastMessageFile, 'utf-8').trim();
-          if (lastMsg) return lastMsg;
+          lastMsg = readFileSync(lastMessageFile, 'utf-8').trim();
         } catch {
           // file missing (codex failed before writing) — fall back below
         } finally {
@@ -272,8 +313,15 @@ export class OrchestratedLoop {
         }
       }
 
-      if (result.failed || result.exitCode !== 0) {
-        const stderrSummary = stripAnsi(result.stderr || '').slice(0, 500);
+      if (!isSuccessfulResult(result)) {
+        // [W18 2026-07-07] 핵심 에러 라인 우선 추출 — stderr 앞 500자만 보면 codex 배너에
+        // 묻혀 진짜 원인(usage limit 등, stderr 뒤쪽)이 잘린다. 알려진 에러패턴을 먼저 찾고,
+        // 없으면 앞 500자로 폴백.
+        const _stderrRaw = stripAnsi(result.stderr || '');
+        const _errMatch = _stderrRaw.match(/[^\n]*(usage limit|not valid|quota|exceeded|forbidden|unauthorized|rate limit|error:|failed)[^\n]*/i);
+        const stderrSummary = (_errMatch ? _errMatch[0].trim().slice(0, 300) : '') || _stderrRaw.slice(0, 500);
+        const timedOut = Boolean((result as { timedOut?: boolean }).timedOut);
+        const isCanceled = Boolean((result as { isCanceled?: boolean }).isCanceled);
         log.warn({
           agentId: this.provider.id,
           exitCode: result.exitCode,
@@ -281,34 +329,26 @@ export class OrchestratedLoop {
           stderr: stderrSummary,
         }, 'CLI call returned non-zero exit');
 
-        if (lastMessageFile) {
-          const status = (result as any).isCanceled ? 'aborted (timeout)' : 'failed';
-          // stdout도 포함 — quota/usage-limit 등 실패 사유가 stderr가 아닌 stdout으로
-          // 출력되는 CLI(codex)에서 사유가 유실돼 하류 분류기(circuit/quality gate)가
-          // 못 보는 문제 방지 (실측 2026-07-03: "hit your usage limit"이 stdout으로만 출력)
-          // tail 300자 사용 — head는 CLI 배너/프롬프트 에코가 차지해 실제 오류 문구(끝부분)가
-          // 유실됨 (E2E 실측 2026-07-03: head 300엔 배너만 담기고 usage limit 문구 누락).
-          // stderr도 마커에는 tail을 쓴다 — codex는 배너·에코·ERROR 전부를 stderr로 내보내며
-          // (stdout 빈 값), head 500은 배너·에코에 잠식되어 꼬리의 quota 문구가 또 잘렸음
-          // (라이브 E2E 실측 2026-07-03: 응답 545자 = 마커+stderr head, usage limit 미노출).
-          const stderrTail = stripAnsi(result.stderr || '').trim().slice(-300);
-          const stdoutSummary = stripAnsi(result.stdout || '').trim().slice(-300);
-          const parts = [stderrTail, stdoutSummary].filter(Boolean).join(' | ');
-          const suffix = parts ? ` — ${parts}` : '';
-          return `[codex: no final response — process ${status}]${suffix}`;
-        }
-
         const opencodeOutput = this.provider.id === 'opencode'
           ? extractOpenCodeText(result.stdout || '')
           : undefined;
-        const output = opencodeOutput ?? stripAnsi(result.stdout || result.stderr || '');
-        if (!output) {
-          const fallbackSummary = stderrSummary || stripAnsi(result.shortMessage || '').slice(0, 500) || 'no stderr';
-          return `[${this.provider.id}: CLI failed exit=${result.exitCode ?? 'unknown'} — ${fallbackSummary}]`;
-        }
-
-        return output;
+        const stderrTail = stripAnsi(result.stderr || '').trim().slice(-300);
+        const stdoutTail = stripAnsi(result.stdout || '').trim().slice(-300);
+        // [W18 2026-07-07] stderr 우선: 실패 진짜원인(usage limit 등)은 stderr에 있는데
+        // codex 배너("Reading additional input from stdin")가 stdout이라 앞서면 원인이 가려짐.
+        const combinedOutput = [lastMsg, opencodeOutput, stderrTail, stdoutTail].filter(Boolean).join('\n').trim();
+        const fallbackSummary = stderrSummary || stripAnsi(result.shortMessage || '').slice(0, 500) || 'no stderr';
+        const reason = isCanceled
+          ? timedOut ? 'CLI timed out' : 'CLI cancelled'
+          : `CLI failed exit=${result.exitCode ?? 'unknown'}`;
+        throw new CliExecutionError(
+          `${this.provider.id}: ${reason} — ${fallbackSummary}`,
+          combinedOutput || `[${this.provider.id}: ${reason} — ${fallbackSummary}]`,
+          isCanceled || timedOut,
+        );
       }
+
+      if (lastMsg) return lastMsg;
 
       if (this.provider.id === 'opencode') {
         const output = extractOpenCodeText(result.stdout || '');
@@ -332,8 +372,6 @@ export class OrchestratedLoop {
         return lastMessageFile
           ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--output-last-message', lastMessageFile, prompt]
           : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', prompt];
-      case 'gemini':
-        return [...baseArgs, prompt];
       case 'agy':
         // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
         // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가

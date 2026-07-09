@@ -1,0 +1,50 @@
+## Welfare Policy v2.1 – Advanced Parameters
+
+### Overview
+- **UBI Tier Multipliers** (v2.0):
+  - basic: 100%
+  - silver: 110%
+  - gold: 120%
+  - platinum: 130%
+  - diamond: 150%
+- **Budget Allocation** (v2.0):
+  - Emergency: 40%
+  - UBI Supplement: 30%
+  - Rehabilitation: 20%
+  - Other: 10%
+- **Eligibility Suspension**: Inactivity for 90 days results in immediate termination of benefits.
+- **Emergency Stop**: UBI payments are automatically halted during emergencies and resume once the emergency is lifted.
+
+---
+
+## v2.1 Advanced Parameters
+
+### 1. UBI Base Amount Calculation *(opencode)*
+- **Assumed Base UBI**: 1,000 NVC.
+- **Formula**: `UBI_base = (total_supply * allocation_percent) / citizen_count`
+  - `total_supply` – total NVC supply in the system.
+  - `allocation_percent` – configurable percentage of the supply allocated for UBI (default 15%).
+  - `citizen_count` – number of eligible citizens.
+- **Halving Mechanism**: The allocation percent halves every 4 years, automatically reducing the UBI base amount accordingly.
+- **Minimum Guarantee**: Regardless of the calculation, each citizen receives at least **500 NVC** per period.
+
+### 2. Welfare Eligibility Restoration *(gemini)*
+- **Trigger**: After 90 days of inactivity, benefits are suspended.
+- **Restoration Conditions**:
+  1. **Reactivation Fee** – a one‑time fee of **50 NVC** paid by the citizen.
+  2. **Governance Application** – submit a re‑activation request on the governance platform, approved by a majority of the council.
+- **Retroactive Payments**: Upon successful restoration, citizens receive a **single retroactive payout** covering the first 7 days after re‑activation, capped at **1,000 NVC**.
+
+### 3. Emergency Welfare Activation *(codex)*
+- **Automatic Trigger**: If **≥ 15%** of citizens have a balance **≤ 200 NVC**, the system enters emergency mode.
+- **Support Amount**: Each affected citizen receives a one‑time emergency grant of **X × NVC**, where **X = 5** by default.
+- **Maximum Disbursements**: The emergency grant can be issued **up to 3 times** per citizen per year.
+
+---
+
+## Implementation Notes
+- All parameters are configurable via the `config/welfare.json` file.
+- Adjust `allocation_percent`, `halving_interval_years`, `min_ubi`, `reactivation_fee`, `retroactive_cap`, `emergency_trigger_percent`, `emergency_balance_threshold`, `emergency_grant_multiplier`, and `emergency_max_per_year` as needed.
+- Ensure the governance module validates re‑activation applications before granting retroactive payments.
+
+*Prepared by the policy team, with placeholders for implementation details marked by the corresponding AI agents.*

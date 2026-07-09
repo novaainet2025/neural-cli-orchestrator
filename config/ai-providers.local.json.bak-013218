@@ -1,0 +1,11 @@
+{
+  "overrides": {
+    "agy": {
+      "enabled": true,
+      "note": "2026-07-02 재활성: agy 사용. OAuth 재로그인 완료. (nova-macstudio 로컬 정책)"
+    },
+    "ollama": {
+      "enabled": true
+    }
+  }
+}
