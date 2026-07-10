@@ -25,6 +25,7 @@ const MAX_RETRYABLE_HTTP_RETRIES = 2;
 interface RunOptions {
   systemPrompt?: string;
   compact?: boolean;
+  model?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
   attemptedProviders?: string[];
@@ -150,6 +151,14 @@ export class ApiExecutor {
     }
   }
 
+  private resolveTaskModel(modelOverride?: string): string | null {
+    return resolveProviderModel({
+      id: this.provider.id,
+      model: modelOverride ?? this.provider.model,
+      endpoint: this.provider.endpoint,
+    });
+  }
+
   async run(taskId: string, prompt: string, options?: RunOptions): Promise<ApiResult> {
     const attemptedProviders = new Set(options?.attemptedProviders ?? []);
     attemptedProviders.add(this.provider.id);
@@ -171,7 +180,7 @@ export class ApiExecutor {
         output: error,
         iterations,
         toolCalls: totalToolCalls,
-        model: resolveProviderModel(this.provider) || 'unknown',
+        model: this.resolveTaskModel(options?.model) || 'unknown',
         success: false,
         error,
       };
@@ -214,7 +223,7 @@ export class ApiExecutor {
         if (!this.sandbox.canExecute()) break;
 
         const client = this.createClient();
-        const model = resolveProviderModel(this.provider) || 'default';
+        const model = this.resolveTaskModel(options?.model) || 'default';
 
         try {
           const createParams: ChatCompletionCreateParamsNonStreaming = {
@@ -474,7 +483,7 @@ export class ApiExecutor {
       output: finalOutput,
       iterations,
       toolCalls: totalToolCalls,
-      model: resolveProviderModel(this.provider) || 'unknown',
+      model: this.resolveTaskModel(options?.model) || 'unknown',
       usage,
     };
   }

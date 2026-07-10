@@ -35,6 +35,7 @@ async function boot(): Promise<void> {
     const result = await agentManager.executeTask(task.agentId, task.prompt, {
       taskId: task.taskId,
       systemPrompt: task.systemPrompt,
+      model: task.model,
       signal,
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,

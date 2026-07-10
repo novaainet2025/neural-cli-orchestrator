@@ -62,6 +62,7 @@ export interface QueuedTask {
   taskId: string;
   agentId: string;
   prompt: string;
+  model?: string;
   systemPrompt?: string;
   /** Per-task wall-clock override (ms) — falls back to sandbox default when unset */
   timeoutMs?: number;

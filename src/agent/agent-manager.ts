@@ -114,6 +114,7 @@ class AgentManager {
     taskId?: string;
     systemPrompt?: string;
     compact?: boolean;
+    model?: string;
     signal?: AbortSignal;
     projectDir?: string;
     timeoutMs?: number;
@@ -176,6 +177,7 @@ class AgentManager {
           const { execa } = await import('execa');
           const subprocess = execa(provider.command!, [
             ...(provider.args ?? []),
+            ...(options?.model ? ['--model', options.model] : []),
             '-p', prompt,
             '--output-format', 'text',
           ], {
@@ -219,6 +221,7 @@ class AgentManager {
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
+            model: options?.model,
             projectDir: options?.projectDir,
             disableHistory: agentType === 'B_SINGLE_PROMPT',
           });
@@ -239,6 +242,7 @@ class AgentManager {
           const result = await executor.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
+            model: options?.model,
             signal,
             timeoutMs,
           });

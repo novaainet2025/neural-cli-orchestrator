@@ -98,7 +98,7 @@ export class OrchestratedLoop {
   async run(
     taskId: string,
     prompt: string,
-    options?: { systemPrompt?: string, compact?: boolean, projectDir?: string, disableHistory?: boolean },
+    options?: { systemPrompt?: string, compact?: boolean, model?: string, projectDir?: string, disableHistory?: boolean },
   ): Promise<LoopResult> {
     this.taskProjectDir = options?.projectDir;
     const agentId = this.provider.id;
@@ -153,7 +153,7 @@ export class OrchestratedLoop {
         status: iterations === 1 ? 'thinking' : 'working',
       });
 
-      const aiResponse = await this.callCLI(taskId, fullSystem, history, options?.disableHistory === true);
+      const aiResponse = await this.callCLI(taskId, fullSystem, history, options?.disableHistory === true, options?.model);
       taskQueue.recordActivity(taskId, aiResponse);
 
       // Stream the response
@@ -247,6 +247,7 @@ export class OrchestratedLoop {
     system: string,
     history: Array<{ role: string; content: string }>,
     disableHistory = false,
+    model?: string,
   ): Promise<string> {
     const command = this.provider.command!;
     const args = [...(this.provider.args || [])];
@@ -271,7 +272,7 @@ export class OrchestratedLoop {
 
     // Most CLI AIs accept prompt via stdin or -p flag
     // Adapt per provider
-    const finalArgs = this.buildArgs(args, combined, lastMessageFile);
+    const finalArgs = this.buildArgs(args, combined, lastMessageFile, model);
     this.assertTaskProjectDir();
 
     try {
@@ -387,7 +388,7 @@ export class OrchestratedLoop {
     }
   }
 
-  private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null): string[] {
+  private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
     switch (this.provider.id) {
       case 'codex':
         // codex exec <prompt> — non-interactive; skip git trust check outside workdir
@@ -395,8 +396,8 @@ export class OrchestratedLoop {
         // --sandbox workspace-write: 기본 read-only 샌드박스는 구현 위임이 전부
         //   "patch rejected: read-only sandbox"로 실패한다 (2026-07-03 subnote 실측)
         return lastMessageFile
-          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--output-last-message', lastMessageFile, prompt]
-          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', prompt];
+          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(model ? ['-m', model] : []), '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(model ? ['-m', model] : []), prompt];
       case 'agy':
         // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
         // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가
@@ -416,12 +417,12 @@ export class OrchestratedLoop {
           ? []
           : ['--format', 'json'];
         return baseArgs[0] && !baseArgs[0].startsWith('-')
-          ? [...baseArgs, ...formatArgs, prompt]
-          : ['run', ...baseArgs, ...formatArgs, prompt];
+          ? [baseArgs[0], ...(model ? ['-m', model] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
+          : ['run', ...(model ? ['-m', model] : []), ...baseArgs, ...formatArgs, prompt];
       }
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
-        return ['--print', '--trust', '--output-format', 'text', prompt];
+        return ['--print', '--trust', '--output-format', 'text', ...(model ? ['--model', model] : []), prompt];
       case 'copilot':
         // copilot CLI v1.0.22: non-interactive mode via --prompt flag
         return ['--prompt', prompt];

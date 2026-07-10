@@ -34,6 +34,7 @@ interface OrphanRequeue {
   taskId: string;
   agentId: string;
   prompt: string;
+  model?: string;
   systemPrompt?: string;
   verifier?: { type: 'run'; command: string; timeoutMs?: number };
 }
@@ -70,11 +71,13 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
   const db = getDb();
   const orphans = db.prepare(`
     SELECT id, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
+           , metadata_json
     FROM tasks
     WHERE status IN ('queued', 'assigned', 'running', 'streaming')
   `).all() as Array<{
     id: string; assigned_to: string | null; prompt: string;
     system_prompt: string | null; verifier_json: string | null; orphan_requeue_count: number;
+    metadata_json: string | null;
   }>;
 
   const insertDeadLetter = db.prepare(`
@@ -104,10 +107,22 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
     }
     // 재큐잉: status를 queued로 되돌리고 카운트 증가. 실제 enqueue는 부팅 후.
     requeueStmt.run(task.id);
+    let model: string | undefined;
+    if (task.metadata_json) {
+      try {
+        const metadata = JSON.parse(task.metadata_json) as Record<string, unknown>;
+        if (typeof metadata.model === 'string' && metadata.model.trim()) {
+          model = metadata.model;
+        }
+      } catch {
+        // ignore invalid metadata on orphan recovery
+      }
+    }
     return {
       taskId: task.id,
       agentId: task.assigned_to,
       prompt: task.prompt,
+      model,
       systemPrompt: task.system_prompt ?? undefined,
       verifier: task.verifier_json ? JSON.parse(task.verifier_json) : undefined,
     };
@@ -223,6 +238,7 @@ async function boot(): Promise<void> {
     const result = await agentManager.executeTask(task.agentId, task.prompt, {
       taskId: task.taskId,
       systemPrompt: task.systemPrompt,
+      model: task.model,
       signal,
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,
@@ -246,7 +262,7 @@ async function boot(): Promise<void> {
       reRouted++;
     }
     try {
-      taskQueue.enqueue({ taskId: o.taskId, agentId: target, prompt: o.prompt, systemPrompt: o.systemPrompt, verifier: o.verifier });
+      taskQueue.enqueue({ taskId: o.taskId, agentId: target, prompt: o.prompt, model: o.model, systemPrompt: o.systemPrompt, verifier: o.verifier });
       reEnqueued++;
     } catch (e) {
       log.warn({ taskId: o.taskId, err: (e as Error).message }, 'orphan re-enqueue failed');

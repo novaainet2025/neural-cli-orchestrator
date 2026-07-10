@@ -37,6 +37,7 @@ export const CreateTaskInput = z.object({
   // 실검증은 gateway intake의 validateDelegationPayload(agentManager.listEnabledIds() 대조)가
   // 런타임 레지스트리 기준으로 수행 — 여기서는 형식만 본다.
   ai: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]{0,39}$/, 'invalid provider id format').optional(),
+  model: z.string().min(1).optional(),
   prompt: z.string().min(1),
   mode: TaskModeSchema.optional().default('task'),
   providers: z.array(z.string()).optional(),

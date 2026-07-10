@@ -284,6 +284,7 @@ const MeshSendBodySchema = z.object({
 type MeshRouteType = z.infer<typeof MeshRouteTypeSchema>;
 type RetryTaskPayload = {
   ai?: string;
+  model?: string;
   parentTaskId?: string;
   prompt: string;
   mode?: z.infer<typeof CreateTaskInput.shape.mode>;
@@ -483,7 +484,7 @@ export const loadRetryPayload = (
     ? "status IN ('failed', 'timed_out', 'completed')"
     : "status IN ('failed', 'timed_out')";
   const sourceTask = deadLetter ? undefined : db.prepare(`
-    SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt
+    SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt, metadata_json
     FROM tasks
     WHERE id=? AND ${sourceStatusFilter}
   `).get(taskId) as {
@@ -493,6 +494,7 @@ export const loadRetryPayload = (
     workspace_id: string | null;
     priority: number | null;
     system_prompt: string | null;
+    metadata_json: string | null;
   } | undefined;
 
   const parsedVerifier = (() => {
@@ -509,6 +511,15 @@ export const loadRetryPayload = (
     : sourceTask
       ? {
           ai: parseRetryTaskAi(sourceTask.assigned_to),
+          model: (() => {
+            if (!sourceTask.metadata_json) return undefined;
+            try {
+              const metadata = JSON.parse(sourceTask.metadata_json) as Record<string, unknown>;
+              return typeof metadata.model === 'string' && metadata.model.trim() ? metadata.model : undefined;
+            } catch {
+              return undefined;
+            }
+          })(),
           prompt: sourceTask.prompt,
           mode: sourceTask.mode ?? undefined,
           workspaceId: sourceTask.workspace_id ?? undefined,
@@ -1317,6 +1328,7 @@ export async function createGateway() {
       // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
       const mergedMetadata = {
         ...(input.metadata ?? {}),
+        ...(input.model ? { model: input.model } : {}),
         ...(promptGate ? { promptGate } : {}),
         ...(input.requiredEvidence && input.requiredEvidence.length > 0
           ? { requiredEvidence: input.requiredEvidence }
@@ -1357,7 +1369,7 @@ export async function createGateway() {
       : input.systemPrompt;
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), invocationId } })
+    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, model: input.model, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), ...(input.model ? { model: input.model } : {}), invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : '';
         const classifiedFailure = detectFailedCompletion(response);
