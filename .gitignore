@@ -18,3 +18,6 @@ ecosystem.local.cjs
 
 # DB 백업은 git 추적 금지 (2026-07-10: 213MB 파일이 push 차단 유발)
 db/backups/
+
+.env.bak*
+tmp/nova_sns_repo_draft/
