@@ -339,7 +339,7 @@ async function shutdown(signal: string): Promise<void> {
     }, 'Shutdown drain timed out; remaining in-flight tasks marked orphaned');
   }
 
-  wsBridge.stop();
+  await wsBridge.stop(signal);
   sessionManager.destroy();
   agentManager.destroy();
   await taskQueue.close();

@@ -8,6 +8,9 @@ import { createLogger } from '../utils/logger.js';
 import { nanoid } from 'nanoid';
 
 const log = createLogger('websocket');
+const SERVICE_RESTART_CLOSE_CODE = 1012;
+const SERVICE_RESTART_REASON_PREFIX = 'Service Restart';
+const SERVICE_RESTART_CLOSE_DRAIN_MS = 250;
 
 /** Max keys per client lastState map; LRU eviction when exceeded. */
 const LAST_STATE_MAX_KEYS = 10_000;
@@ -502,7 +505,57 @@ class WebSocketBridge {
     return this.clients.size;
   }
 
-  stop(): void {
+  private async closeClientsForServiceRestart(reason: string): Promise<void> {
+    const closingClients = [...this.clients.values()];
+    if (closingClients.length === 0) return;
+
+    await Promise.allSettled(closingClients.map((client) => new Promise<void>((resolve) => {
+      if (client.ws.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+
+      let settled = false;
+      const settle = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+
+      const timer = setTimeout(() => {
+        try {
+          if (client.ws.readyState !== WebSocket.CLOSED) {
+            client.ws.terminate();
+          }
+        } catch {
+          /* ignore */
+        }
+        settle();
+      }, SERVICE_RESTART_CLOSE_DRAIN_MS);
+
+      client.ws.once('close', settle);
+
+      try {
+        if (client.ws.readyState === WebSocket.OPEN) {
+          client.ws.close(SERVICE_RESTART_CLOSE_CODE, reason);
+        } else if (client.ws.readyState === WebSocket.CLOSING) {
+          // Wait for in-flight close handshake until the timeout above.
+        } else {
+          settle();
+        }
+      } catch {
+        try {
+          client.ws.terminate();
+        } catch {
+          /* ignore */
+        }
+        settle();
+      }
+    })));
+  }
+
+  async stop(reasonDetail = 'planned shutdown'): Promise<void> {
     if (this.pendingBroadcastTimer !== null) {
       clearTimeout(this.pendingBroadcastTimer);
       this.pendingBroadcastTimer = null;
@@ -511,17 +564,21 @@ class WebSocketBridge {
 
     eventBus.off('*', this.bridgeEventHandler);
 
+    const closeReason = `${SERVICE_RESTART_REASON_PREFIX}: ${reasonDetail}`.slice(0, 123);
+    await this.closeClientsForServiceRestart(closeReason);
+
     for (const client of this.clients.values()) {
       for (const t of client.pendingTimers) {
         clearTimeout(t);
       }
       client.pendingTimers.clear();
       client.lastState.clear();
-      client.ws.close();
     }
     this.clients.clear();
-    this.wss?.close();
-    this.server?.close();
+    await Promise.allSettled([
+      new Promise<void>((resolve) => this.wss?.close(() => resolve()) ?? resolve()),
+      new Promise<void>((resolve) => this.server?.close(() => resolve()) ?? resolve()),
+    ]);
     log.info('WebSocket server stopped');
   }
 }
