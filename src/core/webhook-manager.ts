@@ -8,6 +8,7 @@ import { createId } from '../utils/id.js';
 import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveInternalProjectDir } from '../utils/project-dir.js';
 
 const log = createLogger('webhook-manager');
 
@@ -136,7 +137,12 @@ export async function dispatchWebhook(
       await fetch(`${NCO_API}/api/task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
-        body: JSON.stringify({ ai: ai || 'openrouter', prompt, callerAgentId: 'webhook-manager' }),
+        body: JSON.stringify({
+          ai: ai || 'openrouter',
+          prompt,
+          callerAgentId: 'webhook-manager',
+          metadata: { projectDir: resolveInternalProjectDir() },
+        }),
         signal: AbortSignal.timeout(10_000),
       });
 

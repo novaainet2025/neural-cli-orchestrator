@@ -11,6 +11,7 @@
     "worker": "tsx src/worker.ts",
     "test": "vitest",
     "test:run": "vitest run",
+    "verify:team-fire": "node scripts/verify-team-fire.mjs",
     "lint-false-report": "tsx scripts/nco-check-false-reports.ts",
     "obsidian:generate": "tsx scripts/obsidian-generator.ts",
     "obsidian:clean": "tsx scripts/obsidian-cleaner.ts",

@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
 
 const log = createLogger('work-report-scheduler');
@@ -270,6 +271,7 @@ async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTas
         mode: 'task',
         callerAgentId: 'work-report-scheduler',
         metadata: {
+          projectDir: resolveInternalProjectDir(),
           allowProviderFailover: true,
           workReportId: candidate.reportId,
           teamId: candidate.teamId,

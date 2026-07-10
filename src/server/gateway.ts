@@ -25,6 +25,7 @@ import { acquisitionRegistry, type AcquisitionRecord } from '../core/acquisition
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
+import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { taskQueue } from '../core/task-queue.js';
 import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
 import { checkResponseQuality } from '../verification/response-quality.js';
@@ -285,6 +286,7 @@ type MeshRouteType = z.infer<typeof MeshRouteTypeSchema>;
 type RetryTaskPayload = {
   ai?: string;
   model?: string;
+  metadata?: Record<string, unknown>;
   parentTaskId?: string;
   prompt: string;
   mode?: z.infer<typeof CreateTaskInput.shape.mode>;
@@ -865,6 +867,10 @@ export async function createGateway() {
       prompt: options?.reason
         ? `[Quality-gate reject: ${options.reason}]\n\n${payload.prompt}`
         : payload.prompt,
+      metadata: {
+        ...(payload.metadata ?? {}),
+        projectDir: resolveInternalProjectDir(),
+      },
     };
     const retryReservation = reserveRetry(db, sourceTaskId)(sourceTaskId);
     if (!retryReservation.allowed) {

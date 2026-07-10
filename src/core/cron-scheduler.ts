@@ -8,6 +8,7 @@ import { createId } from '../utils/id.js';
 import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
+import { resolveInternalProjectDir } from '../utils/project-dir.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -128,7 +129,12 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
       const res = await fetch(`${NCO_API}/api/task`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
-        body: JSON.stringify({ ai: targetAi, prompt, callerAgentId: 'cron-scheduler' }),
+        body: JSON.stringify({
+          ai: targetAi,
+          prompt,
+          callerAgentId: 'cron-scheduler',
+          metadata: { projectDir: resolveInternalProjectDir() },
+        }),
         signal: AbortSignal.timeout(60_000),
       });
       result = await res.text();

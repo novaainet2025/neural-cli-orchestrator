@@ -7,6 +7,7 @@ import { createInterface } from 'readline';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { acquisitionRegistry } from '../core/acquisition-registry.js';
 import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
+import { resolveInternalProjectDir } from '../utils/project-dir.js';
 
 const NCO_API = process.env.NCO_API_URL || 'http://localhost:6200';
 const FETCH_TIMEOUT_MS = 30_000;
@@ -38,6 +39,20 @@ async function ncoPost(path: string, body: any): Promise<any> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+function withInternalProjectDir<T extends Record<string, unknown>>(payload: T): T & {
+  metadata: Record<string, unknown>;
+} {
+  return {
+    ...payload,
+    metadata: {
+      ...(typeof payload.metadata === 'object' && payload.metadata !== null
+        ? payload.metadata as Record<string, unknown>
+        : {}),
+      projectDir: resolveInternalProjectDir(),
+    },
+  };
 }
 
 // ─── Tool Definitions ─────────────────────────────────
@@ -158,7 +173,7 @@ async function sleep(ms: number): Promise<void> {
 }
 
 async function executeAgentTask(agentId: string, prompt: string): Promise<string> {
-  const created = await ncoPost('/api/task', { ai: agentId, prompt });
+  const created = await ncoPost('/api/task', withInternalProjectDir({ ai: agentId, prompt }));
   if (!created?.taskId || typeof created.taskId !== 'string') {
     throw new Error(typeof created?.error === 'string' ? created.error : 'dynamic skill task creation failed');
   }
@@ -203,7 +218,12 @@ export async function handleTool(name: string, args: Record<string, unknown>): P
     case 'nco_task': {
       const _sid = process.env.NCO_SESSION_ID || String(process.ppid || process.pid);
       const _aid = process.env.NCO_NAME || 'claude-code';
-      return JSON.stringify(await ncoPost('/api/task', { ai: args.ai, prompt: args.prompt, callerSessionId: _sid, callerAgentId: _aid }));
+      return JSON.stringify(await ncoPost('/api/task', withInternalProjectDir({
+        ai: args.ai,
+        prompt: args.prompt,
+        callerSessionId: _sid,
+        callerAgentId: _aid,
+      })));
     }
     case 'nco_parallel': return JSON.stringify(await ncoPost('/api/realtime/parallel', { prompt: args.prompt, providers: args.providers }));
     case 'nco_discussion': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, providers: args.providers, maxRounds: args.maxRounds }));
