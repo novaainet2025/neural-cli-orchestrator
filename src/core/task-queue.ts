@@ -735,6 +735,9 @@ class TaskQueueManager {
           .listSnapshots()
           .filter(snapshot => snapshot.state === 'open')
           .map(snapshot => snapshot.agentId),
+        // 런타임 등록 에이전트로 후보 제한 — 정적 tier의 미등록 항목(remote-mlx 등)
+        // 에스컬레이션 방지 (2026-07-10 T1: Unknown agent 연쇄 실패 4건)
+        knownAgents: [...this.agents.keys()],
         metadata: currentMetadata,
       });
       if (escalation.action === 'escalate' && escalation.nextAgentId && escalation.metadataPatch) {

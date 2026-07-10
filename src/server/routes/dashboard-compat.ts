@@ -13,7 +13,7 @@ import { discussionEngine } from '../../core/discussion-engine.js';
 import { createTaskId, createSessionId, createMessageId } from '../../utils/id.js';
 import { env } from '../../utils/config.js';
 import { getPushReports } from './fleet-ops.js';
-import type { FleetReportActivitySummary } from './fleet-ops.js';
+import type { FleetReportActivitySummary, FleetReportSession } from './fleet-ops.js';
 import { summarizeTeamWorkflow } from './teams.js';
 import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -1349,6 +1349,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         host: string;
         agents: any[];
         activity?: FleetReportActivitySummary;
+        sessions?: FleetReportSession[];
         from: string;
         ts: string;
       }>();
@@ -1479,6 +1480,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             host: pr.host,
             agents: pr.agents as any,
             activity: pr.activity,
+            sessions: pr.sessions ?? [],
             from: pr.from ?? `${pr.host}-push`,
             ts: pr.ts,
           });
@@ -1493,7 +1495,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           let staleSeconds: number | null = null;
           const tsMs = h.ts ? new Date(h.ts).getTime() : 0;
           if (tsMs > 0) staleSeconds = Math.max(0, Math.round((Date.now() - tsMs) / 1000));
-          return { ...h, staleSeconds };
+          return { ...h, sessions: h.sessions ?? [], staleSeconds };
         });
       const totalAgents = hosts.reduce((s, h) => s + h.agents.length, 0);
       return { hosts, totalAgents, hostCount: hosts.length, updatedAt: new Date().toISOString() };

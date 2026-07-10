@@ -244,6 +244,7 @@ class AgentManager {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             model: options?.model,
+            projectDir: options?.projectDir,
             signal,
             timeoutMs,
           });

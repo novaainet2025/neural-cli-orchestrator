@@ -19,6 +19,13 @@ export interface EscalationInput {
   attemptedAgents: string[];
   /** Agents whose circuit breaker is currently open */
   circuitOpenAgents: string[];
+  /**
+   * 현재 런타임에 등록·활성화된 에이전트 id 목록 (agentManager.listEnabledIds()).
+   * 제공되면 후보를 이 집합으로 제한한다 — WORKER_TIER/BRAIN_TIER의 정적 항목
+   * (예: remote-mlx, aider)이 이 기기에 미등록일 때 "Unknown agent" 즉사를 방지.
+   * (2026-07-10 T1: 페일오버가 remote-mlx를 반환해 태스크 4건 연쇄 실패)
+   */
+  knownAgents?: readonly string[];
 }
 
 /**
@@ -47,7 +54,7 @@ export type EscalationResult = {
  *    give up.
  */
 export function decideEscalation(input: EscalationInput): EscalationResult {
-  const { failedAgentId, failureCount, failureReason, attemptedAgents, circuitOpenAgents } = input;
+  const { failedAgentId, failureCount, failureReason, attemptedAgents, circuitOpenAgents, knownAgents } = input;
 
   // Helper to check transient reasons
   const isTransient = (reason: string) => {
@@ -76,7 +83,10 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
   // Candidate selection helpers
   const filterCandidates = (candidates: readonly string[]) =>
     candidates.filter(
-      (id) => !attemptedAgents.includes(id) && !circuitOpenAgents.includes(id)
+      (id) =>
+        !attemptedAgents.includes(id) &&
+        !circuitOpenAgents.includes(id) &&
+        (!knownAgents || knownAgents.includes(id))
     );
 
   // 2a. Same tier escalation for workers

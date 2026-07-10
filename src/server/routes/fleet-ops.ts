@@ -37,10 +37,17 @@ export interface FleetReportActivitySummary {
   recentCompletedAt: string | null;
   agentCounts: Record<string, number>;
 }
+export interface FleetReportSession {
+  name: string;
+  working: boolean;
+  lastToolTs: number;
+  currentTool: string | null;
+}
 export interface FleetReport {
   host: string;
   agents: FleetReportAgent[];
   activity?: FleetReportActivitySummary;
+  sessions?: FleetReportSession[];
   from?: string;
   ts: string;
 }
@@ -103,6 +110,29 @@ function normalizeActivitySummary(value: unknown): FleetReportActivitySummary | 
     recentCompletedAt,
     agentCounts,
   };
+}
+
+// push body.sessions 검증 — 통과 항목만 정규화 (없으면 빈 배열)
+function normalizeSessions(value: unknown): FleetReportSession[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((s): s is Record<string, unknown> =>
+      !!s && typeof s === 'object'
+      && typeof (s as Record<string, unknown>).name === 'string'
+      && ((s as Record<string, unknown>).name as string).length > 0
+      && ((s as Record<string, unknown>).name as string).length < 100)
+    .map((s) => {
+      const lastToolTs = Number(s.lastToolTs);
+      return {
+        name: s.name as string,
+        working: s.working === true,
+        lastToolTs: Number.isFinite(lastToolTs) && lastToolTs >= 0 ? lastToolTs : 0,
+        currentTool: typeof s.currentTool === 'string' && (s.currentTool as string).length > 0
+          ? (s.currentTool as string)
+          : null,
+      };
+    })
+    .slice(0, 100);
 }
 
 function collectRecentActivitySummary(): FleetReportActivitySummary {
@@ -238,6 +268,7 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
             since: typeof a.since === 'string' && a.since.length > 0 ? a.since : undefined,
           })),
         activity: normalizeActivitySummary(parsed.activity),
+        sessions: normalizeSessions(parsed.sessions),
         from: typeof parsed.from === 'string' ? parsed.from : undefined,
         ts: row.ts,
       });
@@ -281,6 +312,7 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
       host,
       agents: valid,
       activity: normalizeActivitySummary(body?.activity),
+      sessions: normalizeSessions(body?.sessions),
       from: (body?.from ?? `${host}-push`),
       ts,
     };
@@ -364,14 +396,44 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
   const central = (process.env.FLEET_CENTRAL_URL ?? '').replace(/\/$/, '');
   if (central) {
     const myHost = hostname().toLowerCase().replace(/\.local$/, '');
+    // 자기 자신의 activityStore(GET /api/activity)를 세션 요약으로 변환 — push에 동봉
+    const collectLocalSessions = async (): Promise<FleetReportSession[]> => {
+      try {
+        const res = await fetch('http://localhost:6200/api/activity', { signal: AbortSignal.timeout(3000) });
+        if (!res.ok) return [];
+        const data = await res.json() as {
+          activities?: Record<string, Array<{ tool?: unknown; ts?: unknown; done?: unknown }>>;
+        };
+        const activities = data?.activities ?? {};
+        const sessions: FleetReportSession[] = [];
+        for (const [name, acts] of Object.entries(activities)) {
+          if (!Array.isArray(acts) || acts.length === 0) continue;
+          const working = acts.some(a => a && a.done === false);
+          let lastToolTs = 0;
+          let currentTool: string | null = null;
+          for (const a of acts) {
+            const ts = Number(a?.ts);
+            if (Number.isFinite(ts) && ts >= lastToolTs) {
+              lastToolTs = ts;
+              currentTool = typeof a?.tool === 'string' && a.tool.length > 0 ? a.tool : null;
+            }
+          }
+          sessions.push({ name, working, lastToolTs, currentTool });
+        }
+        return sessions;
+      } catch {
+        return [];
+      }
+    };
     const pushOnce = async () => {
       try {
         const agents = await collectAgentSnapshots();
         const activity = collectRecentActivitySummary();
+        const sessions = await collectLocalSessions();
         await fetch(`${central}/api/fleet/report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ host: myHost, agents, activity, from: `${myHost}-nco-push` }),
+          body: JSON.stringify({ host: myHost, agents, activity, sessions, from: `${myHost}-nco-push` }),
           signal: AbortSignal.timeout(5000),
         });
       } catch (err) {
