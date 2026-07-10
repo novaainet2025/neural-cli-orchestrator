@@ -101,6 +101,7 @@ export class OrchestratedLoop {
     options?: { systemPrompt?: string, compact?: boolean, model?: string, projectDir?: string, disableHistory?: boolean },
   ): Promise<LoopResult> {
     this.taskProjectDir = options?.projectDir;
+    this.toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId, options?.projectDir);
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;

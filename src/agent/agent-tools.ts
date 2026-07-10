@@ -1,6 +1,6 @@
 import { readFile, writeFile, unlink, readdir, stat, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, resolve } from 'path';
 import { execa } from 'execa';
 import { SandboxManager } from '../security/sandbox-manager.js';
 import { fileChangeGuard } from '../security/file-change-guard.js';
@@ -22,7 +22,12 @@ export class AgentToolExecutor {
     private agentId: string,
     private sandbox: SandboxManager,
     private taskId?: string,
+    private projectDir?: string,
   ) {}
+
+  private resolvePath(p: string): string {
+    return this.projectDir ? resolve(this.projectDir, p) : resolve(p);
+  }
 
   async execute(call: ToolCall): Promise<ToolResult> {
     if (!this.sandbox.canExecute()) {
@@ -100,9 +105,10 @@ export class AgentToolExecutor {
 
   // ─── File Operations ────────────────────────────────
   private async readFile(path: string, offset?: number, limit?: number): Promise<ToolResult> {
-    this.sandbox.assertPath(path);
+    const absPath = this.resolvePath(path);
+    this.sandbox.assertPath(absPath);
     try {
-      const content = await readFile(path, 'utf-8');
+      const content = await readFile(absPath, 'utf-8');
 
       let result = content;
       if (offset !== undefined && offset > 0) {
@@ -119,15 +125,16 @@ export class AgentToolExecutor {
   }
 
   private async writeFile(path: string, content: string): Promise<ToolResult> {
-    this.sandbox.assertPath(path);
+    const absPath = this.resolvePath(path);
+    this.sandbox.assertPath(absPath);
     this.sandbox.assertFileSize(Buffer.byteLength(content));
 
     // File lock check
-    const holder = await sharedState.getLockHolder(path);
+    const holder = await sharedState.getLockHolder(absPath);
     if (holder && holder !== this.agentId) {
       await eventBus.publish({
         type: 'message:direct', from: this.agentId, to: holder,
-        content: `I need to write to ${path}, but you hold the lock. Can I proceed?`,
+        content: `I need to write to ${absPath}, but you hold the lock. Can I proceed?`,
       });
       return { ok: false, output: '', error: `File locked by ${holder}` };
     }
@@ -135,14 +142,14 @@ export class AgentToolExecutor {
     // FileChangeGuard — validate change ratio before writing
     let originalContent = '';
     try {
-      if (existsSync(path)) {
-        originalContent = await readFile(path, 'utf-8');
+      if (existsSync(absPath)) {
+        originalContent = await readFile(absPath, 'utf-8');
       }
     } catch { /* new file — original empty */ }
 
     if (originalContent.length > 0) {
       const validation = await fileChangeGuard.validateChange(
-        path, originalContent, content, this.agentId, this.taskId,
+        absPath, originalContent, content, this.agentId, this.taskId,
       );
       if (validation.action === 'blocked') {
         return { ok: false, output: '', error: validation.reason || 'Change blocked by FileChangeGuard' };
@@ -150,28 +157,30 @@ export class AgentToolExecutor {
       // backup_then_proceed → backup already created, continue writing
     }
 
-    await sharedState.acquireLock(path, this.agentId);
+    await sharedState.acquireLock(absPath, this.agentId);
     try {
-      const dir = dirname(path);
+      const dir = dirname(absPath);
       if (!existsSync(dir)) await mkdir(dir, { recursive: true });
-      await writeFile(path, content, 'utf-8');
-      return { ok: true, output: `Written: ${path} (${Buffer.byteLength(content)} bytes)` };
+      await writeFile(absPath, content, 'utf-8');
+      return { ok: true, output: `Written: ${absPath} (${Buffer.byteLength(content)} bytes)` };
     } finally {
-      await sharedState.releaseLock(path, this.agentId);
+      await sharedState.releaseLock(absPath, this.agentId);
     }
   }
 
   private async createFile(path: string, content: string): Promise<ToolResult> {
-    if (existsSync(path)) {
-      return { ok: false, output: '', error: `File already exists: ${path}` };
+    const absPath = this.resolvePath(path);
+    if (existsSync(absPath)) {
+      return { ok: false, output: '', error: `File already exists: ${absPath}` };
     }
-    return this.writeFile(path, content);
+    return this.writeFile(absPath, content);
   }
 
   private async editFile(path: string, oldStr: string, newStr: string): Promise<ToolResult> {
-    this.sandbox.assertPath(path);
+    const absPath = this.resolvePath(path);
+    this.sandbox.assertPath(absPath);
     try {
-      const current = await readFile(path, 'utf-8');
+      const current = await readFile(absPath, 'utf-8');
       if (!current.includes(oldStr)) {
         return { ok: false, output: '', error: 'Old string not found in file' };
       }
@@ -179,32 +188,34 @@ export class AgentToolExecutor {
 
       // FileChangeGuard — validate before edit
       const validation = await fileChangeGuard.validateChange(
-        path, current, updated, this.agentId, this.taskId,
+        absPath, current, updated, this.agentId, this.taskId,
       );
       if (validation.action === 'blocked') {
         return { ok: false, output: '', error: validation.reason || 'Edit blocked by FileChangeGuard' };
       }
 
-      return this.writeFile(path, updated);
+      return this.writeFile(absPath, updated);
     } catch (err: any) {
       return { ok: false, output: '', error: err.message };
     }
   }
 
   private async deleteFile(path: string): Promise<ToolResult> {
-    this.sandbox.assertPath(path);
+    const absPath = this.resolvePath(path);
+    this.sandbox.assertPath(absPath);
     try {
-      await unlink(path);
-      return { ok: true, output: `Deleted: ${path}` };
+      await unlink(absPath);
+      return { ok: true, output: `Deleted: ${absPath}` };
     } catch (err: any) {
       return { ok: false, output: '', error: err.message };
     }
   }
 
   private async listFiles(dir: string): Promise<ToolResult> {
-    this.sandbox.assertPath(dir);
+    const absPath = this.resolvePath(dir);
+    this.sandbox.assertPath(absPath);
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
+      const entries = await readdir(absPath, { withFileTypes: true });
       const list = entries.map(e => `${e.isDirectory() ? 'd' : 'f'} ${e.name}`).join('\n');
       return { ok: true, output: list };
     } catch (err: any) {
@@ -223,6 +234,7 @@ export class AgentToolExecutor {
 
     try {
       const result = await execa(parsed.command, parsed.args, {
+        cwd: this.projectDir || undefined,
         shell: false,
         timeout: this.sandbox.getTimeout(),
         maxBuffer: 5 * 1024 * 1024,

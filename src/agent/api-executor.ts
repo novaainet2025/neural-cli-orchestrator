@@ -31,6 +31,7 @@ interface RunOptions {
   timeoutMs?: number;
   attemptedProviders?: string[];
   messages?: ChatCompletionMessageParam[];
+  projectDir?: string;
 }
 
 interface ApiResult {
@@ -187,7 +188,7 @@ export class ApiExecutor {
       };
     }
 
-    const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId);
+    const toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId, options?.projectDir);
 
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
     trajectoryGuard.beginTask(taskId, agentId);
