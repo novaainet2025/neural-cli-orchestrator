@@ -9,8 +9,8 @@
 # 실행: pm2 start cli-installs/mlx-chat-liveness.sh --name mlx-chat-liveness --interpreter bash
 MODEL="/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit"
 URL="http://127.0.0.1:8000/v1/chat/completions"
-INTERVAL=45
-THRESHOLD=3
+INTERVAL=20
+THRESHOLD=5
 FAILS=0
 
 echo "[$(date '+%F %T')] mlx-chat-liveness start (interval=${INTERVAL}s threshold=${THRESHOLD})"

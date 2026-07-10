@@ -5,6 +5,7 @@ const log = createLogger('resource-limiter');
 export interface ResourcePolicy {
   maxFileSize: number;          // bytes (default 10MB)
   maxExecutionTime: number;     // ms (default 120000)
+  maxApiRequestTime: number;    // ms (default 120000)
   maxMemory: number;            // bytes (default 512MB)
   maxConcurrentActions: number; // default 4
 }
@@ -12,6 +13,7 @@ export interface ResourcePolicy {
 const DEFAULT_POLICY: ResourcePolicy = {
   maxFileSize: 10 * 1024 * 1024,      // 10MB
   maxExecutionTime: 120_000,           // 2 min
+  maxApiRequestTime: 120_000,          // 2 min
   maxMemory: 512 * 1024 * 1024,       // 512MB
   maxConcurrentActions: 4,
 };
@@ -34,6 +36,10 @@ export class ResourceLimiter {
 
   getTimeout(): number {
     return this.policy.maxExecutionTime;
+  }
+
+  getApiTimeout(): number {
+    return this.policy.maxApiRequestTime;
   }
 
   async acquireSlot(): Promise<() => void> {

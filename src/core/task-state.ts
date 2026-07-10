@@ -1,16 +1,17 @@
 import type Database from 'better-sqlite3';
 
-export const TERMINAL_STATES = new Set(['completed', 'failed', 'timed_out', 'cancelled']);
+export const TERMINAL_STATES = new Set(['completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']);
 
 export const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
   queued: new Set(['assigned', 'running', 'cancelled', 'failed']),
-  assigned: new Set(['running', 'streaming', 'completed', 'failed', 'timed_out', 'cancelled']),
+  assigned: new Set(['running', 'streaming', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
   running: new Set(['streaming', 'completed', 'failed', 'timed_out', 'cancelled']),
   streaming: new Set(['completed', 'failed', 'timed_out', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
   timed_out: new Set(),
   cancelled: new Set(),
+  lease_expired: new Set(),
 };
 
 const ALLOWED_SOURCES_BY_TARGET = new Map<string, string[]>();

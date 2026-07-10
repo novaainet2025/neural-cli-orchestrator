@@ -22,11 +22,32 @@ LAST_USE_FILE="/tmp/mlx-last-use"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NCO_DIR="${NCO_DIR:-$(dirname "$SCRIPT_DIR")}"
-MODEL_PATH="${MLX_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
+MODEL_PATH_RAW="${MLX_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
 MLX_BIN="${HOME}/.local/bin/mlx_lm.server"
 PROXY_SCRIPT="${NCO_DIR}/cli-installs/anthropic-mlx-proxy.py"
 PROXY_PORT=4100
 PROXY_LOG="/tmp/anthropic-mlx-proxy.log"
+
+_resolve_model_path() {
+  local key
+  key="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  case "$key" in
+    qwen3|qwen3-30b|qwen3-instruct|qwen3-30b-instruct)
+      echo "$HOME/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit"
+      ;;
+    qwen3-coder|qwen3-coder-30b)
+      echo "$HOME/project/LM-models/mlx/Qwen3-Coder-30B-A3B-Instruct-4bit"
+      ;;
+    glm-5)
+      echo "$HOME/project/LM-models/mlx/GLM-5-4bit"
+      ;;
+    *)
+      echo "$1"
+      ;;
+  esac
+}
+
+MODEL_PATH="$(_resolve_model_path "$MODEL_PATH_RAW")"
 
 _is_running() { pm2 jlist 2>/dev/null | grep -q "\"name\":\"$PM2_NAME\""; }
 _is_healthy()  { curl -sf "${MLX_API}/models" >/dev/null 2>&1; }

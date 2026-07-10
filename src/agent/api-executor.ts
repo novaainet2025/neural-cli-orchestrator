@@ -10,15 +10,26 @@ import { SandboxManager } from '../security/sandbox-manager.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
-import { getApiKeys, type ProviderConfig } from '../utils/config.js';
+import { getApiKeys, getProvider, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
+import { resolveProviderModel } from '../utils/mlx-models.js';
 
 const log = createLogger('api-executor');
 
 const MAX_ITERATIONS = 10;
 const MAX_HISTORY = 24;
 const MAX_OUTPUT_LEN = 16000;
+const MAX_RETRYABLE_HTTP_RETRIES = 2;
+
+interface RunOptions {
+  systemPrompt?: string;
+  compact?: boolean;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  attemptedProviders?: string[];
+  messages?: ChatCompletionMessageParam[];
+}
 
 interface ApiResult {
   output: string;
@@ -65,6 +76,21 @@ function isLikelyToolsUnsupportedError(err: unknown): boolean {
   );
 }
 
+function getErrorStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object' || !('status' in err)) return undefined;
+  const status = Number((err as { status?: number }).status);
+  return Number.isFinite(status) ? status : undefined;
+}
+
+export function isRetryableHttpError(err: unknown): boolean {
+  const status = getErrorStatus(err);
+  return status === 408 || status === 429;
+}
+
+function getRetryDelayMs(attempt: number): number {
+  return 1000 * Math.min(attempt, 3);
+}
+
 function withAbortSignal<T>(
   operation: (signal?: AbortSignal) => Promise<T>,
   signal?: AbortSignal,
@@ -97,6 +123,11 @@ function withAbortSignal<T>(
   });
 }
 
+function withTimeoutSignal(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  return signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+}
+
 /**
  * Type C Executor: API-based agents (OpenRouter, NVIDIA, etc.).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
@@ -119,10 +150,13 @@ export class ApiExecutor {
     }
   }
 
-  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean, signal?: AbortSignal, timeoutMs?: number }): Promise<ApiResult> {
+  async run(taskId: string, prompt: string, options?: RunOptions): Promise<ApiResult> {
+    const attemptedProviders = new Set(options?.attemptedProviders ?? []);
+    attemptedProviders.add(this.provider.id);
     const agentId = this.provider.id;
     let iterations = 0;
     let rateLimitRotations = 0;
+    let retryableHttpRetries = 0;
     let totalToolCalls = 0;
     const usage = {
       promptTokens: 0,
@@ -137,7 +171,7 @@ export class ApiExecutor {
         output: error,
         iterations,
         toolCalls: totalToolCalls,
-        model: this.provider.model || 'unknown',
+        model: resolveProviderModel(this.provider) || 'unknown',
         success: false,
         error,
       };
@@ -148,32 +182,17 @@ export class ApiExecutor {
     await sharedState.setAgentState(agentId, { status: 'working', currentTask: taskId });
     trajectoryGuard.beginTask(taskId, agentId);
 
-    let systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
-    // [2026-07-09] mlx 도구 사용 재활성 — 2026-07-07의 전면 금지는 모델이 훈련된
-    // <function=...> 포맷이 새어나올 때 파서 미지원으로 "consecutive tool errors" 실패를
-    // 유발했다(성공률 72%). 이제 tool-parser가 해당 네이티브 포맷을 파싱하므로,
-    // 금지 대신 "단순 질문 직답 + 필요 시에만 도구" 정책으로 전환.
-    if (['mlx', 'ollama', 'mlx-instruct', 'hermes'].includes(this.provider.id)) {
-      systemContent += '\n\n[출력 규칙] 1) 지식으로 답할 수 있는 질문은 도구 없이 즉시 평문으로 답하라. '
-        + '2) 파일 읽기/검색/명령 실행이 실제로 필요할 때만 아래 형식으로 도구를 호출하라 (한 번에 하나, 최대 2회 사용 후 반드시 최종 답변):\n'
-        + '<function=runCommand>\n<parameter=command>ls -la</parameter>\n</function>\n'
-        + '사용 가능 도구: readFile(path), writeFile(path,content), editFile(path,old,new), listFiles(path), '
-        + 'searchCode(query,path), runCommand(command), gitStatus(), gitDiff()\n'
-        + '3) 최종 답변은 요청 형식을 정확히 지켜라 — 사족·검증문구·괄호주석 금지. '
-        + '4) 질문의 조건(필터·범위·단위·확장자 등)을 정확히 적용한 값을 답하라. '
-        + '5) 코드를 요구받지 않았다면 코드를 출력하지 말고 도구로 확인한 결과 값을 답하라. '
-        + 'Answer with ONLY the requested content. No preamble, no extra text.';
-    }
-    const messages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: systemContent },
-      { role: 'user', content: prompt },
-    ];
+    const systemContent = await this.buildSystemPrompt(options?.systemPrompt, options?.compact);
+    const messages: ChatCompletionMessageParam[] = options?.messages
+      ? [...options.messages]
+      : [
+          { role: 'system', content: systemContent },
+          { role: 'user', content: prompt },
+        ];
 
     const tools = getNcoOpenAiTools();
     let finalOutput = '';
-    // [2026-07-07] mlx(로컬 Qwen3-Coder)는 native tool_call을 못 하고 텍스트로 "<function=runCommand>"
-    // 를 흉내내 뱉어 품질 저하(단순 질문도 tool 오용). tool 비활성 → 순수 텍스트 응답만 하게.
-    let useNativeTools = this.provider.id !== 'mlx';
+    let useNativeTools = true;
 
     try {
       while (iterations < MAX_ITERATIONS) {
@@ -195,7 +214,7 @@ export class ApiExecutor {
         if (!this.sandbox.canExecute()) break;
 
         const client = this.createClient();
-        const model = this.provider.model || 'default';
+        const model = resolveProviderModel(this.provider) || 'default';
 
         try {
           const createParams: ChatCompletionCreateParamsNonStreaming = {
@@ -205,11 +224,12 @@ export class ApiExecutor {
             stream: false,
           };
           // [2026-07-09] rep_penalty 1.25는 구 Qwen3-Coder EOS 폭주 대응책 — Instruct-2507로
-          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. 1.05로 완화, temp 0.
+          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. MLX는 temp를 올리고
+          // rep penalty를 기본치로 복귀시켜 경직된 응답을 완화한다.
           if (this.provider.id === 'mlx') {
-            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.05;
+            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.0;
             (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
-            createParams.temperature = 0;
+            createParams.temperature = 0.5;
           }
           if (useNativeTools) {
             createParams.tools = tools;
@@ -218,11 +238,12 @@ export class ApiExecutor {
 
           const response = await withAbortSignal(
             requestSignal => client.chat.completions.create(createParams, { signal: requestSignal }),
-            options?.signal,
+            withTimeoutSignal(options?.signal, this.sandbox.getApiTimeout()),
           );
           usage.promptTokens += response.usage?.prompt_tokens ?? 0;
           usage.completionTokens += response.usage?.completion_tokens ?? 0;
           usage.totalTokens += response.usage?.total_tokens ?? 0;
+          retryableHttpRetries = 0;
 
           const msg = response.choices[0]?.message;
           if (!msg) break;
@@ -362,9 +383,7 @@ export class ApiExecutor {
           finalOutput = extractThinking(textContent);
           break;
         } catch (err: unknown) {
-          const status = err && typeof err === 'object' && 'status' in err
-            ? (err as { status?: number }).status
-            : undefined;
+          const status = getErrorStatus(err);
           if (status === 429 && this.keys.length > 1) {
             // 무한 회전 방지: 전 키가 rate-limit이면 iterations--가 MAX_ITERATIONS를
             // 무력화해 태스크가 영구 hang이었다 (2026-07-03 openrouter 7키 실측).
@@ -380,6 +399,15 @@ export class ApiExecutor {
             continue;
           }
 
+          if (isRetryableHttpError(err) && retryableHttpRetries < MAX_RETRYABLE_HTTP_RETRIES) {
+            retryableHttpRetries++;
+            const delayMs = getRetryDelayMs(retryableHttpRetries);
+            log.warn({ agentId, status, retryableHttpRetries, delayMs }, 'Retryable API error, retrying same provider');
+            await new Promise(r => setTimeout(r, delayMs));
+            iterations--;
+            continue;
+          }
+
           if (useNativeTools && isLikelyToolsUnsupportedError(err)) {
             log.warn(
               { agentId, err: err instanceof Error ? err.message : String(err) },
@@ -391,15 +419,24 @@ export class ApiExecutor {
           }
 
           const message = err instanceof Error ? err.message : String(err);
+          const fallbackProviderId = this.provider.apiConfig?.fallback?.provider;
 
-          if (this.provider.apiConfig?.fallback) {
-            log.info({ agentId, fallback: this.provider.apiConfig.fallback.provider }, 'Falling back');
-            await eventBus.publish({
-              type: 'system:fallback',
-              from: agentId,
-              to: this.provider.apiConfig.fallback.provider,
-              reason: message,
-            });
+          if (fallbackProviderId && !attemptedProviders.has(fallbackProviderId)) {
+            const fallbackProvider = getProvider(fallbackProviderId);
+            if (fallbackProvider?.enabled) {
+              log.info({ agentId, fallback: fallbackProviderId }, 'Falling back');
+              await eventBus.publish({
+                type: 'system:fallback',
+                from: agentId,
+                to: fallbackProviderId,
+                reason: message,
+              });
+              return new ApiExecutor(fallbackProvider, this.sandbox).run(taskId, prompt, {
+                ...options,
+                attemptedProviders: [...attemptedProviders],
+                messages: [...messages],
+              });
+            }
           }
 
           throw err;
@@ -412,14 +449,32 @@ export class ApiExecutor {
 
     // 빈 완료를 성공으로 기록하면 위임자가 결과 유실을 감지 못한다 (nvidia 빈 결과 사건)
     if (!finalOutput.trim()) {
-      throw new Error(`empty completion from provider '${agentId}' after ${iterations} iteration(s)`);
+      const emptyError = new Error(`empty completion from provider '${agentId}' after ${iterations} iteration(s)`);
+      const fallbackProviderId = this.provider.apiConfig?.fallback?.provider;
+      if (fallbackProviderId && !attemptedProviders.has(fallbackProviderId)) {
+        const fallbackProvider = getProvider(fallbackProviderId);
+        if (fallbackProvider?.enabled) {
+          await eventBus.publish({
+            type: 'system:fallback',
+            from: agentId,
+            to: fallbackProviderId,
+            reason: emptyError.message,
+          });
+          return new ApiExecutor(fallbackProvider, this.sandbox).run(taskId, prompt, {
+            ...options,
+            attemptedProviders: [...attemptedProviders],
+            messages: [...messages],
+          });
+        }
+      }
+      throw emptyError;
     }
 
     return {
       output: finalOutput,
       iterations,
       toolCalls: totalToolCalls,
-      model: this.provider.model || 'unknown',
+      model: resolveProviderModel(this.provider) || 'unknown',
       usage,
     };
   }
@@ -428,7 +483,21 @@ export class ApiExecutor {
     const base = override || this.provider.persona.systemPrompt;
     if (compact) return buildCompactSystemPrompt(base);
     const teamState = await this.buildTeamContext();
-    return buildApiAgentSystemPrompt(base, teamState);
+    let systemContent = buildApiAgentSystemPrompt(base, teamState);
+    // 로컬 툴유저는 도구 호출 예산을 소폭 완화하되 루프는 막는다.
+    if (['mlx', 'ollama', 'mlx-instruct', 'hermes'].includes(this.provider.id)) {
+      const maxToolUses = ['mlx', 'ollama'].includes(this.provider.id) ? 4 : 3;
+      systemContent += '\n\n[출력 규칙] 1) 지식으로 답할 수 있는 질문은 도구 없이 즉시 평문으로 답하라. '
+        + `2) 파일 읽기/검색/명령 실행이 실제로 필요할 때만 아래 형식으로 도구를 호출하라 (한 번에 하나, 최대 ${maxToolUses}회 사용 후 반드시 최종 답변):\n`
+        + '<function=runCommand>\n<parameter=command>ls -la</parameter>\n</function>\n'
+        + '사용 가능 도구: readFile(path), writeFile(path,content), editFile(path,old,new), listFiles(path), '
+        + 'searchCode(query,path), runCommand(command), gitStatus(), gitDiff()\n'
+        + '3) 최종 답변은 요청 형식을 정확히 지켜라 — 사족·검증문구·괄호주석 금지. '
+        + '4) 질문의 조건(필터·범위·단위·확장자 등)을 정확히 적용한 값을 답하라. '
+        + '5) 코드를 요구받지 않았다면 코드를 출력하지 말고 도구로 확인한 결과 값을 답하라. '
+        + 'Answer with ONLY the requested content. No preamble, no extra text.';
+    }
+    return systemContent;
   }
 
   private getCredentialPreflightError(): string | null {
@@ -473,7 +542,7 @@ export class ApiExecutor {
       // 소진 시 31162s)를 존중하며 잠들어 태스크가 시간 단위로 hang한다.
       // 429/오류는 즉시 throw시켜 우리 키 회전 루프가 제어하도록 한다.
       maxRetries: isLocalEndpoint ? 2 : 0,
-      timeout: this.sandbox.getTimeout(),
+      timeout: this.sandbox.getApiTimeout(),
     });
   }
 

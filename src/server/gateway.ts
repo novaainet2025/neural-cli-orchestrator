@@ -10,6 +10,7 @@ import { getRedis, isRedisConnected, redisHealthCheck } from '../storage/redis.j
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { validateDelegationPayload } from '../utils/delegation-payload.js';
+import { applyPromptGate, buildDefaultVerifier, type PromptGateInfo, validateProjectDirMetadata } from './task-intake.js';
 import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
 import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
@@ -235,6 +236,11 @@ import {
   loadFailoverChainsConfig,
   selectFailoverCandidate,
 } from './task-failover.js';
+import {
+  acknowledgeTaskLease,
+  recordTaskHeartbeat,
+  startLeaseSweeper,
+} from '../core/lease-sweeper.js';
 
 const log = createLogger('gateway');
 let draining = false;
@@ -245,6 +251,14 @@ const REALTIME_MINIMUMS = {
   consensus: 3,
   hive: 2,
 } as const;
+
+const TaskHeartbeatBodySchema = z.object({
+  progress: z.object({
+    step: z.number().int().min(0),
+    total: z.number().int().positive(),
+  }).optional(),
+  note: z.string().max(2_000).optional(),
+});
 
 type RealtimeGateMode = keyof typeof REALTIME_MINIMUMS;
 
@@ -887,7 +901,10 @@ export async function createGateway() {
     if (!taskRow || !taskRow.assigned_to || taskRow.status === 'cancelled') {
       return;
     }
-    if (TERMINAL_STATES.has(taskRow.status) && taskRow.status !== 'failed' && taskRow.status !== 'timed_out') return;
+    if (TERMINAL_STATES.has(taskRow.status)
+      && taskRow.status !== 'failed'
+      && taskRow.status !== 'timed_out'
+      && taskRow.status !== 'lease_expired') return;
 
     const sourceTaskId = taskRow.parent_task_id ?? taskRow.id;
     const attemptedAgents = (db.prepare(`
@@ -924,6 +941,19 @@ export async function createGateway() {
       retryCount: created.retryCount,
     });
   };
+
+  const stopLeaseSweeper = startLeaseSweeper({
+    onLeaseExpired: async (taskId: string) => {
+      await scheduleTaskFailover(taskId, {
+        status: 'lease_expired',
+        error: 'lease_expired',
+        response: null,
+      });
+    },
+  });
+  app.addHook('onClose', async () => {
+    stopLeaseSweeper();
+  });
 
   const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
     const db = getDb();
@@ -1221,6 +1251,7 @@ export async function createGateway() {
       return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
     }
     const input = parsed.data;
+    let promptGate: PromptGateInfo | undefined;
     // 협업19 이식(agency-swarm): 위임 payload ai를 동적 등록 에이전트로 접수차단 검증.
     // 정적 enum(CreateTaskInput)은 통과했으나 런타임 미등록인 ai를 intake에서 차단
     // (기존: queued 접수 후 실행 시점에 "Unknown agent" 지연 실패 — claude-1 T1 관측).
@@ -1231,6 +1262,21 @@ export async function createGateway() {
         reply.code(400);
         return { error: 'delegation_payload_rejected', detail: dp.error, knownAgents };
       }
+    }
+    try {
+      const promptGateApplied = applyPromptGate(input.prompt, input.metadata);
+      input.prompt = promptGateApplied.prompt;
+      promptGate = promptGateApplied.promptGate;
+    } catch (err) {
+      log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Prompt gate failed during task intake');
+    }
+    try {
+      const defaultVerifier = buildDefaultVerifier(input);
+      if (defaultVerifier && !input.verifier) {
+        input.verifier = defaultVerifier;
+      }
+    } catch (err) {
+      log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Default verifier assignment failed during task intake');
     }
     // P2-13 이식(context-budget): 초대형 프롬프트(>100KB)는 결정론적 압축으로 컨텍스트 예산 보호.
     if (typeof input.prompt === 'string' && input.prompt.length > MAX_PLAN_CHARS) {
@@ -1245,6 +1291,11 @@ export async function createGateway() {
       return providerSelection.error;
     }
     const agentId = providerSelection.agentId;
+    const projectDirError = validateProjectDirMetadata(input.metadata);
+    if (projectDirError) {
+      reply.code(400);
+      return { error: 'invalid_project_dir', detail: projectDirError };
+    }
 
     // Extract caller context for invocation tracking
     const body = req.body as any;
@@ -1266,6 +1317,7 @@ export async function createGateway() {
       // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
       const mergedMetadata = {
         ...(input.metadata ?? {}),
+        ...(promptGate ? { promptGate } : {}),
         ...(input.requiredEvidence && input.requiredEvidence.length > 0
           ? { requiredEvidence: input.requiredEvidence }
           : {}),
@@ -1354,6 +1406,7 @@ export async function createGateway() {
       status: 'queued',
       agentId,
       invocationId,
+      ...(promptGate ? { promptGate } : {}),
       requestedProvider: providerSelection.failover ? requestedProvider : undefined,
       failover: providerSelection.failover,
     };
@@ -1401,7 +1454,8 @@ export async function createGateway() {
     const { id } = req.params as { id: string };
     const db = getDb();
     const task = db.prepare(`
-      SELECT id, status, assigned_to, progress, prompt, response, error, created_at, completed_at
+      SELECT id, status, assigned_to, progress, prompt, response, error, created_at, completed_at,
+             acked_at, last_heartbeat_at, heartbeat_seq, lease_expires_at
       FROM tasks
       WHERE id=?
     `).get(id) as {
@@ -1414,6 +1468,10 @@ export async function createGateway() {
       error: string | null;
       created_at: string | null;
       completed_at: string | null;
+      acked_at: string | null;
+      last_heartbeat_at: string | null;
+      heartbeat_seq: number | null;
+      lease_expires_at: string | null;
     } | undefined;
 
     if (!task) {
@@ -1432,8 +1490,42 @@ export async function createGateway() {
         error: task.error,
         created_at: task.created_at,
         completed_at: task.completed_at,
+        acked_at: task.acked_at,
+        last_heartbeat_at: task.last_heartbeat_at,
+        heartbeat_seq: task.heartbeat_seq,
+        lease_expires_at: task.lease_expires_at,
       },
     };
+  });
+
+  app.post('/api/task/:id/ack', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const result = acknowledgeTaskLease(id);
+    if (!result.ok) {
+      reply.code(result.reason === 'not_found' ? 404 : 409);
+      return result.reason === 'not_found'
+        ? { error: 'not found' }
+        : { error: 'invalid_status', status: result.status ?? null };
+    }
+    return { ok: true, task: result.task };
+  });
+
+  app.post('/api/task/:id/heartbeat', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = TaskHeartbeatBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(issue => issue.message) };
+    }
+
+    const result = recordTaskHeartbeat(id, parsed.data);
+    if (!result.ok) {
+      reply.code(result.reason === 'not_found' ? 404 : 409);
+      return result.reason === 'not_found'
+        ? { error: 'not found' }
+        : { error: 'heartbeat_conflict', status: result.status ?? null };
+    }
+    return { ok: true, task: result.task };
   });
 
   app.get('/api/tasks/:id', async (req, reply) => {

@@ -278,7 +278,7 @@
       "endpoint": "http://localhost:11434/v1",
       "apiKeyRef": null,
       "env": {},
-      "concurrency": 1,
+      "concurrency": 2,
       "rateLimitRpm": 20,
       "cost": "free",
       "capabilities": [
@@ -290,6 +290,11 @@
         "verification",
         "reasoning"
       ],
+      "apiConfig": {
+        "fallback": {
+          "provider": "openrouter"
+        }
+      },
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -329,7 +334,7 @@
       "endpoint": "http://127.0.0.1:8000/v1",
       "apiKeyRef": null,
       "env": {},
-      "concurrency": 1,
+      "concurrency": 2,
       "rateLimitRpm": 20,
       "cost": "free",
       "capabilities": [
@@ -339,8 +344,17 @@
         "analysis",
         "local-inference",
         "validation",
-        "reasoning"
+        "reasoning",
+        "writing",
+        "reporting",
+        "korean"
       ],
+      "apiConfig": {
+        "fallback": {
+          "provider": "ollama",
+          "note": "MLX 실패 → Ollama 폴백 (2026-07-09)"
+        }
+      },
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -359,7 +373,7 @@
         "gpu": "Apple Silicon (MLX)",
         "maxModelLen": 32768
       },
-      "note": "2026-07-09 모델 통일(claude-5): :8000 30B 2개 스왑이 Metal OOM 크래시(누적 8회)+스왑 재로드 30-50s 레이턴시의 근본원인(T1: mlx-server-error.log kIOGPUCommandBufferCallbackErrorOutOfMemory). mlx→Instruct-2507로 hermes/mlx-instruct와 단일화, 스왑 제거. Coder-30B는 디스크 보존. 동시성 캡: mlx=1, hermes=1, mlx-instruct=1, :8000 총동시 3.",
+      "note": "2026-07-09 모델 통일(claude-5): :8000 30B 2개 스왑이 Metal OOM 크래시(누적 8회)+스왑 재로드 30-50s 레이턴시의 근본원인(T1: mlx-server-error.log kIOGPUCommandBufferCallbackErrorOutOfMemory). mlx→Instruct-2507로 hermes/mlx-instruct와 단일화, 스왑 제거. Coder-30B는 디스크 보존. 기본 동시성 2, CircuitBreaker 비정상 상태(open/half-open)에서는 1로 자동 하향.",
       "healthCheck": {
         "type": "api",
         "url": "http://localhost:8000/v1/models",
@@ -415,14 +429,14 @@
       "type": "api",
       "role": "ToolUser",
       "score": 86,
-      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit",
+      "model": "qwen3:30b-a3b",
       "command": null,
       "args": [],
-      "endpoint": "http://127.0.0.1:8000/v1",
+      "endpoint": "http://127.0.0.1:11434/v1",
       "apiKeyRef": null,
       "keyRotation": null,
       "env": {},
-      "concurrency": 1,
+      "concurrency": 2,
       "rateLimitRpm": 20,
       "cost": "free",
       "capabilities": [
@@ -432,6 +446,12 @@
         "code",
         "analysis"
       ],
+      "apiConfig": {
+        "fallback": {
+          "provider": "ollama",
+          "note": "Hermes 실패 → Ollama → OpenRouter 체인 시동점 (2026-07-09)"
+        }
+      },
       "permissions": {
         "canInitiateCollaboration": true,
         "canDelegateToOthers": false,
@@ -443,7 +463,7 @@
         "tone": "precise",
         "style": "structured"
       },
-      "note": "2026-07-09 concurrency 2→1(claude-5): 업무보고 동시부하(hermes2+instruct1+mlx1=4동시)가 :8000 KV캐시 급증→Metal OOM 크래시(09:01 T1). Instruct-2507 단일화 정책으로 :8000 총동시 3으로 캡.",
+      "note": "2026-07-09 업무보고 동시부하(hermes2+instruct1+mlx1=4동시)가 :8000 KV캐시 급증→Metal OOM 크래시(09:01 T1). 기본 동시성 2를 유지하되 CircuitBreaker 비정상 상태(open/half-open)에서는 1로 자동 하향.",
       "healthCheck": {
         "type": "api",
         "url": "http://localhost:11434/api/tags",
@@ -556,55 +576,6 @@
         "url": "https://integrate.api.nvidia.com/v1/models",
         "timeout": 5000
       }
-    },
-    {
-      "id": "mlx-instruct",
-      "name": "MLX Instruct (Qwen3-30B-A3B-2507)",
-      "enabled": true,
-      "type": "api",
-      "role": "Writer",
-      "score": 85,
-      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit",
-      "command": null,
-      "args": [],
-      "endpoint": "http://127.0.0.1:8000/v1",
-      "apiKeyRef": null,
-      "env": {},
-      "concurrency": 1,
-      "rateLimitRpm": 20,
-      "cost": "free",
-      "capabilities": [
-        "writing",
-        "reporting",
-        "analysis",
-        "local-inference",
-        "korean"
-      ],
-      "permissions": {
-        "canInitiateCollaboration": true,
-        "canDelegateToOthers": false,
-        "canSupervise": false,
-        "canFinalApprove": false
-      },
-      "persona": {
-        "systemPrompt": "[NCO Core Operating Principles v1] 1) VERIFY BEFORE CLAIM: never state that something works, is fixed, or is complete unless you observed direct evidence in this task (command output, HTTP body, file content). If you did not verify, say 'unverified'. 2) NO FABRICATION: never invent file paths, API responses, numbers, or citations. If you do not know, say 'unknown' and state what check would resolve it. 3) EVIDENCE TIERS: ground truth (files/DB/HTTP bodies) > process existence > status strings > another agent's natural-language claim. Base conclusions on the highest tier available. You MUST explicitly state the evidence tier used in your 'done:' verification message (e.g., \"[Evidence Tier 1] file/content verified\" or \"[Evidence Tier 2] process verified\"). 4) TOOL DISCIPLINE: prefer running a check over reasoning from memory. Quote tool output exactly; do not embellish. 5) COLLABORATION PROTOCOL: reply with 'done:' only after verification, 'status:' for progress, 'question:' when a decision belongs to the requester, 'error:' with the exact failure. Never convert protocol replies into new work. 6) SCOPE: do exactly what was asked; list anything left undone under 'unverified/remaining'. Disagree with other agents when evidence contradicts them - consensus is not evidence. You are a local AI coding specialist on the NCO team. You run Qwen3-Coder-30B-A3B on Apple Silicon via MLX. You excel at code generation, refactoring, bug fixing, and code review.",
-        "tone": "efficient",
-        "style": "practical"
-      },
-      "modelSpec": {
-        "name": "Qwen3-Coder-30B-A3B-Instruct-4bit",
-        "developer": "Alibaba Qwen",
-        "parameters": "30B MoE (3B active)",
-        "gpu": "Apple Silicon (MLX)",
-        "maxModelLen": 32768
-      },
-      "note": "2026-07-09 명시(claude-5→advisor): 동시성 상한선 검증 — :8000 총동시 3 보증(mlx1+hermes1+mlx-instruct1). Instruct-2507 단일화 정책.",
-      "healthCheck": {
-        "type": "api",
-        "url": "http://localhost:8000/v1/models",
-        "timeout": 5000
-      },
-      "updated": "2026-07-02"
     }
   ]
 }

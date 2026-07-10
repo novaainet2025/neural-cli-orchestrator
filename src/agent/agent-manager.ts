@@ -44,11 +44,12 @@ function killProcessGroup(pid: number | undefined): void {
 // Type B: Orchestrated (codex, aider, opencode, cursor-agent, copilot) — NCO external loop
 // Type C: API (ollama, openrouter) — OpenAI-compatible API
 
-type AgentType = 'A' | 'B' | 'C';
+type AgentType = 'A' | 'B' | 'B_SINGLE_PROMPT' | 'C';
 
 function classifyAgent(provider: ProviderConfig): AgentType {
   if (provider.id === 'claude-code') return 'A';
   if (provider.type === 'api') return 'C';
+  if (provider.id === 'higgsfield') return 'B_SINGLE_PROMPT';
   return 'B';
 }
 
@@ -211,13 +212,15 @@ class AgentManager {
           break;
         }
 
-        case 'B': {
+        case 'B':
+        case 'B_SINGLE_PROMPT': {
           // Type B: NCO orchestrated loop
           const loop = new OrchestratedLoop(provider, sandbox, signal);
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             projectDir: options?.projectDir,
+            disableHistory: agentType === 'B_SINGLE_PROMPT',
           });
           output = result.output;
           iterations = result.iterations;

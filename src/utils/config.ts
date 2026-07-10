@@ -2,6 +2,7 @@ import { config as dotenvConfig } from 'dotenv';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { resolveProviderModel } from './mlx-models.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
@@ -136,8 +137,11 @@ export function loadProviders(): ProviderConfig[] {
   const plat = detectPlatform();
   providers = providers.map(p => {
     const platforms = (p as { platforms?: string[] }).platforms;
-    if (platforms && !platforms.includes(plat)) return { ...p, enabled: false };
-    return p;
+    const provider = platforms && !platforms.includes(plat) ? { ...p, enabled: false } : p;
+    return {
+      ...provider,
+      model: resolveProviderModel(provider),
+    };
   });
 
   return providers;
@@ -152,10 +156,19 @@ function applyOllamaEnvOverride(providers: ProviderConfig[]): ProviderConfig[] {
     base = rawUrl.replace(/\/$/, '').replace(/\/v1$/, '');
   } else if (process.env.OLLAMA_HOST) {
     const host = process.env.OLLAMA_HOST;
-    // OLLAMA_HOST may already contain port (e.g. "172.28.112.1:11434") — don't append again
-    const hasPort = /:\d+$/.test(host);
-    const port = process.env.OLLAMA_PORT || '11434';
-    base = `http://${host}${hasPort ? '' : `:${port}`}`;
+    // OLLAMA_HOST may already be a full URL with scheme (e.g. macOS-native
+    // "http://localhost:11434") — prepending "http://" again produced a
+    // malformed "http://http://..." base that failed DNS resolution on
+    // every request, tripping the ollama circuit breaker permanently open
+    // (2026-07-09 T1: curl exit 6 on the doubled-scheme URL).
+    if (/^https?:\/\//.test(host)) {
+      base = host.replace(/\/$/, '');
+    } else {
+      // bare host (WSL style, e.g. "172.28.112.1" or "172.28.112.1:11434")
+      const hasPort = /:\d+$/.test(host);
+      const port = process.env.OLLAMA_PORT || '11434';
+      base = `http://${host}${hasPort ? '' : `:${port}`}`;
+    }
   }
   if (!base) return providers;
   return providers.map((p) => {

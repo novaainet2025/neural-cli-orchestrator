@@ -18,8 +18,9 @@ export interface SandboxConfig {
 const DEFAULT_ALLOWED_COMMANDS = [
   'node', 'npm', 'npx', 'tsx', 'tsc',
   'git', 'cat', 'ls', 'head', 'tail', 'wc',
-  'grep', 'rg', 'find', 'which',
+  'grep', 'rg', 'find', 'which', 'ps', 'pgrep',
   'echo', 'date', 'pwd',
+  'mkdir', 'cp', 'mv', 'sed', 'awk',
   'vitest', 'jest', 'mocha',
   'python3', 'pip3',
   // curl: 검증 태스크의 로컬 API 확인(:6200/:11434 등)에 필수 — 차단 시 hermes/ollama
@@ -72,6 +73,10 @@ export class SandboxManager {
   // Get execution timeout
   getTimeout(): number {
     return this.resourceLimiter.getTimeout();
+  }
+
+  getApiTimeout(): number {
+    return this.resourceLimiter.getApiTimeout();
   }
 
   // Acquire/release action slot
@@ -131,11 +136,15 @@ export function createSandbox(
     },
     resources: {
       maxConcurrentActions: isCommander ? 8 : 4,
-      // [2026-07-09] 로컬 LLM(mlx 등)은 프롬프트 처리+생성에 120s를 상시 초과
-      // (mlx 역대 평균 170s) → "Request timed out" 실패 누적의 근본 원인. 360s로 확대.
+      // [2026-07-09] 로컬 LLM은 도구 사용+생성 조합에서 300s를 넘기는 케이스가 남아 있다.
+      // 하드타임아웃을 360s로 완화하되 idle/hardcap 감시는 별도로 유지한다.
       maxExecutionTime: isCommander ? 300_000
         : LOCAL_LLM_IDS.has(agentId) ? 360_000
         : 120_000,
+      // API 호출은 도구 실행보다 조금 더 짧게 끊어 경합 timeout 원인을 분리한다.
+      maxApiRequestTime: isCommander ? 240_000
+        : LOCAL_LLM_IDS.has(agentId) ? 300_000
+        : 90_000,
     },
   });
 }

@@ -61,7 +61,7 @@ export function isRetryableFailoverFailure(input: {
   error?: string | null;
   response?: string | null;
 }): boolean {
-  if (input.status === 'timed_out') return true;
+  if (input.status === 'timed_out' || input.status === 'lease_expired') return true;
   const haystack = [input.error, input.response].filter((value): value is string => typeof value === 'string' && value.length > 0).join('\n');
   return RETRYABLE_FAILOVER_PATTERNS.some(pattern => pattern.test(haystack));
 }

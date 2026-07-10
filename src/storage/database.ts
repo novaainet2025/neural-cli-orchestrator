@@ -5,6 +5,7 @@ import { env } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('database');
+const LEASE_TRACKING_MIGRATION = '073_tasks_lease_tracking.sql';
 
 let db: Database.Database | null = null;
 
@@ -62,6 +63,9 @@ export function runMigrations(): void {
   const insertMigration = database.prepare(
     'INSERT INTO schema_migrations (filename) VALUES (?)'
   );
+  const markMigrationApplied = (file: string) => {
+    insertMigration.run(file);
+  };
   const applyMigration = database.transaction((file: string, sql: string) => {
     database.exec(sql);
     insertMigration.run(file);
@@ -70,6 +74,13 @@ export function runMigrations(): void {
   let count = 0;
   for (const file of files) {
     if (applied.has(file)) continue;
+
+    if (file === LEASE_TRACKING_MIGRATION && isLeaseTrackingMigrationSatisfied(database)) {
+      markMigrationApplied(file);
+      count++;
+      log.info({ file }, 'Migration marked applied (schema already satisfied)');
+      continue;
+    }
 
     const migrationPath = resolve(migrationsDir, file);
     let sql: string;
@@ -90,4 +101,23 @@ export function runMigrations(): void {
   } else {
     log.debug('All migrations up to date');
   }
+}
+
+function isLeaseTrackingMigrationSatisfied(database: Database.Database): boolean {
+  const columns = new Set(
+    (database.prepare(`PRAGMA table_info(tasks)`).all() as Array<{ name: string }>)
+      .map(column => column.name)
+  );
+  const requiredColumns = ['acked_at', 'last_heartbeat_at', 'heartbeat_seq', 'lease_expires_at'];
+  if (!requiredColumns.every(column => columns.has(column))) {
+    return false;
+  }
+
+  const tableRow = database.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table'
+      AND name = 'tasks'
+  `).get() as { sql: string | null } | undefined;
+  return Boolean(tableRow?.sql?.includes('lease_expired'));
 }

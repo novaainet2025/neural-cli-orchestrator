@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { AgentToolExecutor } from './agent-tools.js';
@@ -95,7 +95,11 @@ export class OrchestratedLoop {
     this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
   }
 
-  async run(taskId: string, prompt: string, options?: { systemPrompt?: string, compact?: boolean, projectDir?: string }): Promise<LoopResult> {
+  async run(
+    taskId: string,
+    prompt: string,
+    options?: { systemPrompt?: string, compact?: boolean, projectDir?: string, disableHistory?: boolean },
+  ): Promise<LoopResult> {
     this.taskProjectDir = options?.projectDir;
     const agentId = this.provider.id;
     let iterations = 0;
@@ -149,7 +153,7 @@ export class OrchestratedLoop {
         status: iterations === 1 ? 'thinking' : 'working',
       });
 
-      const aiResponse = await this.callCLI(taskId, fullSystem, history);
+      const aiResponse = await this.callCLI(taskId, fullSystem, history, options?.disableHistory === true);
       taskQueue.recordActivity(taskId, aiResponse);
 
       // Stream the response
@@ -238,18 +242,26 @@ export class OrchestratedLoop {
     }
   }
 
-  private async callCLI(taskId: string, system: string, history: Array<{ role: string; content: string }>): Promise<string> {
+  private async callCLI(
+    taskId: string,
+    system: string,
+    history: Array<{ role: string; content: string }>,
+    disableHistory = false,
+  ): Promise<string> {
     const command = this.provider.command!;
     const args = [...(this.provider.args || [])];
 
     // Build combined prompt (system + history)
-    const combined = [
-      system,
-      '',
-      '---',
-      '',
-      ...history.map(h => `### ${h.role === 'user' ? 'User' : 'Assistant'}:\n${h.content}`),
-    ].join('\n');
+    const currentPrompt = [...history].reverse().find(h => h.role === 'user')?.content ?? '';
+    const combined = disableHistory
+      ? currentPrompt
+      : [
+        system,
+        '',
+        '---',
+        '',
+        ...history.map(h => `### ${h.role === 'user' ? 'User' : 'Assistant'}:\n${h.content}`),
+      ].join('\n');
 
     // codex: --output-last-message writes ONLY the final assistant message to a file,
     // avoiding banner/echo pollution in stdout (T1-verified flag support)
@@ -260,6 +272,7 @@ export class OrchestratedLoop {
     // Most CLI AIs accept prompt via stdin or -p flag
     // Adapt per provider
     const finalArgs = this.buildArgs(args, combined, lastMessageFile);
+    this.assertTaskProjectDir();
 
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
@@ -362,6 +375,18 @@ export class OrchestratedLoop {
     }
   }
 
+  private assertTaskProjectDir(): void {
+    if (this.provider.id !== 'codex') return;
+
+    const projectDir = this.taskProjectDir?.trim();
+    if (!projectDir) {
+      throw new Error('codex requires metadata.projectDir: missing task project directory');
+    }
+    if (!existsSync(projectDir)) {
+      throw new Error(`codex requires metadata.projectDir to exist: ${projectDir}`);
+    }
+  }
+
   private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null): string[] {
     switch (this.provider.id) {
       case 'codex':
@@ -400,6 +425,8 @@ export class OrchestratedLoop {
       case 'copilot':
         // copilot CLI v1.0.22: non-interactive mode via --prompt flag
         return ['--prompt', prompt];
+      case 'higgsfield':
+        return ['generate', 'create', this.provider.model || 'higgsfield', '--prompt', prompt];
       default:
         return [...baseArgs, prompt];
     }

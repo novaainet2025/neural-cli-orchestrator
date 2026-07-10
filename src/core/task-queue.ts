@@ -20,6 +20,9 @@ import { CommandGate } from '../security/command-gate.js';
 import { extractTaskEvidenceJson } from './task-evidence.js';
 import { requireEvidence } from '../security/evidence-gate.js';
 import { paLifecycle } from './ported-integrations.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+import { acknowledgeTaskLease, recordTaskHeartbeat } from './lease-sweeper.js';
+import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from './task-escalation.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -41,7 +44,7 @@ const BASE_BACKOFF_MS = 5_000; // 5s, then 10s, then 20s
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 const TASK_MONITOR_INTERVAL_MS = 15_000;
 const PARTIAL_OUTPUT_LIMIT = 64 * 1024;
-const DEFAULT_VERIFIER_ALLOWLIST = ['node', 'npx', 'npm', 'git', 'curl', 'true', 'false', 'sleep', 'cat', 'ls', 'grep', 'sqlite3', 'tsc', 'vitest'];
+const DEFAULT_VERIFIER_ALLOWLIST = ['node', 'npx', 'npm', 'git', 'curl', 'true', 'false', 'sleep', 'cat', 'ls', 'grep', 'ps', 'pgrep', 'sqlite3', 'tsc', 'vitest'];
 const verifierAllowlist = (process.env.VERIFIER_ALLOWLIST ?? '')
   .split(',')
   .map(command => command.trim())
@@ -52,6 +55,7 @@ const verifierCommandGate = new CommandGate({
 });
 
 const log = createLogger('task-queue');
+const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['mlx', 'ollama', 'hermes']);
 
 // ─── Types ────────────────────────────────────────────
 export interface QueuedTask {
@@ -108,6 +112,30 @@ type VerifierResult = {
   outputSnippet: string;
   spawnError?: string;
 };
+
+function loadTaskMetadata(taskId: string): Record<string, unknown> {
+  const row = getDb().prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as { metadata_json: string | null } | undefined;
+  if (!row?.metadata_json) return {};
+  try {
+    const parsed = JSON.parse(row.metadata_json) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistTaskEscalation(taskId: string, agentId: string, metadataPatch: { attemptedAgents: string[]; escalationHistory: unknown[] }): void {
+  const db = getDb();
+  const metadata = {
+    ...loadTaskMetadata(taskId),
+    ...metadataPatch,
+  };
+  db.prepare(`
+    UPDATE tasks
+    SET assigned_to=?, metadata_json=?, updated_at=datetime('now')
+    WHERE id=?
+  `).run(agentId, JSON.stringify(metadata), taskId);
+}
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
 
@@ -374,27 +402,37 @@ export async function applyVerifierGate(
 
 // ─── In-memory semaphore (Redis-offline fallback) ─────
 class Semaphore {
-  private slots: number;
+  private limit: number;
+  private inUse = 0;
   private queue: Array<() => void> = [];
 
   constructor(concurrency: number) {
-    this.slots = Math.max(1, concurrency);
+    this.limit = Math.max(1, concurrency);
   }
 
   async acquire(): Promise<void> {
-    if (this.slots > 0) {
-      this.slots--;
+    if (this.inUse < this.limit) {
+      this.inUse++;
       return;
     }
     await new Promise<void>(resolve => this.queue.push(resolve));
   }
 
   release(): void {
-    if (this.queue.length > 0) {
+    this.inUse = Math.max(0, this.inUse - 1);
+    this.drain();
+  }
+
+  setLimit(concurrency: number): void {
+    this.limit = Math.max(1, concurrency);
+    this.drain();
+  }
+
+  private drain(): void {
+    while (this.queue.length > 0 && this.inUse < this.limit) {
+      this.inUse++;
       const next = this.queue.shift()!;
       next();
-    } else {
-      this.slots++;
     }
   }
 }
@@ -405,6 +443,7 @@ interface AgentQueueEntry {
   queueEvents?: QueueEvents;
   worker?: Worker;
   semaphore: Semaphore;      // always present as fallback
+  configuredConcurrency: number;
   concurrency: number;
   activeControllers: Map<string, AbortController>; // taskId → controller
   mode: 'bullmq' | 'semaphore';
@@ -437,6 +476,7 @@ interface TaskRuntimeEntry {
   processAlive: boolean;
   liveness: LivenessState;
   stalledSince: number | null;
+  lastHeartbeatFlushAt: number;
   abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
 }
 
@@ -447,6 +487,23 @@ class TaskQueueManager {
   private initialized = false;
   private runtimes = new Map<string, TaskRuntimeEntry>();
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
+
+  private getEffectiveConcurrency(agentId: string, configuredConcurrency: number): number {
+    const configured = Math.max(1, configuredConcurrency);
+    if (configured <= 1 || !DYNAMIC_LOCAL_CONCURRENCY_IDS.has(agentId)) {
+      return configured;
+    }
+
+    const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
+    return snapshot.state === 'closed' ? configured : 1;
+  }
+
+  private refreshEntryConcurrency(agentId: string, entry: AgentQueueEntry): number {
+    const effective = this.getEffectiveConcurrency(agentId, entry.configuredConcurrency);
+    entry.concurrency = effective;
+    entry.semaphore.setLimit(effective);
+    return effective;
+  }
 
   /**
    * Register the function that actually runs a task.
@@ -490,9 +547,11 @@ class TaskQueueManager {
 
     for (const p of providers) {
       const concurrency = Math.max(1, p.concurrency ?? 1);
+      const effectiveConcurrency = this.getEffectiveConcurrency(p.id, concurrency);
       const entry: AgentQueueEntry = {
-        semaphore: new Semaphore(concurrency),
-        concurrency,
+        semaphore: new Semaphore(effectiveConcurrency),
+        configuredConcurrency: concurrency,
+        concurrency: effectiveConcurrency,
         activeControllers: new Map(),
         mode: 'semaphore',
         waiting: 0,
@@ -536,6 +595,9 @@ class TaskQueueManager {
 
   private async runJob(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
     if (!this.executor) throw new Error('Executor not set');
+
+    this.refreshEntryConcurrency(task.agentId, entry);
+    await entry.semaphore.acquire();
 
     const controller = new AbortController();
     this.startRuntime(task, controller);
@@ -582,6 +644,7 @@ class TaskQueueManager {
     } finally {
       entry.activeControllers.delete(task.taskId);
       entry.active = Math.max(0, entry.active - 1);
+      entry.semaphore.release();
     }
   }
 
@@ -597,6 +660,8 @@ class TaskQueueManager {
   async enqueue(task: QueuedTask): Promise<TaskExecutionResult> {
     let lastError = '';
     let currentAgentId = task.agentId;
+    let currentMetadata: Record<string, unknown> = { ...(task.metadata ?? {}) };
+    let attemptedAgents = getAttemptedAgents(currentMetadata, task.agentId);
     let stallRetried = false;
     const allowStallRetry = process.env.NCO_STALL_RETRY !== '0';
 
@@ -614,11 +679,12 @@ class TaskQueueManager {
           if (failover) {
             log.info({ taskId: task.taskId, from: currentAgentId, to: failover }, 'Failing over to alternate agent');
             currentAgentId = failover;
+            attemptedAgents = appendAttemptedAgent(attemptedAgents, failover);
           }
         }
       }
 
-      const result = await this.runEnqueue({ ...task, agentId: currentAgentId });
+      const result = await this.runEnqueue({ ...task, agentId: currentAgentId, metadata: currentMetadata });
 
       if (result.success) return result;
       if (!stallRetried && allowStallRetry && result.error === 'timeout(idle)') {
@@ -630,7 +696,10 @@ class TaskQueueManager {
       // Check if failure was rate limit related
       const errMsg = result.error || result.output || '';
       if (!isRateLimitError(errMsg)) {
-        // Non-rate-limit failure — don't retry
+        // Non-rate-limit failure — don't retry same agent, but try tier escalation
+        // (소형모델의 '잘못된 출력' 실패가 가장 흔한 케이스 — rate-limit 경로만 타면 에스컬레이션이 영영 안 걸림)
+        const escalated = await this.tryTierEscalation(task, currentAgentId, errMsg, attemptedAgents, currentMetadata, 'non-rate-limit failure');
+        if (escalated) return escalated;
         return result;
       }
 
@@ -638,7 +707,57 @@ class TaskQueueManager {
       log.warn({ taskId: task.taskId, agentId: currentAgentId, attempt }, 'Rate limit hit — will retry');
     }
 
+    const escalated = await this.tryTierEscalation(task, currentAgentId, lastError, attemptedAgents, currentMetadata, 'rate limit exhaustion');
+    if (escalated) return escalated;
+
     return { success: false, output: '', error: `Rate limit exhausted after ${MAX_RETRIES} retries: ${lastError}` };
+  }
+
+  /**
+   * decideFinalEscalation을 실행하고 escalate 판정 시 다음 tier 에이전트로 재큐잉.
+   * escalate가 아니거나 결정 실패 시 null 반환(호출측이 기존 실패 경로 유지).
+   */
+  private async tryTierEscalation(
+    task: QueuedTask,
+    failedAgentId: string,
+    failureReason: string,
+    attemptedAgents: string[],
+    currentMetadata: Record<string, unknown>,
+    context: string,
+  ): Promise<TaskExecutionResult | null> {
+    try {
+      const escalation = decideFinalEscalation({
+        failedAgentId,
+        failureReason,
+        attemptedAgents,
+        circuitOpenAgents: circuitBreakerRegistry
+          .listSnapshots()
+          .filter(snapshot => snapshot.state === 'open')
+          .map(snapshot => snapshot.agentId),
+        metadata: currentMetadata,
+      });
+      if (escalation.action === 'escalate' && escalation.nextAgentId && escalation.metadataPatch) {
+        const nextMetadata = {
+          ...currentMetadata,
+          ...escalation.metadataPatch,
+        };
+        persistTaskEscalation(task.taskId, escalation.nextAgentId, escalation.metadataPatch);
+        log.info({
+          taskId: task.taskId,
+          from: failedAgentId,
+          to: escalation.nextAgentId,
+          reason: escalation.reason,
+        }, `Escalating task after ${context}`);
+        return await this.runEnqueue({
+          ...task,
+          agentId: escalation.nextAgentId,
+          metadata: nextMetadata,
+        });
+      }
+    } catch (err) {
+      log.warn({ taskId: task.taskId, err: err instanceof Error ? err.message : String(err) }, `Escalation decision failed after ${context}`);
+    }
+    return null;
   }
 
   /** Mark an agent as rate-limited in the DB so smart-router skips it */
@@ -692,9 +811,11 @@ class TaskQueueManager {
       const providers = loadEnabledProviders();
       const p = providers.find(x => x.id === task.agentId);
       const concurrency = p?.concurrency ?? 1;
+      const effectiveConcurrency = this.getEffectiveConcurrency(task.agentId, concurrency);
       this.agents.set(task.agentId, {
-        semaphore: new Semaphore(concurrency),
-        concurrency,
+        semaphore: new Semaphore(effectiveConcurrency),
+        configuredConcurrency: concurrency,
+        concurrency: effectiveConcurrency,
         activeControllers: new Map(),
         mode: 'semaphore',
         waiting: 0, active: 0, completed: 0, failed: 0,
@@ -807,6 +928,7 @@ class TaskQueueManager {
     if (!this.executor) return { success: false, output: '', error: 'Executor not set' };
 
     entry.waiting++;
+    this.refreshEntryConcurrency(task.agentId, entry);
     await entry.semaphore.acquire();
     entry.waiting = Math.max(0, entry.waiting - 1);
 
@@ -1034,8 +1156,10 @@ class TaskQueueManager {
       processAlive: true,
       liveness: 'working',
       stalledSince: null,
+      lastHeartbeatFlushAt: 0,
     };
     this.runtimes.set(task.taskId, runtime);
+    acknowledgeTaskLease(task.taskId);
     this.flushActivityToDb(runtime);
   }
 
@@ -1091,6 +1215,10 @@ class TaskQueueManager {
       SET last_activity_at=?, updated_at=datetime('now')
       WHERE id=?
     `).run(new Date(runtime.lastActivityAt).toISOString(), runtime.taskId);
+    if (runtime.firstActivityObserved && now - runtime.lastHeartbeatFlushAt >= 1_000) {
+      runtime.lastHeartbeatFlushAt = now;
+      recordTaskHeartbeat(runtime.taskId);
+    }
   }
 
   private monitorRuntime(runtime: TaskRuntimeEntry): void {
@@ -1113,6 +1241,7 @@ class TaskQueueManager {
     if (cpuSeconds !== null) {
       if (runtime.lastCpuSeconds !== null && cpuSeconds > runtime.lastCpuSeconds) {
         runtime.lastActivityAt = now;
+        runtime.firstActivityObserved = true;
         runtime.liveness = 'working';
         runtime.stalledSince = null;
       }
