@@ -15,3 +15,6 @@ context_history/
 docs/improvements/
 # 머신 로컬 PM2 앱 정의 (ecosystem.config.cjs는 중립 SSOT)
 ecosystem.local.cjs
+
+# DB 백업은 git 추적 금지 (2026-07-10: 213MB 파일이 push 차단 유발)
+db/backups/
