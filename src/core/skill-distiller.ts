@@ -4,6 +4,7 @@ import { getDb } from '../storage/database.js';
 import { knowledgeBase } from './knowledge-base.js';
 import type { KnowledgeEntry } from './knowledge-base.js';
 import { createLogger } from '../utils/logger.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 
 const log = createLogger('skill-distiller');
 
@@ -73,7 +74,7 @@ async function fetchEmbedding(text: string): Promise<number[] | null> {
     const res = await fetch(OLLAMA_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+      body: JSON.stringify({ model: EMBED_MODEL, input: text, keep_alive: OLLAMA_KEEP_ALIVE }),
       signal: AbortSignal.timeout(3000),
     });
     if (res.ok) {

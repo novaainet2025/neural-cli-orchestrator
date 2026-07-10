@@ -12,6 +12,7 @@ import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
 import { getApiKeys, getProvider, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
 import { resolveProviderModel } from '../utils/mlx-models.js';
 
@@ -239,6 +240,9 @@ export class ApiExecutor {
             (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.0;
             (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
             createParams.temperature = 0.5;
+          }
+          if (this.provider.id === 'ollama') {
+            (createParams as unknown as Record<string, unknown>).keep_alive = OLLAMA_KEEP_ALIVE;
           }
           if (useNativeTools) {
             createParams.tools = tools;

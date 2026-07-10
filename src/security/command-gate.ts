@@ -42,6 +42,12 @@ const TRUSTED_EXEC_DIRS = [
   '/opt/homebrew/sbin',
   '/home/linuxbrew/.linuxbrew/bin',
   '/home/linuxbrew/.linuxbrew/sbin',
+  // npm/npx 등은 bin 심링크가 realpath 해석 시 글로벌 node_modules 안의
+  // *-cli.js로 풀린다 (예: /opt/homebrew/bin/npm → …/lib/node_modules/npm/bin/npm-cli.js)
+  '/opt/homebrew/lib/node_modules',
+  '/usr/local/lib/node_modules',
+  '/usr/lib/node_modules',
+  '/home/linuxbrew/.linuxbrew/lib/node_modules',
   resolve(process.cwd(), 'node_modules/.bin'),
 ];
 

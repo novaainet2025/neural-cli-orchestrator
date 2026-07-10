@@ -1643,8 +1643,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     session: string; tool: string; action: string; file: string; project: string;
     ts: number; done: boolean;
   }[]>();
-  const ACTIVITY_TTL_MS = 30_000;      // 진행 중: 30초
-  const ACTIVITY_DONE_TTL_MS = 12_000; // 완료됨: 12초간 유지 (대시보드 폴링 캐치용)
+  const ACTIVITY_TTL_MS = 180_000;      // Claude 도구 호출 간 생성 침묵(30~120s)을 브리지 - 세션 작업표시 유지
+  const ACTIVITY_DONE_TTL_MS = 90_000; // Claude 도구 호출 간 생성 침묵(30~120s)을 브리지 - 세션 작업표시 유지
 
   // 만료 정리 (10초마다)
   setInterval(() => {

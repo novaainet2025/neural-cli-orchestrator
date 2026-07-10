@@ -14,6 +14,7 @@
  */
 
 import { createLogger } from '../utils/logger.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 
 const log = createLogger('hallucination-guard');
 
@@ -103,6 +104,7 @@ Respond with ONLY a number like: 0.8`;
       body: JSON.stringify({
         model: 'qwen2.5:1.5b', // 가볍고 빠른 검증용
         messages: [{ role: 'user', content: reviewPrompt }],
+        keep_alive: OLLAMA_KEEP_ALIVE,
         stream: false,
         options: { temperature: 0, num_predict: 10 },
       }),

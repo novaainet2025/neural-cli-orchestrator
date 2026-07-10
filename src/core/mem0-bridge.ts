@@ -12,6 +12,7 @@
 
 import { createLogger } from '../utils/logger.js';
 import { getDb } from '../storage/database.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 
 const log = createLogger('mem0-bridge');
 
@@ -104,7 +105,7 @@ async function embed(text: string): Promise<number[] | null> {
     const res = await fetch(OLLAMA_EMBED_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: EMBED_MODEL, input: text }),
+      body: JSON.stringify({ model: EMBED_MODEL, input: text, keep_alive: OLLAMA_KEEP_ALIVE }),
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;

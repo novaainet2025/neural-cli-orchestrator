@@ -9,6 +9,7 @@ import { taskQueue } from '../core/task-queue.js';
 import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { createTaskId } from '../utils/id.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 
 const log = createLogger('agent-manager');
 
@@ -421,7 +422,7 @@ class AgentManager {
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<boolean> {
     // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider(예: remote-mlx) TypeError crash-loop 방지
-    const url = typeof provider.healthCheck?.url === 'string' ? provider.healthCheck.url : null;
+    const url = this.resolveApiHealthCheckUrl(provider);
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });
       return false;
@@ -465,6 +466,24 @@ class AgentManager {
       }, 'API health probe failed');
       return false;
     }
+  }
+
+  private resolveApiHealthCheckUrl(provider: ProviderConfig): string | null {
+    if (typeof provider.endpoint === 'string' && provider.endpoint.length > 0) {
+      try {
+        const endpointUrl = new URL(provider.endpoint);
+        const normalizedPath = endpointUrl.pathname.replace(/\/+$/, '');
+        endpointUrl.pathname = normalizedPath.endsWith('/v1')
+          ? `${normalizedPath}/models`
+          : `${normalizedPath}/v1/models`;
+        endpointUrl.search = '';
+        endpointUrl.hash = '';
+        return endpointUrl.toString();
+      } catch {
+        // Fall through to explicit healthCheck URL if endpoint is malformed.
+      }
+    }
+    return typeof provider.healthCheck?.url === 'string' ? provider.healthCheck.url : null;
   }
 
   private getNextHealthApiKey(providerId: string, envVar: string, purpose: 'health' | 'gated-probe' = 'health'): string | undefined {
@@ -514,6 +533,7 @@ class AgentManager {
         body: JSON.stringify({
           model: provider.model || provider.apiConfig?.primary.model || 'default',
           messages: [{ role: 'user', content: 'ping' }],
+          ...(id === 'ollama' ? { keep_alive: OLLAMA_KEEP_ALIVE } : {}),
           max_tokens: 1,
         }),
         signal: AbortSignal.timeout(AgentManager.QUOTA_PROBE_TIMEOUT_MS),

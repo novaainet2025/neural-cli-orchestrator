@@ -13,6 +13,7 @@
  */
 
 import { createLogger } from '../utils/logger.js';
+import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { mem0Add, mem0Search } from './mem0-bridge.js';
 
 const log = createLogger('reflexion');
@@ -47,6 +48,7 @@ async function callLlm(messages: Array<{ role: string; content: string }>): Prom
       body: JSON.stringify({
         model: 'qwen2.5:7b',
         messages,
+        keep_alive: OLLAMA_KEEP_ALIVE,
         stream: false,
         options: { temperature: 0.3, num_predict: 300 },
       }),
