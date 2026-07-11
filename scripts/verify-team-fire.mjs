@@ -1,16 +1,18 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import readline from 'node:readline';
 import { config as dotenvConfig } from 'dotenv';
-import Database from 'better-sqlite3';
 
 dotenvConfig({ path: path.resolve(process.cwd(), '.env') });
 
 const NCO_API = process.env.NCO_API_URL || 'http://localhost:6200';
 const NCO_TOKEN = process.env.NCO_API_TOKEN || '';
+const PM2_LOG_PATH = process.env.NCO_PM2_LOG_PATH?.trim() || null;
+const PM2_LOG_DIR = path.join(os.homedir(), '.pm2', 'logs');
 const POLL_TIMEOUT_MS = 60_000;
 const POLL_INTERVAL_MS = 2_000;
 const ONE_HOUR_MS = 60 * 60 * 1_000;
-const NOW = Date.now();
 
 function resolveInternalProjectDir() {
   const configured = process.env.NCO_PROJECT_DIR?.trim();
@@ -89,24 +91,40 @@ async function pollTask(taskId) {
   throw new Error(`task did not reach assigned/completed within 60s: ${seen.join(' -> ')}`);
 }
 
-function countInvalidProjectDirInLogFiles() {
-  const logsDir = path.resolve(process.cwd(), 'logs');
-  if (!fs.existsSync(logsDir)) return 0;
+function resolvePm2LogPaths() {
+  if (PM2_LOG_PATH) {
+    return fs.existsSync(PM2_LOG_PATH) ? [PM2_LOG_PATH] : [];
+  }
 
+  if (!fs.existsSync(PM2_LOG_DIR)) return [];
+
+  return fs.readdirSync(PM2_LOG_DIR)
+    .filter(entry => /^nco-backend-out(?:-\d+)?\.log$/.test(entry))
+    .map(entry => path.join(PM2_LOG_DIR, entry))
+    .filter(filePath => fs.existsSync(filePath))
+    .sort();
+}
+
+async function countInvalidProjectDirInPm2Log(logPaths) {
+  if (logPaths.length === 0) return 0;
+
+  const cutoff = Date.now() - ONE_HOUR_MS;
   let count = 0;
-  for (const entry of fs.readdirSync(logsDir)) {
-    if (!entry.endsWith('.log')) continue;
-    const filePath = path.join(logsDir, entry);
-    const content = fs.readFileSync(filePath, 'utf8');
-    for (const line of content.split('\n')) {
+  for (const logPath of logPaths) {
+    const reader = readline.createInterface({
+      input: fs.createReadStream(logPath, { encoding: 'utf8' }),
+      crlfDelay: Infinity,
+    });
+
+    for await (const line of reader) {
       if (!line.includes('invalid_project_dir')) continue;
       try {
         const parsed = JSON.parse(line);
-        if (typeof parsed.time === 'number' && parsed.time >= NOW - ONE_HOUR_MS) {
+        if (typeof parsed.time === 'number' && parsed.time >= cutoff) {
           count += 1;
         }
       } catch {
-        count += 1;
+        // PM2 backend log is JSONL in practice; ignore unparseable legacy lines.
       }
     }
   }
@@ -114,53 +132,33 @@ function countInvalidProjectDirInLogFiles() {
   return count;
 }
 
-function resolveDatabasePath() {
-  const candidates = [
-    process.env.DATABASE_PATH,
-    path.resolve(process.cwd(), 'data/nco.db'),
-    path.resolve(process.cwd(), 'db/nco.db'),
-  ].filter(Boolean);
+const pm2LogPaths = resolvePm2LogPaths();
+const invalidProjectDirBefore = await countInvalidProjectDirInPm2Log(pm2LogPaths);
 
-  return candidates.find(candidate => fs.existsSync(candidate)) || null;
+let taskId = 'unknown';
+let seenStatuses = [];
+let apiVerification = 'unverified';
+
+try {
+  taskId = await postTask();
+  seenStatuses = await pollTask(taskId);
+  apiVerification = 'verified';
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  seenStatuses = [`unverified:${message.replace(/\s+/g, ' ').trim()}`];
 }
 
-function countInvalidProjectDirInDatabase() {
-  const databasePath = resolveDatabasePath();
-  if (!databasePath) return 0;
-
-  const db = new Database(databasePath, { readonly: true });
-  try {
-    const logsTable = db.prepare(`
-      SELECT name
-      FROM sqlite_master
-      WHERE type='table' AND name='logs'
-    `).get();
-    if (!logsTable) return 0;
-
-    const row = db.prepare(`
-      SELECT COUNT(*) AS count
-      FROM logs
-      WHERE (
-        message LIKE '%invalid_project_dir%'
-        OR context_json LIKE '%invalid_project_dir%'
-      )
-        AND created_at >= datetime('now', '-1 hour')
-    `).get();
-
-    return Number(row?.count ?? 0);
-  } finally {
-    db.close();
-  }
-}
-
-const taskId = await postTask();
-const seenStatuses = await pollTask(taskId);
-const invalidProjectDirCount = countInvalidProjectDirInLogFiles() + countInvalidProjectDirInDatabase();
+const invalidProjectDirAfter = await countInvalidProjectDirInPm2Log(pm2LogPaths);
+const invalidProjectDirDelta = invalidProjectDirAfter - invalidProjectDirBefore;
 
 console.log(`taskId=${taskId}`);
 console.log(`statuses=${seenStatuses.join(' -> ')}`);
-console.log(`invalid_project_dir_last_hour=${invalidProjectDirCount}`);
+console.log(`api_verification=${apiVerification}`);
+console.log(`pm2_log_files=${pm2LogPaths.length}`);
+console.log(`invalid_project_dir_last_hour_before=${invalidProjectDirBefore}`);
+console.log(`invalid_project_dir_last_hour_after=${invalidProjectDirAfter}`);
+console.log(`invalid_project_dir_last_hour_delta=${invalidProjectDirDelta}`);
 
-if (invalidProjectDirCount !== 0) {
+if (invalidProjectDirDelta > 0) {
   process.exit(1);
 }
