@@ -48,6 +48,8 @@ export interface FleetReport {
   agents: FleetReportAgent[];
   activity?: FleetReportActivitySummary;
   sessions?: FleetReportSession[];
+  // 구버전 push(body.sessions 부재)와 세션 미보고(빈 배열)를 구분 — 프론트 ⚠구버전 배지 판별용
+  sessionsCapable?: boolean;
   from?: string;
   ts: string;
 }
@@ -313,6 +315,8 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
       agents: valid,
       activity: normalizeActivitySummary(body?.activity),
       sessions: normalizeSessions(body?.sessions),
+      // sessions 필드를 배열로 보낸 신버전인지 기록 — 부재 시 구버전 기기로 판별
+      sessionsCapable: Array.isArray((body as any)?.sessions),
       from: (body?.from ?? `${host}-push`),
       ts,
     };

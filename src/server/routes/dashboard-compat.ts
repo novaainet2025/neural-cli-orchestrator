@@ -1350,6 +1350,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         agents: any[];
         activity?: FleetReportActivitySummary;
         sessions?: FleetReportSession[];
+        sessionsCapable?: boolean;
         from: string;
         ts: string;
       }>();
@@ -1481,6 +1482,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             agents: pr.agents as any,
             activity: pr.activity,
             sessions: pr.sessions ?? [],
+            sessionsCapable: pr.sessionsCapable ?? false,
             from: pr.from ?? `${pr.host}-push`,
             ts: pr.ts,
           });
@@ -1495,7 +1497,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           let staleSeconds: number | null = null;
           const tsMs = h.ts ? new Date(h.ts).getTime() : 0;
           if (tsMs > 0) staleSeconds = Math.max(0, Math.round((Date.now() - tsMs) / 1000));
-          return { ...h, sessions: h.sessions ?? [], staleSeconds };
+          return { ...h, sessions: h.sessions ?? [], sessionsCapable: h.sessionsCapable ?? false, staleSeconds };
         });
       const totalAgents = hosts.reduce((s, h) => s + h.agents.length, 0);
       return { hosts, totalAgents, hostCount: hosts.length, updatedAt: new Date().toISOString() };
