@@ -16,8 +16,9 @@ import { getPushReports } from './fleet-ops.js';
 import type { FleetReportActivitySummary, FleetReportSession } from './fleet-ops.js';
 import { summarizeTeamWorkflow } from './teams.js';
 import { execFile } from 'node:child_process';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { promisify } from 'node:util';
@@ -26,20 +27,88 @@ const execFileAsync = promisify(execFile);
 
 const IS_CLIENTS_DIR = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
 
-// 살아있는 .session 파일 찾기
-function findActiveSessionState(): any | null {
+// 살아있는 .session 파일 후보 — 최신(mtime) 우선 정렬으로 전부 수집
+// (기존 버그: readdir 임의 순서로 첫 살아있는 pid를 골랐는데, pid는 살아있어도
+//  registry에 미등록된 stale 세션을 집으면 제어 auth가 op:error("no listener")로
+//  거부되어 listInterSessions가 빈 배열을 반환했다 → 대시보드에 세션 노드 0개.
+//  최신 세션부터 순회하고, listInterSessions에서 성공(list_ok)할 때까지 재시도한다.)
+function findActiveSessionStates(): any[] {
+  const out: Array<{ state: any; mtime: number }> = [];
   try {
     const files = readdirSync(IS_CLIENTS_DIR).filter(f => f.endsWith('.session'));
     for (const f of files) {
       try {
-        const state = JSON.parse(readFileSync(join(IS_CLIENTS_DIR, f), 'utf-8'));
+        const full = join(IS_CLIENTS_DIR, f);
+        const state = JSON.parse(readFileSync(full, 'utf-8'));
         const pid = state?.listener_pid;
         if (!pid) continue;
-        try { process.kill(Number(pid), 0); return state; } catch {}
+        try { process.kill(Number(pid), 0); } catch { continue; } // 죽은 pid 제외
+        out.push({ state, mtime: statSync(full).mtimeMs });
       } catch {}
     }
   } catch {}
-  return null;
+  out.sort((a, b) => b.mtime - a.mtime); // 최신 세션 우선
+  return out.map(o => o.state);
+}
+
+// 단일 세션 state로 registry에 list 요청 — 성공 시 피어 배열, 실패/거부 시 null
+function queryRegistry(state: any): Promise<Array<{
+  name: string; label: string; cwd: string; since: string; id: string;
+  isNco: boolean; host: string;
+}> | null> {
+  const host = state.host ?? '127.0.0.1';
+  const port = state.port ?? 9473;
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: any) => { if (!done) { done = true; resolve(v); } };
+    const ws = new WebSocket(`ws://${host}:${port}/`);
+    const timer = setTimeout(() => { try { ws.terminate(); } catch {} finish(null); }, 6000);
+
+    ws.on('open', () => {
+      ws.send(JSON.stringify({
+        op: 'hello',
+        session_id: randomUUID(),
+        name: 'nco-backend-ctrl',
+        label: '',
+        cwd: process.cwd(),
+        pid: process.pid,
+        role: 'control',
+        for_session: state.session_id,
+        nonce: state.nonce,
+        token: state.token,
+      }));
+    });
+
+    ws.on('message', (raw: WebSocket.RawData) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg.op === 'welcome') {
+          ws.send(JSON.stringify({ op: 'list' }));
+        } else if (msg.op === 'list_ok') {
+          clearTimeout(timer);
+          ws.close();
+          const sessions = (msg.sessions ?? []).map((s: any) => {
+            const name: string = s.name || '(unnamed)';
+            const hostMatch = name.match(/^(.+?)-claude-\d+/);
+            const h = hostMatch ? hostMatch[1] : name.startsWith('nco-') ? 'nco' : name;
+            const sinceMs = s.since ? Date.now() - new Date(s.since).getTime() : 0;
+            const sinceSec = Math.floor(sinceMs / 1000);
+            const sinceStr = sinceSec < 60 ? `${sinceSec}s` : sinceSec < 3600 ? `${Math.floor(sinceSec/60)}m` : `${Math.floor(sinceSec/3600)}h`;
+            return { name, label: s.label ?? '', cwd: s.cwd ?? '', since: sinceStr, id: (s.session_id ?? '').slice(0, 8), isNco: name.startsWith('nco-'), host: h };
+          });
+          finish(sessions);
+        } else if (msg.op === 'error') {
+          // stale/미등록 세션 → 이 후보 포기, 다음 후보로
+          clearTimeout(timer);
+          ws.close();
+          finish(null);
+        }
+      } catch {}
+    });
+
+    ws.on('error', () => { clearTimeout(timer); finish(null); });
+    ws.on('close', () => { clearTimeout(timer); finish(null); });
+  });
 }
 
 // inter-session 서버에 ws 모듈로 list 요청
@@ -48,60 +117,14 @@ async function listInterSessions(): Promise<Array<{
   isNco: boolean; host: string;
 }>> {
   try {
-    const state = findActiveSessionState();
-    if (!state) return [];
-
-    const host = state.host ?? '127.0.0.1';
-    const port = state.port ?? 9473;
-
-    return new Promise((resolve) => {
-      const ws = new WebSocket(`ws://${host}:${port}/`);
-      const timer = setTimeout(() => { ws.terminate(); resolve([]); }, 6000);
-
-      ws.on('open', () => {
-        ws.send(JSON.stringify({
-          op: 'hello',
-          session_id: randomUUID(),
-          name: 'nco-backend-ctrl',
-          label: '',
-          cwd: process.cwd(),
-          pid: process.pid,
-          role: 'control',
-          for_session: state.session_id,
-          nonce: state.nonce,
-          token: state.token,
-        }));
-      });
-
-      ws.on('message', (raw: WebSocket.RawData) => {
-        try {
-          const msg = JSON.parse(raw.toString());
-          if (msg.op === 'welcome') {
-            ws.send(JSON.stringify({ op: 'list' }));
-          } else if (msg.op === 'list_ok') {
-            clearTimeout(timer);
-            ws.close();
-            const sessions = (msg.sessions ?? []).map((s: any) => {
-              const name: string = s.name || '(unnamed)';
-              const hostMatch = name.match(/^(.+?)-claude-\d+/);
-              const h = hostMatch ? hostMatch[1] : name.startsWith('nco-') ? 'nco' : name;
-              const sinceMs = s.since ? Date.now() - new Date(s.since).getTime() : 0;
-              const sinceSec = Math.floor(sinceMs / 1000);
-              const sinceStr = sinceSec < 60 ? `${sinceSec}s` : sinceSec < 3600 ? `${Math.floor(sinceSec/60)}m` : `${Math.floor(sinceSec/3600)}h`;
-              return { name, label: s.label ?? '', cwd: s.cwd ?? '', since: sinceStr, id: (s.session_id ?? '').slice(0, 8), isNco: name.startsWith('nco-'), host: h };
-            });
-            resolve(sessions);
-          } else if (msg.op === 'error') {
-            clearTimeout(timer);
-            ws.close();
-            resolve([]);
-          }
-        } catch {}
-      });
-
-      ws.on('error', () => { clearTimeout(timer); resolve([]); });
-      ws.on('close', () => { clearTimeout(timer); resolve([]); });
-    });
+    const states = findActiveSessionStates();
+    // 최신 세션부터 최대 8개까지 시도 — 첫 list_ok(정상 등록된 세션)를 반환.
+    // stale 세션(op:error)이나 연결 실패는 null → 다음 후보로 폴백한다.
+    for (const state of states.slice(0, 8)) {
+      const peers = await queryRegistry(state);
+      if (peers !== null) return peers;
+    }
+    return [];
   } catch {
     return [];
   }
@@ -1488,6 +1511,32 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           });
         }
       }
+
+      // ── 로컬 호스트(nova-macstudio) self-report 주입 ─────────────────
+      // messages.log 파싱은 자기 자신(line ~1424: nova-macstudio/nco- 제외)을 빼므로
+      // 로컬 NCO가 fleet/agents에 안 떠서, 대시보드가 이 맥을 "세션-파생 호스트"로만
+      // 인식 → sessionsCapable=false → "⚠구버전" 오분류됐다.
+      // 로컬 provider 상태를 sessionsCapable:true로 직접 넣어 정상(비구버전) 처리한다.
+      try {
+        const LOCAL_HOST = ((hostname() || 'nova-macstudio').toLowerCase()
+          .replace(/\.local$/, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')) || 'nova-macstudio';
+        // 실제 push 보고가 이미 있으면 그걸 우선(덮지 않음)
+        if (!hostMap.has(LOCAL_HOST)) {
+          const localAgents = agentManager.listProviders()
+            .filter(p => p.enabled !== false)
+            .map(p => ({ id: p.id, name: p.name ?? p.id, status: 'idle' as const, currentTask: null }));
+          if (localAgents.length > 0) {
+            hostMap.set(LOCAL_HOST, {
+              host: LOCAL_HOST,
+              agents: localAgents,
+              sessions: [],          // 세션 노드는 /api/dashboard/graph에서 별도 렌더
+              sessionsCapable: true, // 로컬 NCO는 최신 — 구버전 아님
+              from: 'nco-local-self',
+              ts: new Date().toISOString(),
+            });
+          }
+        }
+      } catch { /* 로컬 주입 실패는 무시 — 원격 응답은 그대로 유지 */ }
 
       // agents=0인 호스트 제거 — 오래된 IS 메시지에서 유래한 빈 호스트 엔트리 방지
       const hosts = Array.from(hostMap.values())
