@@ -17,7 +17,9 @@ LOCK_FILE="/tmp/nova-local-llm.lock"
 POLL_INTERVAL=10
 MAX_POLLS=42   # 팀당 최대 7분
 # 로컬 모델 우선 체인 (무료·로컬 우선 — 두뇌는 유료, 워커는 로컬 원칙)
-AI_CHAIN="mlx ollama openrouter"
+# 2026-07-12: ollama가 현재 에이전트 레지스트리에 미등록(POST /api/task → "Unknown agent 'ollama'")이라
+#   전 체인 실패의 원인이었다. 게이트 가용한 로컬 무료 워커 hermes로 교체. ollama 재등록 시 되돌릴 것.
+AI_CHAIN="mlx hermes openrouter"
 
 mkdir -p "${STATE_DIR}" "$(dirname "${LOG_FILE}")"
 TMP_DIR=$(mktemp -d)
@@ -65,10 +67,17 @@ log INFO "charter 보유 팀: ${N_TEAMS}개"
 
 TODAY=$(date '+%Y-%m-%d')
 
+# 현재 에이전트 레지스트리 (2026-07-12): lead/chain에 레지스트리에 없는 에이전트(예: 미등록 ollama)가
+#   있으면 매 팀마다 헛된 400 '생성 거부'가 발생한다. 알려진 목록을 미리 받아 스킵한다.
+KNOWN_AIS=$(curl -fsS "${API_BASE}/agents" 2>/dev/null \
+  | python3 -c 'import json,sys; print(" ".join(a.get("id","") for a in json.load(sys.stdin).get("agents",[])))' 2>/dev/null || echo "")
+[ -n "${KNOWN_AIS}" ] && log INFO "레지스트리 에이전트: ${KNOWN_AIS}"
+
 create_task() { # $1=ai $2=teamId(에서 charter/lead 로드) → taskId
-  python3 - "$1" "$2" "${TMP_DIR}/runnable.json" <<'PY' > "${TMP_DIR}/body.json"
+  python3 - "$1" "$2" "${TMP_DIR}/runnable.json" "${NCO_DIR}" <<'PY' > "${TMP_DIR}/body.json"
 import json, sys, glob, os, re, datetime
 ai, team_id, path = sys.argv[1], sys.argv[2], sys.argv[3]
+project_dir = sys.argv[4] if len(sys.argv) > 4 else "/Users/nova-ai/project/nco"
 team = next(t for t in json.load(open(path)) if t["id"] == team_id)
 charter = team["charter"]
 
@@ -90,8 +99,15 @@ charter = re.sub(r"\{\{latest:([^}]+)\}\}", inject_latest, charter)
 prompt = f"""[팀 상시 임무 — {team['name']}] (텍스트만 응답, 도구/커맨드 사용 금지)
 오늘 날짜: {today}
 {charter}
-오늘 날짜 기준으로 위 임무의 일일 산출물을 작성하라. 거짓 수치·과장 금지. 제공되지 않은 정보는 지어내지 말 것."""
-print(json.dumps({"ai": ai, "callerAgentId": "team-runner", "prompt": prompt}, ensure_ascii=False))
+[엄수] 너는 파일을 수정하거나 명령(build/test/git/make/npm 등)을 실행할 수 없다 — 오직 텍스트만 생성한다.
+그러므로 '변경 파일 목록', 'diff 요약', '빌드 성공', '테스트 통과', '커밋 완료' 등 실제로 수행하지 않은 작업을
+했다고 절대 쓰지 마라. 존재하지 않는 파일 경로·버전·수치·완료 상태를 지어내면 산출물은 반려된다.
+아래에 주입된 실데이터/파일 내용만 근거로 삼아 (1)오늘 관찰·분석 (2)현재 상태 (3)다음에 필요한 작업 제안을
+작성하라. 근거가 없는 항목은 '미확인'으로 표기하라."""
+# 2026-07-12: 백엔드가 metadata.projectDir을 필수로 요구(POST /api/task → 400 "invalid_project_dir").
+#   미포함 시 전 팀 태스크 생성이 거부되어 팀이 산출물을 못 냈다. 러너 기준 디렉터리를 주입한다.
+print(json.dumps({"ai": ai, "callerAgentId": "team-runner", "prompt": prompt,
+                  "metadata": {"projectDir": project_dir}}, ensure_ascii=False))
 PY
   # 백엔드 재시작 등 일시 장애 시 실패해도 러너가 죽지 않도록 (set -e/pipefail 보호)
   { curl -s -X POST "${API_BASE}/task" -H 'Content-Type: application/json' \
@@ -110,7 +126,25 @@ poll_done() { # $1=taskId → completed면 response 저장 후 0
       completed)
         python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["task"].get("response") or "")' \
           "${TMP_DIR}/task.json" > "${TMP_DIR}/response.md"
-        [ "$(wc -c < "${TMP_DIR}/response.md")" -lt 200 ] && { log WARN "$1 응답 품질 미달"; return 1; }
+        [ "$(wc -c < "${TMP_DIR}/response.md")" -lt 200 ] && { log WARN "$1 응답 품질 미달(글자수)"; return 1; }
+        # 환각 방지(2026-07-12): 텍스트 전용 워커는 파일 수정 불가. 응답이 '변경했다'고 주장한
+        #   절대경로 파일이 실제로 존재하지 않으면 조작 산출물 → 반려. 상대경로/미확인 표기는 통과.
+        local ghost; ghost=$(grep -oE "/Users/[^ \`\"'\''()]+\.(ts|tsx|js|jsx|py|vue|yaml|yml|json|sh|md)" "${TMP_DIR}/response.md" \
+          | sort -u | while IFS= read -r p; do [ -e "$p" ] || printf '%s ' "$p"; done)
+        if [ -n "${ghost}" ]; then
+          log WARN "$1 환각 반려 — 존재하지 않는 파일 변경 주장: ${ghost}"
+          return 1
+        fi
+        # 텍스트 전용인데 빌드/테스트 '성공'을 실행했다고 주장하면 조작 → 반려
+        if grep -qE "(make|npm|yarn|pnpm)[[:space:]_-]*(run[[:space:]]+)?(build|test).{0,20}(성공|통과|passed|success)|모든[[:space:]]*타겟[[:space:]]*성공|빌드[[:space:]]*성공" "${TMP_DIR}/response.md"; then
+          log WARN "$1 환각 반려 — 실행 불가한 빌드/테스트 성공 주장"
+          return 1
+        fi
+        # 텍스트 전용인데 git 커밋/push/배포/PR을 실행했다고 주장하면 조작 → 반려 (2026-07-12 claude-2)
+        if grep -qiE "(커밋|commit)[[:space:]]*(완료|했|됨|hash|해시|:[[:space:]]*[0-9a-f]{7,})|(git[[:space:]]+)?(push|pushed)[[:space:]]*(완료|했|됨|성공)|(배포|deploy(ed)?)[[:space:]]*(완료|성공|done)|(PR|풀[[:space:]]*리퀘스트|pull[[:space:]]*request)[[:space:]]*(생성|열|merged|머지|완료)" "${TMP_DIR}/response.md"; then
+          log WARN "$1 환각 반려 — 실행 불가한 커밋/push/배포/PR 완료 주장"
+          return 1
+        fi
         return 0 ;;
       failed|timed_out|error) return 1 ;;
     esac
@@ -144,6 +178,10 @@ while [ "${IDX}" -lt "${N_TEAMS}" ]; do
     [ -z "${ai}" ] && continue
     case " ${TRIED:-} " in *" ${ai} "*) continue;; esac
     TRIED="${TRIED:-} ${ai}"
+    # 레지스트리에 없는 에이전트(미등록 ollama 등)는 헛된 400 방지 위해 스킵
+    if [ -n "${KNOWN_AIS}" ]; then
+      case " ${KNOWN_AIS} " in *" ${ai} "*) : ;; *) log INFO "${TEAM_NAME}: ai=${ai} 미등록 — 스킵"; continue;; esac
+    fi
     TID=$(create_task "${ai}" "${TEAM_ID}")
     [ -z "${TID}" ] && { log WARN "${TEAM_NAME}: ai=${ai} 생성 거부"; continue; }
     curl -s -X POST "${API_BASE}/teams/${TEAM_ID}/tasks" -H 'Content-Type: application/json' \

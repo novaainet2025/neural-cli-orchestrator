@@ -1316,10 +1316,22 @@ export async function createGateway() {
 
     // Extract caller context for invocation tracking
     const body = req.body as any;
-    const callerSessionId = body.callerSessionId
+    let callerSessionId = body.callerSessionId
       || (req.headers['x-nco-session-id'] as string)
       || 'unknown';
-    const callerAgentId = body.callerAgentId || 'unknown';
+    let callerAgentId = body.callerAgentId || 'unknown';
+    // 파생 태스크(retry/failover/quality-reject 재디스패치)는 callerAgentId를 전달하지 않아
+    // invocation이 'unknown'으로 귀속되던 문제(2026-07-12 claude-2, 최근 200건 중 112건 unknown T1) 수정 —
+    // parentTaskId가 있으면 부모 태스크의 spawned_by_cli를 caller로 상속해 원 세션 귀속을 보존한다.
+    if ((callerAgentId === 'unknown' || callerSessionId === 'unknown') && input.parentTaskId) {
+      const parent = getDb().prepare('SELECT spawned_by_cli FROM tasks WHERE id=?')
+        .get(input.parentTaskId) as { spawned_by_cli?: string | null } | undefined;
+      const inherited = parent?.spawned_by_cli;
+      if (inherited) {
+        if (callerAgentId === 'unknown') callerAgentId = inherited;
+        if (callerSessionId === 'unknown') callerSessionId = inherited;
+      }
+    }
     // CLI session that spawned this task — used by topology to draw CLI→Agent edges
     const spawnedByCli = callerAgentId !== 'unknown' ? callerAgentId
       : callerSessionId !== 'unknown' ? callerSessionId
@@ -1544,6 +1556,59 @@ export async function createGateway() {
         : { error: 'heartbeat_conflict', status: result.status ?? null };
     }
     return { ok: true, task: result.task };
+  });
+
+  // CLI 세션 레지스트리 (2026-07-12 claude-2): cli_sessions 테이블 배선(기존 0행).
+  // UserPromptSubmit 훅이 매 프롬프트마다 heartbeat POST → 대시보드가 '누가 활성·무엇 작업 중'을 관측.
+  const CLI_SESSION_STATUSES = new Set(['active', 'idle', 'busy', 'disconnected']);
+  app.post('/api/cli-session', async (req, reply) => {
+    const b = (req.body ?? {}) as Record<string, any>;
+    const rawId = b.id ?? b.sessionId;
+    const id = typeof rawId === 'string' && rawId.trim() ? rawId.trim() : null;
+    if (!id) { reply.code(400); return { error: 'id required' }; }
+    const status = typeof b.status === 'string' && CLI_SESSION_STATUSES.has(b.status) ? b.status : 'active';
+    const pidNum = Number(b.pid);
+    try {
+      getDb().prepare(`
+        INSERT INTO cli_sessions (id, hostname, pid, user_name, project_dir, cli_version, status, current_task, metadata_json, registered_at, last_heartbeat, disconnected_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), NULL)
+        ON CONFLICT(id) DO UPDATE SET
+          hostname=excluded.hostname,
+          pid=excluded.pid,
+          user_name=COALESCE(excluded.user_name, cli_sessions.user_name),
+          project_dir=COALESCE(excluded.project_dir, cli_sessions.project_dir),
+          cli_version=COALESCE(excluded.cli_version, cli_sessions.cli_version),
+          status=excluded.status,
+          current_task=excluded.current_task,
+          metadata_json=COALESCE(excluded.metadata_json, cli_sessions.metadata_json),
+          last_heartbeat=datetime('now'),
+          disconnected_at=NULL
+      `).run(
+        id,
+        typeof b.hostname === 'string' && b.hostname.trim() ? b.hostname.trim() : 'unknown',
+        Number.isFinite(pidNum) ? Math.trunc(pidNum) : 0,
+        b.user ?? b.userName ?? b.user_name ?? null,
+        b.projectDir ?? b.project_dir ?? null,
+        b.cliVersion ?? b.cli_version ?? null,
+        status,
+        b.currentTask ?? b.current_task ?? null,
+        b.metadata ? JSON.stringify(b.metadata) : null,
+      );
+    } catch (e) {
+      log.error({ err: (e as Error).message, id }, 'cli-session upsert failed');
+      reply.code(500); return { error: 'upsert_failed' };
+    }
+    return { ok: true, id, status };
+  });
+
+  app.get('/api/cli-sessions', async () => {
+    const rows = getDb().prepare(`
+      SELECT id, hostname, pid, project_dir, status, current_task, registered_at, last_heartbeat, disconnected_at,
+        CAST((julianday('now') - julianday(last_heartbeat)) * 86400 AS INTEGER) AS idle_seconds
+      FROM cli_sessions
+      ORDER BY last_heartbeat DESC
+    `).all();
+    return { sessions: rows, count: rows.length };
   });
 
   app.get('/api/tasks/:id', async (req, reply) => {
