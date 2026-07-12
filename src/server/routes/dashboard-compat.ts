@@ -18,7 +18,6 @@ import { summarizeTeamWorkflow } from './teams.js';
 import { execFile } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { hostname } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { promisify } from 'node:util';
@@ -1512,31 +1511,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         }
       }
 
-      // ── 로컬 호스트(nova-macstudio) self-report 주입 ─────────────────
-      // messages.log 파싱은 자기 자신(line ~1424: nova-macstudio/nco- 제외)을 빼므로
-      // 로컬 NCO가 fleet/agents에 안 떠서, 대시보드가 이 맥을 "세션-파생 호스트"로만
-      // 인식 → sessionsCapable=false → "⚠구버전" 오분류됐다.
-      // 로컬 provider 상태를 sessionsCapable:true로 직접 넣어 정상(비구버전) 처리한다.
-      try {
-        const LOCAL_HOST = ((hostname() || 'nova-macstudio').toLowerCase()
-          .replace(/\.local$/, '').replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '')) || 'nova-macstudio';
-        // 실제 push 보고가 이미 있으면 그걸 우선(덮지 않음)
-        if (!hostMap.has(LOCAL_HOST)) {
-          const localAgents = agentManager.listProviders()
-            .filter(p => p.enabled !== false)
-            .map(p => ({ id: p.id, name: p.name ?? p.id, status: 'idle' as const, currentTask: null }));
-          if (localAgents.length > 0) {
-            hostMap.set(LOCAL_HOST, {
-              host: LOCAL_HOST,
-              agents: localAgents,
-              sessions: [],          // 세션 노드는 /api/dashboard/graph에서 별도 렌더
-              sessionsCapable: true, // 로컬 NCO는 최신 — 구버전 아님
-              from: 'nco-local-self',
-              ts: new Date().toISOString(),
-            });
-          }
-        }
-      } catch { /* 로컬 주입 실패는 무시 — 원격 응답은 그대로 유지 */ }
+      // 주: 로컬 호스트(nova-macstudio)는 fleet/agents에 넣지 않는다.
+      // 대시보드 클라이언트는 로컬 머신을 provider 노드 + localHostNode로 이미 대표하며,
+      // fleet/agents에 로컬이 섞이면 sessionOnlyHosts 경로(App.tsx)가 중복 호스트 노드를
+      // 만든다(validFleetHostList는 로컬 제외하지만 sessionOnlyHosts는 미제외).
 
       // agents=0인 호스트 제거 — 오래된 IS 메시지에서 유래한 빈 호스트 엔트리 방지
       const hosts = Array.from(hostMap.values())
