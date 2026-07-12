@@ -31,6 +31,11 @@ export interface FleetReportAgent {
   currentTask?: string | null;
   taskId?: string;
   since?: string;
+  // 리밋/서킷 상세 (2026-07-12): 원격 프로바이더 리밋을 대시보드가 정확히 표시하도록 push에 포함.
+  circuitState?: 'closed' | 'half-open' | 'open';
+  limited?: boolean;                  // gate.available === false (statusline과 동일한 리밋 신호)
+  lastError?: string | null;
+  gate?: { status?: string; reason?: string | null; available?: boolean; cooldownUntil?: string | null };
 }
 export interface FleetReportActivitySummary {
   taskCount: number;
@@ -203,10 +208,16 @@ export async function collectAgentSnapshots(): Promise<FleetReportAgent[]> {
     }
 
     // registry가 단일 진실원 (구 sandbox breaker는 registry와 불일치, kangnote 2026-07-02 보고)
-    const circuitState = circuitBreakerRegistry.getSnapshot(provider.id).state;
+    const snap = circuitBreakerRegistry.getSnapshot(provider.id);
+    const circuitState = snap.state;
     if (circuitState === 'open' && status !== 'working') {
       status = 'error';
     }
+    // 리밋/서킷 상세 — 로컬 /api/agents(dashboard-compat)와 동일 포맷으로 push에 포함(원격 리밋 정확표시)
+    const avail = circuitBreakerRegistry.getAvailability(provider.id);
+    const lastError = typeof state.lastError === 'string'
+      ? state.lastError.slice(0, 120)
+      : (snap.openedAt ? `마지막 실패: ${new Date(snap.openedAt).toLocaleTimeString('ko-KR')}` : null);
 
     return {
       id: provider.id,
@@ -215,6 +226,15 @@ export async function collectAgentSnapshots(): Promise<FleetReportAgent[]> {
       currentTask,
       ...(taskId ? { taskId } : {}),
       ...(since ? { since } : {}),
+      circuitState: circuitState as 'closed' | 'half-open' | 'open',
+      limited: avail.available === false,
+      lastError,
+      gate: {
+        status: avail.status,
+        reason: avail.reason,
+        available: avail.available,
+        cooldownUntil: avail.cooldownUntil,
+      },
     };
   });
 }
