@@ -363,6 +363,20 @@ export class OrchestratedLoop {
         );
       }
 
+      // [W19 2026-07-12] 재활성 오판 차단: exit 0(성공)이라도 stderr에 소진 신호(usage limit 등)가
+      // 있으면 실제로는 실패다. 반환 output은 stdout 기반이라 agent-manager의 classifyCircuitError가
+      // stderr의 usage limit을 못 봐 codex를 오판 재활성(circuit close)함(오판 3회 원인).
+      // 판정: stderr에 소진 신호가 없을 때만 성공 처리 → 있으면 여기서 실패로 던져 재활성을 막는다.
+      const _successStderr = stripAnsi(result.stderr || '');
+      if (/usage limit|quota exceeded|rate limit exceeded/i.test(_successStderr)) {
+        const _q = _successStderr.match(/[^\n]*(usage limit|quota exceeded|rate limit exceeded)[^\n]*/i);
+        throw new CliExecutionError(
+          `${this.provider.id}: quota exhausted (stderr, exit 0) — ${(_q?.[0] || '').trim().slice(0, 200)}`,
+          `[${this.provider.id}: quota exhausted despite exit 0 — 재활성 차단]`,
+          false,
+        );
+      }
+
       if (lastMsg) return lastMsg;
 
       if (this.provider.id === 'opencode') {
