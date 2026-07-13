@@ -423,6 +423,51 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  // 팀 위임 메트릭 — "회사 팀에 몇 % 위임하는가" 가시화 (read-only, additive)
+  // tasks.team_id 태그 비율 + 세션(spawned_by_cli)별 위임률 + 팀별 카운트 + 7일 추이
+  app.get('/api/teams/metrics', async () => {
+    const db = getDb();
+    const total = (db.prepare(`SELECT COUNT(*) c FROM tasks`).get() as { c: number }).c;
+    const teamTagged = (db.prepare(
+      `SELECT COUNT(*) c FROM tasks WHERE team_id IS NOT NULL AND team_id<>''`
+    ).get() as { c: number }).c;
+    const bySession = db.prepare(`
+      SELECT spawned_by_cli AS session,
+             COUNT(*) AS total,
+             SUM(CASE WHEN team_id IS NOT NULL AND team_id<>'' THEN 1 ELSE 0 END) AS team
+      FROM tasks
+      WHERE spawned_by_cli IS NOT NULL AND spawned_by_cli<>''
+      GROUP BY spawned_by_cli
+      ORDER BY total DESC
+      LIMIT 20
+    `).all() as Array<{ session: string; total: number; team: number }>;
+    const byTeam = db.prepare(`
+      SELECT t.id, t.name, t.lead,
+             COUNT(k.team_id) AS tasks,
+             SUM(CASE WHEN k.status IN ('running','streaming','assigned','pending') THEN 1 ELSE 0 END) AS active
+      FROM teams t
+      LEFT JOIN tasks k ON k.team_id = t.id
+      GROUP BY t.id, t.name, t.lead
+      ORDER BY tasks DESC
+    `).all() as Array<{ id: string; name: string; lead: string | null; tasks: number; active: number }>;
+    const trend = db.prepare(`
+      SELECT DATE(created_at) AS day, COUNT(*) AS tasks
+      FROM tasks
+      WHERE team_id IS NOT NULL AND team_id<>'' AND created_at >= datetime('now','-7 days')
+      GROUP BY day ORDER BY day
+    `).all() as Array<{ day: string; tasks: number }>;
+    const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 10000) / 100 : 0);
+    return {
+      totalTasks: total,
+      teamTaggedTasks: teamTagged,
+      teamDelegationPct: pct(teamTagged, total),
+      bySession: bySession.map((s) => ({ ...s, pct: pct(s.team, s.total) })),
+      byTeam,
+      last7dTrend: trend,
+      generatedAt: new Date().toISOString(),
+    };
+  });
+
   app.patch<{ Params: { id: string } }>('/api/teams/:id', async (req, reply) => {
     const { id } = req.params;
     const body = (req.body as {

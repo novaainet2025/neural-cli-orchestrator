@@ -26,6 +26,97 @@ const execFileAsync = promisify(execFile);
 
 const IS_CLIENTS_DIR = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
 
+// inter-session 세션별 활동/working 분석 (passive + explicit-status detection).
+// messages.log(from_name 기준)를 tail 하여 세션 이름 → 상태를 계산한다.
+// /api/inter-session/activity 와 /api/dashboard/graph(원격 세션 working 표시)에서 공용.
+type SessionActivityInfo = {
+  name: string;
+  msgCount1m: number;
+  msgCount5m: number;
+  lastMsgTs: string;
+  lastMsgAge: number;
+  lastMsgText: string;
+  status: 'working' | 'idle' | 'online';
+  statusSource: string;
+};
+
+async function analyzeSessionActivity(): Promise<Map<string, SessionActivityInfo>> {
+  const logPath = `${process.env.HOME}/.claude/data/inter-session/messages.log`;
+  const sessionActivity = new Map<string, SessionActivityInfo>();
+  try {
+    const { stdout } = await execFileAsync('tail', ['-500', logPath]);
+    const now = Date.now();
+    const entries = stdout.trim().split('\n')
+      .filter(Boolean)
+      .map((line: string) => { try { return JSON.parse(line); } catch { return null; } })
+      .filter(Boolean);
+
+    for (const m of entries as any[]) {
+      const name = m.from_name ?? m.from ?? '';
+      if (!name) continue;
+      const ts = m.ts ?? '';
+      const msgTime = ts ? new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z').getTime() : 0;
+      const age = now - msgTime;
+      const text = (m.text ?? '').slice(0, 200);
+
+      let entry = sessionActivity.get(name);
+      if (!entry) {
+        entry = { name, msgCount1m: 0, msgCount5m: 0, lastMsgTs: '', lastMsgAge: Infinity, lastMsgText: '', status: 'online', statusSource: '' };
+        sessionActivity.set(name, entry);
+      }
+
+      if (age < 60_000) entry.msgCount1m++;
+      if (age < 300_000) entry.msgCount5m++;
+
+      if (age < entry.lastMsgAge) {
+        entry.lastMsgAge = age;
+        entry.lastMsgTs = ts;
+        entry.lastMsgText = text;
+      }
+    }
+
+    for (const [, entry] of sessionActivity) {
+      // 명시적 status 메시지 우선 (Emit half: 세션이 broadcast 하는 'status: working|idle')
+      // working은 5분 age 가드: 갱신 없는 stale working을 online으로 강등해 stuck-working 방지.
+      // (idle emit이 꺼져 있으면 마지막 working 메시지가 영구히 남아 고착되는 것을 막음)
+      if (/^status:\s*working/i.test(entry.lastMsgText) && entry.lastMsgAge < 300_000) {
+        entry.status = 'working';
+        entry.statusSource = 'explicit-status';
+      } else if (/^status:\s*working/i.test(entry.lastMsgText)) {
+        entry.status = 'online';
+        entry.statusSource = 'explicit-working-stale';
+      } else if (/^status:\s*idle/i.test(entry.lastMsgText)) {
+        entry.status = entry.lastMsgAge < 120_000 ? 'idle' : 'online';
+        entry.statusSource = 'explicit-status';
+      } else if (/^(done:|answer:)/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
+        entry.status = 'working';
+        entry.statusSource = 'done/answer-recent';
+      } else if (/^question:/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
+        entry.status = 'working';
+        entry.statusSource = 'question-active';
+      } else if (entry.msgCount1m >= 2) {
+        entry.status = 'working';
+        entry.statusSource = `frequency:${entry.msgCount1m}msg/1m`;
+      } else if (entry.msgCount5m >= 3) {
+        entry.status = 'working';
+        entry.statusSource = `frequency:${entry.msgCount5m}msg/5m`;
+      } else if (entry.lastMsgAge < 60_000) {
+        entry.status = 'idle';
+        entry.statusSource = 'recent-but-quiet';
+      } else if (entry.lastMsgAge < 300_000) {
+        entry.status = 'online';
+        entry.statusSource = 'seen-5m';
+      } else {
+        entry.status = 'online';
+        entry.statusSource = 'stale';
+      }
+    }
+  } catch {
+    // messages.log 없음/read 실패 → 빈 맵
+  }
+  return sessionActivity;
+}
+
 // 살아있는 .session 파일 후보 — 최신(mtime) 우선 정렬으로 전부 수집
 // (기존 버그: readdir 임의 순서로 첫 살아있는 pid를 골랐는데, pid는 살아있어도
 //  registry에 미등록된 stale 세션을 집으면 제어 auth가 op:error("no listener")로
@@ -127,6 +218,30 @@ async function listInterSessions(): Promise<Array<{
   } catch {
     return [];
   }
+}
+
+// ── 원격 세션 flicker 완화 캐시 (2026-07-12 claude-2): snt/subnote-claude 등 원격 세션이
+//    inter-session 재연결 깜빡임(fleet-status-request disconnect 등)으로 세션노드가 사라졌다
+//    나타나는 문제 → 최근 본 원격 피어를 TTL 동안 유지해 노드가 안정적으로 표시되게 한다.
+const _recentRemotePeers = new Map<string, { peer: any; lastSeen: number }>();
+const REMOTE_PEER_TTL_MS = 5 * 60_000;
+function mergeRecentRemotePeers(livePeers: any[]): any[] {
+  const now = Date.now();
+  for (const p of livePeers) {
+    // 원격(비-로컬) 사람 피어만 유지 대상 — 로컬 세션은 항상 안정적이라 캐시 불필요
+    if (!p.isNco && p.name && !String(p.name).startsWith('nova-macstudio-')) {
+      _recentRemotePeers.set(p.name, { peer: { ...p }, lastSeen: now });
+    }
+  }
+  for (const [k, v] of _recentRemotePeers) {
+    if (now - v.lastSeen > REMOTE_PEER_TTL_MS) _recentRemotePeers.delete(k);
+  }
+  const liveNames = new Set(livePeers.map(p => p.name));
+  const merged = [...livePeers];
+  for (const [name, v] of _recentRemotePeers) {
+    if (!liveNames.has(name)) merged.push({ ...v.peer, _stale: true }); // 잠시 끊긴 원격 세션도 유지
+  }
+  return merged;
 }
 
 // ═══ CB 자동 복구 타이머 (2분마다 open CB 헬스체크 후 리셋) ═══════
@@ -740,94 +855,11 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
   // inter-session 세션별 활동 분석 (passive working detection)
   app.get('/api/inter-session/activity', async () => {
-    const logPath = `${process.env.HOME}/.claude/data/inter-session/messages.log`;
-    try {
-      const { stdout } = await execFileAsync('tail', ['-500', logPath]);
-      const now = Date.now();
-      const entries = stdout.trim().split('\n')
-        .filter(Boolean)
-        .map((line: string) => { try { return JSON.parse(line); } catch { return null; } })
-        .filter(Boolean);
-
-      // 세션별 활동 집계
-      const sessionActivity = new Map<string, {
-        name: string;
-        msgCount1m: number;   // 1분 내 메시지 수
-        msgCount5m: number;   // 5분 내 메시지 수
-        lastMsgTs: string;
-        lastMsgAge: number;   // ms
-        lastMsgText: string;
-        status: 'working' | 'idle' | 'online';
-        statusSource: string;  // 판정 근거
-      }>();
-
-      for (const m of entries) {
-        const name = m.from_name ?? m.from ?? '';
-        if (!name) continue;
-        const ts = m.ts ?? '';
-        const msgTime = ts ? new Date(ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z').getTime() : 0;
-        const age = now - msgTime;
-        const text = (m.text ?? '').slice(0, 200);
-
-        let entry = sessionActivity.get(name);
-        if (!entry) {
-          entry = { name, msgCount1m: 0, msgCount5m: 0, lastMsgTs: '', lastMsgAge: Infinity, lastMsgText: '', status: 'online', statusSource: '' };
-          sessionActivity.set(name, entry);
-        }
-
-        if (age < 60_000) entry.msgCount1m++;
-        if (age < 300_000) entry.msgCount5m++;
-
-        if (age < entry.lastMsgAge) {
-          entry.lastMsgAge = age;
-          entry.lastMsgTs = ts;
-          entry.lastMsgText = text;
-        }
-      }
-
-      // 상태 판정
-      for (const [, entry] of sessionActivity) {
-        const text = entry.lastMsgText.toLowerCase();
-        // 명시적 status 메시지 우선
-        if (/^status:\s*working/i.test(entry.lastMsgText)) {
-          entry.status = 'working';
-          entry.statusSource = 'explicit-status';
-        } else if (/^status:\s*idle/i.test(entry.lastMsgText)) {
-          entry.status = entry.lastMsgAge < 120_000 ? 'idle' : 'online';
-          entry.statusSource = 'explicit-status';
-        } else if (/^(done:|answer:)/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
-          entry.status = 'working';
-          entry.statusSource = 'done/answer-recent';
-        } else if (/^question:/i.test(entry.lastMsgText) && entry.lastMsgAge < 120_000) {
-          entry.status = 'working';
-          entry.statusSource = 'question-active';
-        } else if (entry.msgCount1m >= 2) {
-          // 1분 내 2+ 메시지 = 활발하게 작업 중
-          entry.status = 'working';
-          entry.statusSource = `frequency:${entry.msgCount1m}msg/1m`;
-        } else if (entry.msgCount5m >= 3) {
-          entry.status = 'working';
-          entry.statusSource = `frequency:${entry.msgCount5m}msg/5m`;
-        } else if (entry.lastMsgAge < 60_000) {
-          entry.status = 'idle';
-          entry.statusSource = 'recent-but-quiet';
-        } else if (entry.lastMsgAge < 300_000) {
-          entry.status = 'online';
-          entry.statusSource = 'seen-5m';
-        } else {
-          entry.status = 'online';
-          entry.statusSource = 'stale';
-        }
-      }
-
-      const sessions = Array.from(sessionActivity.values())
-        .filter(s => !s.name.startsWith('nco-'))  // NCO 프로바이더 제외
-        .sort((a, b) => a.lastMsgAge - b.lastMsgAge);
-
-      return { sessions, count: sessions.length, analyzedAt: new Date().toISOString() };
-    } catch {
-      return { sessions: [], count: 0, analyzedAt: new Date().toISOString() };
-    }
+    const sessionActivity = await analyzeSessionActivity();
+    const sessions = Array.from(sessionActivity.values())
+      .filter(s => !s.name.startsWith('nco-'))  // NCO 프로바이더 제외
+      .sort((a, b) => a.lastMsgAge - b.lastMsgAge);
+    return { sessions, count: sessions.length, analyzedAt: new Date().toISOString() };
   });
 
   // P95 latency per agent (in-memory sliding window, 100 samples)
@@ -944,7 +976,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     // ── 세션 노드 추가 (inter-session list.py — 전체 피어, nco-* 제외) ──
     try {
-      const allPeers = await listInterSessions();
+      // 원격 세션 flicker 완화: live 피어 + 최근-seen 원격 피어(TTL) 병합해 깜빡임 방지
+      const allPeers = mergeRecentRemotePeers(await listInterSessions());
       const humanPeers = allPeers.filter(p => !p.isNco);
       const ncoPeers   = allPeers.filter(p => p.isNco);
 
@@ -1056,11 +1089,21 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         });
       }
       // 세션 working 상태 반영 + claude-code fallback 엣지(위임 이력 없는 세션만 — 무분별한 붕괴 방지)
+      // working 판정 소스 2가지:
+      //  (1) 로컬 위임 테이블(workingSessions) — 이 기기 NCO로 위임한 세션
+      //  (2) inter-session 활동 분석(remoteActivity) — 원격 세션이 broadcast한 'status: working'
+      //      또는 최근 done/answer/question·메시지 빈도. 기기 경계를 넘어 원격 작업을 표시하는 핵심.
+      const remoteActivity = await analyzeSessionActivity();
       const sessionsWithDeleg = new Set([...delegAgg.values()].map(d => d.src));
       for (const sid of sessionNodeIds) {
-        if (workingSessions.has(sid)) {
+        const peerName = sid.startsWith('session:') ? sid.slice('session:'.length) : sid;
+        const act = remoteActivity.get(peerName);
+        if (workingSessions.has(sid) || act?.status === 'working') {
           const sn = (nodes as any[]).find(n => n.id === sid);
-          if (sn) sn.data.status = 'working';
+          if (sn) {
+            sn.data.status = 'working';
+            sn.data.workingSource = workingSessions.has(sid) ? 'local-delegation' : (act?.statusSource ?? 'remote-activity');
+          }
         }
         if (!sessionsWithDeleg.has(sid) && nodeIds.has('claude-code')) {
           (edges as any[]).push({
@@ -1165,6 +1208,16 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         });
       });
 
+      // 팀 초기배치: org별 컴팩트 그리드 (기존 단일 행 x=200+i*220 = 폭 5500px 과확산 →
+      // 클라 force가 다 못 당겨와 그룹이 멀리 생성됨. org를 2열 격자, org 내 팀을 3열 미니격자로 묶어
+      // 초기 스프레드를 ~800px대로 축소 → 세션 등 다른 그룹이 가까이 배치된다.)
+      const _teamOrgIds = [...new Set(teamRows.map((t: any) => String(t.organization_id ?? 'none')))];
+      const _teamWithinOrg = new Map<string, number>();
+      const _teamOrgCounts = new Map<string, number>();
+      teamRows.forEach((t: any) => {
+        const o = String(t.organization_id ?? 'none');
+        _teamOrgCounts.set(o, (_teamOrgCounts.get(o) ?? 0) + 1);
+      });
       teamRows.forEach((team, i) => {
         const relatedTasks = tasksByTeam.get(team.id) ?? [];
         const workflow = summarizeTeamWorkflow(relatedTasks);
@@ -1177,7 +1230,17 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         (nodes as any[]).push({
           id: `team:${team.id}`,
           type: 'team',
-          position: { x: 200 + (i * 220), y: 170 },
+          position: (() => {
+            const _oid = String(team.organization_id ?? 'none');
+            const _oi = Math.max(_teamOrgIds.indexOf(_oid), 0);
+            const _w = _teamWithinOrg.get(_oid) ?? 0; _teamWithinOrg.set(_oid, _w + 1);
+            const _ocx = _oi % 2, _ocy = Math.floor(_oi / 2);
+            // within-org 열 수 = √(팀 수) → 큰 org가 세로로만 쌓이지 않고 정사각형에 가깝게
+            const _cnt = _teamOrgCounts.get(_oid) ?? 1;
+            const _cols = Math.max(2, Math.ceil(Math.sqrt(_cnt)));
+            const _wx = _w % _cols, _wy = Math.floor(_w / _cols);
+            return { x: 350 + _ocx * 620 + _wx * 130, y: 240 + _ocy * 430 + _wy * 120 };
+          })(),
           data: {
             label: team.name,
             color: team.color,
