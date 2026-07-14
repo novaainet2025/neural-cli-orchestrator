@@ -17,6 +17,6 @@ describe('근거', () => {
 
   it('최신 포인터가 오늘 날짜를 가리킨다', async () => {
     const pointer = await readFile(pointerPath, 'utf8');
-    expect(pointer.trim()).toBe('2026-07-13');
+    expect(pointer.trim()).toBe('2026-07-14');
   });
 });
