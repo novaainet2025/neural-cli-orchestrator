@@ -64,6 +64,24 @@ interface DiscussionResultState {
   [key: string]: unknown;
 }
 
+interface DiscussionTaskOutput {
+  success?: boolean;
+  output?: unknown;
+  error?: string;
+}
+
+export const requireDiscussionOutput = (
+  providerId: string,
+  result: DiscussionTaskOutput,
+): string => {
+  const output = typeof result.output === 'string' ? result.output.trim() : '';
+  if (result.success !== true || !output) {
+    const reason = result.error?.trim() || (result.success === true ? 'empty response' : 'execution failed');
+    throw new Error(`${providerId}: ${reason}`);
+  }
+  return output;
+};
+
 // ─── PID Controller (동적 consensus threshold 조정) ──
 class PIDController {
   private integral = 0;
@@ -106,7 +124,7 @@ class DiscussionEngine {
   // ═══ 단일 작업 위임 (mode: task) ═══
   async executeTask(agentId: string, prompt: string, options?: { systemPrompt?: string }): Promise<string> {
     const result = await agentManager.executeTask(agentId, prompt, options);
-    return result.output;
+    return requireDiscussionOutput(agentId, result);
   }
 
   // ═══ 병렬 실행 (mode: parallel) ═══
@@ -123,12 +141,21 @@ class DiscussionEngine {
         await eventBus.publish({
           type: 'discussion:provider_started', sessionId, agentId: pid,
         });
-        const result = await agentManager.executeTask(pid, prompt);
-        await eventBus.publish({
-          type: 'discussion:provider_completed', sessionId, agentId: pid,
-          content: result.output.slice(0, 500),
-        });
-        return { pid, output: result.output };
+        try {
+          const result = await agentManager.executeTask(pid, prompt);
+          const output = requireDiscussionOutput(pid, result);
+          await eventBus.publish({
+            type: 'discussion:provider_completed', sessionId, agentId: pid,
+            content: output.slice(0, 500),
+          });
+          return { pid, output };
+        } catch (error) {
+          await eventBus.publish({
+            type: 'discussion:provider_failed', sessionId, agentId: pid,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       })
     );
 
@@ -257,7 +284,7 @@ class DiscussionEngine {
           signal: AbortSignal.timeout(90_000),
         });
 
-        if (synthResult.success && synthResult.output) {
+        if (synthResult.success && synthResult.output.trim()) {
           const db2 = getDb();
           db2.prepare(`
             INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
@@ -338,19 +365,28 @@ class DiscussionEngine {
     const parallelResults = await Promise.allSettled(
       participants.map(async (pid) => {
         await eventBus.publish({ type: 'discussion:provider_started', sessionId, agentId: pid, round: 1 });
-        const result = await agentManager.executeTask(pid, options.topic, {
-          systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
-          signal: AbortSignal.timeout(120_000),
-        });
-        db.prepare(`
-          INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
-          VALUES (?, ?, ?, 1, 'hive_response', ?)
-        `).run(createMessageId(), sessionId, pid, result.output);
-        await eventBus.publish({
-          type: 'discussion:provider_completed', sessionId, agentId: pid, round: 1,
-          content: result.output.slice(0, 500),
-        });
-        return { pid, output: result.output, success: result.success };
+        try {
+          const result = await agentManager.executeTask(pid, options.topic, {
+            systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
+            signal: AbortSignal.timeout(120_000),
+          });
+          const output = requireDiscussionOutput(pid, result);
+          db.prepare(`
+            INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+            VALUES (?, ?, ?, 1, 'hive_response', ?)
+          `).run(createMessageId(), sessionId, pid, output);
+          await eventBus.publish({
+            type: 'discussion:provider_completed', sessionId, agentId: pid, round: 1,
+            content: output.slice(0, 500),
+          });
+          return { pid, output, success: true };
+        } catch (error) {
+          await eventBus.publish({
+            type: 'discussion:provider_failed', sessionId, agentId: pid, round: 1,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       })
     );
 
@@ -383,7 +419,7 @@ class DiscussionEngine {
       const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
         signal: AbortSignal.timeout(90_000),
       });
-      synthesis = synthResult.output;
+      synthesis = requireDiscussionOutput('claude-code', synthResult);
       db.prepare(`
         INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
         VALUES (?, ?, 'claude-code', 2, 'hive_synthesis', ?)
@@ -491,27 +527,35 @@ class DiscussionEngine {
         await eventBus.publish({
           type: 'discussion:provider_started', sessionId, agentId: pid, round,
         });
+        try {
+          const result = await agentManager.executeTask(pid, prompt, {
+            systemPrompt: `Discussion R${round}. Session: ${sessionId}`,
+            compact: true,
+            // 120s: Type B CLI(codex 등)는 콜드스타트+추론에 30s 이상 소요 —
+            // 30s abort는 tmpfile 미생성 → 배너 전사 폴백 오염의 원인이었음
+            signal: AbortSignal.timeout(120_000),
+          });
+          const output = requireDiscussionOutput(pid, result);
 
-        const result = await agentManager.executeTask(pid, prompt, {
-          systemPrompt: `Discussion R${round}. Session: ${sessionId}`,
-          compact: true,
-          // 120s: Type B CLI(codex 등)는 콜드스타트+추론에 30s 이상 소요 —
-          // 30s abort는 tmpfile 미생성 → 배너 전사 폴백 오염의 원인이었음
-          signal: AbortSignal.timeout(120_000),
-        });
+          const db = getDb();
+          db.prepare(`
+            INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+            VALUES (?, ?, ?, ?, ?, ?)
+          `).run(createMessageId(), sessionId, pid, round, type, output);
 
-        const db = getDb();
-        db.prepare(`
-          INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(createMessageId(), sessionId, pid, round, type, result.output);
+          await eventBus.publish({
+            type: 'discussion:provider_completed', sessionId, agentId: pid, round,
+            content: output.slice(0, 500),
+          });
 
-        await eventBus.publish({
-          type: 'discussion:provider_completed', sessionId, agentId: pid, round,
-          content: result.output.slice(0, 500),
-        });
-
-        return { pid, output: result.output };
+          return { pid, output };
+        } catch (error) {
+          await eventBus.publish({
+            type: 'discussion:provider_failed', sessionId, agentId: pid, round,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
       })
     );
 
@@ -607,21 +651,26 @@ class DiscussionEngine {
           compact: true,
           signal: AbortSignal.timeout(60_000),
         });
+        const output = requireDiscussionOutput(pid, result);
 
-        responses[pid] = result.output;
-        accumulated.push(`[${pid}]: ${result.output.slice(0, 400)}`);
+        responses[pid] = output;
+        accumulated.push(`[${pid}]: ${output.slice(0, 400)}`);
 
         const db = getDb();
         db.prepare(`
           INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
           VALUES (?, ?, ?, ?, ?, ?)
-        `).run(createMessageId(), sessionId, pid, round, type, result.output);
+        `).run(createMessageId(), sessionId, pid, round, type, output);
 
         await eventBus.publish({
           type: 'discussion:provider_completed', sessionId, agentId: pid, round,
-          content: result.output.slice(0, 500),
+          content: output.slice(0, 500),
         });
       } catch (err: any) {
+        await eventBus.publish({
+          type: 'discussion:provider_failed', sessionId, agentId: pid, round,
+          error: err instanceof Error ? err.message : String(err),
+        });
         log.warn({ agentId: pid, err: err.message }, 'Agent failed in sequential discussion');
       }
     }
@@ -656,18 +705,23 @@ class DiscussionEngine {
 
       try {
         const result = await agentManager.executeTask(agentId, prompt);
+        const output = requireDiscussionOutput(agentId, result);
 
         await eventBus.publish({
           type: 'discussion:message', sessionId,
-          from: agentId, content: result.output, round: null,
+          from: agentId, content: output, round: null,
         });
 
         db.prepare(`
           INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
           VALUES (?, ?, ?, NULL, 'realtime', ?)
-        `).run(createMessageId(), sessionId, agentId, result.output);
+        `).run(createMessageId(), sessionId, agentId, output);
 
       } catch (err: any) {
+        await eventBus.publish({
+          type: 'discussion:provider_failed', sessionId, agentId, round: null,
+          error: err instanceof Error ? err.message : String(err),
+        });
         log.error({ agentId, sessionId, err: err.message }, 'Realtime response failed');
       }
     };

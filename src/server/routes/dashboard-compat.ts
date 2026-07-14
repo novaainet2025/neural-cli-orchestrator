@@ -180,7 +180,8 @@ function queryRegistry(state: any): Promise<Array<{
           const sessions = (msg.sessions ?? []).map((s: any) => {
             const name: string = s.name || '(unnamed)';
             const hostMatch = name.match(/^(.+?)-claude-\d+/);
-            const h = hostMatch ? hostMatch[1] : name.startsWith('nco-') ? 'nco' : name;
+            let h = hostMatch ? hostMatch[1] : name.startsWith('nco-') ? 'nco' : name;
+            if (name === 'agy-1' || name === 'agy') h = 'nova-macstudio';
             const sinceMs = s.since ? Date.now() - new Date(s.since).getTime() : 0;
             const sinceSec = Math.floor(sinceMs / 1000);
             const sinceStr = sinceSec < 60 ? `${sinceSec}s` : sinceSec < 3600 ? `${Math.floor(sinceSec/60)}m` : `${Math.floor(sinceSec/3600)}h`;

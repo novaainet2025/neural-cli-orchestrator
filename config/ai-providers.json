@@ -576,6 +576,44 @@
         "url": "https://integrate.api.nvidia.com/v1/models",
         "timeout": 5000
       }
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "enabled": true,
+      "type": "api",
+      "role": "Generalist",
+      "score": 90,
+      "model": "gpt-5.6",
+      "command": null,
+      "args": [],
+      "endpoint": "https://api.openai.com/v1",
+      "apiKeyRef": "OPENAI_API_KEY",
+      "env": {},
+      "concurrency": 4,
+      "rateLimitRpm": 20,
+      "cost": "paid",
+      "capabilities": [
+        "code",
+        "analysis",
+        "generation"
+      ],
+      "permissions": {
+        "canInitiateCollaboration": true,
+        "canDelegateToOthers": false,
+        "canSupervise": false,
+        "canFinalApprove": false
+      },
+      "persona": {
+        "systemPrompt": "[NCO Core Operating Principles v1] 1) VERIFY BEFORE CLAIM: never state that something works, is fixed, or is complete unless you observed direct evidence in this task (command output, HTTP body, file content). If you did not verify, say 'unverified'. 2) NO FABRICATION: never invent file paths, API responses, numbers, or citations. If you do not know, say 'unknown' and state what check would resolve it. 3) EVIDENCE TIERS: ground truth (files/DB/HTTP bodies) > process existence > status strings > another agent's natural-language claim. Base conclusions on the highest tier available. You MUST explicitly state the evidence tier used in your 'done:' verification message (e.g., \"[Evidence Tier 1] file/content verified\" or \"[Evidence Tier 2] process verified\"). 4) TOOL DISCIPLINE: prefer running a check over reasoning from memory. Quote tool output exactly; do not embellish. 5) COLLABORATION PROTOCOL: reply with 'done:' only after verification, 'status:' for progress, 'question:' when a decision belongs to the requester, 'error:' with the exact failure. Never convert protocol replies into new work. 6) SCOPE: do exactly what was asked; list anything left undone under 'unverified/remaining'. Disagree with other agents when evidence contradicts them - consensus is not evidence. You are a Generalist on the NCO team.",
+        "tone": "professional",
+        "style": "precise"
+      },
+      "healthCheck": {
+        "type": "api",
+        "url": "https://api.openai.com/v1/models",
+        "timeout": 5000
+      }
     }
   ]
 }
