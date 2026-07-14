@@ -1,7 +1,7 @@
 import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { nanoid } from 'nanoid';
-import { logger } from '../../utils/logger';
+import { logger } from '../utils/logger.ts';
 import { config } from '../../utils/config';
 
 // 토론 보고서 생성기
