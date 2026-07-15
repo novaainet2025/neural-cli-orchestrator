@@ -1,8 +1,7 @@
 import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { nanoid } from 'nanoid';
-import { logger } from '../utils/logger.ts';
-import { config } from '../../utils/config';
+import { logger } from '../utils/logger.js';
 
 // 토론 보고서 생성기
 export class ReportGenerator {
@@ -10,7 +9,7 @@ export class ReportGenerator {
   private readonly templatePath: string;
 
   constructor() {
-    this.outputDir = config.get('report.outputDir') || './reports';
+    this.outputDir = './reports';
     this.templatePath = join(__dirname, 'templates', 'report-template.md');
   }
 
@@ -59,8 +58,9 @@ ${finalDecision}
       logger.info(`토론 보고서 생성됨: ${filepath}`);
       return filepath;
     } catch (error) {
-      logger.error(`보고서 생성 실패: ${error.message}`);
-      throw new Error(`보고서 생성 실패: ${error.message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`보고서 생성 실패: ${message}`);
+      throw new Error(`보고서 생성 실패: ${message}`);
     }
   }
 }

@@ -92,7 +92,7 @@ vi.mock('node:os', () => ({
 vi.mock('node:fs/promises', () => ({
   readdir: vi.fn(async () => ['note.md']),
   readFile: vi.fn(async () => '권장 개선사항: verify cron outputs before claim'),
-  stat: vi.fn(async () => ({ mtimeMs: Date.parse('2026-07-03T02:00:00.000Z') })),
+  stat: vi.fn(async () => ({ mtimeMs: Date.now() - 60 * 60 * 1000 })),
 }));
 
 import { sleepConsolidator } from './sleep-consolidator.js';
