@@ -142,6 +142,42 @@ function findActiveSessionStates(): any[] {
   return out.map(o => o.state);
 }
 
+// 종료된 세션이 남긴 "고아 리스너" 판별 (2026-07-16 claude-2).
+// .session 파일명(=`resolve_listener_key()` = CC/agy main pid)이 죽었으면 그 세션을
+// 소유한 CC·agy 프로세스가 이미 종료된 것 → client.py 리스너만 살아남아 registry에
+// 계속 등록되는 고아 상태. 이런 세션은 대시보드 세션 노드에서 제외해 "종료했는데
+// 사라지지 않는" 잔상을 막는다. 판별은 listener_pid가 아니라 소유자(파일명 pid)를 본다.
+//   - nco-* 는 상주 데몬(합성 pid 키)이므로 고아 판정에서 제외.
+//   - 원격 피어(subnote/kangnote 등)는 로컬 .session 파일이 없어 seenNames에 안 들어옴
+//     → 절대 필터되지 않는다(각 호스트가 자체 생명주기 관리).
+//   - 같은 이름의 .session이 여럿이면 하나라도 살아있는 소유자가 있으면 정상으로 본다.
+function getOrphanedLocalSessionNames(): Set<string> {
+  const liveByName = new Map<string, boolean>();
+  const seenNames = new Set<string>();
+  try {
+    for (const f of readdirSync(IS_CLIENTS_DIR)) {
+      if (!f.endsWith('.session')) continue;
+      const keyPid = Number(f.slice(0, -'.session'.length));
+      if (!Number.isFinite(keyPid) || keyPid <= 0) continue;
+      let name = '';
+      try {
+        const st = JSON.parse(readFileSync(join(IS_CLIENTS_DIR, f), 'utf-8'));
+        name = String(st?.name ?? '');
+      } catch { continue; }
+      if (!name || name.startsWith('nco-')) continue;
+      seenNames.add(name);
+      let keyAlive = false;
+      try { process.kill(keyPid, 0); keyAlive = true; } catch { /* 죽은 소유자 */ }
+      liveByName.set(name, (liveByName.get(name) ?? false) || keyAlive);
+    }
+  } catch { /* clients dir 없음 → 빈 집합 */ }
+  const orphaned = new Set<string>();
+  for (const name of seenNames) {
+    if (!(liveByName.get(name) ?? false)) orphaned.add(name);
+  }
+  return orphaned;
+}
+
 // 단일 세션 state로 registry에 list 요청 — 성공 시 피어 배열, 실패/거부 시 null
 function queryRegistry(state: any): Promise<Array<{
   name: string; label: string; cwd: string; since: string; id: string;
@@ -987,7 +1023,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     try {
       // 원격 세션 flicker 완화: live 피어 + 최근-seen 원격 피어(TTL) 병합해 깜빡임 방지
       const allPeers = mergeRecentRemotePeers(await listInterSessions());
-      const humanPeers = allPeers.filter(p => !p.isNco);
+      // 종료된 세션이 남긴 고아 리스너 제외 — 소유 프로세스(CC/agy main)가 죽은 로컬 세션은
+      // 리스너만 살아 registry에 남아도 대시보드에 노드로 그리지 않는다 (2026-07-16).
+      const orphanedLocal = getOrphanedLocalSessionNames();
+      const humanPeers = allPeers.filter(p => !p.isNco && !orphanedLocal.has(p.name));
       const ncoPeers   = allPeers.filter(p => p.isNco);
 
       const sessionRadius = 520;
