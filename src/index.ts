@@ -18,6 +18,7 @@ import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
+import { providerProber } from './core/provider-prober.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
@@ -310,6 +311,7 @@ async function boot(): Promise<void> {
 
   log.info({ api: env.PORT, ws: env.WS_PORT }, 'NCO Backend fully operational');
   log.info('Monitor: http://localhost:' + env.PORT + '/monitor');
+  if (process.env.NCO_PROBER !== '0') providerProber.start();
 }
 
 // ─── Graceful Shutdown ────────────────────────────────

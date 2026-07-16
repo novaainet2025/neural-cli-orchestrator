@@ -23,6 +23,7 @@ import { paLifecycle } from './ported-integrations.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { acknowledgeTaskLease, recordTaskHeartbeat } from './lease-sweeper.js';
 import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from './task-escalation.js';
+import { logDecision } from './decision-log.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -125,17 +126,30 @@ function loadTaskMetadata(taskId: string): Record<string, unknown> {
   }
 }
 
-function persistTaskEscalation(taskId: string, agentId: string, metadataPatch: { attemptedAgents: string[]; escalationHistory: unknown[] }): void {
+export function persistTaskReassignment(
+  taskId: string,
+  previousAgentId: string,
+  agentId: string,
+  metadataPatch: { attemptedAgents: string[]; escalationHistory?: unknown[] },
+): Record<string, unknown> {
   const db = getDb();
   const metadata = {
     ...loadTaskMetadata(taskId),
     ...metadataPatch,
+    reassignedFrom: previousAgentId,
   };
   db.prepare(`
     UPDATE tasks
     SET assigned_to=?, metadata_json=?, updated_at=datetime('now')
     WHERE id=?
   `).run(agentId, JSON.stringify(metadata), taskId);
+  logDecision({
+    taskId,
+    phase: 'execution',
+    decision: `reassign:${previousAgentId}->${agentId}`,
+    actor: 'task-queue',
+  });
+  return metadata;
 }
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
@@ -679,8 +693,15 @@ class TaskQueueManager {
           const failover = this.findFailoverAgent(currentAgentId, task.agentId);
           if (failover) {
             log.info({ taskId: task.taskId, from: currentAgentId, to: failover }, 'Failing over to alternate agent');
+            const previousAgentId = currentAgentId;
             currentAgentId = failover;
             attemptedAgents = appendAttemptedAgent(attemptedAgents, failover);
+            currentMetadata = persistTaskReassignment(
+              task.taskId,
+              previousAgentId,
+              failover,
+              { attemptedAgents },
+            );
           }
         }
       }
@@ -741,11 +762,12 @@ class TaskQueueManager {
         metadata: currentMetadata,
       });
       if (escalation.action === 'escalate' && escalation.nextAgentId && escalation.metadataPatch) {
-        const nextMetadata = {
-          ...currentMetadata,
-          ...escalation.metadataPatch,
-        };
-        persistTaskEscalation(task.taskId, escalation.nextAgentId, escalation.metadataPatch);
+        const nextMetadata = persistTaskReassignment(
+          task.taskId,
+          failedAgentId,
+          escalation.nextAgentId,
+          escalation.metadataPatch,
+        );
         log.info({
           taskId: task.taskId,
           from: failedAgentId,

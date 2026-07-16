@@ -135,4 +135,19 @@ describe('AgentManager', () => {
 
     agentManager.destroy();
   });
+
+  it('runs a lightweight provider probe outside the project workspace', async () => {
+    await agentManager.init();
+
+    const recovered = await agentManager.probeProvider('claude-code');
+
+    expect(recovered).toBe(true);
+    const [cmd, args, opts] = mockExeca.mock.calls[0];
+    expect(cmd).toBe('claude');
+    expect(args).toContain('PING');
+    expect(opts.cwd).not.toBe(env.PROJECT_DIR);
+    expect(opts.timeout).toBe(30_000);
+
+    agentManager.destroy();
+  });
 });

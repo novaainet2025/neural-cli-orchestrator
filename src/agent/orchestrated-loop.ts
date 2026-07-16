@@ -12,8 +12,21 @@ import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
+import { ECHO_LINE_RE } from '../utils/echo-filter.js';
 
 const log = createLogger('orchestrated-loop');
+
+// [W20 2026-07-15] 자기지칭 리밋 문형만 리밋 신호로 인정 — CLI가 직접 뱉는 에러 형태.
+const QUOTA_SELF_RE = /you'?(?:ve| have)? (?:hit|reached|exceeded) (?:your )?(?:current )?(?:usage limit|quota|rate limit)|usage limit (?:reached|hit)|exceeded your current quota|rate limit (?:reached|exceeded)|\b429 too many requests\b/i;
+// [W21 2026-07-16] diff/픽스처 에코 판별 — gen-5 실측(1784127552491): 테스트 픽스처
+// `+  agents: [{ id: 'codex', health: { lastError: "You've hit your usage limit" } }]` 가
+// 기존 에코 토큰에 안 걸림. 실제 CLI 에러 라인은 diff 접두(+/-)도, 따옴표로 감싼 리밋 문구도,
+// lastError/health: 메타 어휘도 갖지 않는다. (quota 판정 전용 — 공용 echo-filter는 광범위 오차단
+// 위험이 있어 로컬 상수로 유지)
+const QUOTA_ECHO_EXTRA_RE = /^\s*[+-]{1,3}\s|["'`][^"'`]*(?:usage limit|quota|rate limit)[^"'`]*["'`]|lastError|health\s*:/i;
+// [W20] 에코 라인 판별은 utils/echo-filter.ts 공용 상수 사용 (gateway detectFailedCompletion과
+// 동일 기준). 근거: 오탐 3세대 실측 — fleet에코(1784110597975) → 분류기 소스에코(1784111153688)
+// → 수정 정규식 자기참조(1784112187354).
 
 const MAX_ITERATIONS = 10;
 const MAX_HISTORY_TURNS = 10;
@@ -333,8 +346,13 @@ export class OrchestratedLoop {
         // 묻혀 진짜 원인(usage limit 등, stderr 뒤쪽)이 잘린다. 알려진 에러패턴을 먼저 찾고,
         // 없으면 앞 500자로 폴백.
         const _stderrRaw = stripAnsi(result.stderr || '');
-        const _errMatch = _stderrRaw.match(/[^\n]*(usage limit|not valid|quota|exceeded|forbidden|unauthorized|rate limit|error:|failed)[^\n]*/i);
-        const stderrSummary = (_errMatch ? _errMatch[0].trim().slice(0, 300) : '') || _stderrRaw.slice(0, 500);
+        // [W20 2026-07-15] 에코 라인 제외 — 타 에이전트 fleet 상태 문구 + 소스코드/파일 인용
+        // (path.ts:NN prefix, const/regex 문법 "(?:")이 에러 메시지에 실려 classifyCircuitError가
+        // 이 에이전트의 quota로 오분류(1h open)하는 3세대 오탐(fleet에코→분류기소스에코→
+        // 수정정규식 자기참조)을 실패 경로에서도 차단한다. 실제 CLI 에러 라인에는 이 토큰들이 없다.
+        const _stderrNoEcho = _stderrRaw.split('\n').filter((l) => !ECHO_LINE_RE.test(l)).join('\n');
+        const _errMatch = _stderrNoEcho.match(/[^\n]*(usage limit|not valid|quota|exceeded|forbidden|unauthorized|rate limit|error:|failed)[^\n]*/i);
+        const stderrSummary = (_errMatch ? _errMatch[0].trim().slice(0, 300) : '') || _stderrNoEcho.slice(0, 500);
         const timedOut = Boolean((result as { timedOut?: boolean }).timedOut);
         const isCanceled = Boolean((result as { isCanceled?: boolean }).isCanceled);
         log.warn({
@@ -347,7 +365,7 @@ export class OrchestratedLoop {
         const opencodeOutput = this.provider.id === 'opencode'
           ? extractOpenCodeText(result.stdout || '')
           : undefined;
-        const stderrTail = stripAnsi(result.stderr || '').trim().slice(-300);
+        const stderrTail = _stderrNoEcho.trim().slice(-300);
         const stdoutTail = stripAnsi(result.stdout || '').trim().slice(-300);
         // [W18 2026-07-07] stderr 우선: 실패 진짜원인(usage limit 등)은 stderr에 있는데
         // codex 배너("Reading additional input from stdin")가 stdout이라 앞서면 원인이 가려짐.
@@ -363,15 +381,20 @@ export class OrchestratedLoop {
         );
       }
 
-      // [W19 2026-07-12] 재활성 오판 차단: exit 0(성공)이라도 stderr에 소진 신호(usage limit 등)가
-      // 있으면 실제로는 실패다. 반환 output은 stdout 기반이라 agent-manager의 classifyCircuitError가
-      // stderr의 usage limit을 못 봐 codex를 오판 재활성(circuit close)함(오판 3회 원인).
-      // 판정: stderr에 소진 신호가 없을 때만 성공 처리 → 있으면 여기서 실패로 던져 재활성을 막는다.
+      // [W19 2026-07-12][W20 2026-07-15][W21 2026-07-16] 재활성 오판 차단: exit 0(성공)이라도 stderr에
+      // "자기 자신"의 소진 신호가 있으면 실제로는 실패다(오판 재활성 3회 원인). 오탐 5세대 실측 후 규칙:
+      //  (1) 자기지칭 문형만(QUOTA_SELF_RE) 라인 단위 매칭
+      //  (2) 에코 라인 제외(ECHO_LINE_RE: fleet 상태·파일:줄·코드·정규식 문법)
+      //  (3) diff/픽스처 에코 제외(QUOTA_ECHO_EXTRA_RE: +/- diff 접두, 따옴표 안 문구, lastError 메타)
+      //  (4) 구조 신호 우선: CLI가 최종 메시지를 정상 산출했으면(lastMsg 존재) 리밋 아님 —
+      //      실제 리밋은 턴을 완성하지 못한다(텍스트 군비경쟁 종식용 1차 판정, gen-5 근본 차단).
       const _successStderr = stripAnsi(result.stderr || '');
-      if (/usage limit|quota exceeded|rate limit exceeded/i.test(_successStderr)) {
-        const _q = _successStderr.match(/[^\n]*(usage limit|quota exceeded|rate limit exceeded)[^\n]*/i);
+      const _q = _successStderr.split('\n').find(
+        (l) => QUOTA_SELF_RE.test(l) && !ECHO_LINE_RE.test(l) && !QUOTA_ECHO_EXTRA_RE.test(l),
+      );
+      if (_q && !lastMsg) {
         throw new CliExecutionError(
-          `${this.provider.id}: quota exhausted (stderr, exit 0) — ${(_q?.[0] || '').trim().slice(0, 200)}`,
+          `${this.provider.id}: quota exhausted (stderr, exit 0) — ${_q.trim().slice(0, 200)}`,
           `[${this.provider.id}: quota exhausted despite exit 0 — 재활성 차단]`,
           false,
         );

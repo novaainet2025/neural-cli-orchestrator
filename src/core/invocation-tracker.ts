@@ -194,8 +194,23 @@ class InvocationTracker {
     const statusIcon = inv.status === 'completed' ? '✅' : inv.status === 'failed' ? '❌' : '⊘';
     const summary = inv.resultSummary ? ` — ${inv.resultSummary.slice(0, 120)}` : '';
     const durationStr = inv.durationMs != null ? ` (${(inv.durationMs / 1000).toFixed(1)}s)` : '';
+    const task = inv.targetTaskId
+      ? db.prepare('SELECT assigned_to, metadata_json FROM tasks WHERE id = ?').get(inv.targetTaskId) as {
+          assigned_to: string | null;
+          metadata_json: string | null;
+        } | undefined
+      : undefined;
+    let requestedProvider = inv.targetAgentId;
+    if (task?.metadata_json) {
+      try {
+        const metadata = JSON.parse(task.metadata_json) as Record<string, unknown>;
+        if (typeof metadata.requestedProvider === 'string') requestedProvider = metadata.requestedProvider;
+      } catch { /* Preserve the invocation target when task metadata is malformed. */ }
+    }
+    const actualProvider = task?.assigned_to ?? inv.targetAgentId;
+    const providerMismatch = requestedProvider !== actualProvider;
     const content =
-      `${statusIcon} [${inv.mode}] ${inv.targetAgentId} 완료${durationStr}${summary}`;
+      `${statusIcon} [${inv.mode}] ${actualProvider} 완료${providerMismatch ? ` (${requestedProvider} 요청→${actualProvider} 대행)` : ''}${durationStr}${summary}`;
 
     try {
       await cliMesh.sendMessage(

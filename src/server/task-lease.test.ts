@@ -4,6 +4,7 @@ import { resolve } from 'path';
 import { closeDb, getDb, runMigrations } from '../storage/database.js';
 import { createGateway } from './gateway.js';
 import { env } from '../utils/config.js';
+import { persistTaskReassignment } from '../core/task-queue.js';
 
 describe.sequential('task lease routes', () => {
   const testDbPath = resolve(env.ROOT, 'db/test-task-lease.db');
@@ -101,5 +102,48 @@ describe.sequential('task lease routes', () => {
       error: 'heartbeat_conflict',
       status: 'completed',
     });
+  });
+
+  it('exposes a provider mismatch when the actual executor differs from the requested provider', async () => {
+    getDb().prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, ?, 'completed', ?)
+    `).run('route-task-provider-mismatch', 'prompt', 'mlx', JSON.stringify({ requestedProvider: 'codex' }));
+
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/task/route-task-provider-mismatch',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().task).toMatchObject({
+      assigned_to: 'mlx',
+      requestedProvider: 'codex',
+      providerMismatch: true,
+    });
+  });
+
+  it('records runtime provider reassignment in task metadata and decision log', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, ?, 'assigned', ?)
+    `).run('route-task-reassignment', 'prompt', 'codex', JSON.stringify({ requestedProvider: 'codex' }));
+
+    persistTaskReassignment(
+      'route-task-reassignment',
+      'codex',
+      'mlx',
+      { attemptedAgents: ['codex', 'mlx'] },
+    );
+
+    const task = db.prepare('SELECT assigned_to, metadata_json FROM tasks WHERE id = ?')
+      .get('route-task-reassignment') as { assigned_to: string; metadata_json: string };
+    const decision = db.prepare('SELECT decision FROM decision_log WHERE task_id = ?')
+      .get('route-task-reassignment') as { decision: string };
+
+    expect(task.assigned_to).toBe('mlx');
+    expect(JSON.parse(task.metadata_json)).toMatchObject({ reassignedFrom: 'codex' });
+    expect(decision.decision).toBe('reassign:codex->mlx');
   });
 });

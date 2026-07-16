@@ -1,6 +1,7 @@
 import { getDb } from '../storage/database.js';
 import { sharedState } from '../core/shared-state.js';
 import { eventBus } from '../core/event-bus.js';
+import { logDecision } from '../core/decision-log.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('circuit-breaker-registry');
@@ -367,6 +368,7 @@ class CircuitBreakerRegistry {
   private commit(snapshot: CircuitSnapshot, message: string): void {
     this.states.set(snapshot.agentId, snapshot);
     this.persist(snapshot);
+    logDecision({ phase: 'circuit-breaker', decision: `circuit:${snapshot.state}`, reason: message, actor: snapshot.agentId });
     void this.syncSharedState(snapshot.agentId);
     log.info({
       agentId: snapshot.agentId,

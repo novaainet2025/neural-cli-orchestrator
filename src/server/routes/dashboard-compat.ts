@@ -21,6 +21,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { promisify } from 'node:util';
+import { stripEchoLines } from '../../utils/echo-filter.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -677,12 +678,19 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     ).all() as any[];
     const taskMap = new Map(taskRows.map((r: any) => [r.assigned_to, r]));
 
-    // 에이전트별 마지막 실패 이유 (response 컬럼에서 추출)
+    // 에이전트별 마지막 실패 이유 — error 컬럼 우선, response는 폴백 (에코-FP 4세대 수정, 2026-07-15):
+    // 프로브 응답이 quota 정규식을 "인용"한 텍스트가 response 경유로 lastError에 서빙되어
+    // nova-cli LIMIT_ERROR_RE가 리밋으로 오표시하던 경로 차단. 에코 라인은 양쪽 모두 제거.
     const lastFailRows = db.prepare(
-      `SELECT assigned_to, response FROM tasks WHERE status='failed' AND response IS NOT NULL
+      `SELECT assigned_to, error, response FROM tasks
+       WHERE status='failed' AND (error IS NOT NULL OR response IS NOT NULL)
        GROUP BY assigned_to HAVING MAX(created_at)`
     ).all() as any[];
-    const lastFailMap = new Map(lastFailRows.map((r: any) => [r.assigned_to, r.response as string]));
+    const lastFailMap = new Map(lastFailRows.map((r: any) => {
+      const source = (r.error as string | null) || (r.response as string | null) || '';
+      const cleaned = stripEchoLines(source).trim();
+      return [r.assigned_to, cleaned || null] as [string, string | null];
+    }));
 
     // 에이전트별 24h 실패 건수
     const fail24hRows = db.prepare(

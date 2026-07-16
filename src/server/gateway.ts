@@ -16,6 +16,8 @@ import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
 import { requireEvidence } from '../security/evidence-gate.js';
 import { compressPlan, MAX_PLAN_CHARS } from '../core/context-budget.js';
+import { logDecision } from '../core/decision-log.js';
+import { computeTrustScores } from '../core/trust-scorer.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { sharedState, type AgentState } from '../core/shared-state.js';
 import { eventBus, type NCOEvent } from '../core/event-bus.js';
@@ -34,12 +36,25 @@ import {
   circuitBreakerRegistry,
   type ProviderAvailabilitySnapshot,
 } from '../security/circuit-breaker-registry.js';
+import { stripEchoLines } from '../utils/echo-filter.js';
 
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
-function detectFailedCompletion(response: string | null | undefined): boolean {
+export function detectFailedCompletion(response: string | null | undefined): boolean {
   if (!response) return false;
   const text = response.trim();
+
+  // 성공 프로토콜 가드(2026-07-16, claude-2 관측 + T1 실데이터: 2일 7건 중 4건 오탐).
+  // NCO Core Principles상 성공은 'done:'로, 실패는 'error:'로 회신한다. 보안·에러핸들링
+  // 태스크는 응답 본문에 401/403/'usage limit'/'error:' 같은 어휘가 필연적이라, 'done:'로
+  // 시작하는(=에이전트가 명시적으로 성공을 선언한) 응답은 텍스트 실패 스캔에서 제외한다.
+  // 실제 실패는 'error:' 프리픽스나 프로토콜 없는 원시 에러로 남아 아래 스캔에 걸린다.
+  if (/^done:/i.test(text)) return false;
+
   if (/^Error:\s/i.test(text)) return true;
+
+  // 에코-오탐 방어(2026-07-15 라이브 프로브에서 실증): 소스코드/상태 브리프를
+  // 인용한 라인은 실패 신호 스캔에서 제외한다 (orchestrated-loop 3세대와 동일 계열).
+  const scanText = stripEchoLines(text);
 
   // HARD 시그니처: 정상 콘텐츠(코드리뷰·작업로그)에 등장하지 않는 강한 실패 신호.
   // 위치/길이 무관하게 실패로 판정한다.
@@ -54,7 +69,7 @@ function detectFailedCompletion(response: string | null | undefined): boolean {
     /^\s*ERROR:\s/im,
     /^status:\s*failed\b/im,
   ];
-  if (hard.some(p => p.test(text))) return true;
+  if (hard.some(p => p.test(scanText))) return true;
 
   // SOFT 시그니처: 정상 텍스트에도 등장할 수 있는 단어들(error/failed/usage limit 등).
   // 긴 substantive 출력의 본문 중간 등장은 오탐이므로, 짧은 출력 전체 또는 긴 출력의
@@ -71,7 +86,7 @@ function detectFailedCompletion(response: string | null | undefined): boolean {
     /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
   ];
   const SHORT_OUTPUT = 500;
-  const target = text.length <= SHORT_OUTPUT ? text : text.slice(0, 200);
+  const target = scanText.length <= SHORT_OUTPUT ? scanText : scanText.slice(0, 200);
   return soft.some(p => p.test(target));
 }
 
@@ -798,6 +813,33 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  app.addHook('preSerialization', async (request, _reply, payload) => {
+    if (request.method !== 'GET' || request.url.split('?', 1)[0] !== '/api/agents') {
+      return payload;
+    }
+    if (typeof payload !== 'object' || payload === null || !('agents' in payload)) {
+      return payload;
+    }
+
+    const response = payload as { agents?: unknown } & Record<string, unknown>;
+    if (!Array.isArray(response.agents)) return payload;
+
+    const agents = response.agents.map((agent) => {
+      if (typeof agent !== 'object' || agent === null || !('id' in agent)) return agent;
+
+      let trust = null;
+      if (typeof agent.id === 'string') {
+        try {
+          trust = computeTrustScores(agent.id);
+        } catch {
+          trust = null;
+        }
+      }
+      return { ...agent, trust };
+    });
+
+    return { ...response, agents };
+  });
   const getInFlightCount = (): number => {
     const db = getDb();
     const row = db.prepare(`
@@ -1025,6 +1067,7 @@ export async function createGateway() {
       return;
     }
 
+    logDecision({ taskId, phase: 'quality-gate', decision: 'gate:quality_reject', reason: quality.heuristics.join(',') });
     await eventBus.publish({
       type: 'task:failover',
       taskId: created.newTaskId,
@@ -1308,6 +1351,7 @@ export async function createGateway() {
       return providerSelection.error;
     }
     const agentId = providerSelection.agentId;
+    if (providerSelection.failover) logDecision({ taskId, phase: 'routing', decision: `route:${requestedProvider}->${agentId}`, reason: providerSelection.failover.originalGate });
     const projectDirError = validateProjectDirMetadata(input.metadata);
     if (projectDirError) {
       reply.code(400);
@@ -1346,6 +1390,7 @@ export async function createGateway() {
       // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
       const mergedMetadata = {
         ...(input.metadata ?? {}),
+        requestedProvider: input.metadata?.requestedProvider ?? requestedProvider,
         ...(input.model ? { model: input.model } : {}),
         ...(promptGate ? { promptGate } : {}),
         ...(input.requiredEvidence && input.requiredEvidence.length > 0
@@ -1480,11 +1525,22 @@ export async function createGateway() {
     return { tasks };
   });
 
+  app.get('/api/decisions', async (req, reply) => {
+    const parsed = ListQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid query', details: parsed.error.issues.map(issue => issue.message) };
+    }
+    const decisions = getDb().prepare('SELECT * FROM decision_log ORDER BY created_at DESC, rowid DESC LIMIT ?')
+      .all(parsed.data.limit);
+    return { decisions };
+  });
+
   app.get('/api/task/:id', async (req, reply) => {
     const { id } = req.params as { id: string };
     const db = getDb();
     const task = db.prepare(`
-      SELECT id, status, assigned_to, progress, prompt, response, error, created_at, completed_at,
+      SELECT id, status, assigned_to, progress, prompt, response, error, metadata_json, created_at, completed_at,
              acked_at, last_heartbeat_at, heartbeat_seq, lease_expires_at
       FROM tasks
       WHERE id=?
@@ -1496,6 +1552,7 @@ export async function createGateway() {
       prompt: string | null;
       response: string | null;
       error: string | null;
+      metadata_json: string | null;
       created_at: string | null;
       completed_at: string | null;
       acked_at: string | null;
@@ -1509,11 +1566,21 @@ export async function createGateway() {
       return { error: 'not found' };
     }
 
+    const metadata = task.metadata_json ? safeJsonParse(task.metadata_json) : undefined;
+    const requestedProvider = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+      && typeof (metadata as Record<string, unknown>).requestedProvider === 'string'
+      ? (metadata as Record<string, unknown>).requestedProvider as string
+      : undefined;
+
     return {
       task: {
         id: task.id,
         status: task.status,
         assigned_to: task.assigned_to,
+        ...(requestedProvider ? { requestedProvider } : {}),
+        ...(requestedProvider && task.assigned_to && requestedProvider !== task.assigned_to
+          ? { providerMismatch: true }
+          : {}),
         progress: task.progress,
         prompt: task.prompt?.slice(0, 200) ?? null,
         response: task.response?.slice(0, 20_000) ?? null,

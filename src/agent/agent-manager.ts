@@ -392,6 +392,63 @@ class AgentManager {
     return sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1];
   }
 
+  async probeProvider(agentId: string, prompt = 'PING', timeoutMs = 30_000): Promise<boolean> {
+    const provider = this.providers.get(agentId);
+    if (!provider) return false;
+
+    try {
+      if (provider.type === 'api') {
+        const url = this.resolveApiHealthCheckUrl(provider);
+        if (!url) return false;
+
+        const apiKeyRef = provider.keyRotation?.enabled
+          ? provider.keyRotation.envVar
+          : provider.apiKeyRef;
+        const apiKey = apiKeyRef
+          ? this.getNextHealthApiKey(agentId, apiKeyRef, 'active-probe')
+          : undefined;
+        const response = await fetch(url, {
+          method: 'GET',
+          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        return response.ok;
+      }
+
+      if (!provider.command) return false;
+      const { execa } = await import('execa');
+      const result = await execa(provider.command, this.buildProbeArgs(provider, prompt), {
+        cwd: (await import('node:os')).tmpdir(),
+        env: {
+          ...process.env,
+          ...provider.env,
+          NCO_HOOK_DISABLED: '1',
+        },
+        reject: false,
+        stdin: 'ignore',
+        timeout: timeoutMs,
+      });
+      return result.exitCode === 0 && !result.failed && !result.timedOut && !result.isCanceled;
+    } catch {
+      return false;
+    }
+  }
+
+  private buildProbeArgs(provider: ProviderConfig, prompt: string): string[] {
+    switch (provider.id) {
+      case 'claude-code':
+        return [...provider.args, '-p', prompt, '--output-format', 'text'];
+      case 'codex':
+        return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', prompt];
+      case 'cursor-agent':
+        return [...provider.args, '-p', prompt, '--output-format', 'text'];
+      case 'higgsfield':
+        return ['generate', 'create', provider.model || 'higgsfield', '--prompt', prompt];
+      default:
+        return [...provider.args, prompt];
+    }
+  }
+
   // ─── Health Monitor ─────────────────────────────────
   private async healthCheck(): Promise<void> {
     for (const [id, provider] of this.providers) {
@@ -487,7 +544,11 @@ class AgentManager {
     return typeof provider.healthCheck?.url === 'string' ? provider.healthCheck.url : null;
   }
 
-  private getNextHealthApiKey(providerId: string, envVar: string, purpose: 'health' | 'gated-probe' = 'health'): string | undefined {
+  private getNextHealthApiKey(
+    providerId: string,
+    envVar: string,
+    purpose: 'health' | 'gated-probe' | 'active-probe' = 'health',
+  ): string | undefined {
     const keys = getApiKeys(envVar);
     if (keys.length === 0) {
       return undefined;
