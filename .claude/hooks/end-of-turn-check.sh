@@ -172,7 +172,7 @@ parse_tasks_from_file() {
                 DONE_TASKS=$((DONE_TASKS + 1))
             else
                 local text
-                text=$(echo "$line" | sed 's/^\s*-\s*\[ \]\s*//')
+                text=$(echo "$line" | LC_ALL=C sed 's/^\s*-\s*\[ \]\s*//')
                 PENDING_TASKS="${PENDING_TASKS}  - ${text}\n"
                 PENDING_TASK_LIST="${PENDING_TASK_LIST}${text}|"
             fi
@@ -260,7 +260,7 @@ echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) turn=${TURN_COUNT} gap=${GAP_RATE}% grade=$
 cat > "$NCO_STATE" <<STATEEOF
 {
   "session_id": "$NCO_SESSION_ID",
-  "session_title": "$(echo "$SESSION_TITLE" | sed 's/"/\\"/g')",
+  "session_title": "$(echo "$SESSION_TITLE" | LC_ALL=C sed 's/"/\\"/g')",
   "turn": $TURN_COUNT,
   "changed_files": $CHANGED_COUNT,
   "additions": $ADDITIONS,
@@ -271,7 +271,7 @@ cat > "$NCO_STATE" <<STATEEOF
   "done_tasks": $DONE_TASKS,
   "gap_rate": $GAP_RATE,
   "grade": "$GRADE",
-  "eval": "$(echo "$EVAL_SUMMARY" | sed 's/"/\\"/g')",
+  "eval": "$(echo "$EVAL_SUMMARY" | LC_ALL=C sed 's/"/\\"/g')",
   "last_check": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 STATEEOF

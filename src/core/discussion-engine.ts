@@ -6,6 +6,7 @@ import { getDb } from '../storage/database.js';
 import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { sortProvidersByCostOrder } from './smart-router.js';
+import { env } from '../utils/config.js';
 
 const log = createLogger('discussion-engine');
 
@@ -281,6 +282,7 @@ class DiscussionEngine {
       try {
         const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
           systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
+          projectDir: env.PROJECT_DIR, // 일관성: 합성 단계도 projectDir 전달
           signal: AbortSignal.timeout(90_000),
         });
 
@@ -531,9 +533,13 @@ class DiscussionEngine {
           const result = await agentManager.executeTask(pid, prompt, {
             systemPrompt: `Discussion R${round}. Session: ${sessionId}`,
             compact: true,
-            // 120s: Type B CLI(codex 등)는 콜드스타트+추론에 30s 이상 소요 —
-            // 30s abort는 tmpfile 미생성 → 배너 전사 폴백 오염의 원인이었음
-            signal: AbortSignal.timeout(120_000),
+            // projectDir 필수: Type B CLI(codex)는 metadata.projectDir 없으면 즉시 실패
+            // (orchestrated-loop.ts assertTaskProjectDir) → 토론에서 codex 탈락 원인이었음
+            projectDir: env.PROJECT_DIR,
+            // 180s: Type A(claude-code nested `claude -p` spawn)는 콜드스타트가 무거워
+            // 120s abort로 "silent-failure: empty output" 발생 → 토론에서 claude-code 탈락 원인.
+            // Type B/C는 먼저 끝나면 조기 반환하므로 ceiling만 상향(저위험).
+            signal: AbortSignal.timeout(180_000),
           });
           const output = requireDiscussionOutput(pid, result);
 
@@ -649,6 +655,7 @@ class DiscussionEngine {
         const result = await agentManager.executeTask(pid, prompt, {
           systemPrompt: `R${round} (seq). Concisely build on evals.`,
           compact: true,
+          projectDir: env.PROJECT_DIR, // codex 등 Type B CLI projectDir 필수
           signal: AbortSignal.timeout(60_000),
         });
         const output = requireDiscussionOutput(pid, result);
