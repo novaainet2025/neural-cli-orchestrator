@@ -1265,8 +1265,8 @@ const TOPO_PARTICLES={}; // edgeKey → [{t:0..1, speed}]
 let _topoSelected=null; // agentId
 const AGENT_COLORS_MAP={
   opencode:'#2da44e', codex:'#1f6feb',
-  aider:'#388bfd', 'cursor-agent':'#8957e5', copilot:'#20b2aa',
-  openrouter:'#d4773a', ollama:'#da3633', vllm:'#e879f9',
+  aider:'#388bfd', 'cursor-agent':'#8957e5',
+  ollama:'#da3633', vllm:'#e879f9',
 };
 function topoAgentColor(id){return AGENT_COLORS_MAP[id]||agentColor(id)||'#30363d';}
 
