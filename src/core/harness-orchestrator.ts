@@ -59,16 +59,16 @@ export interface OrchestrateResult {
 const MODE_AGENTS: Record<string, string[]> = {
   fast:      ['codex', 'opencode'],
   balanced:  ['codex', 'opencode', 'cursor-agent'],
-  thorough:  ['codex', 'opencode', 'cursor-agent', 'copilot', 'agy'],
+  thorough:  ['codex', 'opencode', 'cursor-agent', 'agy'],
 };
 
 // ── taskType별 추천 에이전트 ──────────────────────────────────────────────
 const TASK_AGENTS: Record<string, string[]> = {
   code:     ['codex', 'opencode', 'cursor-agent'],
   design:   ['opencode', 'agy', 'codex'],
-  review:   ['cursor-agent', 'opencode', 'copilot'],
+  review:   ['cursor-agent', 'opencode'],
   verify:   ['cursor-agent', 'codex', 'opencode'],
-  research: ['copilot', 'opencode', 'nvidia'],
+  research: ['opencode', 'nvidia'],
   ui:       ['agy', 'codex', 'opencode'],
   media:    ['higgsfield', 'agy'],
   general:  ['opencode', 'codex', 'cursor-agent'],

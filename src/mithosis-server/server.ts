@@ -16,14 +16,14 @@ const NCO_AUTH = 'Bearer nco_secret_key_change_me_in_production';
 
 // ── 도메인별 에이전트 우선순위 (Mithosis 전략: 단일 최적 선택) ─────────────
 const AGENT_PRIORITY: Record<string, string[]> = {
-  code:     ['cursor-agent', 'opencode', 'codex', 'nvidia', 'openrouter'],
-  design:   ['opencode', 'agy', 'codex', 'nvidia', 'openrouter'],
-  review:   ['cursor-agent', 'opencode', 'codex', 'openrouter'],
-  verify:   ['cursor-agent', 'codex', 'openrouter'],
-  research: ['nvidia', 'opencode', 'openrouter'],
-  ui:       ['agy', 'opencode', 'codex', 'openrouter'],
-  media:    ['agy', 'openrouter'],
-  general:  ['opencode', 'codex', 'nvidia', 'openrouter'],
+  code:     ['cursor-agent', 'opencode', 'codex', 'nvidia'],
+  design:   ['opencode', 'agy', 'codex', 'nvidia'],
+  review:   ['cursor-agent', 'opencode', 'codex'],
+  verify:   ['cursor-agent', 'codex'],
+  research: ['nvidia', 'opencode'],
+  ui:       ['agy', 'opencode', 'codex'],
+  media:    ['agy'],
+  general:  ['opencode', 'codex', 'nvidia'],
 };
 
 const QUALITY_THRESHOLD = 65;
@@ -90,7 +90,7 @@ async function orchestrate(prompt: string, taskType: TaskType = 'general'): Prom
 
   if (candidates.length === 0) {
     // 온라인 에이전트 없으면 첫 번째 시도
-    candidates.push(priority[0] ?? 'openrouter');
+    candidates.push(priority[0] ?? 'nvidia');
   }
 
   const agentsTried: string[] = [];

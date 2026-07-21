@@ -23,23 +23,21 @@ export const BRAIN_TIER: readonly string[] = [
   'claude-code',  // Opus — Commander/최종 종합
   'opencode',     // Architect — 설계·구조
   'cursor-agent', // Reviewer — 코드 리뷰·보안
-  'copilot',      // Researcher — 리서치·문서
   'codex',        // Engineer(paid) — 어려운 구현 escalation
   'agy',          // Designer — UI·패턴
 ];
 
 /**
  * 워커(WORKER) — 무료·로컬 우선. 대량 구현/기계적/병렬 작업.
- * 로컬(mlx/ollama/hermes) 우선 → 무료 클라우드(nvidia/openrouter) fallback.
+ * 로컬(ollama) 우선 → 무료 클라우드(nvidia/openrouter) fallback.
+ * ※ hermes는 2026-07-18 codex CLI(paid)로 전환되어 무료·로컬 계약에서 제외.
+ *   직접 위임(nco_task ai=hermes)·failover 타깃으로는 계속 사용 가능.
+ * ※ mlx는 2026-07-21 완전제거(사용자 지시) — 로컬 워커는 Ollama 단일화.
  */
 export const WORKER_TIER: readonly string[] = [
-  'mlx',          // 로컬 MLX (Apple Silicon)
-  'remote-mlx',   // 원격 MLX
-  'ollama',       // 로컬 Ollama
-  'hermes',       // 로컬 qwen3 (ToolUser)
-  'aider',        // 무료 (openrouter qwen)
+  'ollama',       // 로컬 Ollama (qwen3:30b-a3b)
+  'aider',        // 무료 (aider CLI)
   'nvidia',       // 무료 클라우드 Reasoner
-  'openrouter',   // 무료 클라우드 Generalist
 ];
 
 const BRAIN_SET = new Set(BRAIN_TIER);
@@ -94,9 +92,9 @@ export const LAYER_TIER_AGENTS: Record<string, string[]> = {
   // 두뇌: 계획·최종 종합 (유료 스마트)
   management: ['claude-code', 'opencode'],
   // 두뇌 리서치 + 무료 fallback
-  information: ['copilot', 'openrouter', 'nvidia'],
+  information: ['nvidia'],
   // 워커: 무료 전체를 로컬우선→무료클라우드 순으로 나열(WORKER_TIER 그대로 재사용).
-  // 머신에 로컬 LLM이 없으면(저사양 원격: subnote/kangnote 등) mlx/ollama/hermes가
+  // 머신에 로컬 LLM이 없으면(저사양 원격: subnote/kangnote 등) ollama가
   // enabled 안 돼 자동으로 무료 클라우드(nvidia/openrouter)로 폴백, 무료가 전무하면
   // codex(유료)로 escalation. pickAvailableAgent가 enabled+circuit로 필터하므로
   // 머신별 자동 적응 — 하드코딩 없이 사양별 유연 배정 ([[feedback_ollama_lowspec_exclude]]).

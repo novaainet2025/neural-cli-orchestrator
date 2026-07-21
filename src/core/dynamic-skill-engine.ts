@@ -55,7 +55,7 @@ const PIPELINE_TEMPLATES: Array<{
     pattern: /분석|analyze|조사|research/i,
     taskType: 'research',
     pipeline: [
-      { agentId: 'copilot',  promptTemplate: '[리서치] {{prompt}}에 대해 조사하라.' },
+      { agentId: 'opencode', promptTemplate: '[리서치] {{prompt}}에 대해 조사하라.' },
       { agentId: 'nvidia',   promptTemplate: '[분석] 다음 리서치 결과를 심층 분석하라:\n{{prev_output}}\n\n원래 질문: {{prompt}}' },
     ],
   },

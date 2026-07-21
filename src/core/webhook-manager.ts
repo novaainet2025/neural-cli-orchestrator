@@ -138,7 +138,7 @@ export async function dispatchWebhook(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
         body: JSON.stringify({
-          ai: ai || 'openrouter',
+          ai: ai || 'nvidia',
           prompt,
           callerAgentId: 'webhook-manager',
           metadata: { projectDir: resolveInternalProjectDir() },

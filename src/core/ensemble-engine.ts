@@ -108,7 +108,7 @@ class EnsembleEngine {
       return explicit.slice(0, max);
     }
     // 기본 앙상블 에이전트 우선순위
-    const preferred = ['codex', 'cursor-agent', 'opencode', 'nvidia', 'agy', 'copilot'];
+    const preferred = ['codex', 'cursor-agent', 'opencode', 'nvidia', 'agy'];
     const available = agentManager.listEnabledIds();
     const filtered = preferred.filter(id => available.includes(id));
     return filtered.slice(0, max);

@@ -92,7 +92,7 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
     if (job.taskType === 'nco_task') {
       const { ai, prompt } = job.payload as { ai: string; prompt: string };
-      const targetAi = ai || 'openrouter';
+      const targetAi = ai || 'nvidia';
 
       // gate-awareness: quota/circuit로 gated된 프로바이더에 배정하면 즉시 실패한다.
       // 배정 전 gate.available을 확인하고, 불가하면 '실패'가 아니라 30분 지연 후 재시도한다.

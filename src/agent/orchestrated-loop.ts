@@ -64,7 +64,9 @@ function extractOpenCodeText(stdout: string): string | undefined {
 }
 
 // Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'cursor-agent', 'copilot', 'agy']);
+const NO_STDIN_PROVIDERS = new Set(['codex', 'hermes', 'cursor-agent', 'agy']);
+// hermes는 codex CLI 백엔드로 실행되므로 codex와 동일한 stdin/output-last-message 규칙을 따른다.
+const CODEX_FAMILY = new Set(['codex', 'hermes']);
 
 interface LoopResult {
   output: string;
@@ -280,7 +282,7 @@ export class OrchestratedLoop {
 
     // codex: --output-last-message writes ONLY the final assistant message to a file,
     // avoiding banner/echo pollution in stdout (T1-verified flag support)
-    const lastMessageFile = this.provider.id === 'codex'
+    const lastMessageFile = CODEX_FAMILY.has(this.provider.id)
       ? joinPath(tmpdir(), `nco-codex-last-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
       : null;
 
@@ -294,7 +296,7 @@ export class OrchestratedLoop {
       // [W18/stdin 2026-07-07] codex는 stdin:'ignore'면 "Reading additional input from stdin"에서
       // 멈춰 timeout된다(codex 0.142.5). 빈 input('')을 주면 EOF를 받아 정상 진행한다.
       // (T1: execa stdin:'ignore' → 멈춤 / input:'' → prompt 실행+정상 에러표시 재현)
-      const stdinOpt: Record<string, unknown> = this.provider.id === 'codex'
+      const stdinOpt: Record<string, unknown> = CODEX_FAMILY.has(this.provider.id)
         ? { input: '' }
         : (useStdin ? { input: combined } : { stdin: 'ignore' });
       const subprocess = execa(command, finalArgs, {
@@ -428,6 +430,17 @@ export class OrchestratedLoop {
 
   private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
     switch (this.provider.id) {
+      case 'hermes': {
+        // 2026-07-18: hermes = codex CLI 백엔드(중간모델 gpt-5.6-terra). ToolUser/추론 워커.
+        // read-only 샌드박스: assertTaskProjectDir가 codex 전용이라 hermes는 projectDir 불요
+        //   (토론/consensus 등 무프로젝트 작업 보존) + read-only로 NCO 소스 오염 차단.
+        // 모델은 options?.model(task 지정) → provider.model(gpt-5.6-terra) 순으로 강제.
+        const hModel = model || this.provider.model;
+        const hFlags = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', ...(hModel ? ['-m', hModel] : [])];
+        return lastMessageFile
+          ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
+          : [...hFlags, prompt];
+      }
       case 'codex':
         // codex exec <prompt> — non-interactive; skip git trust check outside workdir
         // --output-last-message: final assistant reply only (no banner/echo)
@@ -461,9 +474,6 @@ export class OrchestratedLoop {
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
         return ['--print', '--trust', '--output-format', 'text', ...(model ? ['--model', model] : []), prompt];
-      case 'copilot':
-        // copilot CLI v1.0.22: non-interactive mode via --prompt flag
-        return ['--prompt', prompt];
       case 'higgsfield':
         return ['generate', 'create', this.provider.model || 'higgsfield', '--prompt', prompt];
       default:

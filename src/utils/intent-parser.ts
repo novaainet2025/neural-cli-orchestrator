@@ -45,8 +45,6 @@ const AGENT_KEYWORDS: Record<string, string[]> = {
   opencode: ['opencode', 'architect', 'design'],
   aider: ['aider', 'edit', 'modify'],
   'cursor-agent': ['cursor', 'review', 'fix'],
-  copilot: ['copilot', 'research', 'lookup'],
-  openrouter: ['openrouter', 'reason', 'think'],
   ollama: ['ollama', 'validate', 'test', 'local'],
 };
 

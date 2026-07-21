@@ -54,9 +54,9 @@ const ROLE_MAP = {
   quality: LAYER_TIER_AGENTS.quality,
 };
 
-/** Prefer local MLX first, then vLLM, then other free tiers. */
+/** Prefer local Ollama first, then vLLM, then other free tiers. */
 export const PROVIDER_COST_ORDER = [
-  'mlx', 'vllm', 'openrouter', 'aider', 'copilot', 'codex', 'cursor-agent', 'opencode', 'claude-code',
+  'ollama', 'vllm', 'aider', 'codex', 'cursor-agent', 'opencode', 'claude-code',
 ];
 
 export function sortProvidersByCostOrder(ids: string[]): string[] {
@@ -188,8 +188,8 @@ class SmartRouter {
     if (snapshot.state === 'open') return false;
 
     // gate 가용성: circuit-open 외에 quota/rate-limit/auth 소진(gated:*)도 사전 제외.
-    // 저사양 머신에서 credit 소진된 무료 워커(예: hermes)를 첫 시도로 고르지 않고
-    // 다음 가용 무료 워커(nvidia/openrouter)로 즉시 폴백 (2026-07-04, subnote T1).
+    // 저사양 머신에서 credit 소진된 무료 워커(예: nvidia/openrouter)를 첫 시도로 고르지 않고
+    // 다음 가용 무료 워커로 즉시 폴백 (2026-07-04, subnote T1).
     try {
       if (!circuitBreakerRegistry.getAvailability(agentId).available) return false;
     } catch { /* ignore */ }

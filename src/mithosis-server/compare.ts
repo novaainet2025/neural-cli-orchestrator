@@ -18,7 +18,7 @@ async function runNCO(testIds: string[]): Promise<{ avgScore: number; results: T
   const resp = await fetch(`${NCO_URL}/api/benchmark/full`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: AUTH },
-    body: JSON.stringify({ agents: ['opencode', 'codex', 'nvidia', 'openrouter'], testIds }),
+    body: JSON.stringify({ agents: ['opencode', 'codex', 'nvidia'], testIds }),
     signal: AbortSignal.timeout(400_000),
   });
   if (!resp.ok) throw new Error(`NCO error: ${resp.status} ${await resp.text()}`);
