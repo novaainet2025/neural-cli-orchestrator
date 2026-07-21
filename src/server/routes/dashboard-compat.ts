@@ -717,9 +717,14 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     // 에이전트별 마지막 실패 이유 — error 컬럼 우선, response는 폴백 (에코-FP 4세대 수정, 2026-07-15):
     // 프로브 응답이 quota 정규식을 "인용"한 텍스트가 response 경유로 lastError에 서빙되어
     // nova-cli LIMIT_ERROR_RE가 리밋으로 오표시하던 경로 차단. 에코 라인은 양쪽 모두 제거.
+    // [sticky lastError 수정 2026-07-19] 마지막 실패가 마지막 '성공'보다 나중일 때만 lastError 노출.
+    // 기존엔 이후 성공을 무시하고 "가장 최근 실패"를 영구 표시 → codex가 4일 전 실패(07-15)를
+    // 07-19까지 계속 unhealthy로 보이던 버그. 성공으로 회복했으면 실패는 stale → 제외.
     const lastFailRows = db.prepare(
-      `SELECT assigned_to, error, response FROM tasks
+      `SELECT assigned_to, error, response FROM tasks f
        WHERE status='failed' AND (error IS NOT NULL OR response IS NOT NULL)
+         AND created_at > COALESCE(
+           (SELECT MAX(created_at) FROM tasks s WHERE s.assigned_to = f.assigned_to AND s.status='completed'), '')
        GROUP BY assigned_to HAVING MAX(created_at)`
     ).all() as any[];
     const lastFailMap = new Map(lastFailRows.map((r: any) => {
@@ -819,32 +824,6 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return { agents };
   });
 
-  // ── MLX 실시간 레이턴시 핑 (kangnote 요청) ──────────────────────
-  app.get('/api/mlx/latency', async () => {
-    const LOCAL_URL  = 'http://localhost:8000/v1/models';
-    const REMOTE_URL = 'http://100.88.88.69:8000/v1/models';
-    const ping = async (url: string): Promise<{ latencyMs: number; online: boolean }> => {
-      const t0 = Date.now();
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-        return { latencyMs: Date.now() - t0, online: res.ok };
-      } catch {
-        return { latencyMs: -1, online: false };
-      }
-    };
-    const [local, remote] = await Promise.all([ping(LOCAL_URL), ping(REMOTE_URL)]);
-
-    // mlx-keepalive 마지막 폴링 시각 읽기
-    let lastKeepaliveAt: string | null = null;
-    try {
-      const { stdout } = await execFileAsync('tail', ['-1', '/Users/nova-ai/.pm2/logs/mlx-keepalive-out-12.log']);
-      const m = stdout.match(/\[mlx-keepalive\]\s+(\d{2}:\d{2}:\d{2})/);
-      if (m) lastKeepaliveAt = m[1];
-    } catch {}
-
-    return { local, remote, checkedAt: new Date().toISOString(), lastKeepaliveAt };
-  });
-
   // ── 24h 실패 히트맵 (nova-macstudio-claude-2 제안) ─────────────
   app.get('/api/tasks/heatmap', async () => {
     const db = getDb();
@@ -927,7 +906,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     ).all() as any[];
 
     // 실행 중 + 최근 완료(잔광 10초) 태스크 맵 — 빠른 작업 가시성(afterglow):
-    // 폴 주기(5~15초) 사이에 끝난 hermes/mlx 검증도 잠깐 working 으로 보이게 한다.
+    // 폴 주기(5~15초) 사이에 끝난 hermes/ollama 검증도 잠깐 working 으로 보이게 한다.
     const activeTasks = db.prepare(
       `SELECT assigned_to, prompt, status FROM tasks
        WHERE status IN ('running','streaming','assigned')
@@ -1946,8 +1925,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     // ── /api/memory/overview — 전체 에이전트 메모리 요약 ────────────────
     if (urlPath === '/api/memory/overview' && req.method === 'GET') {
       const { vectorMemory } = await import('../../core/vector-memory.js');
-      const agentIds = ['agy','claude-2','claude-code','codex','copilot','cursor-agent',
-                        'hermes','mlx','nvidia','openclaw','opencode','openrouter'];
+      const agentIds = ['agy','claude-2','claude-code','codex','cursor-agent',
+                        'hermes','nvidia','openclaw','opencode'];
       const byAgent = agentIds.map(id => {
         try { return { agentId: id, ...(vectorMemory.stats(id) ?? {}) }; }
         catch { return { agentId: id, total: 0, semantic_count: 0, indexLoaded: false }; }
