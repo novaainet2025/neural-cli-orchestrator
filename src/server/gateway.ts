@@ -274,6 +274,7 @@ import { registerPerformanceRoutes } from './routes/performance.js';
 import { registerWorkReportRoutes } from './routes/work-reports.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerTeamScoreRoutes } from './routes/team-scores.js';
+import { registerWebScrapingRoutes } from './routes/web-scraping.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
@@ -3486,6 +3487,7 @@ export async function createGateway() {
   registerGoalsRoutes(app);
   registerPerformanceRoutes(app);
   await registerTeamScoreRoutes(app);
+  await registerWebScrapingRoutes(app);
   await registerWorkReportRoutes(app);
   await registerMathRoutes(app);
   // audit.ts는 구현만 있고 미마운트였음(emergency-stop이 compat 스텁으로 응답 — claude-1 T1 제보 2026-07-08)
