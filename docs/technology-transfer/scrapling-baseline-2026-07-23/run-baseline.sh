@@ -35,6 +35,7 @@ snapshot() {
     integrations/scrapling/tests/test_policy.py \
     integrations/scrapling/tests/test_runner.py \
     src/services/webScrapingService.ts \
+    src/services/webScrapingService.test.ts \
     src/server/routes/web-scraping.ts \
     src/server/routes/web-scraping.test.ts \
     src/core/company-orchestrator.ts \
@@ -64,10 +65,10 @@ snapshot > "${OUTPUT_DIR}/snapshot-before.sha256"
 
 {
   printf '%s\n' "integrations/scrapling/.venv/bin/python -m unittest discover -s integrations/scrapling/tests -v"
-  printf '%s\n' "npx vitest run src/core/company-orchestrator.test.ts src/server/routes/web-scraping.test.ts"
+  printf '%s\n' "npx vitest run src/core/company-orchestrator.test.ts src/services/webScrapingService.test.ts src/server/routes/web-scraping.test.ts"
   printf '%s\n' "npx tsc --noEmit"
   printf '%s\n' "DOTENV_CONFIG_QUIET=true BENCH_REPETITIONS=${REPETITIONS} BENCH_ITERATIONS=${ITERATIONS} node --import tsx ${SCRIPT_DIR}/route-benchmark.ts"
-  printf '%s\n' "BENCH_REPETITIONS=${REPETITIONS} BENCH_ITERATIONS=${ITERATIONS} ${SCRIPT_DIR}/run-baseline.sh <new-output-directory>"
+  printf '%s\n' "BENCH_REPETITIONS=${REPETITIONS} BENCH_ITERATIONS=${ITERATIONS} bash ${SCRIPT_DIR}/run-baseline.sh <new-output-directory>"
 } > "${OUTPUT_DIR}/commands.txt"
 
 printf 'scenario\tsample\trepetition\texit_code\treal_seconds\tuser_seconds\tsystem_seconds\tmax_rss_raw\tlog\n' \
@@ -79,7 +80,7 @@ run_timed() {
   local repetition="$3"
   shift 3
   local log="${OUTPUT_DIR}/logs/${scenario}-${sample}-${repetition}.log"
-  /usr/bin/time -lp "$@" > "${log}" 2>&1
+  /usr/bin/time -p "$@" > "${log}" 2>&1
   local exit_code=$?
   local real_seconds
   local user_seconds
@@ -106,12 +107,13 @@ for repetition in $(seq 1 "${REPETITIONS}"); do
   run_timed targeted-vitest "${sample}" "${repetition}" \
     npx vitest run \
     src/core/company-orchestrator.test.ts \
+    src/services/webScrapingService.test.ts \
     src/server/routes/web-scraping.test.ts
   run_timed typescript-typecheck "${sample}" "${repetition}" \
     npx tsc --noEmit
 done
 
-/usr/bin/time -lp env \
+/usr/bin/time -p env \
   "DOTENV_CONFIG_QUIET=true" \
   "BENCH_REPETITIONS=${REPETITIONS}" \
   "BENCH_ITERATIONS=${ITERATIONS}" \

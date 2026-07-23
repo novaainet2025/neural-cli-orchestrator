@@ -94,10 +94,10 @@ describe('team score diagnostic cron', () => {
 
     expect(result).toEqual({
       evaluated: 9,
-      belowTarget: 7,
+      belowTarget: 8,
       created: TEAM_DIAGNOSTIC_MAX_PER_RUN,
       deduped: 1,
-      capped: 1,
+      capped: 2,
       failed: 0,
     });
     expect(submitted).toHaveLength(5);

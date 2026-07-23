@@ -11,6 +11,12 @@ import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { computeTeamScores, TEAM_SCORE_TARGET, type TeamScore } from './team-scorer.js';
+import {
+  runTeamLifecycleReview,
+  runWeeklyWorkforcePlanning,
+  TEAM_LIFECYCLE_JOB_ID,
+  TEAM_LIFECYCLE_SCHEDULE,
+} from './team-lifecycle.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -123,7 +129,7 @@ export async function runTeamScoreDiagnostics(
   const database = options.database ?? getDb();
   const scores = options.scores ?? computeTeamScores(database);
   const candidates = scores
-    .filter((team) => team.n > 0 && team.score < TEAM_SCORE_TARGET)
+    .filter((team) => team.n > 0 && team.score <= TEAM_SCORE_TARGET)
     .sort((left, right) => left.score - right.score || left.teamId.localeCompare(right.teamId));
   const result: TeamDiagnosticRunResult = {
     evaluated: scores.length,
@@ -357,17 +363,19 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
         const report = await sleepConsolidator.consolidateSelfImprovements();
         result = JSON.stringify(report);
-      } else if (action === 'team-score-diagnostics') {
+      } else if (action === 'team-lifecycle-review' || action === 'team-score-diagnostics') {
         if (teamDiagnosticsRunning) {
           result = JSON.stringify({ skipped: true, reason: 'already-running' });
         } else {
           teamDiagnosticsRunning = true;
           try {
-            result = JSON.stringify(await runTeamScoreDiagnostics());
+            result = JSON.stringify(await runTeamLifecycleReview({ source: 'scheduled' }));
           } finally {
             teamDiagnosticsRunning = false;
           }
         }
+      } else if (action === 'hr-weekly-workforce-planning') {
+        result = JSON.stringify(await runWeeklyWorkforcePlanning());
       } else {
         throw new Error(`Unknown internal cron action: ${String(action)}`);
       }
@@ -444,13 +452,27 @@ function ensureDefaultInternalJobs(): void {
     });
   }
 
-  if (!getCronJob(TEAM_DIAGNOSTIC_JOB_ID)) {
+  if (!getCronJob(TEAM_LIFECYCLE_JOB_ID)) {
     scheduleCronJob({
-      id: TEAM_DIAGNOSTIC_JOB_ID,
-      description: 'Diagnose active teams below the live quality target',
-      schedule: '0 */6 * * *',
+      id: TEAM_LIFECYCLE_JOB_ID,
+      description: 'HR team lifecycle review: score, improve, probation, and soft retirement',
+      schedule: TEAM_LIFECYCLE_SCHEDULE,
       taskType: 'internal',
-      payload: { action: 'team-score-diagnostics' },
+      payload: { action: 'team-lifecycle-review' },
+      timezone: getDefaultTimezone(),
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('hr-weekly-workforce-planning')) {
+    scheduleCronJob({
+      id: 'hr-weekly-workforce-planning',
+      description: 'HR weekly goal/performance review, incubation creation, and retirement watchlist refresh',
+      schedule: '0 9 * * 1',
+      taskType: 'internal',
+      payload: { action: 'hr-weekly-workforce-planning' },
       timezone: getDefaultTimezone(),
       maxRetries: 1,
       backoffMs: 60_000,

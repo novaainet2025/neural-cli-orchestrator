@@ -19,6 +19,7 @@ import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
 import { providerProber } from './core/provider-prober.js';
+import { startTeamLifecycleEventMonitor } from './core/team-lifecycle.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
@@ -29,6 +30,7 @@ const SHUTDOWN_ORPHAN_REASON = 'orphaned: graceful shutdown timeout';
 let gateway: Awaited<ReturnType<typeof createGateway>> | null = null;
 let shutdownPromise: Promise<void> | null = null;
 let stopWorkReportScheduler: (() => void) | null = null;
+let stopTeamLifecycleEventMonitor: (() => void) | null = null;
 
 /** 재큐잉 대상 orphan (부팅 후 taskQueue 준비되면 실제 enqueue) */
 interface OrphanRequeue {
@@ -296,6 +298,7 @@ async function boot(): Promise<void> {
   // 0.0.0.0 바인드 (HOST env로 재정의 가능 — 되돌리려면 HOST=127.0.0.1)
   await gateway.listen({ port: env.PORT, host: process.env.HOST ?? '0.0.0.0' });
   log.info({ port: env.PORT }, 'API Gateway listening');
+  stopTeamLifecycleEventMonitor = startTeamLifecycleEventMonitor(db);
 
   // 9. WebSocket Bridge (:6201)
   log.info('Starting WebSocket Bridge...');
@@ -326,6 +329,10 @@ async function shutdown(signal: string): Promise<void> {
   if (stopWorkReportScheduler) {
     stopWorkReportScheduler();
     stopWorkReportScheduler = null;
+  }
+  if (stopTeamLifecycleEventMonitor) {
+    stopTeamLifecycleEventMonitor();
+    stopTeamLifecycleEventMonitor = null;
   }
 
   const drainResult = await waitForInFlightDrain(SHUTDOWN_DRAIN_TIMEOUT_MS);

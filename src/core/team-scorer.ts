@@ -223,7 +223,7 @@ export function computeOrganizationScores(
       grade: gradeTeamScore(score),
       teams: scores.length,
       belowTarget: scores
-        .filter((team) => team.score < TEAM_SCORE_TARGET)
+        .filter((team) => team.score <= TEAM_SCORE_TARGET)
         .map(({ teamId, slug, name, score: teamScore, grade }) => ({
           teamId,
           slug,

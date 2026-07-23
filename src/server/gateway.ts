@@ -1451,6 +1451,33 @@ export async function createGateway() {
 
     // Save to DB
     const db = getDb();
+    const taskTeamId = typeof input.metadata?.teamId === 'string' && input.metadata.teamId.trim()
+      ? input.metadata.teamId.trim()
+      : null;
+    if (taskTeamId) {
+      const lifecycleTarget = db.prepare(`
+        SELECT
+          t.is_active AS team_active,
+          COALESCE(o.is_active, 1) AS organization_active
+        FROM teams t
+        LEFT JOIN organizations o ON o.id = t.organization_id
+        WHERE t.id = ?
+      `).get(taskTeamId) as {
+        team_active: number;
+        organization_active: number;
+      } | undefined;
+      if (!lifecycleTarget) {
+        reply.code(400);
+        return { error: 'invalid_team', detail: `team not found: ${taskTeamId}` };
+      }
+      if (lifecycleTarget.team_active !== 1 || lifecycleTarget.organization_active !== 1) {
+        reply.code(409);
+        return {
+          error: 'team_inactive',
+          detail: `team lifecycle blocks new work: ${taskTeamId}`,
+        };
+      }
+    }
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
@@ -1470,7 +1497,6 @@ export async function createGateway() {
         : null;
       // team_id: metadata.teamId를 태스크 행에 직접 귀속시켜 팀 성과 집계(GROUP BY team_id)에 즉시 반영.
       // (기존엔 INSERT에 team_id가 없어 /api/task 생성 태스크는 team_id=NULL이었고, 스케줄러만 별도 UPDATE로 우회했음.)
-      const taskTeamId = typeof input.metadata?.teamId === 'string' && input.metadata.teamId.trim() ? input.metadata.teamId.trim() : null;
       db.prepare(`
         INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, team_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
         VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))

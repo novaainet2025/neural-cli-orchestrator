@@ -1,0 +1,16 @@
+utc=2026-07-23T12:46:28Z
+local=2026-07-23T21:46:28+0900
+repo=/Users/nova-ai/project/nco
+git_head=4cbcc6b9799728a795f9352019de687e7c961cbb
+git_branch=main
+git_dirty_entries=10
+architecture=arm64
+ProductName:		macOS
+ProductVersion:		26.5.2
+BuildVersion:		25F84
+v25.9.0
+Version 6.0.2
+uv 0.11.6 (65950801c 2026-04-09 aarch64-apple-darwin)
+Python 3.13.13
+repetitions=5
+route_iterations_per_outcome=500

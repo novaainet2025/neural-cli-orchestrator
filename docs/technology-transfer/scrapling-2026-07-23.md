@@ -129,24 +129,232 @@ STOP 해제에는 S2-01~S2-03 수정과 회귀 테스트, S2-04 SBOM/provenance 
 
 ## 3. 복구 지점
 
-이식은 새 `integrations/scrapling`, 새 REST route/service, 새 080/081 마이그레이션을
-중심으로 추가했다. 기존의 대규모 dirty worktree는 수정하거나 되돌리지 않았다.
+3단계 판정: `PASS_WITH_LIMITATIONS`
 
-DB 롤백 순서:
+체크포인트 ID: `scrapling-stage03-20260723-215336-KST`
 
-1. `team_goals`의 `goal_web_scraping_quality_2026_07` 삭제
-2. `org_web-scraping` 소속 team의 `team_members` 삭제
-3. 해당 team 삭제
-4. `org_web-scraping` 삭제
-5. 필요할 때만 schema_migrations의 081 기록 삭제
+### 기준점과 dirty worktree 보존
 
-기술이전 회사 080은 기존 로컬 조직을 재현 가능한 마이그레이션으로 만든 것이므로 웹
-회사 롤백과 함께 삭제하지 않는다.
+- 작업 시작 HEAD: `4cbcc6b9799728a795f9352019de687e7c961cbb`
+- Scrapling 코드 도입 전 anchor:
+  `a0d3852e8b5c380f0d101ebd1b6e46894911d96d`
+- 도입 이력: Python adapter는 `63989220691eda995cf4cdbdda7d43af5aa45ee8`,
+  TypeScript service/route는 `782e22140dde2c55f764247eb6ea8afd6dfeb414`,
+  080/081/082와 후속 보완은 `4cbcc6b9799728a795f9352019de687e7c961cbb`에
+  포함된다. 세 commit에는 무관한 파일도 함께 있으므로 commit 전체 revert를
+  롤백 수단으로 사용하지 않는다.
+- 캡처 시점 worktree에는 수정 12개와 미추적 15개가 있었다. 수정 파일은 HNSW index
+  5개, 이 문서, baseline runner, `src/core/cron-scheduler.ts`,
+  `src/core/team-scorer.ts`, `src/index.ts`, `src/server/gateway.ts`,
+  `src/server/routes/team-scores.ts`다. 미추적 파일은 083 migration,
+  07 value-gate 문서, baseline `evidence-final`/`evidence-rerun` 각 6개,
+  `src/core/team-lifecycle.ts`다.
+- 위 27개 파일의 캡처 시점 내용을
+  `db/backups/scrapling-stage03-20260723-215336-KST/dirty-worktree.tar.gz`에
+  보존했다. 체크포인트 생성 후 shared worktree가 계속 변할 수 있으므로 실제 롤백
+  직전에는 새 체크포인트를 다시 생성해야 한다.
+- 백업 디렉터리는 `.gitignore`의 `db/backups/` 규칙에 의해 추적되지 않으며 mode
+  `0700`, 내부 파일은 `0600`이다. 원본에는 stash, reset, checkout, 삭제를 수행하지
+  않았다.
+
+### 설정·DB 백업 영수증
+
+| 파일 | 내용 | 크기 | SHA-256 |
+|---|---|---:|---|
+| `nco.db` | SQLite online backup | 339,001,344 B | `98739bbdbd2a27bf20ea7e7512fd40a27f5b048ed0cd12763cb51c7a2baa778c` |
+| `config-private.tar.gz` | `.env`, `topology.json`, public/local provider config | 7,908 B | `6f672f485e96f7dfeb7a205a006c60f22e41601343d70285e5208a13a805b2a2` |
+| `dirty-worktree.tar.gz` | 캡처 시점 dirty/untracked 27개 파일 | 4,165,357 B | `83a126c8d4979a2ee8e6b0016b5f21e07b99d4eb224dfee32023e5f9d89ca381` |
+| `worktree-status.txt` | porcelain v2 상태 27건 | 2,958 B | `088d1c0348b4354f9919edbe7ea1a5020fe1d561749962dfac6c9937a3f4679f` |
+| `web-team-task-links.csv` | 웹 팀을 참조하는 task 9건의 ID/team/status | 10 lines | `357b9453521c7e9b9d2aef9fd6785a8e140c9e915fe8df6edbc952315d1a3685` |
+
+설정 archive에서 다시 계산한 원본 hash는 `.env`
+`98453783762c02f777484c7190dd9bd51d5c7fbcc5c8561d9a76de116cd541c2`,
+`topology.json` `1e5dbc9df7ebd300a89c61e9721fb79de95bdf7f28c00b0294fcc954b4117908`,
+`ai-providers.json` `533200d754ad4969bcd9caeaf55802751f4f3169011ced8c07742596918742c7`,
+`ai-providers.local.json`
+`4984fc44ec02da146f1382078bb6b63c2609cd5688ccdd09d2ed2e387fcac46f`와
+일치했다. archive에는 비밀정보가 있으므로 commit, 첨부, 로그 출력은 금지한다.
+
+백업 DB는 `PRAGMA quick_check`가 `ok`이고 `PRAGMA foreign_key_check` 결과가
+0건이다. 080/081/082 ledger가 모두 존재하며 현재 DB에는 기술이전·웹 조직 2개,
+웹 팀 7개, 멤버 14개, 웹 목표 1개, 승인 record 1개가 있다.
+
+### 롤백 전제와 명령
+
+아래 명령은 이 단계에서 실행하지 않았다. 데이터 연결 변경·파일 제거는 명시적 롤백
+승인 후에만 실행한다. 먼저 NCO를 중지하고 같은 방식의 최신 DB/config/worktree
+백업을 하나 더 만든다.
+
+소스 롤백은 dirty shared worktree가 아니라 현재 HEAD에서 만든 별도 worktree에서
+수행한다. 080 기술이전 회사와 감사 문서는 유지하고 Scrapling runtime 경로,
+gateway 등록, 081/082만 제거한다.
+
+```bash
+git worktree add ../nco-scrapling-rollback \
+  4cbcc6b9799728a795f9352019de687e7c961cbb
+cd ../nco-scrapling-rollback
+git switch -c rollback/scrapling-20260723
+git restore --source=a0d3852e8b5c380f0d101ebd1b6e46894911d96d -- \
+  src/server/gateway.ts
+git rm -r -- integrations/scrapling
+git rm -- src/services/webScrapingService.ts \
+  src/services/webScrapingService.test.ts \
+  src/server/routes/web-scraping.ts \
+  src/server/routes/web-scraping.test.ts \
+  db/migrations/081_web_scraping_company.sql \
+  db/migrations/082_web_scraping_authorizations.sql
+```
+
+081만 ledger에서 지우고 파일을 남기면 다음 기동 시 migration runner가 즉시
+재적용한다. 실제 DB 역마이그레이션은 위 소스 롤백 배포가 준비된 뒤 수행한다.
+`tasks.team_id`는 `ON DELETE NO ACTION`이고 현재 웹 팀을 참조하는 task가 9건이므로,
+task를 삭제하지 않고 checkpoint CSV에 보존한 연결만 해제한다.
+
+```sql
+PRAGMA foreign_keys = ON;
+BEGIN IMMEDIATE;
+
+UPDATE tasks
+SET team_id = NULL
+WHERE team_id IN (
+  SELECT id FROM teams WHERE organization_id = 'org_web-scraping'
+);
+
+DELETE FROM team_goals
+WHERE id = 'goal_web_scraping_quality_2026_07';
+DELETE FROM team_members
+WHERE team_id IN (
+  SELECT id FROM teams WHERE organization_id = 'org_web-scraping'
+);
+DELETE FROM teams
+WHERE organization_id = 'org_web-scraping';
+DELETE FROM organizations
+WHERE id = 'org_web-scraping';
+
+DROP INDEX IF EXISTS idx_web_scraping_auth_reference;
+DROP TABLE IF EXISTS web_scraping_authorizations;
+
+DELETE FROM schema_migrations
+WHERE filename IN (
+  '082_web_scraping_authorizations.sql',
+  '081_web_scraping_company.sql'
+);
+
+COMMIT;
+PRAGMA foreign_key_check;
+```
+
+080은 9단계 기술이전 조직을 재현하는 공용 migration이므로 삭제하거나 ledger에서
+제거하지 않는다. 082는 최초 요청에 명시된 080/081 외의 실제 의존 migration으로
+발견됐으며, authorization table을 남긴 불완전 롤백을 막기 위해 함께 기록했다.
+
+### 롤백 검증 체크리스트
+
+- backup SHA-256 5개를 재계산하고 config archive를 권한 제한된 임시 디렉터리에
+  시험 복원한 뒤 원본 4개 hash와 대조한다.
+- 복원 DB에서 `PRAGMA quick_check`가 `ok`, `PRAGMA foreign_key_check`가 0건인지
+  다시 확인한다.
+- rollback DB에서 080 ledger는 1건, 081/082 ledger는 0건인지 확인한다.
+- `org_web-scraping`, 소속 team/member, 전용 goal이 0건이고
+  `web_scraping_authorizations` table/index가 없는지 확인한다.
+- 캡처된 task 9건이 모두 남아 있고 `team_id IS NULL`인지 checkpoint CSV와
+  ID 단위로 대조한다.
+- 별도 rollback worktree에서 `npx tsc --noEmit`, `npm run build`,
+  `npm run test:run`을 실행하고 gateway에 web-scraping route가 등록되지 않는지
+  실제 HTTP 404 본문으로 확인한다.
+- 실패 시 운영 DB를 더 수정하지 말고 중지 상태를 유지한 채 검증된 `nco.db`와
+  private config archive로 복원한다. 이 복원 rehearsal과 실제 rollback 실행은
+  아직 미실행이다.
 
 ## 4. 기준선
 
-이식 전 코드 검색에서 Scrapling 패키지, 웹 스크래핑 회사, 전용 REST route가 없었다.
-기존 회사 오케스트레이터 테스트 기준선은 2 files / 45 tests 통과였다.
+4단계 판정: `PASS_WITH_LIMITATIONS`
+
+이식 전 NCO에는 Scrapling 패키지, 웹 스크래핑 회사, 전용 REST route나 동등한
+추출 서비스가 없었다. 따라서 이식 전 처리량을 소급해 만들지 않았고, 아래 값은
+현재 이식본의 기능 계약을 이후 회귀와 같은 조건으로 비교하기 위한 최초 기준선이다.
+기존 구현 대비 성능 향상이나 운영 배포 승인을 뜻하지 않는다.
+
+### 조건과 보존 증거
+
+- 검증 시각: 2026-07-23 21:46:28 KST
+- 기준 commit: `4cbcc6b9799728a795f9352019de687e7c961cbb`
+- 환경: macOS 26.5.2 arm64, Node 25.9.0, TypeScript 6.0.2,
+  Python 3.13.13, uv 0.11.6
+- 반복: cold 1회와 warm 4회, route outcome당 500회
+- 대표 시나리오: Fastify `POST /api/web-scraping/extract`에서 승인 요청 500회와
+  `authorizationConfirmed=false` 차단 요청 500회를 한 표본으로 실행했다. 승인
+  경로는 고정 응답 adapter를 주입해 route 계약만 측정하며 외부 네트워크, CAPTCHA,
+  Cloudflare solving, 로그인·유료벽 우회를 실행하지 않았다.
+- 실제 프로세스 경계: `getWebScrapingCapabilities()`로 Node→Python spawn과
+  Scrapling 0.4.11 capability 응답을 5회 측정했다. 표의 warm은 Node/OS cache가
+  존재하는 반복 호출이라는 뜻이며 Python 자식 프로세스는 호출마다 새로 생성된다.
+- 원시 명령·환경·표본·로그·전후 SHA-256은
+  `docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-final/`에
+  보존했다. 지정 소스 16개의 전후 snapshot은 byte-for-byte 일치했다.
+
+최종 재현 명령:
+
+```bash
+BENCH_REPETITIONS=5 BENCH_ITERATIONS=500 \
+  bash docs/technology-transfer/scrapling-baseline-2026-07-23/run-baseline.sh \
+  docs/technology-transfer/scrapling-baseline-2026-07-23/<new-output-directory>
+```
+
+### 테스트와 명령 기준선
+
+모든 명령은 같은 순서와 반복 조건에서 5회 exit 0이었다. warm 값은 4회 wall time의
+중앙값이며 범위는 실행 변동을 숨기지 않기 위해 함께 기록했다.
+
+| 명령군 | 확인 결과 | cold | warm 중앙값 (범위) |
+|---|---:|---:|---:|
+| Python unit | 11 tests 통과 | 0.04 s | 0.055 s (0.04–0.08) |
+| targeted Vitest | 3 files / 48 tests 통과 | 1.62 s | 1.565 s (1.53–1.83) |
+| TypeScript `--noEmit` | 5/5 exit 0 | 5.60 s | 5.54 s (5.52–5.56) |
+
+### 대표 시나리오 기준선
+
+route warm 값은 4개 표본 중앙값이다. 각 표본은 1,000 requests이며 전체 5,000
+requests에서 예상 밖 outcome은 0, 승인 경로 adapter 호출은 정확히 2,500회였다.
+
+| 지표 | cold | warm 중앙값 |
+|---|---:|---:|
+| 성공률 / 오류율 | 100% / 0% | 100% / 0% |
+| wall time / 1,000 requests | 147.281 ms | 119.239 ms |
+| 처리량 | 6,789.742 requests/s | 8,650.384 requests/s |
+| latency p50 | 0.082500 ms | 0.076208 ms |
+| latency p95 | 0.448709 ms | 0.281771 ms |
+| CPU user+system | 193.860 ms | 116.706 ms |
+| Node RSS 표본 내 증가 | 43,991,040 B | 20,627,456 B |
+| Node process 최대 RSS | 144,432 KiB | 215,680 KiB |
+
+Node→Python capability는 5/5에서 `0.4.11`, 성공률 100%, 오류율 0%였다. 첫 호출은
+406.264 ms, 이후 네 호출의 중앙값은 387.451 ms(2.581 calls/s)였다. Python
+자식 프로세스의 독립 peak RSS는 이번 sandbox에서 `/usr/bin/time -l`이
+`sysctl kern.clockrate` 권한 오류를 내므로 미확인이다. CPU와 RSS 표의 값은 Node
+프로세스 기준이며 전체 브라우저 자원으로 해석하지 않는다.
+
+### 회귀 민감 지표와 중단 조건
+
+같은 host·toolchain·5×500 조건에서 다음을 적용한다.
+
+- 즉시 실패: 테스트나 typecheck non-zero, 예상 밖 route outcome 1건 이상,
+  승인 경로 adapter 호출 수 불일치, capability version 불일치.
+- 성능 재조사: warm route p95가 기준의 2배인 0.563542 ms를 초과하거나 처리량이
+  기준의 50%인 4,325.192 requests/s 아래로 하락.
+- 프로세스 경계 재조사: 반복 capability 중앙값이 기준의 2배인 774.901 ms 초과.
+- 자원 재조사: 같은 harness의 Node 최대 RSS가 269,600 KiB(기준 +25%)를 초과하거나
+  warm 표본 내 RSS 증가 중앙값이 41,254,912 B(기준 2배)를 초과.
+
+microbenchmark의 절대 시간이 매우 작아 성능·자원 한계는 사전 승인된 SLA가 아니라
+후속 측정용 임시 guardrail이다. 실제 HTTP/robots/redirect, Python field extraction,
+dynamic browser, adaptive relocation, 동시 부하, Python/Chromium peak RSS와 운영
+host 오류율은 미측정이므로 4단계의 제한사항으로 남긴다.
+
+초기 `evidence/` 실행은 테스트 본문이 통과했지만 `/usr/bin/time -l` 권한 오류를
+명령 실패로 오판해 중단됐고, `evidence-rerun/`은 서비스 단위 테스트가 누락돼
+최종 근거에서 제외했다. 두 디렉터리는 실패 패턴의 재검증을 위해 보존하되 판정
+수치에는 `evidence-final/`만 사용한다.
 
 ## 5. 후보 프로토타입과 회귀
 

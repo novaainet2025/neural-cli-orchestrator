@@ -1,0 +1,17 @@
+scenario	sample	repetition	exit_code	real_seconds	user_seconds	system_seconds	max_rss_raw	log
+python-unit	cold	1	0	0.04	0.03	0.00	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/python-unit-cold-1.log
+targeted-vitest	cold	1	0	1.47	1.79	0.38	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/targeted-vitest-cold-1.log
+typescript-typecheck	cold	1	0	5.24	8.27	0.56	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/typescript-typecheck-cold-1.log
+python-unit	warm	2	0	0.07	0.05	0.01	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/python-unit-warm-2.log
+targeted-vitest	warm	2	0	1.48	1.86	0.37	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/targeted-vitest-warm-2.log
+typescript-typecheck	warm	2	0	5.62	8.43	0.62	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/typescript-typecheck-warm-2.log
+python-unit	warm	3	0	0.05	0.04	0.00	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/python-unit-warm-3.log
+targeted-vitest	warm	3	0	1.47	1.82	0.37	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/targeted-vitest-warm-3.log
+typescript-typecheck	warm	3	0	5.23	8.23	0.53	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/typescript-typecheck-warm-3.log
+python-unit	warm	4	0	0.07	0.05	0.01	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/python-unit-warm-4.log
+targeted-vitest	warm	4	0	1.46	1.80	0.35	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/targeted-vitest-warm-4.log
+typescript-typecheck	warm	4	0	5.56	8.46	0.56	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/typescript-typecheck-warm-4.log
+python-unit	warm	5	0	0.07	0.05	0.01	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/python-unit-warm-5.log
+targeted-vitest	warm	5	0	1.49	1.81	0.39	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/targeted-vitest-warm-5.log
+typescript-typecheck	warm	5	0	5.26	8.35	0.56	unknown	docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/typescript-typecheck-warm-5.log
+scenario-benchmark	combined	1	0	3.03	2.80	0.42		docs/technology-transfer/scrapling-baseline-2026-07-23/evidence-rerun/logs/scenario-benchmark.log

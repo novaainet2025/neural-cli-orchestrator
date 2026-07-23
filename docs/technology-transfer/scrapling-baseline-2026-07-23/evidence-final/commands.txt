@@ -1,0 +1,5 @@
+integrations/scrapling/.venv/bin/python -m unittest discover -s integrations/scrapling/tests -v
+npx vitest run src/core/company-orchestrator.test.ts src/services/webScrapingService.test.ts src/server/routes/web-scraping.test.ts
+npx tsc --noEmit
+DOTENV_CONFIG_QUIET=true BENCH_REPETITIONS=5 BENCH_ITERATIONS=500 node --import tsx /Users/nova-ai/project/nco/docs/technology-transfer/scrapling-baseline-2026-07-23/route-benchmark.ts
+BENCH_REPETITIONS=5 BENCH_ITERATIONS=500 bash /Users/nova-ai/project/nco/docs/technology-transfer/scrapling-baseline-2026-07-23/run-baseline.sh <new-output-directory>
