@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nco-scrapling-adapter"
+version = "0.1.0"
+description = "Policy-gated Scrapling adapter for the NCO web-scraping company"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "scrapling[fetchers]==0.4.11",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nco_scrapling"]
+
+[tool.uv]
+package = true
+

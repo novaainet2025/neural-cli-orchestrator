@@ -1,5 +1,7 @@
 node_modules/
 dist/
+.venv*/
+integrations/scrapling/data/
 db/*.db
 db/*.db-wal
 db/*.db-shm

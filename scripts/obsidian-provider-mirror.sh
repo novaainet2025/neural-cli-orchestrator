@@ -30,11 +30,19 @@ EXCLUDES=(
   --exclude '*.pdf' --exclude '*.zip' --exclude '*.tar*' --exclude '*.wasm' --exclude '*.node'
   --exclude 'shell_snapshots/' --exclude 'shell-snapshots/'
   --exclude '*.tmp' --exclude '*.bak' --exclude '*.log' --exclude '*.count'
+  # LLM 모델 가중치 (ollama blobs 등 — 수 GB, config 아님)
+  --exclude 'models/' --exclude 'blobs/' --exclude '.sha256-*'
+  --exclude '*.gguf' --exclude '*.bin' --exclude '*.safetensors' --exclude '*.onnx'
   # 캐시/휘발/세션
   --exclude '.git/' --exclude 'cache/' --exclude 'caches/' --exclude 'models_cache*'
   --exclude 'plugins/' --exclude 'projects/' --exclude 'projects.json*' --exclude 'statsig/'
   --exclude 'history*' --exclude 'todos/' --exclude 'sessions/' --exclude 'logs/'
   --exclude '_fleet-backup-*/'
+  # 대화/상태/캐시 벌크 (config·지식이 아님 — 2번째 뇌 오염 방지)
+  --exclude 'chats/' --exclude 'ai-tracking/' --exclude 'extensions/'
+  --exclude '*-cache.json' --exclude 'statsig-cache*' --exclude 'workspaceStorage/'
+  --exclude 'globalStorage/' --exclude 'User/' --exclude 'CachedData/' --exclude 'Cache/'
+  --exclude 'blob_storage/' --exclude 'GPUCache/' --exclude 'Code Cache/' --exclude 'Dawn*Cache/'
 )
 
 # provider → source(dir 또는 특정 파일 세트). claude는 방대해 선별.
@@ -93,4 +101,9 @@ if [ "$DRY" != "--dry-run" ]; then
 EOF
   echo "  ✓ INDEX.md"
 fi
+# 미러 후 공용 지식(SECOND-BRAIN.md) 재생성 → 프로바이더 컨텍스트 배선
+SB="$(dirname "$0")/obsidian-second-brain-build.sh"
+[ -x "$SB" ] && bash "$SB" || true
+PW="$(dirname "$0")/obsidian-provider-context-wire.sh"
+[ -x "$PW" ] && bash "$PW" || true
 echo "[provider-mirror] 완료 $(date '+%H:%M:%S')"
