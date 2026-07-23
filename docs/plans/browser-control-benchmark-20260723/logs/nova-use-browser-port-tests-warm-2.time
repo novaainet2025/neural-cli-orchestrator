@@ -1,0 +1,24 @@
+failed to load config from /Users/nova-ai/project/nova-use/vitest.config.ts
+
+⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯
+Error: EPERM: operation not permitted, open '/Users/nova-ai/project/nova-use/node_modules/.vite-temp/vitest.config.ts.timestamp-1784801842613-f92294fde6cd38.mjs'
+    at async open (node:internal/fs/promises:1281:25)
+    at async Object.writeFile (node:internal/fs/promises:1899:14)
+    at async loadConfigFromBundledFile (file:///Users/nova-ai/project/nova-use/node_modules/vite/dist/node/chunks/config.js:35994:3)
+    at async bundleAndLoadConfigFile (file:///Users/nova-ai/project/nova-use/node_modules/vite/dist/node/chunks/config.js:35884:17)
+    at async loadConfigFromFile (file:///Users/nova-ai/project/nova-use/node_modules/vite/dist/node/chunks/config.js:35851:42)
+    at async resolveConfig (file:///Users/nova-ai/project/nova-use/node_modules/vite/dist/node/chunks/config.js:35500:22)
+    at async _createServer (file:///Users/nova-ai/project/nova-use/node_modules/vite/dist/node/chunks/config.js:25441:67)
+    at async createViteServer (file:///Users/nova-ai/project/nova-use/node_modules/vitest/dist/chunks/cli-api.DVe0nWUx.js:6921:17)
+    at async createVitest (file:///Users/nova-ai/project/nova-use/node_modules/vitest/dist/chunks/cli-api.DVe0nWUx.js:10212:17)
+    at async prepareVitest (file:///Users/nova-ai/project/nova-use/node_modules/vitest/dist/chunks/cli-api.DVe0nWUx.js:10551:14) {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'open',
+  path: '/Users/nova-ai/project/nova-use/node_modules/.vite-temp/vitest.config.ts.timestamp-1784801842613-f92294fde6cd38.mjs'
+}
+
+
+
+        0.41 real         0.38 user         0.07 sys
+time: sysctl kern.clockrate: Operation not permitted

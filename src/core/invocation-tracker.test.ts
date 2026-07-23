@@ -29,7 +29,7 @@ describe.sequential('invocation completion notifications', () => {
     getDb().prepare(`
       INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
       VALUES (?, 'task', ?, ?, 'completed', ?)
-    `).run(taskId, 'prompt', 'mlx', JSON.stringify({ requestedProvider: 'codex' }));
+    `).run(taskId, 'prompt', 'ollama', JSON.stringify({ requestedProvider: 'codex' }));
     const invocationId = await invocationTracker.recordInvocation(
       'caller-session',
       'caller-agent',
@@ -46,7 +46,7 @@ describe.sequential('invocation completion notifications', () => {
       'nco-system',
       'nco',
       'caller-session',
-      expect.stringContaining('[task] mlx 완료 (codex 요청→mlx 대행)'),
+      expect.stringContaining('[task] ollama 완료 (codex 요청→ollama 대행)'),
       'info',
     );
   });

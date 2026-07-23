@@ -10,29 +10,6 @@ const {
   openAiConfigs,
 } = vi.hoisted(() => {
   const providers = new Map<string, any>([
-    ['mlx', {
-      id: 'mlx',
-      name: 'MLX',
-      enabled: true,
-      type: 'api',
-      role: 'Coder',
-      score: 88,
-      model: 'qwen3-30b',
-      command: null,
-      args: [],
-      endpoint: 'http://127.0.0.1:8000/v1',
-      apiKeyRef: null,
-      keyRotation: null,
-      env: {},
-      concurrency: 1,
-      rateLimitRpm: 20,
-      cost: 'free',
-      capabilities: ['code'],
-      permissions: {},
-      persona: { systemPrompt: 'mlx prompt', tone: 'efficient', style: 'practical' },
-      healthCheck: {},
-      apiConfig: { fallback: { provider: 'ollama' } },
-    }],
     ['hermes', {
       id: 'hermes',
       name: 'Hermes',
@@ -263,27 +240,20 @@ describe('ApiExecutor', () => {
     ]);
   });
 
-  it('resolves mlx aliases before sending the model name', async () => {
-    const handler = vi.fn().mockResolvedValue({
-      choices: [{ message: { content: 'mlx-ok' } }],
-      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
-    });
-    completionHandlers.set('http://127.0.0.1:8000/v1', handler);
 
-    const executor = new ApiExecutor(providerMap.get('mlx'), sandbox);
-    const result = await executor.run('task-3', 'prompt');
-
-    expect(result.model).toBe('/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit');
-    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
-      model: '/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit',
-      temperature: 0.5,
-      repetition_penalty: 1,
-    }));
-  });
-
-  it('classifies 408 and 429 as retryable HTTP errors', () => {
+  it('classifies transient HTTP errors (408/429/5xx) and network errors as retryable', () => {
     expect(isRetryableHttpError({ status: 408 })).toBe(true);
     expect(isRetryableHttpError({ status: 429 })).toBe(true);
-    expect(isRetryableHttpError({ status: 500 })).toBe(false);
+    // 5xx are transient server-side failures — safe to retry against the same provider
+    expect(isRetryableHttpError({ status: 500 })).toBe(true);
+    expect(isRetryableHttpError({ status: 502 })).toBe(true);
+    expect(isRetryableHttpError({ status: 503 })).toBe(true);
+    expect(isRetryableHttpError({ status: 504 })).toBe(true);
+    // network-level transient failures
+    expect(isRetryableHttpError({ code: 'ECONNRESET' })).toBe(true);
+    expect(isRetryableHttpError({ code: 'ETIMEDOUT' })).toBe(true);
+    // non-retryable: client errors (4xx other than 408/429) and success
+    expect(isRetryableHttpError({ status: 400 })).toBe(false);
+    expect(isRetryableHttpError({ status: 404 })).toBe(false);
   });
 });

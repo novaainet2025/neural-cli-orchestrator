@@ -3,6 +3,14 @@ import { randomBytes } from 'node:crypto';
 import { eventBus } from '../../core/event-bus.js';
 import { getDb } from '../../storage/database.js';
 import { createId } from '../../utils/id.js';
+import {
+  startCompanyRun,
+  getCompanyRun,
+  listCompanyRuns,
+  OrchestrationError,
+  type OrchestrationMode,
+} from '../../core/company-orchestrator.js';
+import { resolveInternalProjectDir } from '../../utils/project-dir.js';
 
 type TeamMemberType = 'provider' | 'session' | 'nco-session';
 type TeamStage = 'discussion' | 'design' | 'implementation' | 'review' | 'verification';
@@ -216,12 +224,12 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/organizations', async () => {
     const db = getDb();
     const rows = db.prepare(`
-      SELECT o.id, o.name, o.slug, o.manager, o.parent_id as parentId, COUNT(t.id) AS teamCount, o.is_always_on as isAlwaysOn, o.is_active as isActive
+      SELECT o.id, o.name, o.slug, o.manager, o.parent_id as parentId, o.schedule, COUNT(t.id) AS teamCount, o.is_always_on as isAlwaysOn, o.is_active as isActive
       FROM organizations o
       LEFT JOIN teams t ON t.organization_id = o.id
-      GROUP BY o.id, o.name, o.slug, o.manager, o.parent_id
+      GROUP BY o.id, o.name, o.slug, o.manager, o.parent_id, o.schedule
       ORDER BY o.created_at ASC, o.name ASC
-    `).all() as Array<{ id: string; name: string; slug: string; manager: string | null; parentId: string | null; teamCount: number; isAlwaysOn: number; isActive: number }>;
+    `).all() as Array<{ id: string; name: string; slug: string; manager: string | null; parentId: string | null; schedule: string | null; teamCount: number; isAlwaysOn: number; isActive: number }>;
     return { organizations: rows.map(r => ({ ...r, isAlwaysOn: !!r.isAlwaysOn, isActive: !!r.isActive })) };
   });
 
@@ -347,7 +355,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/teams', async () => {
     const db = getDb();
     const teams = db.prepare(`
-      SELECT id, organization_id, name, slug, description, color, lead, charter, created_at, updated_at, is_always_on, is_active
+      SELECT id, organization_id, name, slug, description, color, lead, charter, schedule, created_at, updated_at, is_always_on, is_active
       FROM teams
       ORDER BY created_at ASC, name ASC
     `).all() as Array<{
@@ -359,6 +367,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       color: string | null;
       lead: string | null;
       charter: string | null;
+      schedule: string | null;
       created_at: string;
       updated_at: string;
       is_always_on: number;
@@ -410,6 +419,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           color: team.color,
           lead: team.lead,
           charter: team.charter,
+          schedule: team.schedule,
           createdAt: team.created_at,
           updatedAt: team.updated_at,
           isAlwaysOn: !!team.is_always_on,
@@ -694,5 +704,49 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
         stage: classifyTaskStage(r),
       })),
     };
+  });
+
+  // ═══ 회사(organization) 단위 오케스트레이션 ═══════════════════════════
+  // 목표 1개 → 소속 팀 역할별 분배(LLM 매니저 분해) → pipeline(순차)/parallel 실행.
+  // :id 는 organization id 또는 slug 둘 다 허용.
+  app.post<{ Params: { id: string } }>('/api/organizations/:id/orchestrate', async (req, reply) => {
+    const { id } = req.params;
+    const body = (req.body as { goal?: unknown; mode?: unknown; dryRun?: unknown; projectDir?: unknown } | null) ?? {};
+    const goal = typeof body.goal === 'string' ? body.goal.trim() : '';
+    if (!goal) return reply.code(400).send({ error: 'goal required' });
+    const mode: OrchestrationMode = body.mode === 'parallel' ? 'parallel' : 'pipeline';
+    const dryRun = body.dryRun === true;
+    const projectDir = typeof body.projectDir === 'string' && body.projectDir.trim()
+      ? body.projectDir.trim()
+      : resolveInternalProjectDir();
+
+    try {
+      const run = startCompanyRun(app, { orgIdOrSlug: id, goal, mode, dryRun, projectDir });
+      reply.code(202);
+      return { run };
+    } catch (err) {
+      if (err instanceof OrchestrationError) return reply.code(err.code).send({ error: err.message });
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(500).send({ error: message });
+    }
+  });
+
+  // 실행 상태 조회(폴링). runId 는 전역 유니크하므로 org 무관 조회도 허용.
+  app.get<{ Params: { id: string; runId: string } }>('/api/organizations/:id/orchestrate/:runId', async (req, reply) => {
+    const run = getCompanyRun(req.params.runId);
+    if (!run) return reply.code(404).send({ error: `run not found: ${req.params.runId}` });
+    return { run };
+  });
+
+  app.get<{ Params: { runId: string } }>('/api/orchestrate/:runId', async (req, reply) => {
+    const run = getCompanyRun(req.params.runId);
+    if (!run) return reply.code(404).send({ error: `run not found: ${req.params.runId}` });
+    return { run };
+  });
+
+  app.get('/api/orchestrate', async (req) => {
+    const rawLimit = Number((req.query as { limit?: string }).limit ?? 20);
+    const limit = Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20, 100);
+    return { runs: listCompanyRuns(limit) };
   });
 }

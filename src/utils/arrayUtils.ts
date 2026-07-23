@@ -1,7 +1,4 @@
-export function removeDuplicates<T>(arr: readonly T[]): T[] {
-  return Array.from(new Set(arr));
-}
-
-export function uniq<T>(arr: readonly T[]): T[] {
-  return removeDuplicates(arr);
-}
+export {
+  deduplicate as removeDuplicates,
+  deduplicate as uniq,
+} from './dedupe.js';

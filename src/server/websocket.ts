@@ -410,7 +410,7 @@ class WebSocketBridge {
         payload = client.isBinary ? pack(sendData) : JSON.stringify(sendData);
       }
       if (!this.safeSendPayload(client, payload)) continue;
-      client.lastSeq = event.id;
+      client.lastSeq = typeof event.streamId === 'string' ? event.streamId : '0';
     }
 
     pruneLastStateMaps(this.clients, event);

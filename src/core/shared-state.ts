@@ -2,6 +2,10 @@ import { getRedis, isRedisConnected } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { loadEnabledProviders, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  OptimisticUpdateConflictError,
+  updateJsonWithWatch,
+} from '../storage/optimistic-json.js';
 
 const log = createLogger('shared-state');
 
@@ -67,9 +71,12 @@ export class SharedState {
   }
 
   async setAgentState(agentId: string, state: Partial<AgentState>): Promise<void> {
-    const current = await this.getAgentState(agentId);
-    const merged: AgentState = { ...this.createDefaultState(agentId), ...current, ...state };
-    this.localStates[agentId] = merged;
+    const localMerged: AgentState = {
+      ...this.createDefaultState(agentId),
+      ...this.localStates[agentId],
+      ...state,
+    };
+    this.localStates[agentId] = localMerged;
 
     if (!isRedisConnected()) {
       this.warnLocalFallback('setAgentState');
@@ -77,7 +84,21 @@ export class SharedState {
     }
 
     const redis = await getRedis();
-    await redis.set(`${AGENT_PREFIX}${agentId}:state`, JSON.stringify(merged), 'EX', AGENT_TTL);
+    try {
+      const merged = await updateJsonWithWatch<AgentState>(
+        redis,
+        `${AGENT_PREFIX}${agentId}:state`,
+        current => ({ ...this.createDefaultState(agentId), ...localMerged, ...current, ...state }),
+        { ttlSeconds: AGENT_TTL, operation: 'setAgentState' },
+      );
+      if (merged) this.localStates[agentId] = merged;
+    } catch (error) {
+      if (!(error instanceof OptimisticUpdateConflictError)) throw error;
+      log.warn(
+        { agentId, operation: error.operation, attempts: error.attempts },
+        'Agent state update conflicted; keeping local state',
+      );
+    }
   }
 
   async getAllAgentStates(): Promise<Record<string, AgentState>> {

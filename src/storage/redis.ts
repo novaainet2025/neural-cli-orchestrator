@@ -6,9 +6,10 @@ const log = createLogger('redis');
 
 let client: Redis | null = null;
 let subscriber: Redis | null = null;
-let connected = false;
+let mainConnected = false;
+let subscriberConnected = false;
 
-function createClient(name: string): Redis {
+function createClient(name: 'main' | 'subscriber'): Redis {
   const redis = new Redis(env.REDIS_URL, {
     maxRetriesPerRequest: 3,
     // 2026-07-02 kangnote 0/11 사건 수정: 기존에는 10회 후 null 반환 → ioredis가
@@ -21,17 +22,20 @@ function createClient(name: string): Redis {
   });
 
   redis.on('connect', () => {
-    connected = true;
+    if (name === 'main') mainConnected = true;
+    else subscriberConnected = true;
     log.info({ name }, 'Redis connected');
   });
 
   redis.on('error', (err: Error) => {
-    connected = false;
+    if (name === 'main') mainConnected = false;
+    else subscriberConnected = false;
     log.error({ name, err: err.message }, 'Redis error');
   });
 
   redis.on('close', () => {
-    connected = false;
+    if (name === 'main') mainConnected = false;
+    else subscriberConnected = false;
     log.warn({ name }, 'Redis disconnected');
   });
 
@@ -61,7 +65,7 @@ export async function getSubscriber(): Promise<Redis> {
 }
 
 export function isRedisConnected(): boolean {
-  return connected;
+  return mainConnected;
 }
 
 export async function closeRedis(): Promise<void> {
@@ -73,7 +77,8 @@ export async function closeRedis(): Promise<void> {
     client.disconnect();
     client = null;
   }
-  connected = false;
+  mainConnected = false;
+  subscriberConnected = false;
   log.info('Redis connections closed');
 }
 

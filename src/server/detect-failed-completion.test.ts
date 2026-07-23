@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { detectFailedCompletion } from './gateway.js';
+import { classifyResult } from '../core/task-queue.js';
+import { detectFailedCompletion, isTextReportTask } from './gateway.js';
 
 /**
  * detectFailedCompletion 회귀 테스트 (2026-07-16).
@@ -32,5 +33,41 @@ describe('detectFailedCompletion', () => {
   it('빈 응답은 실패가 아니다', () => {
     expect(detectFailedCompletion('')).toBe(false);
     expect(detectFailedCompletion(null)).toBe(false);
+  });
+
+  it('보고형 태스크는 에러 어휘가 있는 정상 본문을 실패로 보지 않는다', () => {
+    const reportMode = isTextReportTask({
+      mode: 'task',
+      prompt: '[업무보고 작성] 오전 보고서를 작성하라.',
+      team_id: 'team-cli-core',
+    });
+
+    expect(reportMode).toBe(true);
+    expect(isTextReportTask({ mode: 'work_report', prompt: '정기 현황을 작성하라.' })).toBe(true);
+    expect(isTextReportTask({ mode: 'task', prompt: '[팀 상시 임무 — CLI 코어]' })).toBe(true);
+    expect(detectFailedCompletion(
+      '오늘 배포가 failed to start 상태였고 usage limit 원인을 분석했습니다.',
+      { reportMode },
+    )).toBe(false);
+  });
+
+  it('보고형 태스크도 빈 출력은 silent-failure로 유지한다', () => {
+    const result = classifyResult({ success: true, output: '' });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'silent-failure: empty output',
+    });
+  });
+
+  it('비보고형 태스크는 에러 어휘를 기존대로 실패로 판정한다', () => {
+    const reportMode = isTextReportTask({ mode: 'task', prompt: '배포 작업을 수행하라.' });
+
+    expect(reportMode).toBe(false);
+    expect(detectFailedCompletion('Deployment failed to start.', { reportMode })).toBe(true);
+  });
+
+  it('보고형 태스크도 HARD 시그니처는 실패로 판정한다', () => {
+    expect(detectFailedCompletion('Provider connection refused', { reportMode: true })).toBe(true);
   });
 });

@@ -1,0 +1,1 @@
+#!/usr/bin/env bash\n# synthtest: bash-syntax gate validation\n:\n

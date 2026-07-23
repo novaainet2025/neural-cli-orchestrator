@@ -49,7 +49,12 @@ export class ResourceLimiter {
       );
     }
     this.activeActions++;
-    return () => { this.activeActions--; };
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.activeActions--;
+    };
   }
 
   getActiveCount(): number {

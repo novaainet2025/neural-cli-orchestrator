@@ -1,0 +1,4 @@
+bench_wall_s 1.264831
+bench_user_s 1.422899
+bench_sys_s 0.323142
+bench_max_rss_kb 227968

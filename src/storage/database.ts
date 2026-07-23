@@ -63,24 +63,27 @@ export function runMigrations(): void {
   const insertMigration = database.prepare(
     'INSERT INTO schema_migrations (filename) VALUES (?)'
   );
-  const markMigrationApplied = (file: string) => {
-    insertMigration.run(file);
-  };
-  const applyMigration = database.transaction((file: string, sql: string) => {
+  const findMigration = database.prepare(
+    'SELECT 1 FROM schema_migrations WHERE filename = ?'
+  );
+  const applyMigration = database.transaction((file: string, sql: string): 'applied' | 'marked' | 'skipped' => {
+    // Another process may have applied this migration after the initial snapshot.
+    // Recheck while holding the write reservation before executing non-idempotent SQL.
+    if (findMigration.get(file)) return 'skipped';
+
+    if (file === LEASE_TRACKING_MIGRATION && isLeaseTrackingMigrationSatisfied(database)) {
+      insertMigration.run(file);
+      return 'marked';
+    }
+
     database.exec(sql);
     insertMigration.run(file);
+    return 'applied';
   });
 
   let count = 0;
   for (const file of files) {
     if (applied.has(file)) continue;
-
-    if (file === LEASE_TRACKING_MIGRATION && isLeaseTrackingMigrationSatisfied(database)) {
-      markMigrationApplied(file);
-      count++;
-      log.info({ file }, 'Migration marked applied (schema already satisfied)');
-      continue;
-    }
 
     const migrationPath = resolve(migrationsDir, file);
     let sql: string;
@@ -91,9 +94,14 @@ export function runMigrations(): void {
       throw new Error(`Failed to read migration ${file} at ${migrationPath}: ${message}`);
     }
 
-    applyMigration(file, sql);
+    const outcome = applyMigration.immediate(file, sql);
+    if (outcome === 'skipped') continue;
+
     count++;
-    log.info({ file }, 'Migration applied');
+    log.info(
+      { file },
+      outcome === 'marked' ? 'Migration marked applied (schema already satisfied)' : 'Migration applied',
+    );
   }
 
   if (count > 0) {

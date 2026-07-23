@@ -23,7 +23,7 @@ const DEFAULT_ALLOWED_COMMANDS = [
   'mkdir', 'cp', 'mv', 'sed', 'awk',
   'vitest', 'jest', 'mocha',
   'python3', 'pip3',
-  // curl: 검증 태스크의 로컬 API 확인(:6200/:11434 등)에 필수 — 차단 시 hermes/ollama
+  // curl: 검증 태스크의 로컬 API 확인(:6200/:11434 등)에 필수 — 차단 시 ollama
   // 검증이 "Command not in allowlist"로 실패 (2026-07-08 실측). node/python3가 이미
   // 허용이라 curl 추가는 신규 네트워크 권한이 아님.
   'curl',
@@ -103,7 +103,8 @@ export class SandboxManager {
 }
 
 // 로컬 추론 프로바이더 — 프롬프트 처리+생성이 클라우드 API보다 느려 별도 타임아웃 필요
-const LOCAL_LLM_IDS = new Set(['mlx', 'mlx-instruct', 'hermes', 'ollama']);
+// (hermes는 2026-07-18 codex CLI로 전환 — codex와 동일하게 로컬 타임아웃 대상 아님)
+const LOCAL_LLM_IDS = new Set(['ollama']);
 
 // ─── Factory: Create sandbox for a provider ───────────
 export function createSandbox(

@@ -27,6 +27,21 @@ function isThinkingOnly(text: string): boolean {
   return pattern.test(trimmed);
 }
 
+// 문서 편집 등 구조화 출력 태스크는 "오직 JSON 배열만" 형식을 강제한다. 유효한 JSON은
+// 빈 배열([] = "수행할 편집 없음")이라도 실질 응답이고, done:/status: 프리픽스를 붙이면
+// 오히려 형식 위반이 된다 (실측 2026-07-19: docs-ai 문서편집 태스크의 [] 및 JSON 배열
+// 응답이 EMPTY_OR_SHORT/FORMAT_MISMATCH로 무한 반려되어 retry cap 전소).
+function isStructuredJson(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return false;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return typeof parsed === 'object' && parsed !== null;
+  } catch {
+    return false;
+  }
+}
+
 function isToolEcho(text: string): boolean {
   const lines = text.split(/\r?\n/);
   const firstNonBlank = lines.find(line => line.trim().length > 0);
@@ -47,17 +62,31 @@ export function checkResponseQuality(
   const heuristics: string[] = [];
   const normalized = text ?? '';
   const collapsed = normalized.replace(/\s+/g, '');
+  const structuredJson = isStructuredJson(normalized);
 
   if (isThinkingOnly(normalized)) heuristics.push('THINKING_ONLY');
   if (isToolEcho(normalized)) heuristics.push('TOOL_ECHO');
   // EMPTY_OR_SHORT는 빈 응답 또는 문자·숫자가 전혀 없는 기호/공백 잔해만 reject.
   // 단순 길이(<50) 기준은 정당한 단답("OK", "done: 통과")까지 reject해 retry cap을
   // 전소시키는 현장 결함이 확인되어 제거 (실측 2026-07-03, claude-3 보고).
-  if (collapsed.length < 50 && !/[\p{L}\p{N}]/u.test(collapsed) && collapsed !== '---') {
+  // 유효한 JSON([] 포함)은 구조화 출력 태스크의 정당한 답이므로 제외.
+  if (
+    !structuredJson &&
+    collapsed.length < 50 && !/[\p{L}\p{N}]/u.test(collapsed) && collapsed !== '---'
+  ) {
     heuristics.push('EMPTY_OR_SHORT');
   }
   if (ERROR_MARKER_START.test(normalized)) heuristics.push('ERROR_MARKER');
-  if (opts?.requireProtocolPrefix && normalized.trim() && !PROTOCOL_PREFIX.test(normalized.trimStart())) {
+  // FORMAT_MISMATCH — protocol prefix(done:|status:|question:|error:)가 없으면 reject.
+  // 단, short substantive 단어("PONG", "OK")는 정당한 단답 — EMPTY_OR_SHORT와 동일한
+  // 기준으로 통과시킨다 (실측 2026-07-23: auto-reinforcement "PONG" 응답이 FORMAT_MISMATCH로
+  // 무한 retry 루프 생성). 다중 토큰·기호 포함 응답("[broken json")은 계속 reject.
+  const isShortWord = /^[\p{L}\p{N}]{1,30}$/u.test(normalized.trim());
+  if (
+    opts?.requireProtocolPrefix && normalized.trim() && !structuredJson &&
+    !PROTOCOL_PREFIX.test(normalized.trimStart()) &&
+    !isShortWord
+  ) {
     heuristics.push('FORMAT_MISMATCH');
   }
 

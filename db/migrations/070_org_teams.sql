@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS organizations (
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
   graph_type TEXT NOT NULL DEFAULT 'nova-ax',
+  parent_id TEXT REFERENCES organizations(id) ON DELETE SET NULL,
+  is_always_on INTEGER NOT NULL DEFAULT 1,
+  is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -17,6 +20,8 @@ CREATE TABLE IF NOT EXISTS teams (
   slug TEXT NOT NULL UNIQUE,
   description TEXT,
   color TEXT,
+  is_always_on INTEGER NOT NULL DEFAULT 1,
+  is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );

@@ -1,4 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
@@ -53,6 +56,304 @@ interface ReportTaskCandidate {
   organizationId: string | null;
   lead: string;
   prompt: string;
+}
+
+type ReportDataDb = ReturnType<typeof getDb>;
+type ContextLoader = () => string[];
+
+interface TeamDataRow {
+  slug: string;
+  lead: string | null;
+}
+
+const SUBSTANTIVE_TASK_SLUGS = new Set([
+  'content-planning',
+  'sns',
+  'quality-audit',
+  'self-improvement',
+]);
+const SNS_TEAM_SLUGS = new Set(['content-planning', 'sns', 'quality-audit']);
+
+function formatMetric(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function compactContextText(value: string, maxLength: number): string {
+  const compacted = value.replace(/\s+/g, ' ').trim();
+  return compacted.length <= maxLength ? compacted : `${compacted.slice(0, maxLength)}…`;
+}
+
+function loadRepositoryGitContext(): string[] {
+  try {
+    const projectDir = resolveInternalProjectDir();
+    const logOutput = execFileSync(
+      'git',
+      ['-C', projectDir, 'log', '-5', '--date=iso-strict', '--pretty=format:%h|%ad|%s'],
+      { encoding: 'utf8', timeout: 5_000, maxBuffer: 256 * 1024 },
+    ).trim();
+    const statusOutput = execFileSync(
+      'git',
+      ['-C', projectDir, 'status', '--short', '--untracked-files=no'],
+      { encoding: 'utf8', timeout: 5_000, maxBuffer: 512 * 1024 },
+    ).trim();
+
+    const lines: string[] = [];
+    if (logOutput) {
+      lines.push(`[git] 최근 커밋:\n${logOutput.split('\n').slice(0, 5).join('\n')}`);
+    }
+    if (statusOutput) {
+      const changed = statusOutput.split('\n').filter(Boolean);
+      lines.push(`[git] 추적 파일 변경 ${changed.length}건:\n${changed.slice(0, 20).join('\n')}`);
+    }
+    return lines;
+  } catch (error) {
+    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to collect repository git context');
+    return [];
+  }
+}
+
+function loadSnsBlogContext(): string[] {
+  const blogPromoDir = resolve(resolveInternalProjectDir(), 'data/blog-promo');
+  try {
+    if (!existsSync(blogPromoDir)) return [];
+
+    const lines: string[] = [];
+    const lastPostPath = resolve(blogPromoDir, '.last-post');
+    if (existsSync(lastPostPath)) {
+      const lastPostUrl = compactContextText(readFileSync(lastPostPath, 'utf8'), 500);
+      if (lastPostUrl) lines.push(`[blog-promo] 최근 처리 글 URL=${lastPostUrl}`);
+    }
+
+    const artifacts = readdirSync(blogPromoDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+      .map((entry) => {
+        const path = resolve(blogPromoDir, entry.name);
+        return { name: entry.name, path, modifiedAt: statSync(path).mtime };
+      })
+      .sort((left, right) => right.modifiedAt.getTime() - left.modifiedAt.getTime())
+      .slice(0, 3);
+
+    for (const artifact of artifacts) {
+      const heading = readFileSync(artifact.path, 'utf8')
+        .split(/\r?\n/)
+        .find((line) => /^#\s+/.test(line));
+      const title = heading ? compactContextText(heading.replace(/^#\s+/, ''), 200) : '';
+      lines.push(
+        `[blog-promo] 로컬 산출물=${artifact.name}, 수정=${artifact.modifiedAt.toISOString()}${title ? `, 제목=${title}` : ''}`,
+      );
+    }
+    return lines;
+  } catch (error) {
+    log.warn({ error: error instanceof Error ? error.message : String(error) }, 'Failed to collect SNS blog context');
+    return [];
+  }
+}
+
+/**
+ * 팀 보고에 넣을 근거 데이터를 읽는다. 모든 값은 현재 SQLite 행, 로컬 파일 또는 git 출력에서만 만든다.
+ * 선택 소스가 비었거나 조회에 실패하면 명시적인 무자료 지시를 반환한다.
+ */
+export function buildTeamDataContext(
+  teamId: string,
+  database: ReportDataDb = getDb(),
+  gitContextLoader: ContextLoader = loadRepositoryGitContext,
+  snsContextLoader: ContextLoader = loadSnsBlogContext,
+): string {
+  const sections: string[] = [];
+  const collect = (source: string, reader: () => string[]): void => {
+    try {
+      sections.push(...reader());
+    } catch (error) {
+      log.warn({ teamId, source, error: error instanceof Error ? error.message : String(error) }, 'Failed to collect team report data');
+    }
+  };
+
+  let team: TeamDataRow | undefined;
+  collect('teams', () => {
+    team = database.prepare('SELECT slug, lead FROM teams WHERE id=?').get(teamId) as TeamDataRow | undefined;
+    return [];
+  });
+  if (!team) return '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.';
+
+  collect('tasks', () => {
+    const summary = database.prepare(`
+      SELECT COUNT(*) AS total,
+             COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS completed,
+             COALESCE(SUM(CASE WHEN status IN ('failed','timed_out','lease_expired','cancelled') THEN 1 ELSE 0 END), 0) AS failed,
+             COALESCE(SUM(CASE WHEN status IN ('pending','queued','assigned','running','streaming','reviewing') THEN 1 ELSE 0 END), 0) AS active
+      FROM tasks
+      WHERE team_id=? AND created_at >= datetime('now','-7 days')
+    `).get(teamId) as { total: number; completed: number; failed: number; active: number };
+    if (summary.total === 0) return [];
+    const completionRate = (summary.completed / summary.total) * 100;
+    return [
+      `[tasks] 최근 7일: 전체=${summary.total}, 완료=${summary.completed}, 실패성=${summary.failed}, 진행=${summary.active}, 완료율=${completionRate.toFixed(1)}%`,
+    ];
+  });
+
+  collect('work_reports', () => {
+    const rows = database.prepare(`
+      SELECT status, COUNT(*) AS count
+      FROM work_reports
+      WHERE team_id=? AND report_date >= date('now','-7 days') AND status<>'pending'
+      GROUP BY status
+      ORDER BY status
+    `).all(teamId) as Array<{ status: string; count: number }>;
+    return rows.length > 0
+      ? [`[work_reports] 최근 7일: ${rows.map((row) => `${row.status}=${row.count}`).join(', ')}`]
+      : [];
+  });
+
+  if (SUBSTANTIVE_TASK_SLUGS.has(team.slug)) {
+    collect('recent_team_tasks', () => {
+      const rows = database.prepare(`
+        SELECT id, status, created_at, prompt
+        FROM tasks
+        WHERE team_id=?
+          AND created_at >= datetime('now','-7 days')
+          AND prompt NOT LIKE '[업무보고 작성]%'
+        ORDER BY created_at DESC
+        LIMIT 5
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        created_at: string;
+        prompt: string;
+      }>;
+      return rows.map((row) =>
+        `[recent_team_task] id=${compactContextText(row.id, 100)}, 상태=${compactContextText(row.status, 50)}, 생성=${compactContextText(row.created_at, 50)}, 지시=${compactContextText(row.prompt, 240)}`,
+      );
+    });
+  }
+
+  const agentIds = new Set<string>();
+  if (team.lead?.trim()) agentIds.add(team.lead.trim());
+  collect('team_members', () => {
+    const members = database.prepare(`
+      SELECT member_ref
+      FROM team_members
+      WHERE team_id=? AND member_type='provider'
+      ORDER BY created_at ASC
+    `).all(teamId) as Array<{ member_ref: string }>;
+    for (const member of members) {
+      if (member.member_ref.trim()) agentIds.add(member.member_ref.trim());
+    }
+    return [];
+  });
+
+  if (agentIds.size > 0) {
+    const ids = [...agentIds];
+    const placeholders = ids.map(() => '?').join(',');
+    collect('agent_performance_summary', () => {
+      const rows = database.prepare(`
+        SELECT agent_id, task_type, total_runs, success_rate, avg_quality, avg_duration_ms
+        FROM agent_performance_summary
+        WHERE agent_id IN (${placeholders})
+        ORDER BY total_runs DESC, agent_id ASC, task_type ASC
+        LIMIT 10
+      `).all(...ids) as Array<{
+        agent_id: string;
+        task_type: string;
+        total_runs: number;
+        success_rate: number;
+        avg_quality: number;
+        avg_duration_ms: number;
+      }>;
+      return rows.map((row) =>
+        `[agent_performance_summary] ${row.agent_id}/${row.task_type}: 실행=${row.total_runs}, 성공률=${(row.success_rate * 100).toFixed(1)}%, 평균품질=${formatMetric(row.avg_quality)}, 평균소요ms=${formatMetric(row.avg_duration_ms)}`,
+      );
+    });
+
+    collect('metrics', () => {
+      const rows = database.prepare(`
+        SELECT agent_id, metric_type, COUNT(*) AS samples, AVG(value) AS avg_value, MAX(created_at) AS latest_at
+        FROM metrics
+        WHERE agent_id IN (${placeholders}) AND created_at >= datetime('now','-7 days')
+        GROUP BY agent_id, metric_type
+        ORDER BY samples DESC, agent_id ASC, metric_type ASC
+        LIMIT 10
+      `).all(...ids) as Array<{
+        agent_id: string;
+        metric_type: string;
+        samples: number;
+        avg_value: number;
+        latest_at: string;
+      }>;
+      return rows.map((row) =>
+        `[metrics] ${row.agent_id}/${row.metric_type}: 표본=${row.samples}, 평균=${formatMetric(row.avg_value)}, 최근=${row.latest_at}`,
+      );
+    });
+  }
+
+  if (team.slug === 'cfo') {
+    collect('nova_wallets', () => {
+      const row = database.prepare(`
+        SELECT COUNT(*) AS wallets, COALESCE(SUM(balance), 0) AS balance, COALESCE(SUM(locked), 0) AS locked
+        FROM nova_wallets
+      `).get() as { wallets: number; balance: number; locked: number };
+      return [`[nova_wallets] 지갑=${row.wallets}, 총잔액=${row.balance}, 잠금=${row.locked}`];
+    });
+    collect('nova_transactions', () => {
+      const rows = database.prepare(`
+        SELECT status, COUNT(*) AS transactions, COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(fee), 0) AS fee
+        FROM nova_transactions
+        WHERE created_at >= strftime('%s','now','-7 days')
+        GROUP BY status
+        ORDER BY status
+      `).all() as Array<{ status: string; transactions: number; amount: number; fee: number }>;
+      return rows.length > 0
+        ? rows.map((row) => `[nova_transactions] 최근 7일/${row.status}: 건수=${row.transactions}, 금액=${row.amount}, 수수료=${row.fee}`)
+        : ['[nova_transactions] 최근 7일 거래=0'];
+    });
+  }
+
+  if (SNS_TEAM_SLUGS.has(team.slug)) {
+    collect('blog-promo', snsContextLoader);
+  }
+
+  if (team.slug === 'self-improvement') {
+    collect('improvement_notes', () => {
+      const summary = database.prepare(`
+        SELECT COUNT(*) AS total,
+               COALESCE(SUM(CASE WHEN timestamp >= datetime('now','-7 days') THEN 1 ELSE 0 END), 0) AS recent,
+               MAX(timestamp) AS latest_at
+        FROM improvement_notes
+      `).get() as { total: number; recent: number; latest_at: string | null };
+      const lines = [
+        `[improvement_notes] 전체=${summary.total}, 최근 7일=${summary.recent}, 최근기록=${summary.latest_at ?? '없음'}`,
+      ];
+      const rows = database.prepare(`
+        SELECT timestamp, category, problem, root_cause, fix, verified_at, agent, severity
+        FROM improvement_notes
+        WHERE timestamp >= datetime('now','-7 days')
+        ORDER BY timestamp DESC
+        LIMIT 5
+      `).all() as Array<{
+        timestamp: string;
+        category: string;
+        problem: string;
+        root_cause: string;
+        fix: string;
+        verified_at: string | null;
+        agent: string;
+        severity: string;
+      }>;
+      for (const row of rows) {
+        lines.push(
+          `[improvement_note] 시각=${compactContextText(row.timestamp, 50)}, 분류=${compactContextText(row.category, 50)}, 심각도=${compactContextText(row.severity, 30)}, 에이전트=${compactContextText(row.agent, 50)}, 문제=${compactContextText(row.problem, 200)}, 원인=${compactContextText(row.root_cause, 200) || '기록 없음'}, 수정=${compactContextText(row.fix, 200) || '기록 없음'}, 검증=${row.verified_at ? compactContextText(row.verified_at, 50) : '미검증'}`,
+        );
+      }
+      return lines;
+    });
+  }
+
+  if (team.slug === 'ax-docs' || team.slug === 'self-improvement') {
+    collect('git', gitContextLoader);
+  }
+
+  return sections.length > 0
+    ? sections.join('\n')
+    : '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.';
 }
 
 export interface WorkReportIssueResult {
@@ -233,7 +534,13 @@ function buildTeamSnapshot(team: TeamRow, orgSnapshots: Map<string, SubjectSnaps
   };
 }
 
-function buildReportPrompt(team: TeamRow, reportDate: string, reportSlot: WorkReportSlot, snapshot: SubjectSnapshot): string {
+export function buildReportPrompt(
+  team: TeamRow,
+  reportDate: string,
+  reportSlot: WorkReportSlot,
+  snapshot: SubjectSnapshot,
+  dataContext = buildTeamDataContext(team.id),
+): string {
   const slotLabel = reportSlot === 'am' ? '오전' : '오후';
   const charter = team.charter?.trim() ? `팀 상시 임무: ${team.charter.trim()}\n` : '';
   return [
@@ -241,12 +548,16 @@ function buildReportPrompt(team: TeamRow, reportDate: string, reportSlot: WorkRe
     `팀: ${team.name}`,
     `조직 경로: ${snapshot.orgPath}`,
     charter.trimEnd(),
+    '[실데이터]',
+    dataContext,
     '요구사항:',
     '1. 오늘 수행한 핵심 업무를 간단히 정리한다.',
     '2. 진행 중 이슈와 다음 액션을 명시한다.',
     '3. 결과를 markdown 본문으로 작성한다.',
     // 한국어 강제 (2026-07-08 사용자 절대 요건 — 영어 본문 제출 실측으로 강화):
     '4. 본문 전체를 반드시 한국어로만 작성한다. 제목·소제목·불릿 포함 영어 문장 금지 (코드/파일명/고유명사 제외). Write the ENTIRE report in Korean only.',
+    '5. [실데이터]에 있는 값만 사실로 사용하고 없는 수치·사건·완료 상태를 지어내지 않는다.',
+    '6. 데이터가 없더라도 빈 응답을 내지 말고 데이터 가용성, 확인 불가 항목, 다음 수집 액션을 본문에 명시한다.',
   ].filter(Boolean).join('\n');
 }
 

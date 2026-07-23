@@ -4,6 +4,7 @@ import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
+import { updateJsonWithWatch } from '../storage/optimistic-json.js';
 
 const log = createLogger('cli-mesh');
 
@@ -207,45 +208,53 @@ class CliMesh {
         }
       }
 
-      // Preserve existing startedAt, messageQueue, and detect done transition
-      const existing = await redis.get(key);
-      if (existing) {
-        const prev: MeshSession = JSON.parse(existing);
-        meshSession.startedAt = prev.startedAt;
-        meshSession.messageQueue = prev.messageQueue || [];
+      // Preserve existing startedAt/messageQueue atomically so concurrent messages are not lost.
+      const committedSession = await updateJsonWithWatch<MeshSession>(
+        redis,
+        key,
+        prev => {
+          const next: MeshSession = {
+            ...meshSession,
+            startedAt: prev?.startedAt ?? meshSession.startedAt,
+            messageQueue: prev?.messageQueue || [],
+          };
 
-        // Auto-detect work completion: had work before, now idle with no work
-        if (
-          prev.currentWork &&
-          !session.currentWork &&
-          (session.status === 'idle' || !session.status) &&
-          resolvedWorkMode !== 'done'
-        ) {
-          meshSession.workMode = 'done';
-          meshSession.status = 'done';
-          meshSession.completedWork = prev.currentWork;
-          meshSession.completedAt = now;
-          // Done sessions expire faster (60s display window)
-          await redis.set(key, JSON.stringify(meshSession), 'EX', 60);
-          this.persistSession(meshSession);
-          await eventBus.publish({ type: 'mesh:heartbeat', sessionId: session.sessionId, agentId: session.agentId, status: 'done', currentWork: '' });
-          return { conflicts: [], conflictReports: [], messages: meshSession.messageQueue };
-        }
+          // Auto-detect work completion: had work before, now idle with no work
+          if (
+            prev?.currentWork &&
+            !session.currentWork &&
+            (session.status === 'idle' || !session.status) &&
+            resolvedWorkMode !== 'done'
+          ) {
+            next.workMode = 'done';
+            next.status = 'done';
+            next.completedWork = prev.currentWork;
+            next.completedAt = now;
+          } else if (prev && resolvedWorkMode === 'done' && !next.completedAt) {
+            // Explicit done state
+            next.completedWork = prev.currentWork || session.currentWork || '';
+            next.completedAt = now;
+          }
 
-        // Explicit done state
-        if (resolvedWorkMode === 'done' && !meshSession.completedAt) {
-          meshSession.completedWork = prev.currentWork || session.currentWork || '';
-          meshSession.completedAt = now;
-        }
-      }
-
-      const ttl = resolvedWorkMode === 'done' ? 60 : MESH_TTL;
-      await redis.set(key, JSON.stringify(meshSession), 'EX', ttl);
+          return next;
+        },
+        {
+          ttlSeconds: value => value.workMode === 'done' ? 60 : MESH_TTL,
+          operation: 'meshHeartbeat',
+        },
+      );
+      if (committedSession) Object.assign(meshSession, committedSession);
 
       // Also store agentId alias pointing to the canonical sessionId
       // This allows sendMessage("claude-2") to resolve to the real key
       if (session.agentId && session.agentId !== session.sessionId) {
         await redis.set(`${MESH_PREFIX}alias:${session.agentId}`, session.sessionId, 'EX', MESH_TTL);
+      }
+
+      if (resolvedWorkMode !== 'done' && meshSession.workMode === 'done') {
+        this.persistSession(meshSession);
+        await eventBus.publish({ type: 'mesh:heartbeat', sessionId: session.sessionId, agentId: session.agentId, status: 'done', currentWork: '' });
+        return { conflicts: [], conflictReports: [], messages: meshSession.messageQueue };
       }
     }
 
@@ -295,7 +304,18 @@ class CliMesh {
       meshSession.messageQueue = [];
       if (isRedisConnected()) {
         const redis = await getRedis();
-        await redis.set(`${MESH_PREFIX}${session.sessionId}`, JSON.stringify(meshSession), 'EX', MESH_TTL);
+        const deliveredIds = new Set(messages.map(message => message.id));
+        const updated = await updateJsonWithWatch<MeshSession>(
+          redis,
+          `${MESH_PREFIX}${session.sessionId}`,
+          current => current && ({
+            ...current,
+            activeConflicts: conflictReports,
+            messageQueue: (current.messageQueue || []).filter(message => !deliveredIds.has(message.id)),
+          }),
+          { ttlSeconds: MESH_TTL, operation: 'drainHeartbeatMessages' },
+        );
+        if (updated) Object.assign(meshSession, updated);
       }
     }
 
@@ -367,14 +387,21 @@ class CliMesh {
       const keys = await redis.keys(`${MESH_PREFIX}*`);
       for (const key of keys) {
         if (key.includes(':alias:')) continue; // skip alias keys
-        const raw = await redis.get(key);
-        if (!raw) continue;
-        const session: MeshSession = JSON.parse(raw);
-        // Only skip if BOTH sessionId AND agentId match (true self)
-        if (session.sessionId === fromSessionId && session.agentId === fromAgent) continue;
-        session.messageQueue.push(message);
-        await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
-        delivered++;
+        const updated = await updateJsonWithWatch<MeshSession>(
+          redis,
+          key,
+          current => {
+            if (!current) return null;
+            // Only skip if BOTH sessionId AND agentId match (true self)
+            if (current.sessionId === fromSessionId && current.agentId === fromAgent) return null;
+            return {
+              ...current,
+              messageQueue: [...(current.messageQueue || []), message],
+            };
+          },
+          { ttlSeconds: MESH_TTL, operation: 'broadcastMeshMessage' },
+        );
+        if (updated) delivered++;
       }
     } else {
       // Direct message — try exact key first, then resolve agentId alias
@@ -384,13 +411,16 @@ class CliMesh {
       if (aliasVal) resolvedId = aliasVal;
 
       const key = `${MESH_PREFIX}${resolvedId}`;
-      const raw = await redis.get(key);
-      if (raw) {
-        const session: MeshSession = JSON.parse(raw);
-        session.messageQueue.push(message);
-        await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
-        delivered = 1;
-      }
+      const updated = await updateJsonWithWatch<MeshSession>(
+        redis,
+        key,
+        current => current && ({
+          ...current,
+          messageQueue: [...(current.messageQueue || []), message],
+        }),
+        { ttlSeconds: MESH_TTL, operation: 'sendMeshMessage' },
+      );
+      if (updated) delivered = 1;
     }
 
     // Persist message
@@ -550,18 +580,21 @@ class CliMesh {
     if (isRedisConnected()) {
       const redis = await getRedis();
       const key = `${MESH_PREFIX}${sessionId}`;
-      const raw = await redis.get(key);
-      if (raw) {
-        const session: MeshSession = JSON.parse(raw);
-        session.workMode = 'done';
-        session.status = 'done';
-        session.completedWork = completedWork || session.currentWork;
-        session.completedAt = now;
-        session.currentWork = '';
-        session.currentFiles = [];
-        session.activeConflicts = [];
-        await redis.set(key, JSON.stringify(session), 'EX', 60);
-      }
+      await updateJsonWithWatch<MeshSession>(
+        redis,
+        key,
+        session => session && ({
+          ...session,
+          workMode: 'done',
+          status: 'done',
+          completedWork: completedWork || session.currentWork,
+          completedAt: now,
+          currentWork: '',
+          currentFiles: [],
+          activeConflicts: [],
+        }),
+        { ttlSeconds: 60, operation: 'completeMeshSession' },
+      );
     }
     await eventBus.publish({ type: 'mesh:session_update', session: { sessionId, workMode: 'done', completedAt: now } } as any);
     await eventBus.publish({ type: 'mesh:complete', sessionId, completedWork: completedWork || '' });
@@ -680,15 +713,27 @@ class CliMesh {
     if (aliasVal) resolved = aliasVal;
 
     const key = `${MESH_PREFIX}${resolved}`;
-    const raw = await redis.get(key);
-    if (!raw) return [];
-    const session: MeshSession = JSON.parse(raw);
-    const pending = session.messageQueue || [];
-
-    if (drain && pending.length > 0) {
-      session.messageQueue = [];
-      await redis.set(key, JSON.stringify(session), 'EX', MESH_TTL);
+    if (!drain) {
+      const raw = await redis.get(key);
+      if (!raw) return [];
+      const session: MeshSession = JSON.parse(raw);
+      return session.messageQueue || [];
     }
+
+    let pending: MeshMessage[] = [];
+    await updateJsonWithWatch<MeshSession>(
+      redis,
+      key,
+      session => {
+        if (!session) {
+          pending = [];
+          return null;
+        }
+        pending = session.messageQueue || [];
+        return { ...session, messageQueue: [] };
+      },
+      { ttlSeconds: MESH_TTL, operation: 'drainPendingMessages' },
+    );
     return pending;
   }
 

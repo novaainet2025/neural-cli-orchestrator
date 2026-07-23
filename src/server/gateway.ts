@@ -37,9 +37,30 @@ import {
   type ProviderAvailabilitySnapshot,
 } from '../security/circuit-breaker-registry.js';
 import { stripEchoLines } from '../utils/echo-filter.js';
+import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
+import { registerTriadRoutes } from './routes/triad.js';
+
+type TaskFailureContext = {
+  mode?: string | null;
+  prompt?: string | null;
+  team_id?: string | null;
+};
+
+type FailedCompletionOptions = { reportMode?: boolean };
+
+export function isTextReportTask(task: TaskFailureContext): boolean {
+  const prompt = task.prompt?.trimStart() ?? '';
+  if (prompt.startsWith('[업무보고') || prompt.startsWith('[팀 상시 임무')) return true;
+
+  const mode = task.mode?.trim().toLowerCase().replaceAll('_', '-') ?? '';
+  return mode === 'report' || mode.endsWith('-report');
+}
 
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
-export function detectFailedCompletion(response: string | null | undefined): boolean {
+export function detectFailedCompletion(
+  response: string | null | undefined,
+  options: FailedCompletionOptions = {},
+): boolean {
   if (!response) return false;
   const text = response.trim();
 
@@ -71,6 +92,10 @@ export function detectFailedCompletion(response: string | null | undefined): boo
   ];
   if (hard.some(p => p.test(scanText))) return true;
 
+  // 텍스트 보고서는 에러 현황 자체를 설명하므로 정상 본문의 SOFT 어휘를 실패로 보지 않는다.
+  // HARD 시그니처는 위에서 계속 검사하며, 빈 출력은 task-queue.classifyResult가 계속 차단한다.
+  if (options.reportMode) return false;
+
   // SOFT 시그니처: 정상 텍스트에도 등장할 수 있는 단어들(error/failed/usage limit 등).
   // 긴 substantive 출력의 본문 중간 등장은 오탐이므로, 짧은 출력 전체 또는 긴 출력의
   // 선두 200자에서만 판정한다. 근접 제한(.{0,N})으로 span-매칭 오탐도 차단.
@@ -90,9 +115,12 @@ export function detectFailedCompletion(response: string | null | undefined): boo
   return soft.some(p => p.test(target));
 }
 
-function buildFailureError(result: { error?: string; output?: string }): string {
+function buildFailureError(
+  result: { error?: string; output?: string },
+  options: FailedCompletionOptions = {},
+): string {
   return result.error
-    || (result.output && detectFailedCompletion(result.output) ? 'unknown: failure pattern in output' : undefined)
+    || (result.output && detectFailedCompletion(result.output, options) ? 'unknown: failure pattern in output' : undefined)
     || 'unknown: execution failed';
 }
 
@@ -241,8 +269,11 @@ import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerHandoffRoutes } from './routes/handoff.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { registerTeamsRoutes } from './routes/teams.js';
+import { registerGoalsRoutes } from './routes/goals.js';
+import { registerPerformanceRoutes } from './routes/performance.js';
 import { registerWorkReportRoutes } from './routes/work-reports.js';
 import { registerAuditRoutes } from './routes/audit.js';
+import { registerTeamScoreRoutes } from './routes/team-scores.js';
 import { invocationTracker } from '../core/invocation-tracker.js';
 import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
@@ -260,6 +291,12 @@ import {
 
 const log = createLogger('gateway');
 let draining = false;
+
+const GATEWAY_AUTH_EXEMPT_PATHS = new Set([
+  '/health',
+  '/api/health',
+]);
+const GATEWAY_AUTH_LOCALHOSTS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 const REALTIME_MINIMUMS = {
   parallel: 2,
@@ -813,6 +850,22 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  app.addHook('preHandler', async (request, reply) => {
+    const configuredToken = process.env.NCO_API_TOKEN?.trim() ?? '';
+    const path = request.url.split('?', 1)[0];
+
+    // Auth is opt-in and API-only. Dashboard/static and WS paths remain unchanged.
+    if (!configuredToken || !path.startsWith('/api/')) return;
+    if (GATEWAY_AUTH_LOCALHOSTS.has(request.ip)) return;
+    if (GATEWAY_AUTH_EXEMPT_PATHS.has(path)) return;
+
+    const authorization = request.headers.authorization;
+    const ncoTokenHeader = request.headers['x-nco-token'];
+    const ncoToken = Array.isArray(ncoTokenHeader) ? ncoTokenHeader[0] : ncoTokenHeader;
+    if (authorization === `Bearer ${configuredToken}` || ncoToken === configuredToken) return;
+
+    return reply.code(401).send({ error: 'Unauthorized', statusCode: 401 });
+  });
   app.addHook('preSerialization', async (request, _reply, payload) => {
     if (request.method !== 'GET' || request.url.split('?', 1)[0] !== '/api/agents') {
       return payload;
@@ -1026,7 +1079,17 @@ export async function createGateway() {
     const quality = checkResponseQuality(response, {
       requireProtocolPrefix: Boolean(taskRow.verifier_json),
     });
-    if (quality.pass) return;
+    if (quality.pass) {
+      try {
+        recordTeamDiagnosticOutcome(db, taskId, response);
+      } catch (error) {
+        log.error(
+          { err: error instanceof Error ? error.message : String(error), taskId },
+          'Failed to record team diagnostic improvement note',
+        );
+      }
+      return;
+    }
 
     updateTaskQualityMetadata(db, taskId, quality.heuristics);
 
@@ -1165,7 +1228,11 @@ export async function createGateway() {
       else if (action === 'restart') fleetGateway.restart(name);
       else { reply.code(400); return { error: `unknown action '${action}'` }; }
       return { ok: true, node: fleetGateway.getNode(name) };
-    } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+    } catch (error) {
+      log.warn({ err: error instanceof Error ? error.message : String(error), name, action }, 'Fleet action failed');
+      reply.code(400);
+      return { error: 'Fleet action failed', statusCode: 400 };
+    }
   });
   // 협업17 — Hive Relay
   app.get('/api/hive/sessions', async () => ({
@@ -1400,10 +1467,13 @@ export async function createGateway() {
       const metadataJson = Object.keys(mergedMetadata).length > 0
         ? JSON.stringify(mergedMetadata)
         : null;
+      // team_id: metadata.teamId를 태스크 행에 직접 귀속시켜 팀 성과 집계(GROUP BY team_id)에 즉시 반영.
+      // (기존엔 INSERT에 team_id가 없어 /api/task 생성 태스크는 team_id=NULL이었고, 스케줄러만 별도 UPDATE로 우회했음.)
+      const taskTeamId = typeof input.metadata?.teamId === 'string' && input.metadata.teamId.trim() ? input.metadata.teamId.trim() : null;
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
+        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, team_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
+        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, taskTeamId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
     } catch (dbErr) {
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
       reply.code(500); return { error: 'Failed to create task' };
@@ -1430,12 +1500,18 @@ export async function createGateway() {
     const systemPromptWithContext = explicitWorkspace
       ? injectContext(input.systemPrompt, input.workspaceId || 'default', taskId)
       : input.systemPrompt;
+    const taskFailureContext: TaskFailureContext = {
+      mode: input.mode,
+      prompt: input.prompt,
+      team_id: typeof input.metadata?.teamId === 'string' ? input.metadata.teamId : null,
+    };
+    const failureDetectionOptions = { reportMode: isTextReportTask(taskFailureContext) };
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, model: input.model, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), ...(input.model ? { model: input.model } : {}), invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : '';
-        const classifiedFailure = detectFailedCompletion(response);
+        const classifiedFailure = detectFailedCompletion(response, failureDetectionOptions);
         const nextStatus = result.status === 'cancelled'
           ? 'cancelled'
           : result.status === 'timed_out' || result.error === 'timeout(idle)' || result.error === 'timeout(hardcap)'
@@ -1443,7 +1519,7 @@ export async function createGateway() {
             : result.success && !classifiedFailure
               ? 'completed'
               : 'failed';
-        const error = nextStatus === 'completed' ? undefined : buildFailureError(result);
+        const error = nextStatus === 'completed' ? undefined : buildFailureError(result, failureDetectionOptions);
         try {
           const moved = transitionTask(db, taskId, nextStatus, {
             response: response || undefined,
@@ -3406,6 +3482,10 @@ export async function createGateway() {
   await registerFleetOpsRoutes(app);
   await registerHandoffRoutes(app);
   await registerTeamsRoutes(app);
+  await registerTriadRoutes(app);
+  registerGoalsRoutes(app);
+  registerPerformanceRoutes(app);
+  await registerTeamScoreRoutes(app);
   await registerWorkReportRoutes(app);
   await registerMathRoutes(app);
   // audit.ts는 구현만 있고 미마운트였음(emergency-stop이 compat 스텁으로 응답 — claude-1 T1 제보 2026-07-08)
@@ -3427,8 +3507,9 @@ export async function createGateway() {
       const repos = await searchGitHub(goal, limit ?? 5);
       return { goal, repos, count: repos.length, searchedAt: new Date().toISOString() };
     } catch (err: any) {
+      log.error({ err: err instanceof Error ? err.message : String(err) }, 'GitHub search route failed');
       reply.code(500);
-      return { error: err?.message ?? 'GitHub search failed' };
+      return { error: 'GitHub search failed', statusCode: 500 };
     }
   });
 
@@ -3444,8 +3525,9 @@ export async function createGateway() {
       const topRepos = results.flatMap(r => r.repos).sort((a, b) => b.transplantScore - a.transplantScore).slice(0, 10);
       return { results, totalRepos, topRepos, ranAt: new Date().toISOString() };
     } catch (err: any) {
+      log.error({ err: err instanceof Error ? err.message : String(err) }, 'GitHub agent route failed');
       reply.code(500);
-      return { error: err?.message ?? 'GitHub agent failed' };
+      return { error: 'GitHub agent failed', statusCode: 500 };
     }
   });
 

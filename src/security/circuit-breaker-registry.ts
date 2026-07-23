@@ -25,6 +25,12 @@ export interface ClassifiedCircuitError {
   matchedText: string;
 }
 
+export interface CircuitBreakerPolicy {
+  failureThreshold?: number;
+  resetTimeoutMs?: number;
+  halfOpenMaxAttempts?: number;
+}
+
 export type ProviderAvailability =
   | 'available'
   | 'gated:quota'
@@ -55,6 +61,10 @@ const BASE_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 30 * 60_000;
 const QUOTA_FALLBACK_COOLDOWN_MS = 60 * 60_000;
 const FAILURE_THRESHOLD = 3;
+
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value! > 0 ? Math.floor(value!) : fallback;
+}
 
 const AUTH_PATTERNS = [
   /\binvalid api key\b/i,
@@ -159,6 +169,7 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
 
 class CircuitBreakerRegistry {
   private states = new Map<string, CircuitSnapshot>();
+  private halfOpenAttempts = new Map<string, number>();
 
   async restore(agentIds: string[]): Promise<void> {
     for (const agentId of agentIds) {
@@ -190,9 +201,16 @@ class CircuitBreakerRegistry {
     await Promise.all(agentIds.map(async agentId => this.syncSharedState(agentId)));
   }
 
-  canExecute(agentId: string): boolean {
+  canExecute(agentId: string, policy: CircuitBreakerPolicy = {}): boolean {
     const current = this.ensure(agentId);
-    if (current.state !== 'open') return true;
+    if (current.state === 'closed') return true;
+    if (current.state === 'half-open') {
+      const attempts = this.halfOpenAttempts.get(agentId) ?? 0;
+      const maxAttempts = normalizePositiveInteger(policy.halfOpenMaxAttempts, 1);
+      if (attempts >= maxAttempts) return false;
+      this.halfOpenAttempts.set(agentId, attempts + 1);
+      return true;
+    }
     if (current.reason === 'auth') return false;
     if (current.cooldownUntil == null) return false;
     if (Date.now() < current.cooldownUntil) return false;
@@ -203,6 +221,7 @@ class CircuitBreakerRegistry {
       failureCount: 0,
     };
     this.commit(next, 'Circuit moved to half-open');
+    this.halfOpenAttempts.set(agentId, 1);
     return true;
   }
 
@@ -231,9 +250,10 @@ class CircuitBreakerRegistry {
     }
   }
 
-  recordFailure(agentId: string, rawError?: string): void {
+  recordFailure(agentId: string, rawError?: string, policy: CircuitBreakerPolicy = {}): void {
     const current = this.ensure(agentId);
     const classified = classifyCircuitError(rawError);
+    const failureThreshold = normalizePositiveInteger(policy.failureThreshold, FAILURE_THRESHOLD);
 
     if (classified?.reason === 'auth') {
       const next: CircuitSnapshot = {
@@ -249,21 +269,21 @@ class CircuitBreakerRegistry {
     }
 
     if (classified?.immediateOpen) {
-      const next = this.openSnapshot(current, classified.reason, classified.resetTime);
+      const next = this.openSnapshot(current, classified.reason, classified.resetTime, policy.resetTimeoutMs);
       this.commit(next, 'Circuit opened on classified provider failure');
       return;
     }
 
     if (current.state === 'half-open') {
-      const next = this.openSnapshot(current, 'generic', null);
+      const next = this.openSnapshot(current, 'generic', null, policy.resetTimeoutMs);
       next.failureCount = 1;
       this.commit(next, 'Circuit re-opened after half-open probe failed');
       return;
     }
 
     const failures = current.failureCount + 1;
-    if (failures >= FAILURE_THRESHOLD) {
-      const next = this.openSnapshot({ ...current, failureCount: failures }, 'generic', null);
+    if (failures >= failureThreshold) {
+      const next = this.openSnapshot({ ...current, failureCount: failures }, 'generic', null, policy.resetTimeoutMs);
       next.failureCount = failures;
       this.commit(next, 'Circuit opened after consecutive failures');
       return;
@@ -279,6 +299,7 @@ class CircuitBreakerRegistry {
   }
 
   reset(agentId: string): void {
+    this.halfOpenAttempts.delete(agentId);
     const next = defaultSnapshot(agentId);
     this.commit(next, 'Circuit manually reset');
   }
@@ -335,8 +356,10 @@ class CircuitBreakerRegistry {
     current: CircuitSnapshot,
     reason: CircuitReason,
     resetTime: number | null,
+    configuredResetTimeoutMs?: number,
   ): CircuitSnapshot {
     const now = Date.now();
+    const resetTimeoutMs = normalizePositiveInteger(configuredResetTimeoutMs, BASE_COOLDOWN_MS);
     let cooldownUntil: number | null;
 
     if (reason === 'auth') {
@@ -344,14 +367,14 @@ class CircuitBreakerRegistry {
     } else if (reason === 'quota') {
       cooldownUntil = resetTime ?? (now + QUOTA_FALLBACK_COOLDOWN_MS);
     } else if (reason === 'rate-limit') {
-      cooldownUntil = resetTime ?? (now + BASE_COOLDOWN_MS);
+      cooldownUntil = resetTime ?? (now + resetTimeoutMs);
     } else {
       const previousDuration = current.openedAt != null && current.cooldownUntil != null
         ? Math.max(0, current.cooldownUntil - current.openedAt)
         : 0;
       const duration = previousDuration > 0
-        ? Math.min(previousDuration * 2, MAX_COOLDOWN_MS)
-        : BASE_COOLDOWN_MS;
+        ? Math.min(previousDuration * 2, Math.max(MAX_COOLDOWN_MS, resetTimeoutMs))
+        : resetTimeoutMs;
       cooldownUntil = now + duration;
     }
 
@@ -366,6 +389,7 @@ class CircuitBreakerRegistry {
   }
 
   private commit(snapshot: CircuitSnapshot, message: string): void {
+    if (snapshot.state !== 'half-open') this.halfOpenAttempts.delete(snapshot.agentId);
     this.states.set(snapshot.agentId, snapshot);
     this.persist(snapshot);
     logDecision({ phase: 'circuit-breaker', decision: `circuit:${snapshot.state}`, reason: message, actor: snapshot.agentId });

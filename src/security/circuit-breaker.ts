@@ -1,21 +1,32 @@
 import { circuitBreakerRegistry, type CircuitState } from './circuit-breaker-registry.js';
 
 export interface CircuitBreakerConfig {
-  failureThreshold: number;    // consecutive failures to open (default 5)
+  failureThreshold: number;    // consecutive failures to open (default 3)
   resetTimeoutMs: number;      // time before half-open (default 60000)
   halfOpenMaxAttempts: number;  // attempts in half-open (default 1)
 }
 
+const DEFAULT_CONFIG: CircuitBreakerConfig = {
+  failureThreshold: 3,
+  resetTimeoutMs: 60_000,
+  halfOpenMaxAttempts: 1,
+};
+
 export class CircuitBreaker {
   private agentId: string;
+  private config: CircuitBreakerConfig;
 
   constructor(agentId: string, config?: Partial<CircuitBreakerConfig>) {
     this.agentId = agentId;
-    void config;
+    this.config = {
+      failureThreshold: normalizePositiveInteger(config?.failureThreshold, DEFAULT_CONFIG.failureThreshold),
+      resetTimeoutMs: normalizePositiveInteger(config?.resetTimeoutMs, DEFAULT_CONFIG.resetTimeoutMs),
+      halfOpenMaxAttempts: normalizePositiveInteger(config?.halfOpenMaxAttempts, DEFAULT_CONFIG.halfOpenMaxAttempts),
+    };
   }
 
   canExecute(): boolean {
-    return circuitBreakerRegistry.canExecute(this.agentId);
+    return circuitBreakerRegistry.canExecute(this.agentId, this.config);
   }
 
   recordSuccess(): void {
@@ -23,7 +34,7 @@ export class CircuitBreaker {
   }
 
   recordFailure(error?: string): void {
-    circuitBreakerRegistry.recordFailure(this.agentId, error);
+    circuitBreakerRegistry.recordFailure(this.agentId, error, this.config);
   }
 
   getState(): CircuitState { return circuitBreakerRegistry.getSnapshot(this.agentId).state; }
@@ -44,4 +55,8 @@ export class CircuitBreaker {
       agentId: this.agentId,
     };
   }
+}
+
+function normalizePositiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isFinite(value) && value! > 0 ? Math.floor(value!) : fallback;
 }

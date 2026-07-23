@@ -45,7 +45,7 @@ const { dbAll, dbGet, dbPrepare, getDb, readdirSync, readFileSync, statSync, exe
     readFileSync,
     statSync,
     execFileAsyncMock: vi.fn(async () => {
-      return { stdout: '[mlx-keepalive] 12:34:56', stderr: '' };
+      return { stdout: 'ok', stderr: '' };
     }),
     listProviders: vi.fn(() => [{ id: 'codex', name: 'Codex', role: 'Engineer', enabled: true }]),
     getP95Latency: vi.fn(() => 100),
@@ -176,28 +176,6 @@ describe('dashboard-compat routes', () => {
       expect(data.improvementNotes[0].score).toBe('90');
       expect(data.contextHistory).toHaveLength(1);
       expect(data.contextHistory[0].title).toBe('Session Title');
-    });
-  });
-
-  describe('GET /api/mlx/latency', () => {
-    it('pings local and remote MLX and reads keepalive log', async () => {
-      const originalFetch = global.fetch;
-      global.fetch = vi.fn(async () => {
-        return { ok: true } as any;
-      });
-
-      const response = await app.inject({
-        method: 'GET',
-        url: '/api/mlx/latency',
-      });
-
-      expect(response.statusCode).toBe(200);
-      const data = JSON.parse(response.payload);
-      expect(data.local.online).toBe(true);
-      expect(data.remote.online).toBe(true);
-      expect(data.lastKeepaliveAt).toBe('12:34:56');
-
-      global.fetch = originalFetch;
     });
   });
 

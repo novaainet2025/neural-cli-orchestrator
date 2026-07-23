@@ -1,0 +1,14 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+[Error: EPERM: operation not permitted, unlink '/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/dist/content.js'] {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'unlink',
+  path: '/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/dist/content.js'
+}
+
+Node.js v25.9.0
+        0.97 real         1.63 user         0.13 sys
+time: sysctl kern.clockrate: Operation not permitted

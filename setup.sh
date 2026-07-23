@@ -435,11 +435,6 @@ export PATH="\$HOME/.local/bin:\$HOME/.cargo/bin:\$PATH"
 alias claude-gemma='claude-vllm-gemma --dangerously-skip-permissions'
 alias claude-qwen='claude-vllm-qwen --dangerously-skip-permissions'
 
-# MLX 로컬 LLM (macOS Apple Silicon 전용)
-# 사용 전: /nco-mlx start  또는  bash "$NCO_DIR/cli-installs/mlx-ctl.sh" start
-alias claude-mlx='ANTHROPIC_BASE_URL=http://localhost:4100 ANTHROPIC_API_KEY=dummy claude --dangerously-skip-permissions'
-alias mlx-proxy-start='bash "$NCO_DIR/cli-installs/mlx-ctl.sh" proxy start'
-alias mlx-proxy-stop='bash "$NCO_DIR/cli-installs/mlx-ctl.sh" proxy stop'
 # ── NCO end ────────────────────────────────────────────────────────────────
 RCEOF
   ok "Shell RC 업데이트 완료 ($SHELL_RC)"

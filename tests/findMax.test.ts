@@ -14,3 +14,9 @@ test('findMax returns undefined for an empty array', () => {
 test('findMax works with large numbers', () => {
   expect(findMax([Number.MIN_SAFE_INTEGER, Number.MAX_SAFE_INTEGER])).toBe(Number.MAX_SAFE_INTEGER);
 });
+
+test('findMax handles arrays larger than the function argument limit', () => {
+  const values = Array.from({ length: 200_000 }, (_, index) => index);
+
+  expect(findMax(values)).toBe(199_999);
+});

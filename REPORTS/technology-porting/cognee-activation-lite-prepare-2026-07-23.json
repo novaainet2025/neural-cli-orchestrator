@@ -1,0 +1,36 @@
+{
+  "dataset": "nova_use_activation_lite_v1",
+  "pipelineMode": "chunk-index-only-no-llm-graph-extraction",
+  "documentCount": 12,
+  "queryCount": 120,
+  "dataQuality": {
+    "checks": {
+      "document_count_is_12": true,
+      "query_count_is_120": true,
+      "unique_rel_ids": true,
+      "unique_codes": true,
+      "unique_query_ids": true,
+      "unique_query_texts": true,
+      "all_expected_documents_exist": true,
+      "safe_relative_markdown_paths": true,
+      "balanced_categories": true,
+      "synthetic_only": true
+    },
+    "allPassed": true,
+    "categoryCounts": {
+      "dependency": 12,
+      "identifier": 12,
+      "metric": 12,
+      "purpose": 12,
+      "request-owner": 12,
+      "rollback": 12,
+      "safeguard": 12,
+      "scenario": 12,
+      "semantic-owner": 12,
+      "semantic-purpose": 12
+    }
+  },
+  "addSeconds": 1.684,
+  "indexSeconds": 5.363,
+  "pipelineResultCount": 2
+}

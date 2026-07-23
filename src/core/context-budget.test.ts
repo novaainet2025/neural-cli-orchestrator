@@ -133,4 +133,16 @@ describe('ContextBudget', () => {
     const b = new ContextBudget();
     expect(() => b.add('t', -1)).toThrow();
   });
+
+  it('빈 taskId를 거부하고 사용량을 변경하지 않음', () => {
+    const b = new ContextBudget();
+
+    expect(() => b.add('', 10)).toThrow('taskId must be a non-empty string');
+    expect(() => b.add('   ', 10)).toThrow('taskId must be a non-empty string');
+    expect(() => b.add(undefined as unknown as string, 10)).toThrow(
+      'taskId must be a non-empty string',
+    );
+    expect(b.total()).toBe(0);
+    expect(b.breakdown()).toEqual([]);
+  });
 });

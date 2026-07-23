@@ -1,0 +1,18 @@
+# NCO 기능 체크리스트 — 2026-07-23
+
+- 생성: 2026-07-23T16:45:18+0900
+- 총 항목: **192**
+
+## 카테고리별 항목 수
+| 카테고리 | 개수 | 소스 |
+|---|---|---|
+| build | 1 | npx tsc --noEmit |
+| command | 24 | .claude/commands/*.md (24) |
+| health | 1 | /health |
+| hook | 84 | .claude/hooks + ~/.claude/hooks (84) |
+| mcp | 1 | src/mcp grep (expected≥42) |
+| plugin | 3 | ~/.claude/plugins/cache/* (3) |
+| provider | 9 | config/ai-providers.json (9) |
+| script | 12 | scripts/*.sh (12) |
+| skill | 7 | ~/.claude/skills/*/SKILL.md (7) |
+| team | 50 | /api/teams (50) |

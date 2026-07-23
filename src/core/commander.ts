@@ -13,7 +13,7 @@ const log = createLogger('commander');
  *
  * Management Layer (두뇌/유료): 계획·최종 종합 (claude-code, opencode)
  * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/nvidia)
- * Execution Layer (워커/무료 로컬): 대량 구현 (mlx, ollama, hermes, aider → codex escalation)
+ * Execution Layer (워커/무료 로컬): 대량 구현 (ollama, aider → codex escalation)
  * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/nvidia QA)
  */
 

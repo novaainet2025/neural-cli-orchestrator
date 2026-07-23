@@ -28,11 +28,13 @@ export type DelegationMode = z.infer<typeof DelegationModeSchema>;
  * literal union) lets the caller pass the current provider registry so unknown
  * agents are rejected *before* the task is queued.
  *
- * @param knownAgentIds Agent ids accepted as delegation targets. Must be non-empty.
- * @throws {Error} if `knownAgentIds` is empty (a schema that accepts nothing is a bug).
+ * @param knownAgentIds Agent ids accepted as delegation targets. Must be non-null and non-empty.
+ * @throws {Error} if `knownAgentIds` is nullish or empty (a schema that accepts nothing is a bug).
  */
-export function makeDelegationPayloadSchema(knownAgentIds: readonly string[]) {
-  if (knownAgentIds.length === 0) {
+export function makeDelegationPayloadSchema(
+  knownAgentIds: readonly string[] | null | undefined,
+) {
+  if (!knownAgentIds?.length) {
     throw new Error('makeDelegationPayloadSchema: knownAgentIds must be non-empty');
   }
   // Deterministic ordering for the error message; de-duplicated for a clean list.

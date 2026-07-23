@@ -21,4 +21,15 @@ describe('Simple greeting', () => {
     const body = res.json();
     expect(body).toEqual({ message: 'NCO Backend is running', status: 'ok' });
   });
+
+  test('fleet route does not expose internal exception details', async () => {
+    const res = await server.inject({
+      method: 'POST',
+      url: '/api/fleet/missing-node-for-error-sanitization/activate',
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'Fleet action failed', statusCode: 400 });
+    expect(res.body).not.toContain('not registered');
+  });
 });

@@ -18,9 +18,8 @@ import { mem0Add, mem0Search } from './mem0-bridge.js';
 
 const log = createLogger('reflexion');
 
-// 자가 평가용 LLM
+// 자가 평가용 LLM (로컬 Ollama)
 const OLLAMA_CHAT_URL = 'http://localhost:11434/api/chat';
-const MLX_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
 
 export interface ReflexionTurn {
   attempt: number;
@@ -57,24 +56,6 @@ async function callLlm(messages: Array<{ role: string; content: string }>): Prom
     if (res.ok) {
       const data = await res.json() as { message?: { content?: string } };
       return data.message?.content?.trim() ?? '';
-    }
-  } catch { /* fallthrough */ }
-
-  // Fallback to MLX
-  try {
-    const res = await fetch(MLX_CHAT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: '/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit',
-        messages,
-        max_tokens: 300, stream: false, temperature: 0.3,
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-    if (res.ok) {
-      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-      return data.choices?.[0]?.message?.content?.trim() ?? '';
     }
   } catch { /* fallthrough */ }
 

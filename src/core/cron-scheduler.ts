@@ -4,11 +4,13 @@
  */
 
 import * as nodeCron from 'node-cron';
+import type Database from 'better-sqlite3';
 import { createId } from '../utils/id.js';
 import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
+import { computeTeamScores, TEAM_SCORE_TARGET, type TeamScore } from './team-scorer.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -40,6 +42,180 @@ export interface CronJobRecord extends Required<Omit<CronJobDef, 'id'>> {
 const activeTasks = new Map<string, nodeCron.ScheduledTask>();
 const retryTimers = new Map<string, Set<ReturnType<typeof setTimeout>>>();
 let defaultInternalJobsEnsured = false;
+let teamDiagnosticsRunning = false;
+
+export const TEAM_DIAGNOSTIC_JOB_ID = 'team-score-diagnostics';
+export const TEAM_DIAGNOSTIC_MAX_PER_RUN = 5;
+export const TEAM_DIAGNOSTIC_DEDUPE_HOURS = 6;
+const SELF_IMPROVEMENT_TEAM_ID = 'team_self-improvement';
+
+interface DiagnosticTaskPayload {
+  ai: string;
+  prompt: string;
+  callerAgentId: string;
+  metadata: {
+    projectDir: string;
+    teamId: string;
+    allowProviderFailover: boolean;
+    diagnosticKind: 'team-score';
+    diagnosticTargetTeamId: string;
+    diagnosticTargetSlug: string;
+    diagnosticScore: number;
+  };
+  verifier: {
+    type: 'run';
+    command: 'npm run build';
+  };
+}
+
+interface DiagnosticSubmitResult {
+  ok: boolean;
+  taskId?: string;
+  error?: string;
+}
+
+export interface TeamDiagnosticRunResult {
+  evaluated: number;
+  belowTarget: number;
+  created: number;
+  deduped: number;
+  capped: number;
+  failed: number;
+}
+
+export interface TeamDiagnosticRunOptions {
+  database?: Database.Database;
+  scores?: TeamScore[];
+  projectDir?: string;
+  submitTask?: (payload: DiagnosticTaskPayload) => Promise<DiagnosticSubmitResult>;
+}
+
+function buildDiagnosticPrompt(team: TeamScore): string {
+  return `[자동 품질진단] 팀 ${team.name}(${team.slug})가 ${team.score}점(<90)이다. 이 팀의 최근 태스크 실패/상태 패턴을 실데이터로 분석해 (1)저점수 근본원인 (2)구체 개선안 또는 실제 수정(가능하면 도구로 tsc-검증된 소범위 패치)을 산출하라. 지어내기 금지.\n\n[진단 태그] target-team:${team.slug}; target-team-id:${team.teamId}\n최종 산출은 기존 improvement_notes 기록 경로에 남겨라.`;
+}
+
+async function submitDiagnosticTask(payload: DiagnosticTaskPayload): Promise<DiagnosticSubmitResult> {
+  const apiUrl = process.env.NCO_API_URL || 'http://localhost:6200';
+  const token = process.env.NCO_API_TOKEN || 'nco_secret_key_change_me_in_production';
+  const response = await fetch(`${apiUrl}/api/task`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(60_000),
+  });
+  const body = await response.text();
+  if (!response.ok) {
+    return { ok: false, error: `HTTP ${response.status}: ${body.slice(0, 500)}` };
+  }
+  try {
+    const parsed = JSON.parse(body) as { taskId?: string };
+    return parsed.taskId
+      ? { ok: true, taskId: parsed.taskId }
+      : { ok: false, error: 'Task route returned without taskId' };
+  } catch {
+    return { ok: false, error: 'Task route returned invalid JSON' };
+  }
+}
+
+export async function runTeamScoreDiagnostics(
+  options: TeamDiagnosticRunOptions = {},
+): Promise<TeamDiagnosticRunResult> {
+  const database = options.database ?? getDb();
+  const scores = options.scores ?? computeTeamScores(database);
+  const candidates = scores
+    .filter((team) => team.n > 0 && team.score < TEAM_SCORE_TARGET)
+    .sort((left, right) => left.score - right.score || left.teamId.localeCompare(right.teamId));
+  const result: TeamDiagnosticRunResult = {
+    evaluated: scores.length,
+    belowTarget: candidates.length,
+    created: 0,
+    deduped: 0,
+    capped: 0,
+    failed: 0,
+  };
+
+  const owner = database.prepare(`
+    SELECT t.lead
+    FROM teams t
+    LEFT JOIN organizations o ON o.id = t.organization_id
+    WHERE t.id = ?
+      AND t.is_active = 1
+      AND (t.organization_id IS NULL OR o.is_active = 1)
+  `).get(SELF_IMPROVEMENT_TEAM_ID) as { lead: string | null } | undefined;
+  if (!owner?.lead) {
+    result.failed = candidates.length;
+    log.error({ teamId: SELF_IMPROVEMENT_TEAM_ID }, 'Active self-improvement team lead not found');
+    return result;
+  }
+
+  const isDuplicate = database.prepare(`
+    SELECT 1
+    FROM tasks
+    WHERE created_at >= datetime('now', ?)
+      AND status IN ('pending','queued','assigned','running','streaming','reviewing')
+      AND (
+        CASE
+          WHEN metadata_json IS NOT NULL AND json_valid(metadata_json)
+          THEN json_extract(metadata_json, '$.diagnosticTargetSlug') = ?
+          ELSE 0
+        END
+        OR instr(prompt, ?) > 0
+      )
+    LIMIT 1
+  `);
+  const submit = options.submitTask ?? submitDiagnosticTask;
+  const projectDir = options.projectDir ?? resolveInternalProjectDir();
+
+  for (const team of candidates) {
+    if (result.created >= TEAM_DIAGNOSTIC_MAX_PER_RUN) {
+      result.capped += 1;
+      continue;
+    }
+
+    const promptTag = `target-team:${team.slug}`;
+    const duplicate = isDuplicate.get(
+      `-${TEAM_DIAGNOSTIC_DEDUPE_HOURS} hours`,
+      team.slug,
+      promptTag,
+    );
+    if (duplicate) {
+      result.deduped += 1;
+      continue;
+    }
+
+    const submitted = await submit({
+      ai: owner.lead,
+      prompt: buildDiagnosticPrompt(team),
+      callerAgentId: 'cron-scheduler',
+      metadata: {
+        projectDir,
+        teamId: SELF_IMPROVEMENT_TEAM_ID,
+        allowProviderFailover: true,
+        diagnosticKind: 'team-score',
+        diagnosticTargetTeamId: team.teamId,
+        diagnosticTargetSlug: team.slug,
+        diagnosticScore: team.score,
+      },
+      verifier: { type: 'run', command: 'npm run build' },
+    });
+    if (submitted.ok) {
+      result.created += 1;
+      log.info(
+        { taskId: submitted.taskId, targetTeamId: team.teamId, targetSlug: team.slug, score: team.score },
+        'Low-score team diagnostic task created',
+      );
+    } else {
+      result.failed += 1;
+      log.error(
+        { targetTeamId: team.teamId, targetSlug: team.slug, score: team.score, error: submitted.error },
+        'Low-score team diagnostic task creation failed',
+      );
+    }
+  }
+
+  log.info(result, 'Team score diagnostic cycle completed');
+  return result;
+}
 
 function getDefaultTimezone(): string {
   return process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
@@ -181,6 +357,17 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
         const report = await sleepConsolidator.consolidateSelfImprovements();
         result = JSON.stringify(report);
+      } else if (action === 'team-score-diagnostics') {
+        if (teamDiagnosticsRunning) {
+          result = JSON.stringify({ skipped: true, reason: 'already-running' });
+        } else {
+          teamDiagnosticsRunning = true;
+          try {
+            result = JSON.stringify(await runTeamScoreDiagnostics());
+          } finally {
+            teamDiagnosticsRunning = false;
+          }
+        }
       } else {
         throw new Error(`Unknown internal cron action: ${String(action)}`);
       }
@@ -243,21 +430,33 @@ function ensureDefaultInternalJobs(): void {
   }
   defaultInternalJobsEnsured = true;
 
-  if (getCronJob('sleep-self-improvement')) {
-    return;
+  if (!getCronJob('sleep-self-improvement')) {
+    scheduleCronJob({
+      id: 'sleep-self-improvement',
+      description: 'WS5 sleep-time self-improvement consolidation',
+      schedule: '0 3 * * *',
+      taskType: 'internal',
+      payload: { action: 'sleep-consolidation' },
+      timezone: getDefaultTimezone(),
+      maxRetries: 3,
+      backoffMs: 60_000,
+      enabled: true,
+    });
   }
 
-  scheduleCronJob({
-    id: 'sleep-self-improvement',
-    description: 'WS5 sleep-time self-improvement consolidation',
-    schedule: '0 3 * * *',
-    taskType: 'internal',
-    payload: { action: 'sleep-consolidation' },
-    timezone: getDefaultTimezone(),
-    maxRetries: 3,
-    backoffMs: 60_000,
-    enabled: true,
-  });
+  if (!getCronJob(TEAM_DIAGNOSTIC_JOB_ID)) {
+    scheduleCronJob({
+      id: TEAM_DIAGNOSTIC_JOB_ID,
+      description: 'Diagnose active teams below the live quality target',
+      schedule: '0 */6 * * *',
+      taskType: 'internal',
+      payload: { action: 'team-score-diagnostics' },
+      timezone: getDefaultTimezone(),
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
 }
 
 // ─── Public API ─────────────────────────────────────────

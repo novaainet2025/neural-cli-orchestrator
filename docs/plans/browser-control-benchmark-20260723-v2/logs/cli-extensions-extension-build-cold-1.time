@@ -1,0 +1,16 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+[Error: EPERM: operation not permitted, unlink '/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/dist/content.js'] {
+  errno: -1,
+  code: 'EPERM',
+  syscall: 'unlink',
+  path: '/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/dist/content.js'
+}
+
+Node.js v25.9.0
+bench_wall_s 0.985925
+bench_user_s 1.619600
+bench_sys_s 0.127414
+bench_max_rss_kb 337664

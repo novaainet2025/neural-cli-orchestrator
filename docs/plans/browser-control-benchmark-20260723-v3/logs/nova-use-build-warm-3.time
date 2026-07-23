@@ -1,0 +1,13 @@
+[plugin vite:reporter] 
+(!) /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts is dynamically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/projects.ts but also statically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/agent-browser-adapter.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/agent-control.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/automations.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/branches.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/handlers.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/runtime.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/source-control.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /private/tmp/nova-use-browser-bench.YrjUuw/src/main/branches.ts is dynamically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts but also statically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/handlers.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/runtime.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter] 
+(!) /private/tmp/nova-use-browser-bench.YrjUuw/src/main/project-setups.ts is dynamically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/workspaces.ts but also statically imported by /private/tmp/nova-use-browser-bench.YrjUuw/src/main/automations.ts, /private/tmp/nova-use-browser-bench.YrjUuw/src/main/runtime.ts, dynamic import will not move module into another chunk.
+
+bench_wall_s 12.161203
+bench_user_s 19.203789
+bench_sys_s 1.679424
+bench_max_rss_kb 2595984

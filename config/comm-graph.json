@@ -2,8 +2,58 @@
   "edges": [
     {
       "from": "claude-*",
+      "to": "codex*",
+      "types": ["info", "task", "review", "approval", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "claude-*",
+      "to": "agy*",
+      "types": ["info", "task", "review", "approval", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "claude-*",
+      "to": "antigravity",
+      "types": ["info", "task", "review", "approval", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "codex*",
+      "to": "claude-*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "codex*",
+      "to": "nova-macstudio-claude-*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "codex*",
+      "to": "agy*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "codex*",
+      "to": "antigravity",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "agy*",
+      "to": "claude-*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "antigravity",
+      "to": "codex*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "antigravity",
+      "to": "nova-macstudio-claude-*",
+      "types": ["info", "review", "question", "warning", "request", "conflict"]
+    },
+    {
+      "from": "triad-*",
       "to": "*",
-      "types": ["info", "task"]
+      "types": ["info", "task", "review", "approval", "question", "warning", "request", "conflict"]
     },
     {
       "from": "*",

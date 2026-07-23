@@ -1,0 +1,44 @@
+{
+  "measuredAt": "2026-07-23T10:27:33.243Z",
+  "host": "nova-macstudio",
+  "platform": "darwin 25.5.0 arm64",
+  "node": "v25.9.0",
+  "repetitions": 7,
+  "iterationsPerRepetition": 40000,
+  "sourceRepositories": {
+    "nco": {
+      "sha": "4adf31725bad1f44220d04952151c8197469f6e1",
+      "dirtyRows": 540
+    },
+    "novaUse": {
+      "sha": "408718d1739bcea747c3c863f75da5ac5a600446",
+      "dirtyRows": 225
+    },
+    "cliExtensions": {
+      "sha": "cff682d60e1e0579d0bc0bb32088ed2cef313b00",
+      "dirtyRows": 63
+    }
+  },
+  "sources": {
+    "spec": {
+      "path": "/Users/nova-ai/project/nova-use/docs/plans/browser-control-extension-port.md",
+      "sha256": "3043947fa564d0424d45428858af0dc4ffeb5ee0a74baee439d0c287d7545593"
+    },
+    "novaUseAdapter": {
+      "path": "/Users/nova-ai/project/nova-use/src/main/agent-browser-adapter.ts",
+      "sha256": "b5f7fe0871a213196ba96cf16ab8dd06299b2c7bf5b6fb039d151048fb706779"
+    },
+    "originalPageDigest": {
+      "path": "/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/src/content/page-digest.ts",
+      "sha256": "4348367b3947e156bf04a5091da50096acc737647a473d82cb4f81f42100291e"
+    },
+    "originalForce": {
+      "path": "/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/src/content/force.ts",
+      "sha256": "8ab79ccc83c1fc5fff19b502a47e88d8462dea0412ad1e7817e2f40d80207741"
+    },
+    "originalDestructive": {
+      "path": "/Users/nova-ai/project/크롬확장프로그램/cli-extensions/extension/src/shared/destructive.ts",
+      "sha256": "01c11ed2a473a8f63c1fb2ca423fc364e2be40452fca83700c019d8ae2a89e43"
+    }
+  }
+}

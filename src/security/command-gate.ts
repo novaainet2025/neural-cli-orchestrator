@@ -29,6 +29,8 @@ const GLOBAL_DENIED_PATTERNS = [
   /\breboot\b/,
   /\bnc\s+-l/,                    // netcat listen
   /\bpython[23]?\s+-c\s/,         // arbitrary python exec
+  /\b(?:node|tsx|deno)\b[^\r\n]*\s(?:-e|--eval|-p|--print)(?:=|\s|$)/, // arbitrary JS/TS exec
+  /\b(?:node|tsx|deno)\b[^\r\n]*\s-(?:\s|$)/, // script from stdin
 ];
 
 const TRUSTED_EXEC_DIRS = [
@@ -48,7 +50,7 @@ const TRUSTED_EXEC_DIRS = [
   '/usr/local/lib/node_modules',
   '/usr/lib/node_modules',
   '/home/linuxbrew/.linuxbrew/lib/node_modules',
-  resolve(process.cwd(), 'node_modules/.bin'),
+  // Project node_modules/.bin is intentionally omitted; invoke local tools via trusted npm/npx.
 ];
 
 export class CommandGate {
@@ -64,6 +66,26 @@ export class CommandGate {
     const fullCmd = [command, ...args].join(' ');
     const baseCmd = basename(command);
     const resolvedCommand = this.resolveExecutable(command);
+    const commandTexts = [fullCmd];
+    if (/^(?:ba)?sh$/.test(baseCmd)) {
+      const commandArgIndex = args.findIndex(arg => /^-[a-zA-Z]*c[a-zA-Z]*$/.test(arg));
+      if (commandArgIndex >= 0 && args[commandArgIndex + 1]) {
+        commandTexts.push(args[commandArgIndex + 1]);
+      }
+    }
+
+    // Global and custom denials apply even when the allowlist is intentionally empty.
+    for (const pattern of this.denied) {
+      if (commandTexts.some(text => text.includes(pattern))) {
+        return { ok: false, reason: `Command matches denied pattern: ${pattern}` };
+      }
+    }
+
+    for (const regex of GLOBAL_DENIED_PATTERNS) {
+      if (commandTexts.some(text => regex.test(text))) {
+        return { ok: false, reason: `Command matches dangerous pattern: ${regex.source}` };
+      }
+    }
 
     // 1. Allowed command check
     if (this.allowed.size > 0 && !this.allowed.has(baseCmd)) {
@@ -79,20 +101,6 @@ export class CommandGate {
       }
     } else if ((command.includes('/') || isAbsolute(command)) && resolvedCommand && !this.isTrustedExecutablePath(resolvedCommand)) {
       return { ok: false, reason: `Command path not trusted: ${resolvedCommand}` };
-    }
-
-    // 2. Custom denied patterns
-    for (const pattern of this.denied) {
-      if (fullCmd.includes(pattern)) {
-        return { ok: false, reason: `Command matches denied pattern: ${pattern}` };
-      }
-    }
-
-    // 3. Global dangerous patterns
-    for (const regex of GLOBAL_DENIED_PATTERNS) {
-      if (regex.test(fullCmd)) {
-        return { ok: false, reason: `Command matches dangerous pattern: ${regex.source}` };
-      }
     }
 
     return { ok: true };

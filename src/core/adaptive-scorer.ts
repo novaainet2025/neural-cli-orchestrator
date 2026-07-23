@@ -35,6 +35,8 @@ const MIN_SAMPLES = 3;          // 최소 샘플 수 (미달 시 prior 가중치
 const EWM_ALPHA = 0.3;          // 지수가중평균 계수 (최신 데이터 비중)
 const WEIGHT_FLOOR = 0.2;       // 최소 가중치 (완전 배제 방지)
 const WEIGHT_CEILING = 2.0;     // 최대 가중치
+const PERFORMANCE_FRESHNESS_MS = 14 * 24 * 60 * 60_000;
+const OPERATIONAL_WINDOW_DAYS = 14;
 
 // ── 도메인별 에이전트 사전 강점 (cold-start prior) ─────────────────────
 // 경험적 지식 기반: 데이터 부족 시 이 prior를 사용
@@ -49,6 +51,18 @@ const COLD_START_PRIORS: Record<string, Record<string, number>> = {
   general:  { opencode: 1.2, codex: 1.1, 'cursor-agent': 1.1, nvidia: 1.0 },
 };
 
+export function computeOperationalReliabilityWeight(
+  successRate: number,
+  avgDurationMs: number,
+): number {
+  const boundedSuccess = Math.max(0, Math.min(1, successRate));
+  const reliability = 0.5 + boundedSuccess;
+  const speed = avgDurationMs > 0
+    ? Math.max(0.75, Math.min(1.25, 90_000 / avgDurationMs))
+    : 1;
+  return Math.max(WEIGHT_FLOOR, Math.min(WEIGHT_CEILING, (reliability + speed) / 2));
+}
+
 class AdaptiveScorer {
   /**
    * 특정 에이전트의 특정 도메인 가중치 조회
@@ -57,22 +71,29 @@ class AdaptiveScorer {
     try {
       const db = getDb();
       const row = db.prepare(
-        `SELECT avg_quality, success_rate, total_runs
+        `SELECT avg_quality, success_rate, total_runs, last_updated
          FROM agent_performance_summary
          WHERE agent_id=? AND task_type=?`
       ).get(agentId, taskType) as any;
 
-      if (!row || row.total_runs < MIN_SAMPLES) {
-        // cold-start: domain prior > global prior > default
-        const domainPrior = COLD_START_PRIORS[taskType]?.[agentId];
-        if (domainPrior) return domainPrior;
-        const globalPrior = COLD_START_PRIORS['general']?.[agentId];
-        return globalPrior ?? 1.0;
+      const domainPrior = COLD_START_PRIORS[taskType]?.[agentId];
+      const globalPrior = COLD_START_PRIORS['general']?.[agentId];
+      const prior = domainPrior ?? globalPrior ?? 1.0;
+      const updatedAt = typeof row?.last_updated === 'string' ? Date.parse(row.last_updated) : Number.NaN;
+      const fresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= PERFORMANCE_FRESHNESS_MS;
+
+      if (!row || row.total_runs < MIN_SAMPLES || !fresh) {
+        // Domain quality data is sparse/stale for several providers. Blend the
+        // cold-start domain prior with recent operational reliability so the
+        // live routers do not keep following a month-old single-provider row.
+        const operational = this.getOperationalWeight(agentId);
+        if (!operational) return prior;
+        const confidence = Math.min(0.7, operational.sampleCount / 50);
+        return operational.weight * confidence + prior * (1 - confidence);
       }
 
       // 충분한 데이터: EWM 학습 가중치 + prior 블렌딩 (데이터 적을수록 prior 비중 ↑)
       const learnedWeight = this.computeWeight(row.avg_quality, row.success_rate);
-      const prior = COLD_START_PRIORS[taskType]?.[agentId] ?? 1.0;
       const confidence = Math.min(1, row.total_runs / 20);
       return learnedWeight * confidence + prior * (1 - confidence);
     } catch {
@@ -233,6 +254,34 @@ class AdaptiveScorer {
 
     const raw = (qualityWeight + successWeight) / 2;
     return Math.max(WEIGHT_FLOOR, Math.min(WEIGHT_CEILING, raw));
+  }
+
+  private getOperationalWeight(agentId: string): { weight: number; sampleCount: number } | null {
+    try {
+      const row = getDb().prepare(`
+        SELECT COUNT(*) AS samples,
+               AVG(success) AS success_rate,
+               AVG(CASE WHEN success=1 THEN duration_ms END) AS avg_duration_ms
+        FROM agent_evolution_log
+        WHERE agent_id=?
+          AND created_at >= datetime('now', ?)
+      `).get(agentId, `-${OPERATIONAL_WINDOW_DAYS} days`) as {
+        samples?: number;
+        success_rate?: number;
+        avg_duration_ms?: number;
+      } | undefined;
+      const sampleCount = Number(row?.samples ?? 0);
+      if (sampleCount < MIN_SAMPLES) return null;
+      return {
+        sampleCount,
+        weight: computeOperationalReliabilityWeight(
+          Number(row?.success_rate ?? 0),
+          Number(row?.avg_duration_ms ?? 0),
+        ),
+      };
+    } catch {
+      return null;
+    }
   }
 }
 

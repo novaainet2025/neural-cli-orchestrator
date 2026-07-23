@@ -10,6 +10,8 @@ import { createSessionId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('session-manager');
+const COMPLETED_SESSION_TTL_MS = 15 * 60_000;
+const MAX_COMPLETED_SESSIONS = 100;
 
 export interface AgentSession {
   id: string;
@@ -26,11 +28,13 @@ export interface AgentSession {
   pendingApproval?: {
     toolCall: any;
     resolve: (approved: boolean) => void;
+    timeout?: ReturnType<typeof setTimeout>;
   };
 }
 
 class AgentSessionManager {
   private sessions = new Map<string, AgentSession>();
+  private completionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
    * Start a new agent session. Runs the agent in background.
@@ -104,6 +108,7 @@ class AgentSessionManager {
     session.completedAt = new Date().toISOString();
 
     this.persistSession(session);
+    this.retainCompletedSession(session);
 
     await eventBus.publish({
       type: 'agent:session_aborted',
@@ -122,6 +127,7 @@ class AgentSessionManager {
     const session = this.sessions.get(sessionId);
     if (!session?.pendingApproval) return false;
 
+    if (session.pendingApproval.timeout) clearTimeout(session.pendingApproval.timeout);
     session.pendingApproval.resolve(true);
     session.pendingApproval = undefined;
 
@@ -136,6 +142,7 @@ class AgentSessionManager {
     const session = this.sessions.get(sessionId);
     if (!session?.pendingApproval) return false;
 
+    if (session.pendingApproval.timeout) clearTimeout(session.pendingApproval.timeout);
     session.pendingApproval.resolve(false);
     session.pendingApproval = undefined;
 
@@ -152,7 +159,8 @@ class AgentSessionManager {
     if (!session) return true; // no session = auto-approve
 
     return new Promise<boolean>((resolve) => {
-      session.pendingApproval = { toolCall, resolve };
+      const approval: NonNullable<AgentSession['pendingApproval']> = { toolCall, resolve };
+      session.pendingApproval = approval;
 
       eventBus.publish({
         type: 'agent:tool_approval_required',
@@ -162,13 +170,14 @@ class AgentSessionManager {
       });
 
       // Dangerous tool approvals must fail closed on timeout.
-      setTimeout(() => {
-        if (session.pendingApproval) {
-          session.pendingApproval.resolve(false);
+      approval.timeout = setTimeout(() => {
+        if (session.pendingApproval === approval) {
+          approval.resolve(false);
           session.pendingApproval = undefined;
           log.warn({ sessionId }, 'Approval timed out and was rejected');
         }
       }, 60_000);
+      approval.timeout.unref();
     });
   }
 
@@ -199,6 +208,7 @@ class AgentSessionManager {
     }
 
     this.persistSession(session);
+    this.retainCompletedSession(session);
 
     await eventBus.publish({
       type: `agent:session_${session.status}`,
@@ -209,6 +219,35 @@ class AgentSessionManager {
     });
 
     log.info({ sessionId: session.id, status: session.status, iterations: session.iterations }, 'Session ended');
+  }
+
+  private retainCompletedSession(session: AgentSession): void {
+    if (session.pendingApproval) {
+      if (session.pendingApproval.timeout) clearTimeout(session.pendingApproval.timeout);
+      session.pendingApproval.resolve(false);
+      session.pendingApproval = undefined;
+    }
+    session.abortController = undefined;
+
+    const existingTimer = this.completionTimers.get(session.id);
+    if (existingTimer) clearTimeout(existingTimer);
+    const timer = setTimeout(() => this.evictSession(session.id), COMPLETED_SESSION_TTL_MS);
+    timer.unref();
+    this.completionTimers.set(session.id, timer);
+
+    const completed = Array.from(this.sessions.values())
+      .filter(candidate => candidate.status !== 'running')
+      .sort((a, b) => (a.completedAt ?? a.createdAt).localeCompare(b.completedAt ?? b.createdAt));
+    for (const expired of completed.slice(0, Math.max(0, completed.length - MAX_COMPLETED_SESSIONS))) {
+      this.evictSession(expired.id);
+    }
+  }
+
+  private evictSession(sessionId: string): void {
+    const timer = this.completionTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    this.completionTimers.delete(sessionId);
+    this.sessions.delete(sessionId);
   }
 
   // ─── DB Persistence ────────────────────────────────
@@ -256,7 +295,13 @@ class AgentSessionManager {
       if (session.status === 'running') {
         session.abortController?.abort();
       }
+      if (session.pendingApproval) {
+        if (session.pendingApproval.timeout) clearTimeout(session.pendingApproval.timeout);
+        session.pendingApproval.resolve(false);
+      }
     }
+    for (const timer of this.completionTimers.values()) clearTimeout(timer);
+    this.completionTimers.clear();
     this.sessions.clear();
   }
 }

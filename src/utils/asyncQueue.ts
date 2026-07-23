@@ -4,7 +4,7 @@
 export class AsyncQueue {
   private readonly maxConcurrency: number;
   private activeCount = 0;
-  private readonly queue: Array<() => Promise<any>> = [];
+  private readonly queue: Array<() => Promise<void>> = [];
 
   constructor(maxConcurrency: number) {
     if (maxConcurrency < 1) {

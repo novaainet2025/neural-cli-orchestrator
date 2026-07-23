@@ -33,6 +33,11 @@ describe('makeDelegationPayloadSchema', () => {
   it('throws when knownAgentIds is empty (a schema that accepts nothing is a bug)', () => {
     expect(() => makeDelegationPayloadSchema([])).toThrow(/non-empty/);
   });
+
+  it('rejects nullish knownAgentIds with the explicit validation error', () => {
+    expect(() => makeDelegationPayloadSchema(null)).toThrow(/knownAgentIds must be non-empty/);
+    expect(() => makeDelegationPayloadSchema(undefined)).toThrow(/knownAgentIds must be non-empty/);
+  });
 });
 
 describe('validateDelegationPayload', () => {

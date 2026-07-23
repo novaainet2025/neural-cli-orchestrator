@@ -1,0 +1,5 @@
+snapshot=/private/tmp/nova-use-value-gate.V32lXW
+typecheck_rc=0
+build_rc=0
+test_rc=1
+focused_test_rc=0

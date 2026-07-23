@@ -23,6 +23,7 @@ import { paLifecycle } from './ported-integrations.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { acknowledgeTaskLease, recordTaskHeartbeat } from './lease-sweeper.js';
 import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from './task-escalation.js';
+import { resolveExecutorChain, providerModelDispatchable, type TeamRow, type AvailabilityFn } from './company-orchestrator.js';
 import { logDecision } from './decision-log.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
@@ -56,7 +57,8 @@ const verifierCommandGate = new CommandGate({
 });
 
 const log = createLogger('task-queue');
-const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['mlx', 'ollama', 'hermes']);
+// hermes는 2026-07-18 codex CLI로 전환 — 로컬 OOM 동시성 하향 대상 아님(정적 동시성 사용).
+const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['ollama']);
 
 // ─── Types ────────────────────────────────────────────
 export interface QueuedTask {
@@ -87,6 +89,13 @@ export interface QueueMetrics {
   failed: number;
   concurrency: number;
   mode: 'bullmq' | 'semaphore';
+}
+
+export function resolveVerifierProjectDir(task: Pick<QueuedTask, 'metadata'>): string {
+  const requested = typeof task.metadata?.projectDir === 'string'
+    ? task.metadata.projectDir.trim()
+    : '';
+  return requested || env.PROJECT_DIR;
 }
 
 type TaskExecutionResult = {
@@ -173,6 +182,52 @@ export function classifyResult(result: TaskExecutionResult): TaskExecutionResult
   }
 
   return result;
+}
+
+// ── P11: 단일 팀 위임 transient 재시도 지원 ──────────────────────────────
+// 정상완료·사용자취소·rate-limit은 제외. transient(프로바이더 무응답/idle/abort)만 true.
+export function isTransientFailure(result: TaskExecutionResult): boolean {
+  if (result.success) return false;                 // 정상완료는 절대 재시도 안 함(오탐 방지)
+  if (result.status === 'cancelled') return false;  // 사용자 취소 재시도 금지
+  const err = result.error ?? '';
+  return err.startsWith('silent-failure:')            // classifyResult: 빈출력/무응답/limit메시지
+      || err === 'timeout(idle)'                      // idle 타임아웃(활동 없음)
+      || /aborting operation|aborted by (the )?provider/i.test(err); // 프로바이더측 abort
+  // 주의: isRateLimitError(err)는 여기 포함 안 함 — rate-limit은 기존 backoff 루프가 처리(중복금지).
+}
+
+// team_id(태스크 DB 컬럼)로 TeamRow(lead+members) 로드. company-orchestrator.loadTeams와 동일 스키마.
+function loadTeamRowById(teamId: string): TeamRow | null {
+  const db = getDb();
+  const t = db.prepare(
+    `SELECT id, name, slug, lead, charter, description FROM teams WHERE id=? AND is_active=1`
+  ).get(teamId) as { id: string; name: string; slug: string; lead: string | null; charter: string | null; description: string | null } | undefined;
+  if (!t) return null;
+  const members = (db.prepare(
+    `SELECT member_ref FROM team_members WHERE team_id=? ORDER BY created_at ASC, id ASC`
+  ).all(teamId) as Array<{ member_ref: string }>).map((r) => r.member_ref);
+  return { ...t, members };
+}
+
+// 팀 체인에서 "아직 안 시도 + 모델검증 통과" 첫 실행자. 없으면 null(→ 기존 escalation 폴백).
+// resolveExecutorChain + providerModelDispatchable 재사용(중복금지).
+async function nextTeamExecutor(taskId: string, knownAgents: Set<string>, attempted: string[]): Promise<string | null> {
+  const db = getDb();
+  const row = db.prepare(`SELECT team_id FROM tasks WHERE id=?`).get(taskId) as { team_id: string | null } | undefined;
+  const teamId = row?.team_id ?? null;
+  if (!teamId) return null;                          // 팀 태스크 아님 → P11 스킵
+  const team = loadTeamRowById(teamId);
+  if (!team) return null;
+  const avail: AvailabilityFn = (id) => {
+    if (!knownAgents.has(id)) return false;
+    try { return circuitBreakerRegistry.getAvailability(id).available; } catch { return true; }
+  };
+  const chain = resolveExecutorChain(team, knownAgents, 'ollama', avail);
+  for (const cand of chain) {
+    if (attempted.includes(cand)) continue;          // 이미 시도한(=실패한) 실행자 제외
+    if (await providerModelDispatchable(cand)) return cand; // 모델 존재 검증 통과자만
+  }
+  return null;
 }
 
 function mergeVerifierOutput(stdout: string, stderr: string): string {
@@ -354,7 +409,7 @@ export async function applyVerifierGate(
 
   try {
     const child = spawn(binary, args, {
-      cwd: env.PROJECT_DIR,
+      cwd: resolveVerifierProjectDir(task),
       env: process.env,
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -678,6 +733,7 @@ class TaskQueueManager {
     let currentMetadata: Record<string, unknown> = { ...(task.metadata ?? {}) };
     let attemptedAgents = getAttemptedAgents(currentMetadata, task.agentId);
     let stallRetried = false;
+    let teamRetried = false;   // P11: 팀 transient failover는 태스크당 1회만
     const allowStallRetry = process.env.NCO_STALL_RETRY !== '0';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -709,6 +765,27 @@ class TaskQueueManager {
       const result = await this.runEnqueue({ ...task, agentId: currentAgentId, metadata: currentMetadata });
 
       if (result.success) return result;
+
+      // ── P11: 팀 위임 transient 실패 → 팀 실행자 체인 다음 후보로 1회 재시도(team-aware) ──
+      // company-orchestrator 파이프라인의 stage-failover(P5)를 단일 팀 위임(/api/task 직행)에도 부여.
+      // 정상완료·사용자취소·rate-limit은 isTransientFailure에서 이미 배제 → 오탐 없음.
+      if (!teamRetried && isTransientFailure(result)) {
+        const known = new Set(this.agents.keys());
+        const next = await nextTeamExecutor(task.taskId, known, attemptedAgents);
+        if (next && next !== currentAgentId) {
+          teamRetried = true;
+          const previousAgentId = currentAgentId;
+          currentAgentId = next;
+          attemptedAgents = appendAttemptedAgent(attemptedAgents, next);
+          currentMetadata = persistTaskReassignment(task.taskId, previousAgentId, next, { attemptedAgents });
+          log.warn(
+            { taskId: task.taskId, from: previousAgentId, to: next, reason: result.error },
+            'P11 team transient failover — retrying once with next chain executor',
+          );
+          continue; // 다음 루프 반복에서 next 실행자로 runEnqueue 재실행
+        }
+      }
+
       if (!stallRetried && allowStallRetry && result.error === 'timeout(idle)') {
         stallRetried = true;
         log.warn({ taskId: task.taskId, agentId: currentAgentId }, 'Idle-timeout task will be retried once');

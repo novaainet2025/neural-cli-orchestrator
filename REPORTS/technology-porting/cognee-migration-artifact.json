@@ -1,0 +1,732 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Cognee 기술 이식 검증 보고서",
+    "description": "Cognee 1.4.0의 nova-use 활성화 여부를 12문서·120질의와 안전 게이트로 판단한 기술 검증 보고서",
+    "generatedAt": "2026-07-23T09:03:03Z",
+    "charts": [
+      {
+        "id": "activation_retrieval_quality",
+        "title": "Recall comparison across retrieval depths",
+        "subtitle": "120 unique labeled synthetic queries across 12 documents; higher is better.",
+        "type": "bar",
+        "dataset": "activation_retrieval_quality",
+        "source": {
+          "id": "activation_benchmark_quality_sql",
+          "label": "Reviewed 120-query retrieval quality values",
+          "query": {
+            "description": "Reproduces the reviewed Recall@1, Recall@3, and Recall@10 comparison rows.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T08:58:00Z",
+            "sql": "WITH quality(metric, system, value, queries, document_count, delta_pp, target_gain_pp) AS (VALUES ('Recall@1', 'Local token', 0.766667, 120, 12, 11.67, 10), ('Recall@1', 'Cognee chunks', 0.883333, 120, 12, 11.67, 10), ('Recall@3', 'Local token', 0.966667, 120, 12, -4.17, 10), ('Recall@3', 'Cognee chunks', 0.925, 120, 12, -4.17, 10), ('Recall@10', 'Local token', 1.0, 120, 12, -1.67, 10), ('Recall@10', 'Cognee chunks', 0.983333, 120, 12, -1.67, 10)) SELECT metric, system, value, queries, document_count, delta_pp, target_gain_pp FROM quality;",
+            "metric_definitions": [
+              "Recall@k = labeled queries whose expected document appears in the first k results divided by 120.",
+              "delta_pp = Cognee recall minus local token recall in percentage points."
+            ],
+            "tables_used": []
+          }
+        },
+        "valueFormat": "percent",
+        "encodings": {
+          "x": {
+            "field": "metric",
+            "type": "nominal",
+            "label": "Retrieval metric"
+          },
+          "y": {
+            "field": "value",
+            "type": "quantitative",
+            "label": "Recall"
+          },
+          "color": {
+            "field": "system",
+            "type": "nominal",
+            "label": "Search system"
+          },
+          "tooltip": [
+            {
+              "field": "queries",
+              "type": "quantitative",
+              "label": "Labeled queries",
+              "format": "number"
+            },
+            {
+              "field": "document_count",
+              "type": "quantitative",
+              "label": "Documents",
+              "format": "number"
+            },
+            {
+              "field": "delta_pp",
+              "type": "quantitative",
+              "label": "Cognee minus local (pp)",
+              "format": "number"
+            }
+          ]
+        }
+      },
+      {
+        "id": "search_slowdown",
+        "title": "Cognee search slowdown relative to current nova-use",
+        "subtitle": "Small synthetic pilot; lower is better.",
+        "type": "bar",
+        "dataset": "latency_slowdown",
+        "source": {
+          "id": "latency_values_sql",
+          "label": "Reviewed latency slowdown values",
+          "query": {
+            "description": "Reproduces the reviewed slowdown rows from the observed nova-use and Cognee latency measurements.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T07:36:00Z",
+            "sql": "WITH measured(comparison, slowdown_x, baseline_ms, cognee_ms) AS (VALUES ('p50', 628.17, 25.0, 15704.21), ('p95 vs 82.06ms', 421.12, 82.06, 34556.71), ('p95 vs 62.93ms', 549.13, 62.93, 34556.71)) SELECT comparison, slowdown_x, baseline_ms, cognee_ms FROM measured;",
+            "metric_definitions": [
+              "slowdown_x = observed Cognee latency in milliseconds divided by observed nova-use latency in milliseconds."
+            ],
+            "tables_used": []
+          }
+        },
+        "valueFormat": "number",
+        "encodings": {
+          "x": {
+            "field": "comparison",
+            "type": "nominal",
+            "label": "Latency comparison"
+          },
+          "y": {
+            "field": "slowdown_x",
+            "type": "quantitative",
+            "label": "Slowdown (×)"
+          },
+          "tooltip": [
+            {
+              "field": "baseline_ms",
+              "type": "quantitative",
+              "label": "nova-use (ms)",
+              "format": "number"
+            },
+            {
+              "field": "cognee_ms",
+              "type": "quantitative",
+              "label": "Cognee (ms)",
+              "format": "number"
+            }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "activation_gate_table",
+        "title": "Activation gate results",
+        "subtitle": "A failed blocking gate is sufficient to reject activation.",
+        "dataset": "activation_gates",
+        "source": {
+          "id": "activation_gate_values_sql",
+          "label": "Reviewed activation gate values",
+          "query": {
+            "description": "Reproduces the observed activation gate outcomes and their decision impact.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T09:03:03Z",
+            "sql": "WITH gates(gate, result, actual, criterion, decisionImpact) AS (VALUES ('Full pipeline preparation', 'FAIL', '>20 min; incomplete', '<=20 min and clean cancellation', 'Blocks full pipeline and automatic shadow'), ('Recall@3 gain', 'FAIL', '-4.17 pp', '>=+10 pp', 'Blocks activation'), ('Recall@10 non-regression', 'FAIL', '98.33% vs 100%', 'No regression', 'Blocks activation'), ('Cache-miss p95', 'FAIL', '2964.40 ms', '<=500 ms', 'Blocks activation'), ('Cache-hit p95', 'PASS', '0.73 ms', '<=500 ms', 'Cache works but does not offset miss'), ('Error rate', 'PASS', '0/240 HTTP errors', '<1%', 'Reliability evidence only'), ('Cache result consistency', 'PASS', '0/120 mismatches', '0 mismatches', 'Reliability evidence only'), ('Single runtime and cleanup', 'PASS', 'Status 75; lock and port removed', 'Duplicate denied and task cleanup', 'Lifecycle contract passed'), ('Recovery point', 'PASS AFTER FIX', 'Active nova-ax DB backup: 47,423,488 bytes; quick_check ok', 'Valid backup of active database', 'Prior 0-byte backup was invalid and is superseded')) SELECT gate, result, actual, criterion, decisionImpact FROM gates;",
+            "metric_definitions": [
+              "A FAIL on any blocking gate rejects activation.",
+              "PASS AFTER FIX indicates the original recovery evidence was invalid and a corrected recovery point was independently checked."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "result",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "gate",
+            "label": "Gate",
+            "type": "text"
+          },
+          {
+            "field": "result",
+            "label": "Result",
+            "type": "text"
+          },
+          {
+            "field": "actual",
+            "label": "Observed",
+            "type": "text"
+          },
+          {
+            "field": "criterion",
+            "label": "Required",
+            "type": "text"
+          },
+          {
+            "field": "decisionImpact",
+            "label": "Decision impact",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "performance_table",
+        "title": "Measured performance and resource evidence",
+        "subtitle": "Local runs on July 23, 2026; scopes differ and are labeled.",
+        "dataset": "performance_evidence",
+        "source": {
+          "id": "performance_values_sql",
+          "label": "Reviewed performance evidence values",
+          "query": {
+            "description": "Reproduces the exact reader-facing performance comparison rows.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T07:55:21Z",
+            "sql": "WITH evidence(metric, nova_use, cognee, interpretation) AS (VALUES ('Search p50', '24.85–25.02ms', '15,704.21ms', 'About 628× slower'), ('Search p95', '62.93–82.06ms', '34,556.71ms', 'About 421–549× slower'), ('Graph/build processing', '1.17–1.23s', '364.14s for 6 docs', 'Not suitable for interactive rebuild'), ('Process RSS', '288–290MiB', '544.91MiB', 'About 88% higher, excluding LLM'), ('Retrieval check', 'Existing recall path measured', '6/6 identifier tokens', 'Functional only; sample is too small'), ('Sidecar end-to-end', 'Not applicable', '86.01s ingest; 10.76s search', 'Shadow-only until optimized'), ('Repeated-query cache', 'Not applicable', '22.033s miss; 1.302ms and 0.853ms hits', 'Repeat hits are fast; unseen queries remain too slow')) SELECT metric, nova_use, cognee, interpretation FROM evidence;",
+            "metric_definitions": [
+              "Latency values are wall-clock observations from the local July 23, 2026 runs.",
+              "Cognee RSS excludes the separate Ollama runner."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "metric",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "metric",
+            "label": "Metric",
+            "type": "text"
+          },
+          {
+            "field": "nova_use",
+            "label": "Current nova-use",
+            "type": "text"
+          },
+          {
+            "field": "cognee",
+            "label": "Cognee pilot",
+            "type": "text"
+          },
+          {
+            "field": "interpretation",
+            "label": "Decision relevance",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "validation_table",
+        "title": "Implementation verification",
+        "subtitle": "Only observed command and HTTP outcomes are included.",
+        "dataset": "validation_results",
+        "source": {
+          "id": "validation_values_sql",
+          "label": "Observed implementation validation outcomes",
+          "query": {
+            "description": "Reproduces the observed build, test, and HTTP contract outcomes.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T07:55:21Z",
+            "sql": "WITH checks(check_name, result, notes) AS (VALUES ('Knowledge Broker and vault tests', '27 passed; 3 environment-gated tests skipped', 'Targeted Vitest run'), ('Live shadow broker', 'Passed', 'Local result returned before a cached sidecar observation'), ('Stopped-sidecar fallback', 'Passed', 'Local result preserved and coarse error metric emitted'), ('Privacy-preserving observation', 'Passed', 'No raw query, path, note name, token, snippet, or error detail'), ('Repeated-query cache', '22.033s miss; 1.302ms and 0.853ms hits', 'Same relative-path results'), ('Single-runtime guard', 'Second launch rejected with status 75', 'Provider can wait and report contention'), ('Graceful shutdown', 'Passed without unclosed-session warning', 'Telemetry disabled and async clients closed'), ('nova-use typecheck', 'Passed', 'TypeScript noEmit'), ('nova-use production build', 'Passed', 'Existing Vite chunk warnings only'), ('Python sidecar syntax', 'Passed', 'py_compile'), ('Loopback authentication', '401 without token; 200 with token', 'Query-only health endpoint'), ('Read-only ingest and search', 'Passed', 'Returned atlas.md and beacon.md'), ('NCO orchestrator tests', '38 passed', 'Goal scoping and team-only failover')) SELECT check_name AS check, result, notes FROM checks;",
+            "metric_definitions": [
+              "Only directly observed command or HTTP outcomes are included."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "check",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "check",
+            "label": "Check",
+            "type": "text"
+          },
+          {
+            "field": "result",
+            "label": "Result",
+            "type": "text"
+          },
+          {
+            "field": "notes",
+            "label": "Notes",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "cognee_official",
+        "label": "Cognee official repository and audited commit",
+        "href": "https://github.com/topoteretes/cognee/commit/90b4acaac937dc1c0aeffaead8b707c896ebf3db"
+      },
+      {
+        "id": "cognee_security",
+        "label": "NVD CVE-2026-58473",
+        "href": "https://nvd.nist.gov/vuln/detail/CVE-2026-58473"
+      },
+      {
+        "id": "nova_use_baseline",
+        "label": "nova-use local vault baseline, July 23, 2026"
+      },
+      {
+        "id": "cognee_pilot",
+        "label": "Cognee isolated local pilot, July 23, 2026"
+      },
+      {
+        "id": "implementation_validation",
+        "label": "Isolated worktree tests and loopback sidecar checks"
+      },
+      {
+        "id": "activation_benchmark",
+        "label": "Cognee activation benchmark, July 23, 2026",
+        "query": {
+          "description": "Deterministic 12-document, 120-query synthetic retrieval benchmark with local token baseline and Cognee CHUNKS candidate.",
+          "engine": "local Python benchmark",
+          "language": "python",
+          "executed_at": "2026-07-23T08:58:00Z",
+          "filters": [
+            "Synthetic-only 12-document corpus",
+            "120 unique labeled queries across 10 balanced categories",
+            "Sequential cache-miss pass followed by identical cache-hit pass"
+          ],
+          "metric_definitions": [
+            "Recall@k = labeled queries whose expected document appears in the first k results divided by 120.",
+            "MRR = mean reciprocal rank of the expected document, with missing results scored zero.",
+            "Quality gain at Recall@3 = Cognee Recall@3 minus local token Recall@3 in percentage points.",
+            "Latency p95 uses nearest-rank across 120 sequential requests."
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# Cognee 기술 이식 검증 보고서"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "body": "## 현재 Cognee를 활성화하지 않는다\n\n**결정: `DO_NOT_ACTIVATE`; 자동 shadow, production augment, 전체 이식을 모두 승인하지 않는다.** 표준 `cognify`는 12문서에서도 선언한 20분 상한 안에 완료되지 않았고, CHUNKS 전용 축소 후보는 120질의에서 Recall@3가 기존 로컬 검색보다 4.17%p 낮았다. cache-miss p95는 2,964.40ms로 500ms 게이트의 5.93배다. 원본 nova-use와 Obsidian을 변경하지 않은 채 격리 연구 산출물만 보존한다."
+      },
+      {
+        "id": "activation_quality_finding",
+        "type": "markdown",
+        "body": "## Recall@1 개선에도 활성화 품질 게이트는 실패했다\n\nCognee CHUNKS는 Recall@1에서 88.33%로 로컬 토큰 기준선 76.67%보다 높았지만, 사전 지정한 판단 지표인 Recall@3는 92.50%로 기준선 96.67%보다 4.17%p 낮았다. Recall@10도 98.33%로 기준선 100%보다 후퇴했다. 특히 rollback 범주는 Recall@3 25%에 그쳐 운영 지식 검색의 안정성을 입증하지 못했다."
+      },
+      {
+        "id": "activation_quality_chart",
+        "type": "chart",
+        "chartId": "activation_retrieval_quality"
+      },
+      {
+        "id": "activation_latency_finding",
+        "type": "markdown",
+        "body": "## cache miss는 목표의 5.93배이고 전체 준비도 완료되지 않았다\n\n120개 최초 질의의 p95는 2,964.40ms, p50은 2,914.47ms였다. 동일 질의 cache hit p95 0.73ms는 통과했지만 신규 질의 성능을 보완하지 못한다. 더 중요한 표준 `cognify` 준비 단계는 20분을 넘겨 중단됐고 실행 상태와 빈 migration lock이 남아 자동 활성화·자동 회수의 전제도 충족하지 못했다."
+      },
+      {
+        "id": "activation_gate_table_block",
+        "type": "table",
+        "tableId": "activation_gate_table"
+      },
+      {
+        "id": "latency_finding",
+        "type": "markdown",
+        "body": "## 검색 지연은 전면 교체를 허용하지 않는다\n\n차트는 같은 백분위의 Cognee 지연을 현재 nova-use 기준선으로 나눈 배수다. p95는 기존 관측 범위의 양 끝을 모두 사용했다. 비교 기능 범위가 다르므로 정확도 우열이 아니라 운영 회귀의 크기를 보여준다."
+      },
+      {
+        "id": "latency_chart",
+        "type": "chart",
+        "chartId": "search_slowdown"
+      },
+      {
+        "id": "latency_implication",
+        "type": "markdown",
+        "body": "## 대화형 경로는 기존 검색으로 유지해야 한다\n\n초기 6문서 파일럿에서도 `cognify`는 364.14초, Python RSS는 544.91MiB였고 로컬 LLM은 약 14.84GB VRAM을 사용했다. 보정한 CHUNKS 후보도 신규 질의 p95가 2.964초였다. 따라서 synchronous augment뿐 아니라 자동 shadow도 활성화하지 않고, 이후 실험은 운영 경로 밖의 수동 격리 벤치마크로만 제한한다."
+      },
+      {
+        "id": "performance_table_block",
+        "type": "table",
+        "tableId": "performance_table"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "body": "## 범위와 지표 정의\n\n최종 활성화 벤치마크는 민감 정보가 없는 합성 12문서와 10개 범주의 고유 라벨 질의 120개를 사용했다. 로컬 토큰 검색과 Cognee CHUNKS를 같은 정답 문서 라벨로 비교했고 Recall@1·3·10, MRR, 최초 cache-miss 및 반복 cache-hit 지연을 측정했다. 초기 6문서 파일럿과 실제 nova-use 지연 기준선은 자원·운영 회귀를 보는 보조 증거로만 유지한다."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 격리·측정 방법\n\nCognee 1.4.0을 `/tmp` 가상환경과 전용 데이터 볼륨에 설치하고 외부 LLM 없이 loopback Ollama만 사용했다. 표준 전체 파이프라인과 LLM 그래프 추출을 제거한 CHUNKS 전용 후보를 분리해 시험했다. 120질의를 순차 최초 실행한 뒤 같은 순서로 다시 실행해 cache miss와 hit을 구분했다. Obsidian 원문은 ingest하지 않았고 부분 구현은 원본이 아닌 `cognee-migration-20260723` 격리 worktree에만 작성했다."
+      },
+      {
+        "id": "security",
+        "type": "markdown",
+        "body": "## 보안 경계는 loopback·token·읽기 전용이다\n\nApache-2.0은 이식 가능하지만, Cognee <1.2.0에는 전역 LLM endpoint를 바꿀 수 있었던 CVE-2026-58473이 있다. 대상 1.4.0은 영향 범위 밖이지만 설정 API를 외부에 노출하지 않는다. launcher는 local Ollama endpoint와 shadow mode만 허용하고, telemetry와 온라인 tokenizer를 끄며 단일 runtime lock을 사용한다. shadow 관측에는 원문 query, note 이름, path, snippet, token, 오류 상세가 없다."
+      },
+      {
+        "id": "validation_intro",
+        "type": "markdown",
+        "body": "## 안전 계약은 통과했지만 활성화 게이트는 실패했다\n\nKnowledge Broker의 loopback·bearer token·timeout·traversal 차단·로컬 fallback·비식별 관측 계약은 유지됐다. sidecar에는 HTTP ingest가 없고 중복 launcher는 status 75로 거부됐으며 종료 후 lock과 port가 정리됐다. 그러나 안전 장치의 존재는 검색 품질·신규 질의 지연·전체 파이프라인 종료 실패를 상쇄하지 않으므로 활성화 근거가 되지 않는다."
+      },
+      {
+        "id": "validation_table_block",
+        "type": "table",
+        "tableId": "validation_table"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 120질의 결과도 실제 vault 일반화에는 부족하다\n\n질의 수는 120개로 늘었지만 합성 12문서이므로 실제 Obsidian 지식 기반의 의미 검색 품질을 대표하지 않는다. 시험 시간대 vault에는 외부 예약 작업으로 보이는 12개 파일 증가와 22개 수정이 있었으나 벤치마크는 synthetic-only이며 `--ingest-vault` 없이 실행되어 원인 귀속에서 제외했다. 동시에 이 변동과 원본 nova-use의 207개 외부 변경은 안전한 전체 vault 자동 ingest 및 병합의 운영 차단 요인이다."
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "body": "## 재검증 전까지 오프라인 연구로만 보존한다\n\n1. 표준 파이프라인에 강제 취소·상태 정리·lock 회수 상한을 구현한다.\n2. rollback 등 실패 범주의 라벨·chunking·embedding 원인을 개선한다.\n3. 별도 비민감 실제형 corpus에서 Recall@3 최소 +10%p와 Recall@10 무회귀를 입증한다.\n4. 모든 신규 질의를 포함한 p95를 500ms 이하로 낮춘다.\n5. 깨끗한 원본 worktree와 정지된 vault writer에서 복구·fallback·장기 메모리 시험을 다시 한다.\n\n이 조건 전에는 회사 시작 시 자동 활성화, shadow, augment, 전체 vault ingest, 원본 병합을 모두 금지한다."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 다음 판단 질문\n\n실제 비민감 라벨 질의에서 Cognee가 기존 검색이 놓치는 다중-hop 관계를 Recall@3 +10%p 이상 개선하면서 Recall@10을 떨어뜨리지 않고 신규 질의 p95 500ms를 지킬 수 있는가? 이 질문에 재현 가능한 긍정 답이 나오기 전에는 활성화하지 않는다."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-23T09:03:03Z",
+    "status": "ready",
+    "datasets": {
+      "activation_retrieval_quality": [
+        {
+          "metric": "Recall@1",
+          "system": "Local token",
+          "value": 0.766667,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": 11.67,
+          "target_gain_pp": 10
+        },
+        {
+          "metric": "Recall@1",
+          "system": "Cognee chunks",
+          "value": 0.883333,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": 11.67,
+          "target_gain_pp": 10
+        },
+        {
+          "metric": "Recall@3",
+          "system": "Local token",
+          "value": 0.966667,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": -4.17,
+          "target_gain_pp": 10
+        },
+        {
+          "metric": "Recall@3",
+          "system": "Cognee chunks",
+          "value": 0.925,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": -4.17,
+          "target_gain_pp": 10
+        },
+        {
+          "metric": "Recall@10",
+          "system": "Local token",
+          "value": 1,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": -1.67,
+          "target_gain_pp": 10
+        },
+        {
+          "metric": "Recall@10",
+          "system": "Cognee chunks",
+          "value": 0.983333,
+          "queries": 120,
+          "document_count": 12,
+          "delta_pp": -1.67,
+          "target_gain_pp": 10
+        }
+      ],
+      "activation_gates": [
+        {
+          "gate": "Full pipeline preparation",
+          "result": "FAIL",
+          "actual": ">20 min; incomplete",
+          "criterion": "<=20 min and clean cancellation",
+          "decisionImpact": "Blocks full pipeline and automatic shadow"
+        },
+        {
+          "gate": "Recall@3 gain",
+          "result": "FAIL",
+          "actual": "-4.17 pp",
+          "criterion": ">=+10 pp",
+          "decisionImpact": "Blocks activation"
+        },
+        {
+          "gate": "Recall@10 non-regression",
+          "result": "FAIL",
+          "actual": "98.33% vs 100%",
+          "criterion": "No regression",
+          "decisionImpact": "Blocks activation"
+        },
+        {
+          "gate": "Cache-miss p95",
+          "result": "FAIL",
+          "actual": "2964.40 ms",
+          "criterion": "<=500 ms",
+          "decisionImpact": "Blocks activation"
+        },
+        {
+          "gate": "Cache-hit p95",
+          "result": "PASS",
+          "actual": "0.73 ms",
+          "criterion": "<=500 ms",
+          "decisionImpact": "Cache works but does not offset miss"
+        },
+        {
+          "gate": "Error rate",
+          "result": "PASS",
+          "actual": "0/240 HTTP errors",
+          "criterion": "<1%",
+          "decisionImpact": "Reliability evidence only"
+        },
+        {
+          "gate": "Cache result consistency",
+          "result": "PASS",
+          "actual": "0/120 mismatches",
+          "criterion": "0 mismatches",
+          "decisionImpact": "Reliability evidence only"
+        },
+        {
+          "gate": "Single runtime and cleanup",
+          "result": "PASS",
+          "actual": "Status 75; lock and port removed",
+          "criterion": "Duplicate denied and task cleanup",
+          "decisionImpact": "Lifecycle contract passed"
+        },
+        {
+          "gate": "Recovery point",
+          "result": "PASS AFTER FIX",
+          "actual": "Active nova-ax DB backup: 47,423,488 bytes; quick_check ok",
+          "criterion": "Valid backup of active database",
+          "decisionImpact": "Prior 0-byte backup was invalid and is superseded"
+        }
+      ],
+      "latency_slowdown": [
+        {
+          "comparison": "p50",
+          "slowdown_x": 628.17,
+          "baseline_ms": 25,
+          "cognee_ms": 15704.21
+        },
+        {
+          "comparison": "p95 vs 82.06ms",
+          "slowdown_x": 421.12,
+          "baseline_ms": 82.06,
+          "cognee_ms": 34556.71
+        },
+        {
+          "comparison": "p95 vs 62.93ms",
+          "slowdown_x": 549.13,
+          "baseline_ms": 62.93,
+          "cognee_ms": 34556.71
+        }
+      ],
+      "performance_evidence": [
+        {
+          "metric": "Search p50",
+          "nova_use": "24.85–25.02ms",
+          "cognee": "15,704.21ms",
+          "interpretation": "About 628× slower"
+        },
+        {
+          "metric": "Search p95",
+          "nova_use": "62.93–82.06ms",
+          "cognee": "34,556.71ms",
+          "interpretation": "About 421–549× slower"
+        },
+        {
+          "metric": "Graph/build processing",
+          "nova_use": "1.17–1.23s",
+          "cognee": "364.14s for 6 docs",
+          "interpretation": "Not suitable for interactive rebuild"
+        },
+        {
+          "metric": "Process RSS",
+          "nova_use": "288–290MiB",
+          "cognee": "544.91MiB",
+          "interpretation": "About 88% higher, excluding LLM"
+        },
+        {
+          "metric": "Retrieval check",
+          "nova_use": "Existing recall path measured",
+          "cognee": "6/6 identifier tokens",
+          "interpretation": "Functional only; sample is too small"
+        },
+        {
+          "metric": "Sidecar end-to-end",
+          "nova_use": "Not applicable",
+          "cognee": "86.01s ingest; 10.76s search",
+          "interpretation": "Shadow-only until optimized"
+        },
+        {
+          "metric": "Repeated-query cache",
+          "nova_use": "Not applicable",
+          "cognee": "22.033s miss; 1.302ms and 0.853ms hits",
+          "interpretation": "Repeat hits are fast; unseen queries remain too slow"
+        }
+      ],
+      "validation_results": [
+        {
+          "check": "Knowledge Broker and vault tests",
+          "result": "27 passed; 3 environment-gated tests skipped",
+          "notes": "Targeted Vitest run"
+        },
+        {
+          "check": "Live shadow broker",
+          "result": "Passed",
+          "notes": "Local result returned before a cached sidecar observation"
+        },
+        {
+          "check": "Stopped-sidecar fallback",
+          "result": "Passed",
+          "notes": "Local result preserved and coarse error metric emitted"
+        },
+        {
+          "check": "Privacy-preserving observation",
+          "result": "Passed",
+          "notes": "No raw query, path, note name, token, snippet, or error detail"
+        },
+        {
+          "check": "Repeated-query cache",
+          "result": "22.033s miss; 1.302ms and 0.853ms hits",
+          "notes": "Same relative-path results"
+        },
+        {
+          "check": "Single-runtime guard",
+          "result": "Second launch rejected with status 75",
+          "notes": "Provider can wait and report contention"
+        },
+        {
+          "check": "Graceful shutdown",
+          "result": "Passed without unclosed-session warning",
+          "notes": "Telemetry disabled and async clients closed"
+        },
+        {
+          "check": "nova-use typecheck",
+          "result": "Passed",
+          "notes": "TypeScript noEmit"
+        },
+        {
+          "check": "nova-use production build",
+          "result": "Passed",
+          "notes": "Existing Vite chunk warnings only"
+        },
+        {
+          "check": "Python sidecar syntax",
+          "result": "Passed",
+          "notes": "py_compile"
+        },
+        {
+          "check": "Loopback authentication",
+          "result": "401 without token; 200 with token",
+          "notes": "Query-only health endpoint"
+        },
+        {
+          "check": "Read-only ingest and search",
+          "result": "Passed",
+          "notes": "Returned atlas.md and beacon.md"
+        },
+        {
+          "check": "NCO orchestrator tests",
+          "result": "38 passed",
+          "notes": "Goal scoping and team-only failover"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "cognee_official",
+      "label": "Cognee official repository and audited commit",
+      "href": "https://github.com/topoteretes/cognee/commit/90b4acaac937dc1c0aeffaead8b707c896ebf3db"
+    },
+    {
+      "id": "cognee_security",
+      "label": "NVD CVE-2026-58473",
+      "href": "https://nvd.nist.gov/vuln/detail/CVE-2026-58473"
+    },
+    {
+      "id": "nova_use_baseline",
+      "label": "nova-use local vault baseline, July 23, 2026",
+      "query": {
+        "description": "Three warm runs of the existing vault index, graph, search, and recall paths.",
+        "engine": "local TypeScript benchmark",
+        "executed_at": "2026-07-23T06:30:00Z",
+        "metric_definitions": [
+          "Search latency: wall-clock milliseconds per query after warm index construction.",
+          "RSS: resident set size after graph construction."
+        ]
+      }
+    },
+    {
+      "id": "cognee_pilot",
+      "label": "Cognee isolated local pilot, July 23, 2026",
+      "query": {
+        "description": "Six synthetic Markdown documents and six identifier queries using Cognee 1.4.0, local Ollama, SQLite, Kuzu, and LanceDB.",
+        "engine": "local Python benchmark",
+        "executed_at": "2026-07-23T07:20:00Z",
+        "metric_definitions": [
+          "Token retrieval: expected identifier appears anywhere in returned CHUNKS payload.",
+          "Search p50/p95: wall-clock milliseconds across six sequential queries.",
+          "Maximum RSS: process high-water resident memory, excluding the Ollama runner."
+        ]
+      }
+    },
+    {
+      "id": "implementation_validation",
+      "label": "Isolated worktree tests and loopback sidecar checks",
+      "query": {
+        "description": "Observed Vitest, TypeScript, Electron build, Python compile, HTTP contract, cache, fallback, duplicate-launch, and graceful-shutdown outcomes.",
+        "engine": "local build and HTTP validation",
+        "executed_at": "2026-07-23T07:55:21Z"
+      }
+    },
+    {
+      "id": "activation_benchmark",
+      "label": "Cognee activation benchmark, July 23, 2026",
+      "query": {
+        "description": "Deterministic 12-document, 120-query synthetic retrieval benchmark with local token baseline and Cognee CHUNKS candidate.",
+        "engine": "local Python benchmark",
+        "language": "python",
+        "executed_at": "2026-07-23T08:58:00Z",
+        "filters": [
+          "Synthetic-only 12-document corpus",
+          "120 unique labeled queries across 10 balanced categories",
+          "Sequential cache-miss pass followed by identical cache-hit pass"
+        ],
+        "metric_definitions": [
+          "Recall@k = labeled queries whose expected document appears in the first k results divided by 120.",
+          "MRR = mean reciprocal rank of the expected document, with missing results scored zero.",
+          "Quality gain at Recall@3 = Cognee Recall@3 minus local token Recall@3 in percentage points.",
+          "Latency p95 uses nearest-rank across 120 sequential requests."
+        ]
+      }
+    }
+  ]
+}

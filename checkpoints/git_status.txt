@@ -1,0 +1,517 @@
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	deleted:    .claude/commands/nco-mlx.md
+	modified:   .claude/hooks/end-of-turn-check.sh
+	modified:   REPORTS/support-lead/daily-2026-07-18.md
+	deleted:    cli-installs/__pycache__/anthropic-mlx-proxy.cpython-314.pyc
+	deleted:    cli-installs/anthropic-mlx-proxy.py
+	deleted:    cli-installs/mlx-chat-liveness.sh
+	deleted:    cli-installs/mlx-chat-liveness.sh.bak-174023
+	deleted:    cli-installs/mlx-ctl.sh
+	deleted:    cli-installs/mlx-heartbeat.sh
+	deleted:    cli-installs/mlx-watchdog.sh
+	modified:   config/failover-chains.json
+	modified:   config/platform-patch.wsl.sh
+	modified:   data/team-runner/team_analytics-lead.last
+	modified:   data/team-runner/team_autonomy-controller.last
+	modified:   data/team-runner/team_ax-collab.last
+	modified:   data/team-runner/team_ax-discuss.last
+	modified:   data/team-runner/team_ax-docs.last
+	modified:   data/team-runner/team_ax-expert-security.last
+	modified:   data/team-runner/team_ax-git.last
+	modified:   data/team-runner/team_ax-research.last
+	modified:   data/team-runner/team_ax-security.last
+	modified:   data/team-runner/team_cfo.last
+	modified:   data/team-runner/team_cli-core.last
+	modified:   data/team-runner/team_cli-design.last
+	modified:   data/team-runner/team_cli-qa.last
+	modified:   data/team-runner/team_content-planning.last
+	modified:   data/team-runner/team_error-prevention.last
+	modified:   data/team-runner/team_governance-officer.last
+	modified:   data/team-runner/team_hr-director.last
+	modified:   data/team-runner/team_infra-engineer.last
+	modified:   data/team-runner/team_legal-counsel.last
+	modified:   data/team-runner/team_marketing-lead.last
+	modified:   data/team-runner/team_quality-audit.last
+	modified:   data/team-runner/team_sales-director.last
+	modified:   data/team-runner/team_self-improvement.last
+	modified:   data/team-runner/team_self-learning.last
+	modified:   data/team-runner/team_support-lead.last
+	modified:   db/hnsw-indices/agy.hnsw
+	modified:   db/hnsw-indices/claude-code.hnsw
+	modified:   db/hnsw-indices/codex.hnsw
+	modified:   db/hnsw-indices/cursor-agent.hnsw
+	modified:   db/hnsw-indices/hermes.hnsw
+	modified:   db/hnsw-indices/higgsfield.hnsw
+	deleted:    db/hnsw-indices/mlx-instruct.hnsw
+	deleted:    db/hnsw-indices/mlx.hnsw
+	modified:   db/hnsw-indices/nvidia.hnsw
+	modified:   db/hnsw-indices/ollama.hnsw
+	modified:   db/hnsw-indices/opencode.hnsw
+	modified:   nco/config/ai-providers.local.json
+	modified:   scripts/daily-blog-promo.sh
+	modified:   scripts/team-runner.sh
+	modified:   scripts/tool-discovery.sh
+	modified:   scripts/verify-team-fire.mjs
+	modified:   setup.sh
+	modified:   src/agent/agent-manager.ts
+	modified:   src/agent/agent-tools.test.ts
+	modified:   src/agent/agent-tools.ts
+	modified:   src/agent/api-executor.test.ts
+	modified:   src/agent/api-executor.ts
+	modified:   src/agent/orchestrated-loop.ts
+	modified:   src/agent/session-manager.ts
+	modified:   src/core/cli-mesh.ts
+	modified:   src/core/commander.ts
+	modified:   src/core/context-budget.test.ts
+	modified:   src/core/context-budget.ts
+	modified:   src/core/cron-scheduler.ts
+	modified:   src/core/decision-log.test.ts
+	modified:   src/core/event-bus.ts
+	modified:   src/core/hallucination-guard.ts
+	modified:   src/core/invocation-tracker.test.ts
+	modified:   src/core/reflexion.ts
+	modified:   src/core/shared-state.ts
+	modified:   src/core/smart-router.test.ts
+	modified:   src/core/task-queue.ts
+	modified:   src/core/webhook-manager.ts
+	modified:   src/core/work-report-scheduler.ts
+	modified:   src/identity/seedFoundingCitizens.ts
+	modified:   src/mcp/server.ts
+	modified:   src/security/circuit-breaker-registry.ts
+	modified:   src/security/circuit-breaker.ts
+	modified:   src/security/command-gate.ts
+	modified:   src/security/path-guard.ts
+	modified:   src/security/resource-limiter.ts
+	modified:   src/security/sandbox-manager.ts
+	modified:   src/server/detect-failed-completion.test.ts
+	modified:   src/server/gateway.ts
+	modified:   src/server/routes/dashboard-compat.test.ts
+	modified:   src/server/routes/fleet-ops.ts
+	modified:   src/server/routes/teams.ts
+	modified:   src/server/task-failover.ts
+	modified:   src/server/task-intake.ts
+	modified:   src/server/task-lease.test.ts
+	modified:   src/server/websocket.ts
+	modified:   src/storage/database.test.ts
+	modified:   src/storage/database.ts
+	new file:   src/storage/optimistic-json.ts
+	modified:   src/storage/redis.ts
+	modified:   src/test/greeting.test.ts
+	modified:   src/utils/array.ts
+	modified:   src/utils/arrayUtils.ts
+	modified:   src/utils/asyncQueue.ts
+	modified:   src/utils/config.ts
+	modified:   src/utils/delegation-payload.test.ts
+	modified:   src/utils/delegation-payload.ts
+	modified:   src/utils/findMax.ts
+	modified:   src/utils/lruCache.test.ts
+	modified:   src/utils/lruCache.ts
+	deleted:    src/utils/mlx-models.test.ts
+	deleted:    src/utils/mlx-models.ts
+	modified:   src/utils/summarizer.ts
+	modified:   src/utils/unique.ts
+	modified:   src/verification/response-quality.ts
+	modified:   tests/findMax.test.ts
+	modified:   tests/response-quality.test.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.claude/hooks/end-of-turn-check.sh.bak-185926
+	.tmp-BrowserControlPanel-v2.tsx
+	.tmp-HwpxEditPanel-patched.tsx
+	.tmp-HwpxEditPanel.tsx
+	.tmp-apply-browser-control-panel.sh
+	.tmp-apply-hwpx-fix.sh
+	.tmp-apply-nova-docs-part1.sh
+	.tmp-apply-nova-docs.py
+	.tmp-apply-nova-docs.sh
+	.tmp-browser-panel-check.txt
+	.tmp-daily-collect.sh
+	.tmp-nova-use-docs-verify-exact.sh
+	.tmp-nova-use-docs-verify.sh
+	.tmp-nova-use-typecheck.sh
+	.tmp-nova-use-verify-exact.sh
+	.tmp-nova-use-verify.sh
+	.tmp-nova-use-vitest.config.mts
+	"2026-07-20-\354\227\205\353\254\264\353\263\264\352\263\240.md"
+	2026-07-20_report.md
+	2026-07-22-PM.md
+	"REPORTS/2026-07-18-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-18-Discussion-Lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-18-Docs-Spec-Agent-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-18-ax-collab.md
+	"REPORTS/2026-07-18-ax-discuss-\353\263\264\352\263\240\354\204\234-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-18-ax-discuss.md
+	"REPORTS/2026-07-18-ax-git-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-18-ax-security.md
+	"REPORTS/2026-07-18-governance-officer-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-18-governance-officer.md
+	REPORTS/2026-07-18-sales-director.md
+	"REPORTS/2026-07-18-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-18-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-18-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-18-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-18-\355\230\221\354\227\205-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-Discussion-Lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-Docs-Spec-Agent-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-Docs-Spec-Agent-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-ax-discuss-\353\263\264\352\263\240\354\204\234-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-ax-git-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-error-prevention-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-marketing-lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-marketing-lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-19-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-19-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-Discussion-Lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-Discussion-Lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-Docs-Spec-Agent-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-Docs-Spec-Agent-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-ax-git-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-ax-git-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-20-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-20-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-20.md
+	"REPORTS/2026-07-21-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-21-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-Docs-Spec-Agent-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-21-ax-git-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-21-ax-git-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-ax-security-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-governance-officer-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-hr-director-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-sales-director-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-21-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-21-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-\354\244\221\353\263\265\354\227\220\353\237\254\353\260\251\354\247\200\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-21-\354\244\221\353\263\265\354\227\220\353\237\254\353\260\251\354\247\200\355\214\200-\354\230\244\355\233\204\353\263\264\352\263\240\354\204\234.md"
+	"REPORTS/2026-07-22-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-CLI-UI-UX-\353\224\224\354\236\220\354\235\270\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-CLI-\352\262\200\354\246\235-QA\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-Discussion-Lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-Docs-Spec-Agent-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-Research-Agent-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-SNS-\353\270\224\353\241\234\352\267\270-\355\231\215\353\263\264\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-ax-collab-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-ax-git-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-ax-git-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-ax-security-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-ax-security-\354\230\244\355\233\204.md"
+	REPORTS/2026-07-22-citizen-registration-application-guide.md
+	"REPORTS/2026-07-22-governance-officer-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-hr-director-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-marketing-lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-research-strategy-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-research-writing-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-research-writing-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-sales-director-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-support-lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-support-lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\352\262\200\354\246\235-\355\214\251\355\212\270\354\262\264\355\201\254\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-\352\262\200\354\246\235-\355\214\251\355\212\270\354\262\264\355\201\254\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\353\246\254\354\204\234\354\271\230-\352\270\260\355\232\215-\354\240\204\353\236\265\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-\353\246\254\354\204\234\354\271\230-\352\270\260\355\232\215-\354\240\204\353\236\265\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\353\246\254\354\204\234\354\271\230-\352\270\260\355\232\215-\354\240\204\353\236\265\355\214\200-\354\241\260\353\213\254\354\232\260\354\210\230-\355\225\270\353\223\234\354\230\244\355\224\204.md"
+	"REPORTS/2026-07-22-\353\246\254\354\204\234\354\271\230-\354\227\220\354\235\264\354\240\204\355\212\270-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\354\213\234\352\260\201\355\231\224-\353\257\270\353\224\224\354\226\264\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\354\236\220\352\260\200\352\260\234\354\204\240\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\354\233\220\353\254\270\353\254\266\354\235\214/"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\354\241\260\354\202\254\354\204\244\352\263\204\354\204\234.md"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\354\241\260\354\202\254\355\225\255\353\252\251-\354\233\220\353\254\270\352\267\274\352\261\260-\353\247\244\355\225\221\355\221\234.md"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\354\266\234\354\262\230\353\214\200\354\236\245.md"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\354\275\224\353\223\234\353\246\254\353\267\260\354\226\264-\352\262\200\354\246\235\355\214\200\354\240\204\353\213\254\353\263\270.md"
+	"REPORTS/2026-07-22-\354\241\260\353\213\254\354\232\260\354\210\230-\355\203\220\354\203\211\354\210\230\354\247\221-\352\262\200\354\246\235\355\214\200\354\240\204\353\213\254\353\263\270.md"
+	"REPORTS/2026-07-22-\354\244\221\353\263\265\354\227\220\353\237\254\353\260\251\354\247\200\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\354\247\221\355\225\204-\353\246\254\355\217\254\355\214\205\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-22-\354\247\221\355\225\204-\353\246\254\355\217\254\355\214\205\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\354\275\230\355\205\220\354\270\240-\352\270\260\355\232\215\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\355\203\220\354\203\211-\354\210\230\354\247\221\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-22-\355\222\210\354\247\210-\352\262\200\354\210\230\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-CFO-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-CFO-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-Discussion-Lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-Docs-Spec-Agent-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-Docs-Spec-Agent-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-SNS-\353\270\224\353\241\234\352\267\270-\355\231\215\353\263\264\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-ax-collab-\354\230\244\354\240\204.md"
+	REPORTS/2026-07-23-ax-discuss-morning.md
+	"REPORTS/2026-07-23-ax-discuss-\354\230\244\355\233\204-\353\263\264\352\263\240\354\204\234.md"
+	"REPORTS/2026-07-23-ax-git-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-ax-git-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-governance-officer-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-hr-director-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-marketing-lead-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-research-writing-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-sales-director-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-support-lead-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\352\262\200\354\246\235-\355\214\251\355\212\270\354\262\264\355\201\254\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\352\262\200\354\246\235-\355\214\251\355\212\270\354\262\264\355\201\254\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\352\263\240\355\222\210\354\247\210-\352\262\200\354\210\230\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\353\246\254\354\204\234\354\271\230-\352\270\260\355\232\215-\354\240\204\353\236\265\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\353\246\254\354\204\234\354\271\230-\352\270\260\355\232\215-\354\240\204\353\236\265\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\353\263\264\354\225\210\354\240\204\353\254\270\352\260\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\353\266\204\354\204\235-\354\266\224\353\241\240\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\353\266\204\354\204\235-\354\266\224\353\241\240\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\354\213\234\352\260\201\355\231\224-\353\257\270\353\224\224\354\226\264\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\354\213\234\352\260\201\355\231\224-\353\257\270\353\224\224\354\226\264\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\354\244\221\353\263\265\354\227\220\353\237\254\353\260\251\354\247\200\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\354\247\221\355\225\204-\353\246\254\355\217\254\355\214\205\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\354\247\221\355\225\204-\353\246\254\355\217\254\355\214\205\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\354\275\230\355\205\220\354\270\240-\352\270\260\355\232\215\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\354\275\230\355\205\220\354\270\240-\352\270\260\355\232\215\355\214\200-\354\230\244\355\233\204.md"
+	"REPORTS/2026-07-23-\355\203\220\354\203\211-\354\210\230\354\247\221\355\214\200-\354\230\244\354\240\204.md"
+	"REPORTS/2026-07-23-\355\222\210\354\247\210-\352\262\200\354\210\230\355\214\200-\354\230\244\354\240\204.md"
+	REPORTS/analytics-lead/2026-07-18-afternoon.md
+	REPORTS/analytics-lead/2026-07-19-afternoon.md
+	REPORTS/analytics-lead/2026-07-20-morning.md
+	REPORTS/autonomy-controller/
+	REPORTS/ax-discuss/
+	REPORTS/cfo/
+	REPORTS/infra-engineer/2026-07-18-afternoon.md
+	REPORTS/infra-engineer/2026-07-19-afternoon.md
+	REPORTS/infra-engineer/2026-07-19-morning.md
+	REPORTS/infra-engineer/2026-07-20-afternoon.md
+	REPORTS/infra-engineer/2026-07-20-morning.md
+	REPORTS/infra-engineer/2026-07-21-afternoon.md
+	REPORTS/infra-engineer/2026-07-22-afternoon.md
+	REPORTS/infra-engineer/2026-07-22-morning.md
+	REPORTS/legal-counsel/2026-07-19-afternoon.md
+	"REPORTS/legal-counsel/2026-07-22-\354\230\244\355\233\204.md"
+	"REPORTS/legal-counsel/2026-07-23-\354\230\244\354\240\204.md"
+	"REPORTS/legal-counsel/2026-07-23-\354\230\244\355\233\204.md"
+	REPORTS/marketing-lead/2026-07-22-afternoon.md
+	REPORTS/marketing-lead/2026-07-23.md
+	REPORTS/report_2026-07-21.md
+	REPORTS/self-improvement/
+	REPORTS/support-lead/.backup/daily-2026-07-18.md.1784334973828.bak
+	REPORTS/support-lead/.backup/daily-2026-07-18.md.1784334973829.bak
+	REPORTS/support-lead/daily-2026-07-21.md
+	checkpoints/
+	data/blog-promo/rejected/
+	data/blog-promo/seo-keyword-gap-2026-07-21.md
+	data/team-runner/team_analytics-lead-2026-07-19.md
+	data/team-runner/team_analytics-lead-2026-07-20.md
+	data/team-runner/team_analytics-lead-2026-07-21.md
+	data/team-runner/team_analytics-lead-2026-07-22.md
+	data/team-runner/team_analytics-lead-2026-07-23.md
+	data/team-runner/team_autonomy-controller-2026-07-19.md
+	data/team-runner/team_autonomy-controller-2026-07-20.md
+	data/team-runner/team_autonomy-controller-2026-07-21.md
+	data/team-runner/team_autonomy-controller-2026-07-22.md
+	data/team-runner/team_autonomy-controller-2026-07-23.md
+	data/team-runner/team_ax-collab-2026-07-19.md
+	data/team-runner/team_ax-collab-2026-07-20.md
+	data/team-runner/team_ax-collab-2026-07-21.md
+	data/team-runner/team_ax-collab-2026-07-22.md
+	data/team-runner/team_ax-collab-2026-07-23.md
+	data/team-runner/team_ax-discuss-2026-07-19.md
+	data/team-runner/team_ax-discuss-2026-07-20.md
+	data/team-runner/team_ax-discuss-2026-07-21.md
+	data/team-runner/team_ax-discuss-2026-07-22.md
+	data/team-runner/team_ax-discuss-2026-07-23.md
+	data/team-runner/team_ax-docs-2026-07-19.md
+	data/team-runner/team_ax-docs-2026-07-20.md
+	data/team-runner/team_ax-docs-2026-07-21.md
+	data/team-runner/team_ax-docs-2026-07-22.md
+	data/team-runner/team_ax-docs-2026-07-23.md
+	data/team-runner/team_ax-expert-security-2026-07-19.md
+	data/team-runner/team_ax-expert-security-2026-07-20.md
+	data/team-runner/team_ax-expert-security-2026-07-21.md
+	data/team-runner/team_ax-expert-security-2026-07-22.md
+	data/team-runner/team_ax-expert-security-2026-07-23.md
+	data/team-runner/team_ax-git-2026-07-19.md
+	data/team-runner/team_ax-git-2026-07-20.md
+	data/team-runner/team_ax-git-2026-07-21.md
+	data/team-runner/team_ax-git-2026-07-22.md
+	data/team-runner/team_ax-git-2026-07-23.md
+	data/team-runner/team_ax-research-2026-07-19.md
+	data/team-runner/team_ax-research-2026-07-20.md
+	data/team-runner/team_ax-research-2026-07-21.md
+	data/team-runner/team_ax-research-2026-07-22.md
+	data/team-runner/team_ax-research-2026-07-23.md
+	data/team-runner/team_ax-security-2026-07-19.md
+	data/team-runner/team_ax-security-2026-07-20.md
+	data/team-runner/team_ax-security-2026-07-21.md
+	data/team-runner/team_ax-security-2026-07-22.md
+	data/team-runner/team_ax-security-2026-07-23.md
+	data/team-runner/team_cfo-2026-07-19.md
+	data/team-runner/team_cfo-2026-07-20.md
+	data/team-runner/team_cfo-2026-07-21.md
+	data/team-runner/team_cfo-2026-07-22.md
+	data/team-runner/team_cfo-2026-07-23.md
+	data/team-runner/team_cli-core-2026-07-19.md
+	data/team-runner/team_cli-core-2026-07-20.md
+	data/team-runner/team_cli-core-2026-07-21.md
+	data/team-runner/team_cli-core-2026-07-22.md
+	data/team-runner/team_cli-core-2026-07-23.md
+	data/team-runner/team_cli-design-2026-07-19.md
+	data/team-runner/team_cli-design-2026-07-20.md
+	data/team-runner/team_cli-design-2026-07-21.md
+	data/team-runner/team_cli-design-2026-07-22.md
+	data/team-runner/team_cli-design-2026-07-23.md
+	data/team-runner/team_cli-qa-2026-07-19.md
+	data/team-runner/team_cli-qa-2026-07-20.md
+	data/team-runner/team_cli-qa-2026-07-21.md
+	data/team-runner/team_cli-qa-2026-07-22.md
+	data/team-runner/team_cli-qa-2026-07-23.md
+	data/team-runner/team_computer-use-control-2026-07-23.md
+	data/team-runner/team_computer-use-control.last
+	data/team-runner/team_computer-use-queue-2026-07-23.md
+	data/team-runner/team_computer-use-queue.last
+	data/team-runner/team_computer-use-safety-2026-07-23.md
+	data/team-runner/team_computer-use-safety.last
+	data/team-runner/team_content-planning-2026-07-19.md
+	data/team-runner/team_content-planning-2026-07-20.md
+	data/team-runner/team_content-planning-2026-07-21.md
+	data/team-runner/team_content-planning-2026-07-22.md
+	data/team-runner/team_content-planning-2026-07-23.md
+	data/team-runner/team_content-quality-2026-07-23.md
+	data/team-runner/team_content-quality.last
+	data/team-runner/team_error-prevention-2026-07-19.md
+	data/team-runner/team_error-prevention-2026-07-20.md
+	data/team-runner/team_error-prevention-2026-07-21.md
+	data/team-runner/team_error-prevention-2026-07-22.md
+	data/team-runner/team_error-prevention-2026-07-23.md
+	data/team-runner/team_governance-officer-2026-07-19.md
+	data/team-runner/team_governance-officer-2026-07-20.md
+	data/team-runner/team_governance-officer-2026-07-21.md
+	data/team-runner/team_governance-officer-2026-07-22.md
+	data/team-runner/team_governance-officer-2026-07-23.md
+	data/team-runner/team_hr-director-2026-07-19.md
+	data/team-runner/team_hr-director-2026-07-20.md
+	data/team-runner/team_hr-director-2026-07-21.md
+	data/team-runner/team_hr-director-2026-07-22.md
+	data/team-runner/team_hr-director-2026-07-23.md
+	data/team-runner/team_infra-engineer-2026-07-19.md
+	data/team-runner/team_infra-engineer-2026-07-20.md
+	data/team-runner/team_infra-engineer-2026-07-21.md
+	data/team-runner/team_infra-engineer-2026-07-22.md
+	data/team-runner/team_infra-engineer-2026-07-23.md
+	data/team-runner/team_legal-counsel-2026-07-19.md
+	data/team-runner/team_legal-counsel-2026-07-20.md
+	data/team-runner/team_legal-counsel-2026-07-21.md
+	data/team-runner/team_legal-counsel-2026-07-22.md
+	data/team-runner/team_legal-counsel-2026-07-23.md
+	data/team-runner/team_marketing-lead-2026-07-19.md
+	data/team-runner/team_marketing-lead-2026-07-20.md
+	data/team-runner/team_marketing-lead-2026-07-21.md
+	data/team-runner/team_marketing-lead-2026-07-22.md
+	data/team-runner/team_marketing-lead-2026-07-23.md
+	data/team-runner/team_quality-audit-2026-07-19.md
+	data/team-runner/team_quality-audit-2026-07-20.md
+	data/team-runner/team_quality-audit-2026-07-21.md
+	data/team-runner/team_quality-audit-2026-07-22.md
+	data/team-runner/team_quality-audit-2026-07-23.md
+	data/team-runner/team_research-analysis-2026-07-21.md
+	data/team-runner/team_research-analysis-2026-07-22.md
+	data/team-runner/team_research-analysis-2026-07-23.md
+	data/team-runner/team_research-analysis.last
+	data/team-runner/team_research-discovery-2026-07-21.md
+	data/team-runner/team_research-discovery-2026-07-22.md
+	data/team-runner/team_research-discovery-2026-07-23.md
+	data/team-runner/team_research-discovery.last
+	data/team-runner/team_research-strategy-2026-07-21.md
+	data/team-runner/team_research-strategy-2026-07-22.md
+	data/team-runner/team_research-strategy-2026-07-23.md
+	data/team-runner/team_research-strategy.last
+	data/team-runner/team_research-verification-2026-07-21.md
+	data/team-runner/team_research-verification-2026-07-22.md
+	data/team-runner/team_research-verification-2026-07-23.md
+	data/team-runner/team_research-verification.last
+	data/team-runner/team_research-visualization-2026-07-21.md
+	data/team-runner/team_research-visualization-2026-07-22.md
+	data/team-runner/team_research-visualization-2026-07-23.md
+	data/team-runner/team_research-visualization.last
+	data/team-runner/team_research-writing-2026-07-21.md
+	data/team-runner/team_research-writing-2026-07-22.md
+	data/team-runner/team_research-writing-2026-07-23.md
+	data/team-runner/team_research-writing.last
+	data/team-runner/team_sales-director-2026-07-19.md
+	data/team-runner/team_sales-director-2026-07-20.md
+	data/team-runner/team_sales-director-2026-07-21.md
+	data/team-runner/team_sales-director-2026-07-22.md
+	data/team-runner/team_sales-director-2026-07-23.md
+	data/team-runner/team_self-improvement-2026-07-19.md
+	data/team-runner/team_self-improvement-2026-07-20.md
+	data/team-runner/team_self-improvement-2026-07-21.md
+	data/team-runner/team_self-improvement-2026-07-22.md
+	data/team-runner/team_self-improvement-2026-07-23.md
+	data/team-runner/team_self-learning-2026-07-19.md
+	data/team-runner/team_self-learning-2026-07-20.md
+	data/team-runner/team_self-learning-2026-07-21.md
+	data/team-runner/team_self-learning-2026-07-22.md
+	data/team-runner/team_self-learning-2026-07-23.md
+	data/team-runner/team_support-lead-2026-07-19.md
+	data/team-runner/team_support-lead-2026-07-20.md
+	data/team-runner/team_support-lead-2026-07-21.md
+	data/team-runner/team_support-lead-2026-07-22.md
+	data/team-runner/team_support-lead-2026-07-23.md
+	data/team-runner/team_tech-port-01-source-discovery-2026-07-23.md
+	data/team-runner/team_tech-port-01-source-discovery.last
+	data/team-runner/team_tech-port-02-safety-license-2026-07-23.md
+	data/team-runner/team_tech-port-02-safety-license.last
+	db/migrations/075_sns_content_quality_charters.sql
+	db/nco.db.bak-rm4-20260721-124031
+	docs/ai-content-ideas.md
+	docs/architecture-comparison.md
+	docs/company-orchestration.md
+	docs/marketing-lead-daily-re-2026-07-18.md
+	docs/plans/lead-distribution-map.md
+	docs/plans/nova-docs-design.md
+	docs/plans/smart-router-spec-P11.md
+	docs/plans/smart-router-spec.md
+	"docs/plans/\353\251\200\355\213\260\354\227\220\354\235\264\354\240\204\355\212\270-\354\213\240\353\242\260\354\204\261\355\214\250\355\204\264-\352\262\200\354\246\235\355\214\220\354\240\225\355\221\234.md"
+	"docs/plans/\353\251\200\355\213\260\354\227\220\354\235\264\354\240\204\355\212\270-\354\213\240\353\242\260\354\204\261\355\214\250\355\204\264-\354\227\260\352\265\254\354\247\210\353\254\270-\355\212\270\353\246\254.md"
+	"docs/plans/\353\251\200\355\213\260\354\227\220\354\235\264\354\240\204\355\212\270-\354\213\240\353\242\260\354\204\261\355\214\250\355\204\264-\354\233\220\353\254\270\354\210\230\354\247\221-\355\221\234.md"
+	"docs/plans/\353\251\200\355\213\260\354\227\220\354\235\264\354\240\204\355\212\270-\354\213\240\353\242\260\354\204\261\355\214\250\355\204\264-\354\265\234\354\242\205\353\263\264\352\263\240\354\204\234.md"
+	"docs/plans/\353\251\200\355\213\260\354\227\220\354\235\264\354\240\204\355\212\270-\354\213\240\353\242\260\354\204\261\355\214\250\355\204\264-\355\201\264\353\240\210\354\236\204\353\246\254\354\212\244\355\212\270.md"
+	scripts/copy-nova-docs-design.sh
+	src/agent/session-manager.test.ts
+	src/core/cli-mesh.test.ts
+	src/core/company-orchestrator.reliability.test.ts
+	src/core/company-orchestrator.test.ts
+	src/core/company-orchestrator.ts
+	src/core/computer-use-company.test.ts
+	src/core/computer-use-company.ts
+	src/core/cron-scheduler.team-scores.test.ts
+	src/core/event-bus.test.ts
+	src/core/shared-state.test.ts
+	src/core/task-queue.p11.test.ts
+	src/core/team-scorer.test.ts
+	src/core/team-scorer.ts
+	src/core/webhook-manager.test.ts
+	src/core/work-report-scheduler.test.ts
+	src/security/circuit-breaker.test.ts
+	src/security/command-gate.test.ts
+	src/security/path-guard.test.ts
+	src/server/gateway-auth.test.ts
+	src/server/routes/fleet-ops.test.ts
+	src/server/routes/team-scores.ts
+	src/storage/optimistic-json.test.ts
+	src/storage/redis.test.ts
+	src/utils/asyncQueue.test.ts
+	src/utils/config.test.ts
+	src/utils/fibonacci.test.ts
+	teams/ax-discuss/report-2026-07-19.md
+	teams/ax-expert-security/report/
+	tests/task-intake.test.ts
+	tmp-nova-docs-design.md
+	tmp-verify-lengths.mjs
+
+no changes added to commit (use "git add" and/or "git commit -a")

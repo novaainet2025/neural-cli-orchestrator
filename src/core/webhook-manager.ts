@@ -120,7 +120,12 @@ export async function dispatchWebhook(
   try {
     const db = getDb();
     db.prepare(`UPDATE webhook_routes SET hit_count=hit_count+1, last_hit_at=datetime('now') WHERE id=?`).run(route.id);
-  } catch { /* ignore */ }
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err), routeId: route.id },
+      'Failed to update webhook hit count',
+    );
+  }
 
   await eventBus.publish({ type: 'webhook:received' as any, taskId: route.id, agentId: 'webhook-manager' });
   log.info({ path, method, actionType: route.actionType }, 'Webhook dispatched');

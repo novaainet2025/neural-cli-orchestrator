@@ -1,0 +1,133 @@
+{
+  "checked_at": "2026-07-23T20:20:00+0900",
+  "mode": "propose",
+  "total": 192,
+  "pass": 187,
+  "fail": 3,
+  "skip": 1,
+  "defer": 1,
+  "categories": {
+    "provider": {
+      "pass": 8,
+      "fail": 0,
+      "skip": 1,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "team": {
+      "pass": 50,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "hook": {
+      "pass": 81,
+      "fail": 3,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 0.9643,
+      "threshold": 1.0,
+      "meets": false
+    },
+    "script": {
+      "pass": 12,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "command": {
+      "pass": 24,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "skill": {
+      "pass": 7,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "plugin": {
+      "pass": 3,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "mcp": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "build": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 0,
+      "defer": 1,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    },
+    "health": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "defer": 0,
+      "pass_rate": 1.0,
+      "threshold": 1.0,
+      "meets": true
+    }
+  },
+  "provider_anomaly": null,
+  "failures": [
+    {
+      "id": "hook:nova-voice-tts-pretool.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh",
+      "priority": 2,
+      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 217: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 220: syntax error: unexpected end of file"
+    },
+    {
+      "id": "hook:nova-voice-tts-progress.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh",
+      "priority": 2,
+      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 368: unexpected EOF while looking for matching `''\n/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 376: syntax error: unexpected end of file"
+    },
+    {
+      "id": "hook:universal-verify.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
+      "priority": 2,
+      "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
+    }
+  ],
+  "dispatch": {
+    "mode": "propose",
+    "dispatched": null,
+    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
+  }
+}

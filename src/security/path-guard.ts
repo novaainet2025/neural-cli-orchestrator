@@ -37,27 +37,37 @@ export class PathGuard {
       }
     }
 
-    // 2. Denied paths (exact + pattern)
-    for (const denied of this.denied) {
-      if (denied.startsWith('**/')) {
-        const suffix = denied.slice(3);
-        if (abs.endsWith(suffix) || abs.includes(`/${suffix}`)) {
-          return { ok: false, reason: `Path denied by pattern: ${denied}` };
-        }
-      } else if (abs === denied || abs.startsWith(denied + '/')) {
-        return { ok: false, reason: `Path explicitly denied: ${denied}` };
-      }
-    }
+    // 2. Check the logical path before touching the filesystem.
+    const logicalDenyReason = this.getDenyReason(abs);
+    if (logicalDenyReason) return { ok: false, reason: logicalDenyReason };
 
     // 3. Resolve the deepest existing parent to prevent symlink-based escapes.
     const real = this.resolveExistingPath(abs);
 
-    // 4. Allowed paths check
+    // 4. Repeat deny checks against the real path to block symlink aliases.
+    const realDenyReason = this.getDenyReason(real);
+    if (realDenyReason) return { ok: false, reason: realDenyReason };
+
+    // 5. Allowed paths check
     if (!this.isUnderAllowed(real)) {
       return { ok: false, reason: `Path not in allowed roots: ${abs} → ${real}` };
     }
 
     return { ok: true };
+  }
+
+  private getDenyReason(targetPath: string): string | undefined {
+    for (const denied of this.denied) {
+      if (denied.startsWith('**/')) {
+        const suffix = denied.slice(3);
+        if (targetPath.endsWith(suffix) || targetPath.includes(`/${suffix}`)) {
+          return `Path denied by pattern: ${denied}`;
+        }
+      } else if (targetPath === denied || targetPath.startsWith(denied + '/')) {
+        return `Path explicitly denied: ${denied}`;
+      }
+    }
+    return undefined;
   }
 
   private resolveExistingPath(targetPath: string): string {

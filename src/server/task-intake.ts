@@ -21,12 +21,21 @@ const CODE_WORK_PATTERN = /\b(implement|implementation|fix|bug|patch|refactor|re
 // (실측 2026-07-18: 자가개선팀 등 상시 임무 반복 반려). 이 마커가 있으면 검증기를 생략한다.
 const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|도구\s*\/\s*커맨드\s*사용\s*금지/;
 
+// 문서 편집(docs-ai) 태스크는 편집 규칙 보일러플레이트의 "수정" 때문에 CODE_WORK로
+// 오분류되어 npm build 검증기가 붙고, 게이트가 JSON 배열 응답을 FORMAT_MISMATCH로
+// 무한 반려한다 (실측 2026-07-19). "오직 JSON …만" 출력 지시가 있으면 검증기를 생략한다.
+const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
+
 export function isCodeWorkPrompt(prompt: string): boolean {
   return CODE_WORK_PATTERN.test(prompt);
 }
 
 export function isTextOnlyPrompt(prompt: string): boolean {
   return TEXT_ONLY_PATTERN.test(prompt);
+}
+
+export function isStructuredOutputPrompt(prompt: string): boolean {
+  return STRUCTURED_OUTPUT_PATTERN.test(prompt);
 }
 
 export function inferTaskType(prompt: string): string | undefined {
@@ -87,6 +96,7 @@ export function buildDefaultVerifierWithFs(
   const projectDir = typeof input.metadata?.projectDir === 'string' ? input.metadata.projectDir : undefined;
   if (!projectDir || !isCodeWorkPrompt(input.prompt)) return undefined;
   if (isTextOnlyPrompt(input.prompt)) return undefined;
+  if (isStructuredOutputPrompt(input.prompt)) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;
 
   return {

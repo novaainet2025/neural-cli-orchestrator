@@ -3,13 +3,15 @@
  * Uses a Map for fast key lookup and a doubly linked list to track usage order.
  */
 export class LRUCache<K, V> {
-  private capacity: number;
-  private map: Map<K, ListNode<K, V>>;
+  private readonly capacity: number;
+  private readonly map: Map<K, ListNode<K, V>>;
   private head: ListNode<K, V> | null = null;
   private tail: ListNode<K, V> | null = null;
 
   constructor(capacity: number) {
-    if (capacity <= 0) throw new Error('Capacity must be greater than 0');
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+      throw new Error('Capacity must be a positive integer');
+    }
     this.capacity = capacity;
     this.map = new Map();
   }

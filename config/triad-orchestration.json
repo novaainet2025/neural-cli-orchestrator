@@ -1,0 +1,206 @@
+{
+  "version": 1,
+  "enabled": true,
+  "company": {
+    "id": "org_nco-triad-ultra",
+    "slug": "nco-triad-ultra",
+    "name": "NCO Triad Ultra Performance Company",
+    "manager": "claude-code",
+    "parentId": "org_nova-ax"
+  },
+  "roles": {
+    "claude-code": {
+      "title": "Commander/Judge",
+      "responsibilities": [
+        "requirements",
+        "architecture",
+        "risk",
+        "conflict-resolution",
+        "final-approval"
+      ],
+      "mayWrite": false,
+      "mayDelegate": true,
+      "mayApprove": true
+    },
+    "codex": {
+      "title": "Builder/Verifier",
+      "responsibilities": [
+        "implementation",
+        "tests",
+        "refactoring",
+        "integration",
+        "evidence-collection"
+      ],
+      "mayWrite": true,
+      "mayDelegate": false,
+      "mayApprove": false
+    },
+    "agy": {
+      "title": "Experience Architect/Adversarial Reviewer",
+      "responsibilities": [
+        "ui-ux",
+        "accessibility",
+        "state-matrix",
+        "user-path",
+        "experience-challenge"
+      ],
+      "mayWrite": false,
+      "mayDelegate": false,
+      "mayApprove": false
+    }
+  },
+  "flow": [
+    "plan",
+    "build",
+    "challenge",
+    "fix",
+    "prove",
+    "approve"
+  ],
+  "profiles": {
+    "fast": {
+      "commanderPlan": false,
+      "experienceChallenge": false,
+      "commanderApproval": false,
+      "maxPaidCalls": 1
+    },
+    "standard": {
+      "commanderPlan": true,
+      "experienceChallenge": false,
+      "commanderApproval": true,
+      "maxPaidCalls": 8
+    },
+    "experience": {
+      "commanderPlan": true,
+      "experienceChallenge": true,
+      "commanderApproval": true,
+      "maxPaidCalls": 10
+    },
+    "ultra": {
+      "commanderPlan": true,
+      "experienceChallenge": false,
+      "commanderApproval": true,
+      "maxPaidCalls": 8
+    }
+  },
+  "routing": {
+    "adaptiveScoring": true,
+    "operationalWindowDays": 14,
+    "minimumOperationalSamples": 3,
+    "experienceTaskTypes": [
+      "ui",
+      "media"
+    ],
+    "experiencePatterns": [
+      "ui",
+      "ux",
+      "frontend",
+      "화면",
+      "사용자 흐름",
+      "user flow",
+      "접근성",
+      "accessibility",
+      "a11y",
+      "loading",
+      "empty state",
+      "error state",
+      "responsive",
+      "css",
+      "dom"
+    ],
+    "highRiskPatterns": [
+      "security",
+      "보안",
+      "auth",
+      "authentication",
+      "migration",
+      "마이그레이션",
+      "production",
+      "프로덕션",
+      "deploy",
+      "배포",
+      "billing",
+      "결제",
+      "delete",
+      "삭제"
+    ]
+  },
+  "parallelism": {
+    "globalPaidCli": 4,
+    "claude-code": 1,
+    "codex": 2,
+    "agy": 1,
+    "sameFilePolicy": "queue",
+    "isolation": {
+      "mode": "worktree-or-file-ownership",
+      "requireDeclaredFilesOnSharedTree": true,
+      "lockTtlMs": 3600000,
+      "forbiddenSharedWritePatterns": [
+        "node_modules/**",
+        "db/*.db",
+        "db/hnsw-indices/**",
+        "data/team-runner/*.last"
+      ]
+    }
+  },
+  "loop": {
+    "maxFixIterations": 3,
+    "stageTimeoutMs": 600000,
+    "runTimeoutMs": 1800000,
+    "challengeTimeoutMs": 120000,
+    "stopOnNoProgress": true,
+    "stopOnRegression": true,
+    "onChallengeUnavailable": "blocked-human-escalation",
+    "onExhaustion": "blocked-human-escalation"
+  },
+  "evidence": {
+    "code": [
+      "verifier_exit_0",
+      "diff_scope",
+      "behavior_probe"
+    ],
+    "experience": [
+      "visual_or_dom",
+      "a11y",
+      "user_path"
+    ],
+    "naturalLanguageClaimsAccepted": false,
+    "independentVerifierRequired": true
+  },
+  "mesh": {
+    "enabled": true,
+    "sessionPrefix": "triad",
+    "participants": {
+      "commander": "claude-code",
+      "builder": "codex",
+      "experience": "agy"
+    },
+    "interSessionAliases": {
+      "commander": "nova-macstudio-claude-4",
+      "builder": "codex-triad",
+      "experience": "antigravity"
+    },
+    "messageTypes": [
+      "info",
+      "task",
+      "review",
+      "approval",
+      "question",
+      "warning",
+      "request",
+      "conflict"
+    ],
+    "maxContextCharsPerMessage": 12000
+  },
+  "kpi": {
+    "primaryMetric": "verified_subtasks_per_wall_clock_hour",
+    "targetMultiplier": 5,
+    "minimumRepeats": 3,
+    "minimumParallelEfficiency": 0.7,
+    "qualityGuardrails": {
+      "falsePassRateMustNotIncrease": true,
+      "postMergeDefectsMustNotIncrease": true
+    },
+    "claimPolicy": "measure-not-promise"
+  }
+}

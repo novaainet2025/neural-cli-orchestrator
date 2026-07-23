@@ -1152,20 +1152,24 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
           o.name,
           o.graph_type,
           o.parent_id,
+          o.is_always_on,
+          o.schedule,
           COUNT(t.id) AS teamCount
         FROM organizations o
         LEFT JOIN teams t ON t.organization_id = o.id
-        GROUP BY o.id, o.name, o.graph_type, o.parent_id
+        GROUP BY o.id, o.name, o.graph_type, o.parent_id, o.is_always_on, o.schedule
         ORDER BY o.created_at ASC, o.name ASC
       `).all() as Array<{
         id: string;
         name: string;
         graph_type: string;
         parent_id: string | null;
+        is_always_on: number;
+        schedule: string | null;
         teamCount: number;
       }>;
       const teamRows = db.prepare(`
-        SELECT id, organization_id, name, color, created_at
+        SELECT id, organization_id, name, color, lead, is_always_on, schedule, created_at
         FROM teams
         ORDER BY created_at ASC, name ASC
       `).all() as Array<{
@@ -1173,6 +1177,9 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         organization_id: string | null;
         name: string;
         color: string | null;
+        lead: string | null;
+        is_always_on: number;
+        schedule: string | null;
         created_at: string | null;
       }>;
       const memberRows = db.prepare(`
@@ -1231,6 +1238,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             label: org.name,
             teamCount: org.teamCount,
             activeTeams: 0,
+            isAlwaysOn: org.is_always_on === 1,
+            schedule: org.schedule ?? null,
           },
         });
       });
@@ -1276,6 +1285,8 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
             workflow,
             activeTask,
             status: isWorking ? 'working' : 'idle',
+            isAlwaysOn: team.is_always_on === 1,
+            schedule: team.schedule ?? null,
           },
         });
       });

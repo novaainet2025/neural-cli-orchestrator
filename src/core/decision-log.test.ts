@@ -39,14 +39,14 @@ describe('logDecision', () => {
     logDecision({
       taskId: 'task_abc',
       phase: 'routing',
-      decision: 'route:codex->mlx',
+      decision: 'route:codex->ollama',
       reason: 'gated:quota',
     });
 
     const row = db.prepare('SELECT * FROM decision_log').get() as Record<string, unknown>;
     expect(row.task_id).toBe('task_abc');
     expect(row.phase).toBe('routing');
-    expect(row.decision).toBe('route:codex->mlx');
+    expect(row.decision).toBe('route:codex->ollama');
     expect(row.reason).toBe('gated:quota');
     expect(row.actor).toBe('system');
     expect(typeof row.id).toBe('string');

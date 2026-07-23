@@ -19,7 +19,7 @@ with open(cfg_path) as f:
 # 플랫폼 정책 (WSL 기준)
 ENABLE  = {"opencode","agy","codex","cursor-agent","copilot",
            "higgsfield","hermes","openclaw","nvidia","claude-code","openrouter"}
-DISABLE = {"mlx"}  # Mac 전용
+DISABLE = set()  # mlx 완전제거(2026-07-21) — Mac 전용 disable 대상 없음
 # Ollama: GPU 노드만 활성화
 if gpu_mode:
     ENABLE.add("ollama")
@@ -34,7 +34,7 @@ for p in data["providers"]:
 
     if pid in ENABLE or any(k in pid for k in ["opencode","codex","cursor","copilot","higgsfield","hermes","openclaw","nvidia","openrouter"]):
         p["enabled"] = True
-    if pid in DISABLE or "mlx" in pid.lower():
+    if pid in DISABLE:
         p["enabled"] = False
     if pid == "claude-code":
         p["enabled"] = True   # WSL: claude sub-agent OK

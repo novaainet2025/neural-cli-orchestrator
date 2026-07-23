@@ -16,6 +16,7 @@ const MAX_CONSUMER_RETRIES = 3;
 /** Cap localEmittedIds (echo suppression) — trim oldest batch when exceeded. */
 const LOCAL_EMITTED_IDS_MAX = 5000;
 const LOCAL_EMITTED_IDS_PRUNE_BATCH = 1000;
+const REDIS_STREAM_ID_PATTERN = /^\d+-\d+$/;
 
 // ─── Persistent Event Types (saved to SQLite) ─────────
 const PERSIST_TYPES = new Set([
@@ -84,8 +85,7 @@ export class EventBus {
           await redis.ping();
           for (const row of pending) {
             const event = JSON.parse(row.payload) as NCOEvent;
-            const tx = redis.multi();
-            tx.xadd(
+            const streamId = await redis.xadd(
               STREAM,
               'MAXLEN', '~', String(MAX_STREAM_LEN),
               '*',
@@ -93,9 +93,15 @@ export class EventBus {
               'data', row.payload,
               'retry_count', '0',
             );
-            tx.publish(row.channel, row.payload);
-            await tx.exec();
-            db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
+            const broadcastPayload = typeof streamId === 'string'
+              ? JSON.stringify({ ...event, streamId })
+              : row.payload;
+            try {
+              await redis.publish(row.channel, broadcastPayload);
+            } finally {
+              // XADD succeeded, so the consumer group/replay path can deliver it even if publish fails.
+              db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
+            }
           }
         } catch { }
       }, 5000);
@@ -114,40 +120,37 @@ export class EventBus {
     };
 
     this.sequence++;
-    const payload = JSON.stringify(enriched);
-    let localEchoTracked = false;
+    let payload = JSON.stringify(enriched);
 
     this.trimLocalEmittedIdsIfNeeded();
     this.localEmittedIds.add(enriched.id);
-    localEchoTracked = true;
 
     // 1. Redis Pub/Sub + Streams
     if (isRedisConnected()) {
+      let streamPersisted = false;
       try {
         const redis = await getRedis();
-        const tx = redis.multi();
-        tx.xadd(STREAM, 'MAXLEN', '~', String(MAX_STREAM_LEN),
+        const streamId = await redis.xadd(STREAM, 'MAXLEN', '~', String(MAX_STREAM_LEN),
           '*',
           'type', enriched.type,
           'data', payload,
           'retry_count', '0'
         );
-        tx.publish(CHANNEL, payload);
-        await tx.exec();
-      } catch (err) {
-        if (localEchoTracked) {
-          this.localEmittedIds.delete(enriched.id);
-          localEchoTracked = false;
+        if (typeof streamId !== 'string') {
+          throw new Error('Redis XADD did not return a stream ID');
         }
+        streamPersisted = true;
+        enriched.streamId = streamId;
+        payload = JSON.stringify(enriched);
+        await redis.publish(CHANNEL, payload);
+      } catch (err) {
         log.error({ err, type: enriched.type }, 'Redis publish failed');
-        try {
-          const db = getDb();
-          db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, payload);
-        } catch { }
-
-        this.trimLocalEmittedIdsIfNeeded();
-        this.localEmittedIds.add(enriched.id);
-        localEchoTracked = true;
+        if (!streamPersisted) {
+          try {
+            const db = getDb();
+            db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, payload);
+          } catch { }
+        }
       }
     }
 
@@ -225,7 +228,7 @@ export class EventBus {
             const retryCount = retryIdx >= 0 ? Number.parseInt(fields[retryIdx + 1] || '0', 10) || 0 : 0;
             try {
               if (payload) {
-                const event = JSON.parse(payload) as NCOEvent;
+                const event = { ...JSON.parse(payload) as NCOEvent, streamId: msgId };
                 // Emit only if not already emitted locally
                 if (!this.localEmittedIds.has(event.id)) {
                   this.local.emit(event.type, event);
@@ -282,12 +285,18 @@ export class EventBus {
 
     try {
       const redis = await getRedis();
-      const entries = await redis.xrange(STREAM, lastEventId, '+', 'COUNT', '500');
+      const cursor = lastEventId === '0' || REDIS_STREAM_ID_PATTERN.test(lastEventId)
+        ? lastEventId
+        : '0';
+      const rangeStart = cursor === '0' ? cursor : `(${cursor}`;
+      const entries = await redis.xrange(STREAM, rangeStart, '+', 'COUNT', '500');
 
-      return entries.map(([_id, fields]: [string, string[]]) => {
+      return entries.filter(([streamId]: [string, string[]]) => (
+        cursor === '0' || streamId !== cursor
+      )).map(([streamId, fields]: [string, string[]]) => {
         const dataIdx = fields.indexOf('data');
         if (dataIdx >= 0) {
-          return JSON.parse(fields[dataIdx + 1]) as NCOEvent;
+          return { ...JSON.parse(fields[dataIdx + 1]) as NCOEvent, streamId };
         }
         return null;
       }).filter(Boolean) as NCOEvent[];

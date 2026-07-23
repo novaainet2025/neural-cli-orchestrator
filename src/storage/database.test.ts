@@ -37,4 +37,14 @@ describe('Database Storage', () => {
     const rows = db.prepare('SELECT count(*) as count FROM schema_migrations').get() as { count: number };
     expect(rows.count).toBeGreaterThan(0);
   });
+
+  it('should leave the migration ledger unchanged when rerun', () => {
+    const db = getDb();
+    const before = db.prepare('SELECT count(*) as count FROM schema_migrations').get() as { count: number };
+
+    runMigrations();
+
+    const after = db.prepare('SELECT count(*) as count FROM schema_migrations').get() as { count: number };
+    expect(after.count).toBe(before.count);
+  });
 });

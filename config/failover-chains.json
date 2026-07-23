@@ -34,9 +34,5 @@
   "openrouter": [
     "codex",
     "hermes"
-  ],
-  "mlx": [
-    "hermes",
-    "codex"
   ]
 }

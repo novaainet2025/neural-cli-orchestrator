@@ -1,0 +1,744 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "브라우저 제어 P1~P4 이식 가치판단 보고서",
+    "description": "cli-extensions의 P1~P4 능력을 nova-use Electron 브라우저 제어에 적응 이식할 가치와 실행 게이트를 안전·복구·기능·성능·유지보수·라이선스·세 프로젝트 적합성으로 판정한 기술 보고서",
+    "generatedAt": "2026-07-23T19:14:00+09:00",
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# 브라우저 제어 P1~P4 이식 가치판단 보고서"
+      },
+      {
+        "id": "technical-summary",
+        "type": "markdown",
+        "body": "## 구현 가치는 충분하지만 병합·활성화·배포 조건은 아직 충족되지 않았다\n\n**판정: `CONDITIONAL_GO_IMPLEMENTATION`; `NO_GO_MERGE_RELEASE`.** 기존 ref·snapshot·CDP·FORCE·capture·PolicyEngine 위에 P1~P4의 빠진 능력만 얹는 clean-room 부분 포팅은 기능 가치가 크고 새 런타임 의존성을 요구하지 않는다. 반면 현재 소스에는 P1 심층 이해, P2 전용 학습 저장소와 반복실패 차단, P3 effect-verification ladder, P4 비우회 destructive gate가 없다.\n\n현재 `nova-use` 소스 스냅샷은 typecheck와 격리 production build, 기존 브라우저 집중 테스트 44개를 통과했다. 전체 테스트는 474개 중 9개가 실패해 T1을 충족하지 못했다. 8개는 현재 샌드박스·격리 복제 조건과 연관되고 1개는 CLI inventory 기대값 229/27과 실제 226/24의 불일치다. 기능·지연·처리량·CPU·메모리·오류율의 동등 조건 A/B도 없으므로 성능 향상은 주장할 수 없다.\n\nP4 자동착수는 destructive 요청이 session `autoApprove` 또는 remembered 승인에 흡수되지 않도록 main-process `alwaysAsk` 등급을 만든 뒤에만 켠다. 배포는 fresh 복구 체크포인트와 rollback rehearsal, lockfile/SBOM·first-party 소유권 정리, 전체 T1 통과 뒤에 재심사한다."
+      },
+      {
+        "id": "value-gates-finding",
+        "type": "markdown",
+        "body": "## 기능 잠재력은 높지만 네 개의 운영 게이트가 생산 승인을 막는다\n\n기능 향상은 P1~P4의 명시된 공백과 원본 oracle로 확인되지만 아직 대상 구현 결과가 아니다. 안전, 복구, 라이선스, 전체 T1은 하나라도 실패하면 병합·배포를 막는 독립 게이트다. 성능은 방향성 추정이 아니라 동등 입력 A/B가 생길 때까지 `UNKNOWN`으로 유지한다."
+      },
+      {
+        "id": "value-gates-table-block",
+        "type": "table",
+        "tableId": "value-gates"
+      },
+      {
+        "id": "phase-decisions-finding",
+        "type": "markdown",
+        "body": "## P1과 P3는 기존 경계 안에서 착수할 수 있고 P2와 P4는 선행 안전 수정이 필요하다\n\nP1은 bounded snapshot/ref의 순수 변환으로, P3는 대상 한정 변화 검증 후 기존 CDP allowlist로만 상승시키면 된다. P2는 legacy 홈 경로가 아니라 앱 `userData`에 최소 fingerprint만 저장해야 한다. P4는 label 정규식만 신뢰하지 않고 action·role/name·submit 의미·현재 origin·preflight 대상을 함께 재판정해야 한다."
+      },
+      {
+        "id": "phase-decisions-table-block",
+        "type": "table",
+        "tableId": "phase-decisions"
+      },
+      {
+        "id": "project-fit-finding",
+        "type": "markdown",
+        "body": "## 실행 코드는 nova-use에, 오케스트레이션은 nco에, 장기 분석은 nova-ax에 남겨야 한다\n\n세 프로젝트를 하나의 브라우저 런타임으로 공통화하면 권한·프로필·복구 경계가 흐려진다. 공통화할 것은 action fingerprint, 결과·오류 enum, redaction 규칙, 검증 영수증 스키마 같은 작은 계약뿐이다. DOM 실행, consent, CDP, ref 해석은 WebContents를 소유한 nova-use main process가 맡는다."
+      },
+      {
+        "id": "project-fit-table-block",
+        "type": "table",
+        "tableId": "project-fit"
+      },
+      {
+        "id": "scope-definitions",
+        "type": "markdown",
+        "body": "## 판정 범위와 지표 정의\n\n평가 대상은 원본 `cli-extensions`의 동작 개념을 `nova-use` Electron/WebContents 구조에 P1~P4 전체로 적응하는 방안이다. `nco`와 `nova-ax`는 공통 계약과 후속 분석 적합성만 평가하며 제품 코드는 변경 대상으로 보지 않는다.\n\n`GO_IMPLEMENTATION`은 격리 브랜치에서 설계·테스트를 시작할 수 있다는 뜻이다. `GO_MERGE_RELEASE`는 전체 T1, destructive 부정 테스트, fresh checkpoint·rollback rehearsal, 배포 라이선스·SBOM을 모두 충족해야 한다. 기능 향상은 요구 필드와 안전 행동이 fixture에서 실제 값으로 관찰될 때만 실현으로 센다. 성능은 동일 하드웨어·입력·반복·통계의 baseline/candidate A/B만 인정한다."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 파일·Git·명령 출력을 우선하고 이전 자동 보고는 교차검증했다\n\n지정 스펙을 먼저 읽고, 현 HEAD와 dirty 상태, 대상 여섯 소스 파일, IPC 타입, 기존 테스트, 원본 P1~P4 구현 접점, 안전·라이선스 심사, 복구 보고서, 기준선 원시 로그를 대조했다. `nova-use`는 원본 작업트리에 쓰지 않고 임시 복제본에 같은 `node_modules`를 연결해 typecheck, production build, 전체 테스트, 브라우저 집중 테스트를 실행했다. 정성 판정은 verified·partial·unknown으로 분리했고, 측정 정의가 없는 수치는 의사결정 근거에서 제외했다."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 가장 큰 불확실성은 A/B 부재와 실행되지 않은 복구·배포 검증이다\n\n기존 benchmark 문서는 프로젝트 전체 디렉터리 용량을 build size로 기록했고, cold/warm latency·처리량·CPU·메모리·오류율·성공률의 동등 조건 A/B가 없다. 원본은 루트 `package.json`이 없다는 이유로 하위 extension과 local-bridge 패키지를 측정하지 않았다. 이 증거로 “WebSocket이 없어져 빨라진다”거나 “유지비가 감소한다”고 단정할 수 없다.\n\n전체 테스트의 환경성 실패는 unrestricted CI에서 재실행해야 분류가 확정된다. 현재 worktree는 여러 주체가 수정 중이고 fresh checkpoint·격리 worktree·rollback rehearsal이 없다. 라이선스는 nova-use package metadata의 MIT 선언만 확인됐고 루트 LICENSE, cli-extensions first-party 소유권, 현재 lockfile/SBOM의 배포 적합성은 미확정이다."
+      },
+      {
+        "id": "verification-finding",
+        "type": "markdown",
+        "body": "## 빌드 기반선은 건전하지만 회사 T1과 릴리스 증거는 실패 상태다\n\n격리 복제 검증은 현재 소스가 컴파일·번들된다는 것을 보여주지만 P1~P4 구현을 검증하지 않는다. 집중 테스트 44개에는 새 요구의 positive/negative fixture가 없고, 전체 테스트 exit code가 1이므로 회사 T1은 `FAIL`이다.\n\n아래 차트는 8개 영수증의 상태 개수만 보여준다. 4개 `PASS`는 기반선 신호일 뿐 승인율이나 가중 점수가 아니며, `FAIL`·`BLOCKED`·`MISSING` 중 하나만 있어도 merge/release는 승인하지 않는다."
+      },
+      {
+        "id": "verification-status-chart-block",
+        "type": "chart",
+        "chartId": "verification-status"
+      },
+      {
+        "id": "verification-table-block",
+        "type": "table",
+        "tableId": "verification"
+      },
+      {
+        "id": "recommended-next-steps",
+        "type": "markdown",
+        "body": "## 다음 단계는 격리 구현보다 먼저 복구·동의 경계를 고정하는 것이다\n\n1. 쓰기 주체를 정지하고 nova-use의 tracked patch와 untracked archive를 같은 시점에 캡처한 뒤, 지속 경로 설정 백업의 해시를 검증하고 격리 worktree를 만든다.\n2. P4보다 먼저 permission request/check handler 기본 deny와 destructive `alwaysAsk`를 구현한다. auto/remembered 승인, 아이콘-only, 다국어, 결제·삭제·전송, stale preflight 부정 테스트를 추가한다.\n3. P1을 bounded snapshot/ref 순수 함수로 구현하고, P2를 app `userData`의 500건 제한·0600·원자 쓰기·redaction 저장소로 구현한다. P3는 target-scoped observer를 `finally`에서 해제하고 기존 CDP 정책 경로로만 상승시킨다.\n4. 각 파트의 fixture와 전체 test를 통과시킨 뒤 같은 시나리오를 baseline/candidate에서 반복해 p50·p95, 처리량, CPU, RSS, 오류율, 성공률을 보고한다.\n5. lockfile을 매니페스트 기준으로 재생성·검토하고 SBOM, advisory, first-party 소유권, LICENSE/THIRD_PARTY_NOTICES의 패키지 포함 여부를 확인한다.\n6. P2 파일 격리와 설정 복원, revert 후 재빌드를 실제 rehearsal한 다음에만 `GO_MERGE_RELEASE`를 재심사한다."
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## 재심사 전에 답해야 할 질문\n\n- destructive 분류의 최종 소유자는 adapter, PolicyEngine, consent broker 중 어디이며 한 곳의 fail-closed 결정으로 강제되는가?\n- `autoMission`은 관찰·제안만 허용하는가, 비파괴 입력까지 자동 실행하는가? 제품별 허용 범위를 누가 승인하는가?\n- P2의 500건 제한 뒤 TTL·도메인별 쿼터·프로필 간 격리와 사용자 삭제/내보내기 정책은 무엇인가?\n- 원본 cli-extensions의 first-party 소유권과 외부 배포 권한을 어떤 내부 기록으로 증명하는가?\n- unrestricted CI에서 남는 실제 full-suite 실패가 0건인지, CLI inventory 226/24가 의도된 계약 변경인지?"
+      }
+    ],
+    "charts": [
+      {
+        "id": "verification-status",
+        "title": "Verification receipt status counts",
+        "subtitle": "Eight checks reviewed on July 23, 2026; counts are not weighted and one blocking result prevents release approval.",
+        "type": "bar",
+        "dataset": "verification_status_counts",
+        "source": {
+          "id": "verification_status_count_sql",
+          "label": "Reviewed verification receipt status counts",
+          "query": {
+            "description": "Reproduces the four status-count rows derived from the eight reviewed verification receipts.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T19:14:00+09:00",
+            "sql": "WITH receipt_status(status, count, meaning) AS (VALUES ('PASS', 4, '직접 검사 또는 명령이 성공했으나 범위 밖 요구를 대신하지 않음'), ('BLOCKED', 2, '복구와 라이선스 선행조건이 충족되지 않음'), ('FAIL', 1, '전체 테스트 exit code 1'), ('MISSING', 1, '동등 조건 성능 A/B가 없음')) SELECT status, count, meaning FROM receipt_status;",
+            "metric_definitions": [
+              "count = eight reviewed receipt rows grouped by their exact reader-facing result status.",
+              "Counts are unweighted and are not a release score; one FAIL, BLOCKED, or MISSING blocking gate prevents release approval."
+            ],
+            "tables_used": []
+          }
+        },
+        "valueFormat": "number",
+        "encodings": {
+          "x": {
+            "field": "status",
+            "type": "nominal",
+            "label": "Receipt status"
+          },
+          "y": {
+            "field": "count",
+            "type": "quantitative",
+            "label": "Checks"
+          },
+          "tooltip": [
+            {
+              "field": "meaning",
+              "type": "nominal",
+              "label": "Meaning"
+            }
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "value-gates",
+        "title": "이식 가치 게이트 판정",
+        "subtitle": "2026년 7월 23일 현 소스·문서·격리 명령 결과; 생산 승인은 모든 차단 게이트 통과가 필요하다.",
+        "dataset": "value_gates",
+        "source": {
+          "id": "value_gate_rows_sql",
+          "label": "Reviewed P1–P4 value-gate rows",
+          "query": {
+            "description": "Reproduces the seven reader-facing gate rows after local source, safety, recovery, benchmark, and license review.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T19:14:00+09:00",
+            "sql": "WITH gates(\"order\", gate, status, evidence, decision, confidence) AS (VALUES (1, '안전', 'CONDITIONAL / RELEASE BLOCKED', '기존 main-only PolicyEngine·CDP allowlist·preflight는 강점. destructive가 auto/remembered 승인에 흡수되고 remote permission handler가 없음.', 'P1/P3 설계 착수 가능; P4 활성화 금지', 'HIGH'), (2, '복구 가능성', 'BLOCKED', '설정 2개 임시 사본·rollback 절차는 검증. fresh checkpoint, 격리 worktree, rollback rehearsal은 미완료이며 nova-use dirty 224건.', '원본 작업트리 병합 금지', 'HIGH'), (3, '기능 향상', 'HIGH POTENTIAL / NOT REALIZED', 'P1~P4 공백과 원본 oracle은 확인. 대상 IPC·digest·FORCE·consent에는 요구 구현이 없음.', '부분 포팅의 핵심 가치', 'HIGH'), (4, '성능 향상·저하', 'UNKNOWN', '동일 입력 A/B, cold/warm latency, throughput, CPU, RSS, error/success rate가 없음. 기존 전체 디렉터리 크기는 build size가 아님.', '향상·회귀 주장 금지', 'HIGH'), (5, '유지보수 비용', 'MANAGEABLE IF PARTIAL PORT', '새 dependency 0과 기존 adapter 경계는 비용을 제한. 직접 복사·별도 ref/CDP/학습 런타임은 중복과 이중 디버깅을 만듦.', '얇은 adapter + 프로젝트별 구현', 'MEDIUM'), (6, '라이선스', 'DISTRIBUTION BLOCKED', 'nova-use manifest MIT 선언만 존재. 루트 LICENSE와 cli-extensions first-party 소유권 증거가 없고 lockfile/SBOM 배포 적합성이 미확정.', 'clean-room 구현은 가능; 외부 배포 금지', 'HIGH'), (7, '세 프로젝트 적합성', 'ASYMMETRIC FIT', 'nova-use가 WebContents·policy·consent를 소유. nco는 오케스트레이션, nova-ax는 선택적 장기 분석에 적합.', '계약만 공통화; 런타임 통합 금지', 'HIGH')) SELECT \"order\", gate, status, evidence, decision, confidence FROM gates;",
+            "metric_definitions": [
+              "Gate status is qualitative and unweighted.",
+              "Any blocking safety, recovery, T1, or distribution result prevents merge and release approval."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "order",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "order",
+            "label": "순서",
+            "type": "number"
+          },
+          {
+            "field": "gate",
+            "label": "평가 항목",
+            "type": "text"
+          },
+          {
+            "field": "status",
+            "label": "판정",
+            "type": "text"
+          },
+          {
+            "field": "evidence",
+            "label": "확인 근거",
+            "type": "text"
+          },
+          {
+            "field": "decision",
+            "label": "의사결정 영향",
+            "type": "text"
+          },
+          {
+            "field": "confidence",
+            "label": "신뢰도",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "phase-decisions",
+        "title": "P1~P4 구현·활성화 판정",
+        "subtitle": "GO는 격리 구현 착수만 의미하며 merge·release 승인이 아니다.",
+        "dataset": "phase_decisions",
+        "source": {
+          "id": "phase_decision_rows_sql",
+          "label": "Reviewed phase implementation and activation decisions",
+          "query": {
+            "description": "Reproduces the P1–P4 decision rows derived from current implementation gaps and required safety boundaries.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T19:14:00+09:00",
+            "sql": "WITH phases(\"order\", phase, implementation, activation, required_boundary, proof) AS (VALUES (1, 'P1 심층 이해', 'CONDITIONAL GO', 'fixture 통과 후', 'bounded snapshot/ref 순수 변환; raw DOM·비밀·URL query 영속화 금지', 'comprehension/affordance/playbook/autoMission 실값과 redaction 테스트'), (2, 'P2 공유 학습', 'GO AFTER STORAGE FIX', 'NO-GO', 'app userData, 500건, 0600, atomic write, minimal fingerprint, profile 격리', 'recall 성공루틴, 501 eviction, masking, repeated_failed_action fixture'), (3, 'P3 FORCE 검증', 'CONDITIONAL GO', '통합 테스트 후', 'target-scoped observer, finally disconnect, no-effect 뒤 기존 CDP gate 재평가', 'target/no-effect/navigation/value-readback와 CDP deny/consent 테스트'), (4, 'P4 자율 착수', 'GO AFTER CONSENT FIX', 'NO-GO', 'destructive/unknown alwaysAsk, permission default deny, execution 직전 preflight 재검증', 'auto/remembered 우회 부정, icon-only·다국어·결제/삭제/전송 E2E')) SELECT \"order\", phase, implementation, activation, required_boundary, proof FROM phases;",
+            "metric_definitions": [
+              "Implementation decision authorizes isolated development only.",
+              "Activation requires the listed positive and negative proof."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "order",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "order",
+            "label": "순서",
+            "type": "number"
+          },
+          {
+            "field": "phase",
+            "label": "파트",
+            "type": "text"
+          },
+          {
+            "field": "implementation",
+            "label": "구현 착수",
+            "type": "text"
+          },
+          {
+            "field": "activation",
+            "label": "활성화",
+            "type": "text"
+          },
+          {
+            "field": "required_boundary",
+            "label": "필수 경계",
+            "type": "text"
+          },
+          {
+            "field": "proof",
+            "label": "완료 증거",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "project-fit",
+        "title": "세 프로젝트의 책임 경계와 적합성",
+        "subtitle": "브라우저 런타임을 공유하지 않고 최소 계약만 공통화한다.",
+        "dataset": "project_fit",
+        "source": {
+          "id": "project_fit_rows_sql",
+          "label": "Reviewed three-project ownership boundary rows",
+          "query": {
+            "description": "Reproduces the project-fit rows after inspection of current runtime, orchestration, and memory ownership.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T19:14:00+09:00",
+            "sql": "WITH fit(\"order\", project, fit, own_here, commonize, do_not_move) AS (VALUES (1, 'nova-use', 'HIGH — primary runtime', 'WebContents 실행, snapshot/ref 해석, policy/consent, P1~P4 상태와 userData', 'action fingerprint·receipt·error enum 계약', '기존 ref/FORCE/CDP/deepInspect/capture 재구현'), (2, 'nco', 'MEDIUM — orchestration only', '단계 의존성, 팀 실행, 검증 영수증 집계', 'redacted 결과 schema·gate 상태·측정 schema', 'DOM selector 실행, browser profile, consent, 원문 학습 데이터'), (3, 'nova-ax', 'LOW NOW / OPTIONAL LATER', '명시적 opt-in 후 장기 패턴 분석·접근성 연계 후보', 'redacted summary export 계약만 후속 검토', 'P2 기본 저장소, WebContents/CDP, nova-use 동기 실행 경로')) SELECT \"order\", project, fit, own_here, commonize, do_not_move FROM fit;",
+            "metric_definitions": [
+              "Fit describes responsibility alignment, not product quality ranking."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "order",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "order",
+            "label": "순서",
+            "type": "number"
+          },
+          {
+            "field": "project",
+            "label": "프로젝트",
+            "type": "text"
+          },
+          {
+            "field": "fit",
+            "label": "적합성",
+            "type": "text"
+          },
+          {
+            "field": "own_here",
+            "label": "프로젝트 소유 책임",
+            "type": "text"
+          },
+          {
+            "field": "commonize",
+            "label": "공통화 후보",
+            "type": "text"
+          },
+          {
+            "field": "do_not_move",
+            "label": "옮기지 않을 것",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "verification",
+        "title": "검증 영수증과 미충족 게이트",
+        "subtitle": "동일 소스의 임시 복제 실행과 직접 파일 검사 결과; full test exit 1은 T1 실패로 유지한다.",
+        "dataset": "verification",
+        "source": {
+          "id": "verification_rows_sql",
+          "label": "Observed verification receipt rows",
+          "query": {
+            "description": "Reproduces the eight verification rows from direct file inspection and isolated npm command results.",
+            "engine": "sqlite",
+            "language": "sql",
+            "executed_at": "2026-07-23T19:14:00+09:00",
+            "sql": "WITH receipt(\"order\", check_name, result, evidence, gap) AS (VALUES (1, '지정 스펙·현 소스', 'PASS', 'P1~P4 범위와 기존 기능 경계, 대상 6개 소스 SHA-256 직접 확인', '구현 전 상태'), (2, 'nova-use typecheck', 'PASS', 'tsc --noEmit, exit 0', '임시 복제본; 원본과 동일 소스'), (3, 'nova-use production build', 'PASS', 'main 137, preload 1, renderer 4716 modules; exit 0; output 107 files 약 27 MiB', '기존 Vite chunk warning; candidate A/B 아님'), (4, '브라우저 집중 회귀', 'PASS', '4 files, 44/44 tests, exit 0', 'P1~P4 신규 요구 fixture 없음'), (5, 'nova-use full test', 'FAIL', '45 files passed, 5 failed; 463 tests passed, 9 failed, 2 skipped; exit 1', '8개 환경성 후보와 CLI inventory 실제 불일치 1개; unrestricted CI 재실행 필요'), (6, '성능 A/B', 'MISSING', 'baseline/candidate 동등 조건 행 없음', 'latency·throughput·CPU·RSS·error/success rate 전체'), (7, '복구 rehearsal', 'BLOCKED', '임시 설정 사본과 절차만 검증', 'fresh checkpoint·worktree·실제 revert/restore/rebuild'), (8, '라이선스·SBOM', 'BLOCKED', 'MIT package field와 third-party notice 일부만 확인', 'first-party ownership, LICENSE tracking, clean lockfile, advisory scan, package archive inspection')) SELECT \"order\", check_name AS \"check\", result, evidence, gap FROM receipt;",
+            "metric_definitions": [
+              "T1 pass requires production build exit 0 and full test exit 0.",
+              "Focused tests do not substitute for P1–P4 feature fixtures or the full suite."
+            ],
+            "tables_used": []
+          }
+        },
+        "defaultSort": {
+          "field": "order",
+          "direction": "asc"
+        },
+        "columns": [
+          {
+            "field": "order",
+            "label": "순서",
+            "type": "number"
+          },
+          {
+            "field": "check",
+            "label": "검증",
+            "type": "text"
+          },
+          {
+            "field": "result",
+            "label": "결과",
+            "type": "text"
+          },
+          {
+            "field": "evidence",
+            "label": "관찰값",
+            "type": "text"
+          },
+          {
+            "field": "gap",
+            "label": "Gap·미검증",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "value_gate_compilation",
+        "label": "P1~P4 가치 게이트 근거 묶음",
+        "query": {
+          "description": "지정 이식 스펙, 현 nova-use 소스, 안전·라이선스 심사, 복구 판정, 기준선과 격리 검증 결과를 항목별로 교차검토한 판정표.",
+          "engine": "local file and command review",
+          "language": "text",
+          "executed_at": "2026-07-23T19:14:00+09:00",
+          "filters": [
+            "검증된 로컬 파일·Git·명령 출력만 사실로 사용",
+            "동등 조건 A/B가 없는 성능 주장은 UNKNOWN",
+            "배포 차단 게이트는 하나만 실패해도 NO_GO_MERGE_RELEASE"
+          ],
+          "metric_definitions": [
+            "VERIFIED는 직접 파일 또는 명령으로 확인한 상태.",
+            "PARTIAL은 일부 근거가 있으나 요청된 범위 전체를 지지하지 못하는 상태.",
+            "UNKNOWN은 동등 조건 측정이나 권위 있는 소유권 증거가 없는 상태."
+          ]
+        }
+      },
+      {
+        "id": "phase_gate_compilation",
+        "label": "P1~P4 안전 설계와 현재 구현 공백 검사",
+        "query": {
+          "description": "BrowserAgentPageDigest, pageDigestFromSnapshot, FORCE action, consent auto/remembered 승인, legacy page-context 저장, 원본 oracle의 대응 기능을 직접 대조.",
+          "engine": "local TypeScript and test inspection",
+          "language": "typescript",
+          "executed_at": "2026-07-23T19:10:00+09:00",
+          "filters": [
+            "기존 ref/FORCE/CDP/deepInspect/capture/PolicyEngine 재구현 금지",
+            "Chrome API·브리지·원본 구현 복사 금지",
+            "새 dependency 0을 기본안으로 평가"
+          ]
+        }
+      },
+      {
+        "id": "project_fit_compilation",
+        "label": "nova-use·nco·nova-ax 구조와 소유권 경계 검사",
+        "query": {
+          "description": "세 프로젝트의 package metadata, 브라우저 실행 소유권, 오케스트레이션·메모리 접점을 비교해 공통 계약과 프로젝트별 책임을 분리.",
+          "engine": "local repository inspection",
+          "language": "text",
+          "executed_at": "2026-07-23T19:05:00+09:00",
+          "filters": [
+            "nova-use만 P1~P4 제품 코드 변경 대상",
+            "nco와 nova-ax 제품 코드·DB 변경 금지",
+            "원문 DOM·입력값·자격증명은 프로젝트 간 공유 금지"
+          ]
+        }
+      },
+      {
+        "id": "t1_and_evidence_receipt",
+        "label": "nova-use 격리 T1 로그와 보고서 근거 검사",
+        "query": {
+          "description": "현재 nova-use 소스를 쓰기 가능한 임시 디렉터리에 복제하고 설치된 node_modules를 연결해 typecheck, production build, full test, browser-focused test를 실행한 결과와 이전 단계 파일 검사.",
+          "engine": "local npm and file verification",
+          "language": "shell",
+          "executed_at": "2026-07-23T19:13:33+09:00",
+          "filters": [
+            "원본 nova-use 작업트리에는 보고서 단계가 쓰지 않음",
+            "full test는 runner config loader 사용",
+            "browser-focused scope: agent-browser-adapter, browser, agent-control, browser-consent"
+          ],
+          "metric_definitions": [
+            "T1 통과 = production build exit 0과 full test exit 0.",
+            "focused regression 통과는 기존 브라우저 경로의 제한된 증거이며 P1~P4 신규 요구 검증을 대신하지 않음.",
+            "격리 build output은 107 files, 약 27 MiB지만 candidate A/B build-size 지표가 아님."
+          ]
+        }
+      },
+      {
+        "id": "source_spec",
+        "label": "nova-use/docs/plans/browser-control-extension-port.md",
+        "query": {
+          "description": "P1~P4 범위, 기존 기능 재구현 금지, Electron 적응, T1과 검증 영수증 요구를 정의한 지정 스펙.",
+          "engine": "local document inspection",
+          "language": "markdown",
+          "executed_at": "2026-07-23T19:00:00+09:00"
+        }
+      },
+      {
+        "id": "safety_license_review",
+        "label": "nco Stage 02 안전·라이선스 심사",
+        "query": {
+          "description": "lockfile/SBOM, Electron permission, destructive consent, 저장 경로, 원본 FORCE·권한 경계, first-party 소유권을 검토한 2026년 7월 23일 보고서.",
+          "engine": "local security and license review",
+          "language": "markdown",
+          "executed_at": "2026-07-23T19:07:00+09:00"
+        }
+      },
+      {
+        "id": "recovery_review",
+        "label": "nco Stage 03 복구 지점·롤백 판정",
+        "query": {
+          "description": "dirty worktree, 기존 checkpoint 현재성, 설정 임시 사본, 격리 worktree와 rollback rehearsal 준비도를 검토한 2026년 7월 23일 보고서.",
+          "engine": "local recovery review",
+          "language": "markdown",
+          "executed_at": "2026-07-23T18:57:42+09:00"
+        }
+      },
+      {
+        "id": "benchmark_baseline_review",
+        "label": "nova-use/docs/plans/benchmark-baseline.md와 생성 스크립트",
+        "query": {
+          "description": "세 프로젝트 기준선 원시 로그와 이를 생성한 스크립트의 측정 정의·완전성·비교 가능성을 재검토.",
+          "engine": "local benchmark data-quality review",
+          "language": "shell",
+          "executed_at": "2026-07-23T19:03:00+09:00",
+          "metric_definitions": [
+            "기존 build size는 프로젝트 전체 du -sh 결과로 산출물 크기가 아님.",
+            "cold/warm latency, throughput, CPU, RSS, error rate, success rate의 A/B 행은 존재하지 않음."
+          ]
+        }
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-23T19:14:00+09:00",
+    "status": "ready",
+    "datasets": {
+      "value_gates": [
+        {
+          "order": 1,
+          "gate": "안전",
+          "status": "CONDITIONAL / RELEASE BLOCKED",
+          "evidence": "기존 main-only PolicyEngine·CDP allowlist·preflight는 강점. destructive가 auto/remembered 승인에 흡수되고 remote permission handler가 없음.",
+          "decision": "P1/P3 설계 착수 가능; P4 활성화 금지",
+          "confidence": "HIGH"
+        },
+        {
+          "order": 2,
+          "gate": "복구 가능성",
+          "status": "BLOCKED",
+          "evidence": "설정 2개 임시 사본·rollback 절차는 검증. fresh checkpoint, 격리 worktree, rollback rehearsal은 미완료이며 nova-use dirty 224건.",
+          "decision": "원본 작업트리 병합 금지",
+          "confidence": "HIGH"
+        },
+        {
+          "order": 3,
+          "gate": "기능 향상",
+          "status": "HIGH POTENTIAL / NOT REALIZED",
+          "evidence": "P1~P4 공백과 원본 oracle은 확인. 대상 IPC·digest·FORCE·consent에는 요구 구현이 없음.",
+          "decision": "부분 포팅의 핵심 가치",
+          "confidence": "HIGH"
+        },
+        {
+          "order": 4,
+          "gate": "성능 향상·저하",
+          "status": "UNKNOWN",
+          "evidence": "동일 입력 A/B, cold/warm latency, throughput, CPU, RSS, error/success rate가 없음. 기존 전체 디렉터리 크기는 build size가 아님.",
+          "decision": "향상·회귀 주장 금지",
+          "confidence": "HIGH"
+        },
+        {
+          "order": 5,
+          "gate": "유지보수 비용",
+          "status": "MANAGEABLE IF PARTIAL PORT",
+          "evidence": "새 dependency 0과 기존 adapter 경계는 비용을 제한. 직접 복사·별도 ref/CDP/학습 런타임은 중복과 이중 디버깅을 만듦.",
+          "decision": "얇은 adapter + 프로젝트별 구현",
+          "confidence": "MEDIUM"
+        },
+        {
+          "order": 6,
+          "gate": "라이선스",
+          "status": "DISTRIBUTION BLOCKED",
+          "evidence": "nova-use manifest MIT 선언만 존재. 루트 LICENSE와 cli-extensions first-party 소유권 증거가 없고 lockfile/SBOM 배포 적합성이 미확정.",
+          "decision": "clean-room 구현은 가능; 외부 배포 금지",
+          "confidence": "HIGH"
+        },
+        {
+          "order": 7,
+          "gate": "세 프로젝트 적합성",
+          "status": "ASYMMETRIC FIT",
+          "evidence": "nova-use가 WebContents·policy·consent를 소유. nco는 오케스트레이션, nova-ax는 선택적 장기 분석에 적합.",
+          "decision": "계약만 공통화; 런타임 통합 금지",
+          "confidence": "HIGH"
+        }
+      ],
+      "phase_decisions": [
+        {
+          "order": 1,
+          "phase": "P1 심층 이해",
+          "implementation": "CONDITIONAL GO",
+          "activation": "fixture 통과 후",
+          "required_boundary": "bounded snapshot/ref 순수 변환; raw DOM·비밀·URL query 영속화 금지",
+          "proof": "comprehension/affordance/playbook/autoMission 실값과 redaction 테스트"
+        },
+        {
+          "order": 2,
+          "phase": "P2 공유 학습",
+          "implementation": "GO AFTER STORAGE FIX",
+          "activation": "NO-GO",
+          "required_boundary": "app userData, 500건, 0600, atomic write, minimal fingerprint, profile 격리",
+          "proof": "recall 성공루틴, 501 eviction, masking, repeated_failed_action fixture"
+        },
+        {
+          "order": 3,
+          "phase": "P3 FORCE 검증",
+          "implementation": "CONDITIONAL GO",
+          "activation": "통합 테스트 후",
+          "required_boundary": "target-scoped observer, finally disconnect, no-effect 뒤 기존 CDP gate 재평가",
+          "proof": "target/no-effect/navigation/value-readback와 CDP deny/consent 테스트"
+        },
+        {
+          "order": 4,
+          "phase": "P4 자율 착수",
+          "implementation": "GO AFTER CONSENT FIX",
+          "activation": "NO-GO",
+          "required_boundary": "destructive/unknown alwaysAsk, permission default deny, execution 직전 preflight 재검증",
+          "proof": "auto/remembered 우회 부정, icon-only·다국어·결제/삭제/전송 E2E"
+        }
+      ],
+      "project_fit": [
+        {
+          "order": 1,
+          "project": "nova-use",
+          "fit": "HIGH — primary runtime",
+          "own_here": "WebContents 실행, snapshot/ref 해석, policy/consent, P1~P4 상태와 userData",
+          "commonize": "action fingerprint·receipt·error enum 계약",
+          "do_not_move": "기존 ref/FORCE/CDP/deepInspect/capture 재구현"
+        },
+        {
+          "order": 2,
+          "project": "nco",
+          "fit": "MEDIUM — orchestration only",
+          "own_here": "단계 의존성, 팀 실행, 검증 영수증 집계",
+          "commonize": "redacted 결과 schema·gate 상태·측정 schema",
+          "do_not_move": "DOM selector 실행, browser profile, consent, 원문 학습 데이터"
+        },
+        {
+          "order": 3,
+          "project": "nova-ax",
+          "fit": "LOW NOW / OPTIONAL LATER",
+          "own_here": "명시적 opt-in 후 장기 패턴 분석·접근성 연계 후보",
+          "commonize": "redacted summary export 계약만 후속 검토",
+          "do_not_move": "P2 기본 저장소, WebContents/CDP, nova-use 동기 실행 경로"
+        }
+      ],
+      "verification": [
+        {
+          "order": 1,
+          "check": "지정 스펙·현 소스",
+          "result": "PASS",
+          "evidence": "P1~P4 범위와 기존 기능 경계, 대상 6개 소스 SHA-256 직접 확인",
+          "gap": "구현 전 상태"
+        },
+        {
+          "order": 2,
+          "check": "nova-use typecheck",
+          "result": "PASS",
+          "evidence": "tsc --noEmit, exit 0",
+          "gap": "임시 복제본; 원본과 동일 소스"
+        },
+        {
+          "order": 3,
+          "check": "nova-use production build",
+          "result": "PASS",
+          "evidence": "main 137, preload 1, renderer 4716 modules; exit 0; output 107 files 약 27 MiB",
+          "gap": "기존 Vite chunk warning; candidate A/B 아님"
+        },
+        {
+          "order": 4,
+          "check": "브라우저 집중 회귀",
+          "result": "PASS",
+          "evidence": "4 files, 44/44 tests, exit 0",
+          "gap": "P1~P4 신규 요구 fixture 없음"
+        },
+        {
+          "order": 5,
+          "check": "nova-use full test",
+          "result": "FAIL",
+          "evidence": "45 files passed, 5 failed; 463 tests passed, 9 failed, 2 skipped; exit 1",
+          "gap": "8개 환경성 후보와 CLI inventory 실제 불일치 1개; unrestricted CI 재실행 필요"
+        },
+        {
+          "order": 6,
+          "check": "성능 A/B",
+          "result": "MISSING",
+          "evidence": "baseline/candidate 동등 조건 행 없음",
+          "gap": "latency·throughput·CPU·RSS·error/success rate 전체"
+        },
+        {
+          "order": 7,
+          "check": "복구 rehearsal",
+          "result": "BLOCKED",
+          "evidence": "임시 설정 사본과 절차만 검증",
+          "gap": "fresh checkpoint·worktree·실제 revert/restore/rebuild"
+        },
+        {
+          "order": 8,
+          "check": "라이선스·SBOM",
+          "result": "BLOCKED",
+          "evidence": "MIT package field와 third-party notice 일부만 확인",
+          "gap": "first-party ownership, LICENSE tracking, clean lockfile, advisory scan, package archive inspection"
+        }
+      ],
+      "verification_status_counts": [
+        {
+          "status": "PASS",
+          "count": 4,
+          "meaning": "직접 검사 또는 명령이 성공했으나 범위 밖 요구를 대신하지 않음"
+        },
+        {
+          "status": "BLOCKED",
+          "count": 2,
+          "meaning": "복구와 라이선스 선행조건이 충족되지 않음"
+        },
+        {
+          "status": "FAIL",
+          "count": 1,
+          "meaning": "전체 테스트 exit code 1"
+        },
+        {
+          "status": "MISSING",
+          "count": 1,
+          "meaning": "동등 조건 성능 A/B가 없음"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "value_gate_compilation",
+      "label": "P1~P4 가치 게이트 근거 묶음",
+      "query": {
+        "description": "지정 이식 스펙, 현 nova-use 소스, 안전·라이선스 심사, 복구 판정, 기준선과 격리 검증 결과를 항목별로 교차검토한 판정표.",
+        "engine": "local file and command review",
+        "language": "text",
+        "executed_at": "2026-07-23T19:14:00+09:00"
+      }
+    },
+    {
+      "id": "phase_gate_compilation",
+      "label": "P1~P4 안전 설계와 현재 구현 공백 검사",
+      "query": {
+        "description": "현 TypeScript와 테스트를 원본 P1~P4 oracle 및 지정 스펙에 대조.",
+        "engine": "local TypeScript and test inspection",
+        "language": "typescript",
+        "executed_at": "2026-07-23T19:10:00+09:00"
+      }
+    },
+    {
+      "id": "project_fit_compilation",
+      "label": "nova-use·nco·nova-ax 구조와 소유권 경계 검사",
+      "query": {
+        "description": "세 프로젝트의 런타임·오케스트레이션·메모리 책임을 비교.",
+        "engine": "local repository inspection",
+        "language": "text",
+        "executed_at": "2026-07-23T19:05:00+09:00"
+      }
+    },
+    {
+      "id": "t1_and_evidence_receipt",
+      "label": "nova-use 격리 T1 로그와 보고서 근거 검사",
+      "query": {
+        "description": "현재 소스 임시 복제본에서 typecheck, build, full test, focused test를 실행.",
+        "engine": "local npm and file verification",
+        "language": "shell",
+        "executed_at": "2026-07-23T19:13:33+09:00"
+      }
+    },
+    {
+      "id": "source_spec",
+      "label": "nova-use/docs/plans/browser-control-extension-port.md"
+    },
+    {
+      "id": "safety_license_review",
+      "label": "nco Stage 02 안전·라이선스 심사"
+    },
+    {
+      "id": "recovery_review",
+      "label": "nco Stage 03 복구 지점·롤백 판정"
+    },
+    {
+      "id": "benchmark_baseline_review",
+      "label": "nova-use benchmark baseline data-quality review"
+    }
+  ]
+}

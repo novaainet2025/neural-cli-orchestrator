@@ -1,3 +1,1 @@
-export function dedupeArray<T>(items: readonly T[]): T[] {
-  return [...new Set(items)];
-}
+export { deduplicate as dedupeArray } from './dedupe.js';

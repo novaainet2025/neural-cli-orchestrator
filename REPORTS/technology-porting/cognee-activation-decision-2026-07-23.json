@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-23T09:03:03Z",
+  "timezone": "Asia/Seoul",
+  "decision": {
+    "activateNow": false,
+    "automaticShadow": "REJECTED",
+    "productionAugment": "REJECTED",
+    "fullMigration": "REJECTED",
+    "retainIsolatedResearchArtifacts": true,
+    "reason": "The full Cognee pipeline exceeded the 20-minute preparation limit, while the chunk-only partial candidate failed both the quality-improvement and cache-miss latency gates."
+  },
+  "fullCogneePipeline": {
+    "scope": {
+      "documents": 12,
+      "queriesPlanned": 120,
+      "corpus": "synthetic-only"
+    },
+    "addCompleted": true,
+    "cognify": {
+      "status": "TIMED_OUT_AND_INTERRUPTED",
+      "durationLowerBoundSeconds": 1200,
+      "completedOutputProduced": false,
+      "signalsRequiredForExit": 2,
+      "remainingDatabaseStatus": "DATASET_PROCESSING_STARTED",
+      "staleMigrationLockPresent": true
+    },
+    "observedNetworkDestinations": [
+      "127.0.0.1:11434"
+    ],
+    "externalNetworkObserved": false,
+    "observedPeakModelMemoryBytes": {
+      "qwen3:14b": 14842362912,
+      "nomic-embed-text:latest": 578373632
+    },
+    "gatePassed": false
+  },
+  "chunkIndexPartialCandidate": {
+    "scope": {
+      "documents": 12,
+      "queries": 120,
+      "categories": 10,
+      "corpus": "synthetic-only"
+    },
+    "preparation": {
+      "addSeconds": 1.684,
+      "indexSeconds": 5.363,
+      "dataQualityPassed": true
+    },
+    "retrieval": {
+      "localTokenRecall": {
+        "recallAt1": 0.766667,
+        "recallAt3": 0.966667,
+        "recallAt10": 1.0,
+        "mrr": 0.860694
+      },
+      "cognee": {
+        "recallAt1": 0.883333,
+        "recallAt3": 0.925,
+        "recallAt10": 0.983333,
+        "mrr": 0.911908
+      },
+      "qualityGainPercentagePointsAt3": -4.17,
+      "rollbackCategory": {
+        "recallAt1": 0.083333,
+        "recallAt3": 0.25,
+        "recallAt10": 0.833333,
+        "mrr": 0.244081
+      }
+    },
+    "latencyMs": {
+      "cacheMiss": {
+        "p50": 2914.47,
+        "p95": 2964.4,
+        "max": 3917.94
+      },
+      "cacheHit": {
+        "p50": 0.57,
+        "p95": 0.73,
+        "max": 1.01
+      }
+    },
+    "reliability": {
+      "firstPassSuccesses": 120,
+      "firstPassErrors": 0,
+      "cachePassErrors": 0,
+      "cacheResultMismatches": 0
+    },
+    "gates": {
+      "sampleAtLeast100": true,
+      "dataQualityPassed": true,
+      "qualityGainAtLeast10Points": false,
+      "cacheMissP95AtOrBelow500Ms": false,
+      "cacheHitP95AtOrBelow500Ms": true,
+      "errorRateBelow1Percent": true,
+      "firstPassWasNotSidecarCached": true,
+      "secondPassWasSidecarCached": true,
+      "cachedResultsMatch": true
+    },
+    "allPerformanceAndQualityGatesPassed": false
+  },
+  "sidecarContract": {
+    "llmSessionPreparationBypassedForChunkSearch": true,
+    "pythonContractTests": {
+      "passed": 3,
+      "failed": 0
+    },
+    "focusedKnowledgeBrokerTests": {
+      "passed": 8,
+      "skipped": 2,
+      "failed": 0
+    },
+    "singleRuntimeGuard": {
+      "secondLaunchExitStatus": 75,
+      "lockPresentAfterStop": false,
+      "portPresentAfterStop": false
+    },
+    "finalSidecarProcesses": 0
+  },
+  "recoveryAndIsolation": {
+    "ncoBackup": {
+      "path": "/Users/nova-ai/project/nco/db/nco.db.cognee-bak",
+      "bytes": 335036416,
+      "quickCheck": "ok"
+    },
+    "novaAxPreviousBackup": {
+      "path": "/Users/nova-ai/project/nova-ax/nova-ax.db.cognee-bak",
+      "bytes": 0,
+      "validForActiveDatabase": false
+    },
+    "novaAxCorrectedBackup": {
+      "path": "/Users/nova-ai/project/nova-ax/db/nova-ax.db.cognee-bak-20260723T1803+0900",
+      "bytes": 47423488,
+      "mode": "0600",
+      "quickCheck": "ok",
+      "tableCount": 60
+    },
+    "originalNovaUse": {
+      "head": "408718d1739bcea747c3c863f75da5ac5a600446",
+      "headChangedByValidation": false,
+      "workingTreeEntryCountAfterValidation": 207,
+      "workingTreeWasExternallyChanging": true,
+      "mergedOrActivated": false
+    },
+    "isolatedNovaUse": {
+      "path": "/Users/nova-ai/project/nova-use-cognee",
+      "branch": "cognee-migration-20260723",
+      "head": "408718d1739bcea747c3c863f75da5ac5a600446"
+    },
+    "obsidianVault": {
+      "path": "/Users/nova-ai/obsidian/mac-obsidian",
+      "ingestedByThisValidation": false,
+      "preCheck": {
+        "markdownFiles": 16304,
+        "bytes": 27842295,
+        "aggregateDigest": "e7a6f2470cdb3c27d19f24c68ddea9c1ca0298d2b6152142f179caca94dd6208"
+      },
+      "postCheck": {
+        "markdownFiles": 16316,
+        "bytes": 27871438
+      },
+      "concurrentExternalDrift": {
+        "fileCountDelta": 12,
+        "byteDelta": 29143,
+        "filesModifiedBetween180000And180100": 22,
+        "attribution": "The synthetic benchmark and sidecar were not launched with --ingest-vault; the clustered 18:00 filesystem writes were external to the validation process."
+      }
+    }
+  },
+  "evidenceFiles": [
+    "cognee-activation-lite-prepare-2026-07-23.json",
+    "cognee-activation-lite-benchmark-2026-07-23.json",
+    "cognee-migration-2026-07-23.md"
+  ]
+}

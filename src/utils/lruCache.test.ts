@@ -45,8 +45,10 @@ describe('LRUCache', () => {
     expect(cache.get(2)).toBe('two');
   });
 
-  it('throws when capacity is zero or negative', () => {
-    expect(() => new LRUCache(0)).toThrow('Capacity must be greater than 0');
-    expect(() => new LRUCache(-1)).toThrow('Capacity must be greater than 0');
-  });
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5])(
+    'throws when capacity is not a positive integer: %s',
+    capacity => {
+      expect(() => new LRUCache(capacity)).toThrow('Capacity must be a positive integer');
+    },
+  );
 });

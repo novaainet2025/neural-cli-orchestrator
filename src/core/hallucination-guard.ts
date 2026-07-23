@@ -20,8 +20,6 @@ const log = createLogger('hallucination-guard');
 
 // 자가 검증에 사용할 로컬 LLM (ollama)
 const OLLAMA_CHAT_URL = 'http://localhost:11434/api/chat';
-// MLX 서버 (고성능 자가 검증용, 옵션)
-const MLX_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
 
 // 환각 위험 패턴 (정규식)
 const HALLUCINATION_RISK_PATTERNS = [
@@ -113,29 +111,6 @@ Respond with ONLY a number like: 0.8`;
     if (res.ok) {
       const data = await res.json() as { message?: { content?: string } };
       const content = data.message?.content ?? '';
-      const match = content.match(/\b(0\.\d+|1\.0|0|1)\b/);
-      if (match) {
-        const score = parseFloat(match[1]);
-        if (!isNaN(score) && score >= 0 && score <= 1) return score;
-      }
-    }
-  } catch { /* fallthrough */ }
-
-  // Try MLX (higher quality, slower)
-  try {
-    const res = await fetch(MLX_CHAT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: '/Users/nova-ai/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit',
-        messages: [{ role: 'user', content: reviewPrompt }],
-        max_tokens: 5, stream: false, temperature: 0,
-      }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.ok) {
-      const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
-      const content = data.choices?.[0]?.message?.content ?? '';
       const match = content.match(/\b(0\.\d+|1\.0|0|1)\b/);
       if (match) {
         const score = parseFloat(match[1]);

@@ -53,6 +53,22 @@ describe('response quality gate', () => {
     expect(checkResponseQuality('done: 통과').pass).toBe(true);
   });
 
+  it('passes structured JSON responses including empty arrays (docs-ai edit-loop regression)', () => {
+    // 문서편집 태스크의 정당한 답 [] 및 JSON 배열이 EMPTY_OR_SHORT/FORMAT_MISMATCH로
+    // 무한 반려된 현장 결함 회귀 방지 (실측 2026-07-19)
+    expect(checkResponseQuality('[]').pass).toBe(true);
+    expect(checkResponseQuality('[]', { requireProtocolPrefix: true }).pass).toBe(true);
+    const edits = '[{"find":"사업명","replace":"사 업 명","reason":"표기 통일"}]';
+    expect(checkResponseQuality(edits, { requireProtocolPrefix: true }).pass).toBe(true);
+  });
+
+  it('still rejects non-JSON bracket noise', () => {
+    expect(checkResponseQuality('[...]').heuristics).toContain('EMPTY_OR_SHORT');
+    expect(
+      checkResponseQuality('[broken json', { requireProtocolPrefix: true }).heuristics,
+    ).toContain('FORMAT_MISMATCH');
+  });
+
   it('rejects responses starting with a provider error marker', () => {
     const result = checkResponseQuality(
       '[codex: no final response — process failed] — Reading additional input from stdin...',

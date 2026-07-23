@@ -1,0 +1,548 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "브라우저 제어 이식 가치 게이트",
+    "description": "cli-extensions P1–P4 능력을 nova-use Electron 제어면에 이식할 현재 가치와 안전·복구·성능·라이선스·세 프로젝트 적합성을 판정한 Stage 07 보고서",
+    "generatedAt": "2026-07-23T19:11:55+09:00",
+    "cards": [],
+    "charts": [
+      {
+        "id": "test-failures",
+        "title": "저장된 테스트 실행별 실패 건수",
+        "subtitle": "2026년 7월 23일 저장 로그; 실행별 범위·설정이 달라 프로젝트 품질 순위로 비교하지 않는다.",
+        "type": "bar",
+        "dataset": "test_runs",
+        "sourceId": "test-runs-source",
+        "question": "저장된 테스트 실행이 후보 A/B 전에 모두 green 상태였는가?",
+        "rationale": "서로 다른 실행의 정확한 실패 건수를 보여 주되 pass·skip·scope를 tooltip에 남겨 분모와 범위 차이를 숨기지 않는다.",
+        "encodings": {
+          "x": { "field": "run", "type": "nominal", "label": "테스트 실행" },
+          "y": { "field": "failed", "type": "quantitative", "label": "실패 테스트 수", "format": "number" },
+          "tooltip": [
+            { "field": "run", "type": "text", "label": "실행" },
+            { "field": "failed", "type": "quantitative", "label": "실패", "format": "number" },
+            { "field": "passed", "type": "quantitative", "label": "통과", "format": "number" },
+            { "field": "skipped", "type": "quantitative", "label": "건너뜀", "format": "number" },
+            { "field": "total", "type": "quantitative", "label": "총계", "format": "number" },
+            { "field": "scope", "type": "text", "label": "범위" }
+          ]
+        },
+        "xAxisTitle": "테스트 실행",
+        "yAxisTitle": "실패 테스트 수",
+        "valueFormat": "number",
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "gate-matrix",
+        "title": "7개 가치판단 게이트",
+        "subtitle": "현재 로컬 코드·Stage 01–06 근거 기준이며 기대효과와 검증 완료를 구분한다.",
+        "dataset": "gate_matrix",
+        "sourceId": "gate-source",
+        "density": "comfortable",
+        "layout": "full",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "columns": [
+          { "field": "order", "label": "#", "type": "number", "align": "right" },
+          { "field": "gate", "label": "평가 항목", "type": "text" },
+          { "field": "judgment", "label": "현재 판정", "type": "text" },
+          { "field": "evidence", "label": "확인된 근거", "type": "text" },
+          { "field": "implication", "label": "승인 영향", "type": "text" }
+        ]
+      },
+      {
+        "id": "strategy-matrix",
+        "title": "이식 방식 비교",
+        "subtitle": "P1–P4 의미 계약과 기존 Electron 제어면의 책임 분리를 기준으로 비교한다.",
+        "dataset": "strategy_matrix",
+        "sourceId": "strategy-source",
+        "density": "comfortable",
+        "layout": "full",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "columns": [
+          { "field": "order", "label": "#", "type": "number", "align": "right" },
+          { "field": "option", "label": "방식", "type": "text" },
+          { "field": "benefit", "label": "가치", "type": "text" },
+          { "field": "cost_risk", "label": "비용·위험", "type": "text" },
+          { "field": "recommendation", "label": "판정", "type": "text" }
+        ]
+      },
+      {
+        "id": "baseline-table",
+        "title": "측정 가능한 현재 기준선",
+        "subtitle": "2026년 7월 23일 스냅샷; 크기는 제품 번들이 아니라 저장소 전체 workspace footprint다.",
+        "dataset": "baseline",
+        "sourceId": "baseline-table-source",
+        "density": "comfortable",
+        "layout": "full",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "columns": [
+          { "field": "order", "label": "#", "type": "number", "align": "right" },
+          { "field": "project", "label": "프로젝트", "type": "text" },
+          { "field": "workspace_footprint", "label": "Workspace footprint", "type": "text" },
+          { "field": "tests", "label": "테스트", "type": "text" },
+          { "field": "build_typecheck", "label": "빌드·타입체크", "type": "text" },
+          { "field": "candidate_ab", "label": "후보 A/B", "type": "text" }
+        ]
+      },
+      {
+        "id": "suitability-table",
+        "title": "세 프로젝트 적합성과 책임 경계",
+        "subtitle": "브라우저 런타임 소유권을 분산하지 않고 필요한 계약만 공유하는 기준이다.",
+        "dataset": "suitability",
+        "sourceId": "suitability-source",
+        "density": "comfortable",
+        "layout": "full",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "columns": [
+          { "field": "order", "label": "#", "type": "number", "align": "right" },
+          { "field": "project", "label": "프로젝트", "type": "text" },
+          { "field": "fit", "label": "적합성", "type": "text" },
+          { "field": "owned_scope", "label": "소유할 범위", "type": "text" },
+          { "field": "excluded_scope", "label": "소유하지 않을 범위", "type": "text" }
+        ]
+      },
+      {
+        "id": "promotion-gates",
+        "title": "재검토 전 승격 게이트",
+        "subtitle": "순서대로 모두 충족해야 Stage 08, 병합, 배포, P4 활성화를 별도로 승인할 수 있다.",
+        "dataset": "promotion_gates",
+        "sourceId": "promotion-source",
+        "density": "comfortable",
+        "layout": "full",
+        "defaultSort": { "field": "order", "direction": "asc" },
+        "columns": [
+          { "field": "order", "label": "순서", "type": "number", "align": "right" },
+          { "field": "gate", "label": "게이트", "type": "text" },
+          { "field": "required_evidence", "label": "필수 증거", "type": "text" },
+          { "field": "current_status", "label": "현재 상태", "type": "text" },
+          { "field": "unlocks", "label": "통과 시 허용", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "evidence-notes",
+        "label": "Stage 01–06 및 현재 코드 근거 묶음",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "Local file and source review",
+          "executed_at": "2026-07-23T19:11:55+09:00",
+          "description": "필수 스펙, Stage 01–06 산출물, 현재 세 프로젝트 코드와 Git 상태를 SHA-256으로 고정해 정규화한 정성 근거",
+          "filters": [
+            "확인되지 않은 에이전트 성과 지표 제외",
+            "성능 기대효과를 측정 결과로 취급하지 않음",
+            "라이선스 평가는 배포 증거 준비 상태로 한정"
+          ]
+        }
+      },
+      {
+        "id": "test-runs-source",
+        "label": "2026-07-23 test-run baseline",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT json_extract(value, '$.run') AS run, CAST(json_extract(value, '$.failed') AS INTEGER) AS failed, CAST(json_extract(value, '$.passed') AS INTEGER) AS passed, CAST(json_extract(value, '$.skipped') AS INTEGER) AS skipped, CAST(json_extract(value, '$.total') AS INTEGER) AS total, json_extract(value, '$.scope') AS scope FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.test_runs'));",
+          "executed_at": "2026-07-23T18:53:52+09:00",
+          "description": "저장된 baseline과 Stage 01 로그에서 실행별 테스트 결과를 재분류한 chart dataset",
+          "metric_definitions": [
+            "실패 테스트 수: 해당 저장 실행에서 failed로 집계된 test case 수",
+            "실행별 scope와 config가 달라 프로젝트 품질 순위로 직접 비교하지 않음"
+          ]
+        }
+      },
+      {
+        "id": "gate-source",
+        "label": "7개 가치판단 게이트 정규화",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT CAST(json_extract(value, '$.order') AS INTEGER) AS \"order\", json_extract(value, '$.gate') AS gate, json_extract(value, '$.judgment') AS judgment, json_extract(value, '$.evidence') AS evidence, json_extract(value, '$.implication') AS implication FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.gate_matrix')) ORDER BY \"order\";",
+          "executed_at": "2026-07-23T19:11:55+09:00",
+          "description": "Stage 01–06와 현재 코드 증거를 일곱 요청 평가 항목으로 정규화"
+        }
+      },
+      {
+        "id": "strategy-source",
+        "label": "이식 방식 비교 정규화",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT CAST(json_extract(value, '$.order') AS INTEGER) AS \"order\", json_extract(value, '$.option') AS option, json_extract(value, '$.benefit') AS benefit, json_extract(value, '$.cost_risk') AS cost_risk, json_extract(value, '$.recommendation') AS recommendation FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.strategy_matrix')) ORDER BY \"order\";",
+          "executed_at": "2026-07-23T19:11:55+09:00",
+          "description": "직접 이식, 어댑터, 부분 포팅, 자체 재구현, 보류를 현재 아키텍처 제약으로 비교"
+        }
+      },
+      {
+        "id": "baseline-table-source",
+        "label": "프로젝트 benchmark baseline 정규화",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT CAST(json_extract(value, '$.order') AS INTEGER) AS \"order\", json_extract(value, '$.project') AS project, json_extract(value, '$.workspace_footprint') AS workspace_footprint, json_extract(value, '$.tests') AS tests, json_extract(value, '$.build_typecheck') AS build_typecheck, json_extract(value, '$.candidate_ab') AS candidate_ab FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.baseline')) ORDER BY \"order\";",
+          "executed_at": "2026-07-23T18:53:52+09:00",
+          "description": "benchmark-baseline.md의 세 프로젝트 workspace, test, build/typecheck 결과를 정확한 의미로 재분류",
+          "metric_definitions": [
+            "Workspace footprint: du -sh . 결과이며 배포 번들 크기가 아님",
+            "후보 A/B: P1–P4 격리 프로토타입과 동일 입력 baseline 비교 여부"
+          ]
+        }
+      },
+      {
+        "id": "suitability-source",
+        "label": "세 프로젝트 책임 경계 정규화",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT CAST(json_extract(value, '$.order') AS INTEGER) AS \"order\", json_extract(value, '$.project') AS project, json_extract(value, '$.fit') AS fit, json_extract(value, '$.owned_scope') AS owned_scope, json_extract(value, '$.excluded_scope') AS excluded_scope FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.suitability')) ORDER BY \"order\";",
+          "executed_at": "2026-07-23T19:11:55+09:00",
+          "description": "nova-use, nco, nova-ax의 현재 소스 경계를 P1–P4 소유권으로 정규화"
+        }
+      },
+      {
+        "id": "promotion-source",
+        "label": "승격 게이트 정규화",
+        "path": "browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "query": {
+          "engine": "SQLite JSON1",
+          "sql": "SELECT CAST(json_extract(value, '$.order') AS INTEGER) AS \"order\", json_extract(value, '$.gate') AS gate, json_extract(value, '$.required_evidence') AS required_evidence, json_extract(value, '$.current_status') AS current_status, json_extract(value, '$.unlocks') AS unlocks FROM json_each(json_extract(CAST(readfile('browser-control-extension-port-value-gate-2026-07-23-artifact.json') AS TEXT), '$.snapshot.datasets.promotion_gates')) ORDER BY \"order\";",
+          "executed_at": "2026-07-23T19:11:55+09:00",
+          "description": "복구부터 rollback rehearsal까지 Stage 08 재검토 전 필수 순차 게이트"
+        }
+      },
+      {
+        "id": "electron-security",
+        "label": "Electron Security checklist",
+        "href": "https://www.electronjs.org/docs/latest/tutorial/security"
+      },
+      {
+        "id": "univer-license",
+        "label": "Univer Pro license documentation",
+        "href": "https://docs.univer.ai/guides/pro/license"
+      },
+      {
+        "id": "browser-use-license",
+        "label": "browser-use upstream repository",
+        "href": "https://github.com/browser-use/browser-use"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# 브라우저 제어 이식 가치 게이트\n\n2026년 7월 23일 · cli-extensions P1–P4 → nova-use"
+      },
+      {
+        "id": "executive-summary",
+        "type": "markdown",
+        "body": "## Executive Summary\n\n- **PORT_DECISION: REJECT.** 현재 상태에서 Stage 08 자동 이식, 주 작업트리 병합, 배포 또는 P4 자율착수 활성화를 승인하지 않는다. 이 결정은 아이디어 폐기가 아니라 검증되지 않은 승격을 막는 현재 게이트 판정이다.\n- **기능 가치는 높고 구현 방향은 명확하다.** 현재 `BrowserAgentPageDigest`는 얕고 P2 학습 저장소·P3 효과 검증·P4 안전 신호가 없어 P1–P4가 실제 공백을 채운다. 가장 타당한 방식은 원본 동작 계약만 부분 포팅하고 기존 `WebContents`·ref·FORCE·CDP·Policy·consent 경계에 얇게 적응하는 것이다.\n- **안전·복구·라이선스가 승격을 막는다.** destructive 동의의 auto/remember 우회 가능성, remote session permission handler 부재, 공유 홈 경로 저장, stale checkpoint, 미생성 격리 worktree, 불완전한 first-party 라이선스·lock/SBOM 증거가 남아 있다.\n- **성능 향상은 아직 주장할 수 없다.** 저장된 기준선에는 후보 프로토타입 A/B, 브라우저 작업 성공률, 지연, 처리량, CPU·메모리, 오류율이 없다. 브리지 홉 감소는 설계 가설일 뿐 측정 결과가 아니다."
+      },
+      {
+        "id": "decision-frame",
+        "type": "markdown",
+        "body": "## 지금은 승격을 거부하되 격리 프로토타입 가치는 유지한다\n\nStage 07의 이진 토큰은 Stage 08 자동 실행을 제어한다. 복구 게이트가 `BLOCKED`이고 안전·라이선스가 release/P4 blocker인 상태에서 `APPROVE`를 쓰면 보고서의 실제 근거와 충돌한다. 따라서 현재 토큰은 `REJECT`가 맞다.\n\n다만 목표 기능은 현재 제품 공백과 직접 맞닿아 있다. 다음 승인 후보는 전체 포팅이나 자체 재구현이 아니라, 새 런타임 의존성 없이 고정 fixture를 사용하는 **격리된 부분 포팅 + 얇은 Electron 어댑터**다. 이 후보가 아래 게이트를 통과하면 Stage 07을 새 증거로 다시 판정한다."
+      },
+      {
+        "id": "gate-intro",
+        "type": "markdown",
+        "body": "## 가치가 큰 만큼 안전·복구·배포 증거의 빈틈도 크다\n\n표의 ‘현재 판정’은 기능의 이론적 매력이 아니라 지금 자동 승격 가능한지를 뜻한다. 안전과 복구는 설계상 개선 여지가 충분하지만 현재 구현·운영 상태에서는 차단 항목이 남아 있고, 성능은 방향조차 실측으로 확인되지 않았다."
+      },
+      {
+        "id": "gate-table-block",
+        "type": "table",
+        "tableId": "gate-matrix",
+        "layout": "full"
+      },
+      {
+        "id": "strategy-intro",
+        "type": "markdown",
+        "body": "## 원본 코드를 옮기는 대신 능력 의미만 기존 제어면에 연결한다\n\n직접 복사는 Chrome 권한·content script·local bridge를 함께 끌어들여 대상의 main-only 보안 경계를 약화한다. 반대로 자체 재구현은 이미 안정화된 ref/FORCE/CDP/deepInspect/capture/PolicyEngine을 중복시킨다. 두 극단 사이에서, P1–P4의 순수 판정 로직과 검증 invariant만 가져오는 부분 포팅이 기능 가치와 유지보수 비용을 가장 잘 균형 잡는다."
+      },
+      {
+        "id": "strategy-table-block",
+        "type": "table",
+        "tableId": "strategy-matrix",
+        "layout": "full"
+      },
+      {
+        "id": "baseline-intro",
+        "type": "markdown",
+        "body": "## 기준선은 회귀를 보여주지만 개선을 입증하지 못한다\n\n현재 저장된 수치는 각 저장소의 디스크 footprint와 한 번의 테스트·빌드 결과다. 테스트 실패가 이미 존재하므로 후보 비교 전에 실패 분류와 재현 조건을 고정해야 한다. 특히 footprint를 배포 빌드 크기로 해석하거나, 빌드 통과를 브라우저 제어 성능 향상으로 해석해서는 안 된다."
+      },
+      {
+        "id": "test-failures-chart",
+        "type": "chart",
+        "chartId": "test-failures",
+        "layout": "full"
+      },
+      {
+        "id": "baseline-table-block",
+        "type": "table",
+        "tableId": "baseline-table",
+        "layout": "full"
+      },
+      {
+        "id": "suitability-intro",
+        "type": "markdown",
+        "body": "## nova-use만 실행을 소유하고 나머지는 최소 계약만 공유한다\n\n세 프로젝트 공통화의 목적은 코드를 세 번 구현하는 것이 아니라 경계를 분명히 하는 것이다. `nova-use`가 browser state, learning store, policy, consent와 행동 실행을 단독 소유한다. `nco`는 단계·handoff·검증 영수증을, `nova-ax`는 redacted 집계 관측만 맡는다. 원본 `cli-extensions`는 요구 의미와 fixture의 참고자료이지 배포 런타임이 아니다."
+      },
+      {
+        "id": "suitability-table-block",
+        "type": "table",
+        "tableId": "suitability-table",
+        "layout": "full"
+      },
+      {
+        "id": "next-steps",
+        "type": "markdown",
+        "body": "## 권장 다음 단계\n\n1. **쓰기 주체와 파일 소유자를 먼저 고정한다.** Electron을 정상 종료하고 세 저장소의 fresh tracked patch·untracked archive·지속 설정 백업을 같은 시점에 검증한다.\n2. **배포 증거를 복구한다.** clean checkout에서 lockfile을 매니페스트 기준으로 재생성·검토하고, first-party LICENSE/NOTICE와 Univer Pro 항목의 실제 포함 여부·사용권을 확인한다.\n3. **안전 blocker를 구현 전제조건으로 둔다.** remote session permission default-deny, destructive `alwaysAsk`, userData 격리·redaction·500개/TTL 제한을 부정 테스트와 함께 고정한다.\n4. **격리 프로토타입에서 P1→P2→P3→P4 순으로 추가한다.** 각 단계는 기존 ref/FORCE/CDP/deepInspect/capture/Policy를 호출하고 새 대체 구현을 만들지 않는다.\n5. **동일 fixture A/B와 T1을 함께 실행한다.** 기능 성공률, 반복 실패 차단, effect verification, unsafe-action rate, p50/p95 지연, 처리량, CPU·메모리, 오류 분류와 전체 `npm run build`·`npm test`를 보존한다.\n6. **rollback rehearsal 후 별도 승인을 받는다.** prototype 승인, merge 승인, release 승인, P4 활성화 승인을 하나로 묶지 않는다."
+      },
+      {
+        "id": "promotion-intro",
+        "type": "markdown",
+        "body": "## 승격은 여섯 단계의 증거가 모두 있어야 한다\n\n아래 순서는 안전과 재현성을 먼저 확보한 뒤 기능·성능 가치를 판단하도록 설계했다. 현재는 첫 단계부터 부분 상태이며, 마지막 단계까지 건너뛰어 승인할 수 없다."
+      },
+      {
+        "id": "promotion-table-block",
+        "type": "table",
+        "tableId": "promotion-gates",
+        "layout": "full"
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## 추가로 결정할 질문\n\n- `cli-extensions` first-party 코드의 소유권·재사용 허가는 어떤 문서로 고정할 것인가?\n- 현재 lockfile의 Univer Pro 항목은 stale dependency인가, 실제 배포 구성인가?\n- 브라우저 제어 A/B의 대표 fixture와 합의된 p95 지연·메모리·오류율 회귀 한도는 무엇인가?\n- P4의 ‘비파괴 자동착수’가 허용되는 도메인·action allowlist는 누가 승인하고 폐기하는가?\n- `nco`·`nova-ax`로 내보낼 redacted 집계 필드와 보존 기간은 무엇인가?\n- dirty worktree의 10개 충돌 대상 파일은 누가 소유하며 어느 hunk가 이식 기준선인가?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "body": "## 한계와 가정\n\n이 보고서는 2026년 7월 23일의 uncommitted 로컬 스냅샷과 저장된 Stage 01–06 산출물을 평가한다. clean branch 또는 이후 변경은 다를 수 있다. 정적 코드 검토는 런타임 안전성이나 법적 소유권을 증명하지 않는다.\n\n[Electron 공식 보안 체크리스트](https://www.electronjs.org/docs/latest/tutorial/security)는 remote content session의 permission handler와 IPC sender 검증을 권고하며, handler가 없으면 permission 요청이 기본 승인된다고 설명한다. [Univer 공식 문서](https://docs.univer.ai/guides/pro/license)는 Pro를 상용 라이선스 체계로 설명한다. 이는 현재 앱의 위반을 확정하는 근거가 아니라 배포 전에 실제 포함 여부와 권리를 증명해야 한다는 근거다. browser-use upstream의 MIT 고지는 확인됐지만, 그것만으로 `cli-extensions`의 모든 first-party 코드 소유권을 증명하지 않는다.\n\nA/B 후보가 없으므로 기능 정확도·성능·자원·오류율은 미확인이다. 보고서의 최종 판정은 ‘현재 자동 승격 거부’이며, 조건을 충족한 새 격리 프로토타입의 향후 승인을 배제하지 않는다."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-23T19:11:55+09:00",
+    "status": "ready",
+    "datasets": {
+      "gate_matrix": [
+        {
+          "order": 1,
+          "gate": "안전",
+          "judgment": "조건부 가치 / P4·배포 NO-GO",
+          "evidence": "sandbox·contextIsolation·nodeIntegration off, PolicyEngine, CDP allowlist는 존재한다. 반면 remote session permission handler가 없고 generic autoApprove/remember가 destructive always-ask를 보장하지 않으며 page context가 공유 홈에 저장된다.",
+          "implication": "permission default-deny, destructive 비우회 consent, userData 격리와 부정 테스트 전에는 P4를 켜지 않는다."
+        },
+        {
+          "order": 2,
+          "gate": "복구 가능성",
+          "judgment": "RECOVERY_GATE: BLOCKED",
+          "evidence": "세 저장소가 dirty이고 기존 checkpoint는 stale 또는 untracked 내용을 보존하지 않는다. 설정 2개는 임시 경로에 해시 일치 사본이 있지만, 격리 worktree·지속 백업·rollback rehearsal은 없다.",
+          "implication": "구현보다 fresh stopped-state checkpoint와 파일 소유권 확인이 선행돼야 한다."
+        },
+        {
+          "order": 3,
+          "gate": "기능 향상",
+          "judgment": "잠재가치 높음 / 현재 미구현",
+          "evidence": "현재 digest는 title/url/counts/purpose/fields 수준이다. comprehension·affordances·playbook·autoMission·safeToAutostart, P2 학습 저장소, P3 effect ladder가 없다.",
+          "implication": "P1–P4는 실제 공백을 채우지만 fixture와 E2E 성공 증거가 있어야 실현 가치로 인정한다."
+        },
+        {
+          "order": 4,
+          "gate": "성능 향상·저하",
+          "judgment": "미입증",
+          "evidence": "기준선은 workspace footprint와 build/test뿐이며 후보 프로토타입 A/B가 없다. 지연·처리량·CPU·메모리·browser-task 오류율은 측정되지 않았다.",
+          "implication": "직접 WebContents 호출이 빠를 것이라는 가설을 성능 개선으로 보고하지 않는다."
+        },
+        {
+          "order": 5,
+          "gate": "유지보수 비용",
+          "judgment": "중간 / 범위 통제 시 수용 가능",
+          "evidence": "nova-use 단일 런타임 소유자와 새 의존성 0개는 중복을 줄인다. 그러나 P1–P4는 schema, store, risk taxonomy, effect verification과 회귀 fixture 유지비를 추가한다.",
+          "implication": "공통 계약은 redacted event/receipt 수준으로 제한하고 browser state나 selector memory를 세 프로젝트에 복제하지 않는다."
+        },
+        {
+          "order": 6,
+          "gate": "라이선스",
+          "judgment": "구현 연구 조건부 / 배포 NO-GO",
+          "evidence": "nova-use는 package manifest에 MIT를 선언하지만 루트 LICENSE가 없고 원본도 first-party LICENSE가 없다. target lock/SBOM은 manifest 불일치·integrity 누락·Univer Pro 항목을 포함한다.",
+          "implication": "행동 계약 clean-room 적응만 허용하고 소유권·NOTICE·lockfile·상용 항목을 문서로 해소하기 전 배포하지 않는다."
+        },
+        {
+          "order": 7,
+          "gate": "세 프로젝트 적합성",
+          "judgment": "nova-use 높음 / nco 중간 / nova-ax 낮음·선택",
+          "evidence": "nova-use는 WebContents와 정책 실행면을 보유한다. nco는 단계 orchestration·handoff를, nova-ax는 NCO 상태/event 관측을 보유한다.",
+          "implication": "P1–P4 런타임은 nova-use에만 두고 nco·nova-ax에는 redacted 계약과 집계만 노출한다."
+        }
+      ],
+      "strategy_matrix": [
+        {
+          "order": 1,
+          "option": "직접 이식",
+          "benefit": "원본과의 표면적 동작 일치가 빠를 수 있다.",
+          "cost_risk": "chrome.*·content script·local bridge·과도한 권한과 FORCE 보호상태 변조를 함께 들여올 위험이 크다.",
+          "recommendation": "거부"
+        },
+        {
+          "order": 2,
+          "option": "래퍼/어댑터",
+          "benefit": "Chrome 개념과 Electron WebContents 접점을 분리하고 기존 정책·consent를 재사용한다.",
+          "cost_risk": "계약이 넓으면 추상화 누수와 이중 디버깅이 생긴다.",
+          "recommendation": "얇은 API 경계로 채택"
+        },
+        {
+          "order": 3,
+          "option": "부분 포팅",
+          "benefit": "P1 순수 분석, P2 redacted memory, P3 effect invariant, P4 destructive 분류만 가치 단위로 가져온다.",
+          "cost_risk": "경계와 fixture를 명확히 하지 않으면 원본과 대상 의미가 드리프트한다.",
+          "recommendation": "격리 프로토타입 권고"
+        },
+        {
+          "order": 4,
+          "option": "자체 재구현",
+          "benefit": "대상 구조에 완전히 최적화할 수 있다.",
+          "cost_risk": "기존 ref/FORCE/CDP/deepInspect/capture/PolicyEngine 중복과 회귀 비용이 최대다.",
+          "recommendation": "기존 능력 영역은 거부"
+        },
+        {
+          "order": 5,
+          "option": "보류/거부",
+          "benefit": "검증되지 않은 자동 승격과 배포 사고를 막는다.",
+          "cost_risk": "기능 개선 일정이 늦어진다.",
+          "recommendation": "현재 Stage 08·merge·release·P4에 적용"
+        }
+      ],
+      "baseline": [
+        {
+          "order": 1,
+          "project": "nco",
+          "workspace_footprint": "1.9 GiB",
+          "tests": "408 passed, 2 failed",
+          "build_typecheck": "build passed; 별도 typecheck script 없음",
+          "candidate_ab": "없음"
+        },
+        {
+          "order": 2,
+          "project": "nova-use",
+          "workspace_footprint": "1.3 GiB",
+          "tests": "471 passed, 2 failed, 1 skipped",
+          "build_typecheck": "build passed, typecheck passed",
+          "candidate_ab": "없음"
+        },
+        {
+          "order": 3,
+          "project": "cli-extensions root",
+          "workspace_footprint": "118 MiB",
+          "tests": "root package.json 없음",
+          "build_typecheck": "root 기준 미실행",
+          "candidate_ab": "없음"
+        }
+      ],
+      "test_runs": [
+        {
+          "run": "NCO baseline",
+          "failed": 2,
+          "passed": 408,
+          "skipped": 0,
+          "total": 410,
+          "scope": "nco full baseline"
+        },
+        {
+          "run": "nova-use baseline",
+          "failed": 2,
+          "passed": 471,
+          "skipped": 1,
+          "total": 474,
+          "scope": "nova-use full baseline"
+        },
+        {
+          "run": "nova-use full (Stage 01)",
+          "failed": 9,
+          "passed": 454,
+          "skipped": 11,
+          "total": 474,
+          "scope": "temporary config; sandbox failures included"
+        },
+        {
+          "run": "browser-control selected",
+          "failed": 0,
+          "passed": 44,
+          "skipped": 0,
+          "total": 44,
+          "scope": "selected nova-use browser-control suites"
+        }
+      ],
+      "suitability": [
+        {
+          "order": 1,
+          "project": "nova-use",
+          "fit": "높음 — 유일한 P1–P4 런타임 소유자",
+          "owned_scope": "WebContents adapter, digest, app-userData learning, FORCE effect validation, Policy/consent, action evidence",
+          "excluded_scope": "Chrome manifest/content-script/local-bridge 복사, 기존 ref·CDP·capture·Policy 재구현"
+        },
+        {
+          "order": 2,
+          "project": "nco",
+          "fit": "중간 — orchestration 계약만 적합",
+          "owned_scope": "01–09 단계 순서, binary value gate, handoff, 검증 영수증, 선택적 redacted aggregate",
+          "excluded_scope": "브라우저 DOM 실행, selector memory, 사용자 입력 원문, nova-use profile store"
+        },
+        {
+          "order": 3,
+          "project": "nova-ax",
+          "fit": "낮음·선택 — 관측 UI만 적합",
+          "owned_scope": "NCO task/agent event 관측, 향후 redacted 성공·차단·지연 집계",
+          "excluded_scope": "P1 분석 엔진, P2 학습 저장소, FORCE/CDP 실행, consent 결정"
+        }
+      ],
+      "promotion_gates": [
+        {
+          "order": 1,
+          "gate": "복구·소유권 고정",
+          "required_evidence": "정지 시점 fresh patch+untracked archive, 지속 설정 backup 해시, 실제 격리 worktree, 10개 충돌 파일 소유자",
+          "current_status": "BLOCKED / 일부 임시 사본만 확인",
+          "unlocks": "격리 구현 착수 검토"
+        },
+        {
+          "order": 2,
+          "gate": "라이선스·공급망",
+          "required_evidence": "first-party LICENSE/허가, tracked NOTICE, clean lockfile, integrity, SBOM, Univer Pro 실제 포함·권리 판정",
+          "current_status": "NO-GO",
+          "unlocks": "배포 후보 빌드 검토"
+        },
+        {
+          "order": 3,
+          "gate": "안전 경계",
+          "required_evidence": "permission default-deny, destructive alwaysAsk 비우회, userData redaction/limit/atomic write, negative tests",
+          "current_status": "P2·P4 blocker",
+          "unlocks": "비파괴 synthetic fixture 실행"
+        },
+        {
+          "order": 4,
+          "gate": "기능·T1",
+          "required_evidence": "P1 실제 필드, P2 recall/반복실패 차단, P3 effect ladder, P4 gate fixture와 전체 npm build+test 통과 로그",
+          "current_status": "후보 미구현 / T1 미충족",
+          "unlocks": "기능 후보 승인"
+        },
+        {
+          "order": 5,
+          "gate": "A/B 회귀 측정",
+          "required_evidence": "동일 fixture의 task success, p50/p95 latency, throughput, CPU, memory, error/unsafe-action rate와 합의 threshold",
+          "current_status": "미측정",
+          "unlocks": "merge 가치 재판정"
+        },
+        {
+          "order": 6,
+          "gate": "Rollback rehearsal",
+          "required_evidence": "port commit revert, P2 파일 격리, 설정 복원, 재build/test와 runtime smoke",
+          "current_status": "미실행",
+          "unlocks": "merge·release·P4 각각의 별도 승인"
+        }
+      ]
+    }
+  }
+}

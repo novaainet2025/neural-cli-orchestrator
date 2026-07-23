@@ -1,0 +1,22 @@
+node:internal/fs/promises:1671
+  const result = await PromisePrototypeThen(
+                 ^
+
+Error: ENOENT: no such file or directory, lstat '/private/tmp/cli-extension-browser-bench.nEgosq/THIRD_PARTY_NOTICES.md'
+    at async lstat (node:internal/fs/promises:1671:18)
+    at async Promise.all (index 0)
+    at async checkPaths (node:internal/fs/cp/cp:77:39)
+    at async cpFn (node:internal/fs/cp/cp:66:17)
+    at async Promise.all (index 4)
+    at async file:///private/tmp/cli-extension-browser-bench.nEgosq/extension/scripts/build.mjs:53:1 {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'lstat',
+  path: '/private/tmp/cli-extension-browser-bench.nEgosq/THIRD_PARTY_NOTICES.md'
+}
+
+Node.js v25.9.0
+bench_wall_s 1.146463
+bench_user_s 1.741332
+bench_sys_s 0.178390
+bench_max_rss_kb 330160

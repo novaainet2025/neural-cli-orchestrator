@@ -108,7 +108,7 @@ describe.sequential('task lease routes', () => {
     getDb().prepare(`
       INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
       VALUES (?, 'task', ?, ?, 'completed', ?)
-    `).run('route-task-provider-mismatch', 'prompt', 'mlx', JSON.stringify({ requestedProvider: 'codex' }));
+    `).run('route-task-provider-mismatch', 'prompt', 'ollama', JSON.stringify({ requestedProvider: 'codex' }));
 
     const response = await server.inject({
       method: 'GET',
@@ -117,7 +117,7 @@ describe.sequential('task lease routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().task).toMatchObject({
-      assigned_to: 'mlx',
+      assigned_to: 'ollama',
       requestedProvider: 'codex',
       providerMismatch: true,
     });
@@ -133,8 +133,8 @@ describe.sequential('task lease routes', () => {
     persistTaskReassignment(
       'route-task-reassignment',
       'codex',
-      'mlx',
-      { attemptedAgents: ['codex', 'mlx'] },
+      'ollama',
+      { attemptedAgents: ['codex', 'ollama'] },
     );
 
     const task = db.prepare('SELECT assigned_to, metadata_json FROM tasks WHERE id = ?')
@@ -142,8 +142,8 @@ describe.sequential('task lease routes', () => {
     const decision = db.prepare('SELECT decision FROM decision_log WHERE task_id = ?')
       .get('route-task-reassignment') as { decision: string };
 
-    expect(task.assigned_to).toBe('mlx');
+    expect(task.assigned_to).toBe('ollama');
     expect(JSON.parse(task.metadata_json)).toMatchObject({ reassignedFrom: 'codex' });
-    expect(decision.decision).toBe('reassign:codex->mlx');
+    expect(decision.decision).toBe('reassign:codex->ollama');
   });
 });

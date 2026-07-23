@@ -1,5 +1,5 @@
 /**
- * NCO MCP Server — 26 tools for Claude Code integration
+ * NCO MCP Server — 42 tools for Claude Code integration
  * Wraps NCO API (localhost:6200) as MCP tools
  */
 
@@ -101,7 +101,7 @@ const TOOLS = [
   { name: 'nco_my_invocations', description: '내가 호출한 에이전트들의 현재 상태 조회', params: [] },
   { name: 'nco_invocations', description: '전체 에이전트 호출 현황 조회', params: ['limit'] },
   // Ollama / Anthropic proxy debug (1)
-  { name: 'nco_ollama_debug', description: 'Anthropic proxy (4100) debug against Ollama upstream: status|errors|recover|test|recover:*. Requires proxy + OLLAMA_BASE_URL.', params: ['action'] },
+  { name: 'nco_ollama_debug', description: 'Anthropic proxy (4100) debug against Ollama upstream: status|errors|test|recover. Requires proxy + OLLAMA_BASE_URL.', params: ['action'] },
   // HNSW Vector Memory (6)
   { name: 'nco_memory_add', description: 'Store a memory with HNSW semantic embedding', params: ['agentId', 'content'] },
   { name: 'nco_memory_search', description: 'Semantic HNSW search across agent memories', params: ['agentId', 'query', 'k'] },
@@ -281,6 +281,10 @@ case 'nco_mesh_send': {
     case 'nco_ollama_debug': {
       const PROXY = process.env.OLLAMA_PROXY_URL || process.env.VLLM_PROXY_URL || 'http://localhost:4100';
       const action = (asOptionalString(args.action) ?? 'status').toLowerCase();
+      const allowedActions = new Set(['status', 'errors', 'test', 'recover']);
+      if (!allowedActions.has(action)) {
+        return JSON.stringify({ error: `Invalid nco_ollama_debug action: ${action}` });
+      }
       try {
         if (action === 'status' || action === 'errors') {
           const res = await fetch(`${PROXY}/debug/status`, { signal: AbortSignal.timeout(10_000) });
@@ -300,12 +304,10 @@ case 'nco_mesh_send': {
           const data = await res.json();
           return JSON.stringify({ ok: res.ok, response: data.content?.[0]?.text ?? data });
         }
-        // recover actions: recover | recover:model_refresh | recover:health_check | recover:ctx_refresh | recover:error_clear
-        const recoverAction = action.startsWith('recover:') ? action.slice(8) : 'auto';
         const res = await fetch(`${PROXY}/debug/recover`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: recoverAction }),
+          body: JSON.stringify({ action: 'auto' }),
           signal: AbortSignal.timeout(15_000),
         });
         return JSON.stringify(await res.json());

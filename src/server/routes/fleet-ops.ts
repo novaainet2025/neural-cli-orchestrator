@@ -492,7 +492,18 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
     eventBus.on('task:created', handleFleetRelevantEvent);
     eventBus.on('task:completed', handleFleetRelevantEvent);
     eventBus.on('task:failed', handleFleetRelevantEvent);
-    setInterval(pushOnce, 60_000).unref();
+    const pushInterval = setInterval(pushOnce, 60_000);
+    pushInterval.unref();
+    app.addHook('onClose', async () => {
+      if (pushDebounceTimer) {
+        clearTimeout(pushDebounceTimer);
+        pushDebounceTimer = null;
+      }
+      clearInterval(pushInterval);
+      eventBus.off('task:created', handleFleetRelevantEvent);
+      eventBus.off('task:completed', handleFleetRelevantEvent);
+      eventBus.off('task:failed', handleFleetRelevantEvent);
+    });
     void pushOnce();
     log.info({ central, myHost }, 'fleet push client enabled');
   }

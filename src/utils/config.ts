@@ -2,7 +2,6 @@ import { config as dotenvConfig } from 'dotenv';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { resolveProviderModel } from './mlx-models.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
@@ -27,15 +26,41 @@ interface Topology {
   };
 }
 
-function loadJSON<T>(filename: string): T {
+export type JsonValidator<T> = (data: unknown) => T;
+
+export function loadJSON<T>(filename: string, validator?: JsonValidator<T>): T {
   const filepath = resolve(ROOT, 'config', filename);
   if (!existsSync(filepath)) {
     throw new Error(`Config file not found: ${filepath}`);
   }
-  return JSON.parse(readFileSync(filepath, 'utf-8')) as T;
+  const data: unknown = JSON.parse(readFileSync(filepath, 'utf-8'));
+  return validator ? validator(data) : data as T;
 }
 
-export const topology = loadJSON<Topology>('topology.json');
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+export function validateTopology(data: unknown): Topology {
+  if (!isRecord(data) || !isRecord(data.ports) || !isRecord(data.paths)) {
+    throw new Error('[config] topology.json must contain ports and paths objects');
+  }
+
+  for (const field of ['apiGateway', 'websocket', 'dashboard', 'redis', 'ollama']) {
+    if (typeof data.ports[field] !== 'number') {
+      throw new Error(`[config] topology.json ports.${field} must be a number`);
+    }
+  }
+  for (const field of ['backend', 'dashboard', 'database', 'stateFile', 'workspace']) {
+    if (typeof data.paths[field] !== 'string') {
+      throw new Error(`[config] topology.json paths.${field} must be a string`);
+    }
+  }
+
+  return data as unknown as Topology;
+}
+
+export const topology = loadJSON<Topology>('topology.json', validateTopology);
 
 // ─── Provider Config ──────────────────────────────────
 export interface ProviderConfig {
@@ -79,6 +104,36 @@ interface ProvidersFile {
   providers: ProviderConfig[];
 }
 
+const REQUIRED_PROVIDER_FIELDS: Array<keyof ProviderConfig> = [
+  'id', 'name', 'enabled', 'type', 'role', 'score', 'model', 'command', 'args',
+  'env', 'concurrency', 'rateLimitRpm', 'cost', 'capabilities', 'permissions',
+  'persona', 'healthCheck',
+];
+
+export function validateProvidersFile(data: unknown): ProvidersFile {
+  if (
+    !isRecord(data) ||
+    typeof data.version !== 'number' ||
+    typeof data.updated !== 'string' ||
+    !Array.isArray(data.providers)
+  ) {
+    throw new Error('[config] ai-providers.json must contain version, updated, and providers');
+  }
+
+  data.providers.forEach((provider, index) => {
+    if (!isRecord(provider)) {
+      throw new Error(`[config] ai-providers.json providers[${index}] must be an object`);
+    }
+    for (const field of REQUIRED_PROVIDER_FIELDS) {
+      if (!(field in provider)) {
+        throw new Error(`[config] ai-providers.json providers[${index}].${field} is required`);
+      }
+    }
+  });
+
+  return data as unknown as ProvidersFile;
+}
+
 /** 현재 플랫폼: darwin | wsl | linux (WSL은 /proc/version의 microsoft 마커로 판별) */
 export function detectPlatform(): 'darwin' | 'wsl' | 'linux' {
   if (process.platform === 'darwin') return 'darwin';
@@ -118,7 +173,7 @@ interface LocalOverrides {
  * 공유 파일 = 코드·중립 기본값(SSOT), 로컬 파일 = 이 머신의 정책.
  */
 export function loadProviders(): ProviderConfig[] {
-  let providers = loadJSON<ProvidersFile>('ai-providers.json').providers;
+  let providers = loadJSON<ProvidersFile>('ai-providers.json', validateProvidersFile).providers;
 
   // 1) 로컬 오버레이 병합 (provider id 단위 shallow merge)
   const localPath = resolve(ROOT, 'config', 'ai-providers.local.json');
@@ -140,7 +195,7 @@ export function loadProviders(): ProviderConfig[] {
     const provider = platforms && !platforms.includes(plat) ? { ...p, enabled: false } : p;
     return {
       ...provider,
-      model: resolveProviderModel(provider),
+      model: provider.model ?? null,
     };
   });
 

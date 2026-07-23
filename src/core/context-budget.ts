@@ -146,6 +146,9 @@ export class ContextBudget {
    * @returns 누적 후 해당 태스크의 총 토큰 수
    */
   add(taskId: string, tokens: number): number {
+    if (typeof taskId !== 'string' || taskId.trim().length === 0) {
+      throw new Error('ContextBudget.add: taskId must be a non-empty string');
+    }
     if (!Number.isFinite(tokens) || tokens < 0) {
       throw new Error(`ContextBudget.add: tokens must be a non-negative number, got ${tokens}`);
     }

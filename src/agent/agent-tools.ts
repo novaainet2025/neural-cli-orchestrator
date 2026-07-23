@@ -53,22 +53,29 @@ export class AgentToolExecutor {
 
     const release = await this.sandbox.acquireSlot();
     try {
-      const result = await this.dispatch(call);
+      let result: ToolResult;
+      try {
+        result = await this.dispatch(call);
+      } catch (err) {
+        return { ok: false, output: '', error: err instanceof Error ? err.message : String(err) };
+      }
 
       // Broadcast action to Event Bus
-      await eventBus.publish({
-        type: `action:${call.tool}`,
-        agentId: this.agentId,
-        taskId: this.taskId,
-        tool: call.tool,
-        args: call.args,
-        success: result.ok,
-        output: result.output.slice(0, 500), // truncate for event
-      });
+      try {
+        await eventBus.publish({
+          type: `action:${call.tool}`,
+          agentId: this.agentId,
+          taskId: this.taskId,
+          tool: call.tool,
+          args: call.args,
+          success: result.ok,
+          output: result.output.slice(0, 500), // truncate for event
+        });
+      } catch (err) {
+        log.warn({ err: err instanceof Error ? err.message : String(err), tool: call.tool }, 'Action event publish failed');
+      }
 
       return result;
-    } catch (err: any) {
-      return { ok: false, output: '', error: err.message };
     } finally {
       release();
     }

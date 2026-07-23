@@ -49,6 +49,7 @@ vi.mock('../core/event-bus.js', () => ({
 
 import { readFile, writeFile } from 'fs/promises';
 import { execa } from 'execa';
+import { eventBus } from '../core/event-bus.js';
 
 describe('AgentToolExecutor projectDir regression', () => {
   const sandbox = {
@@ -79,5 +80,15 @@ describe('AgentToolExecutor projectDir regression', () => {
     expect(execa).toHaveBeenCalledWith('echo', ['hello'], expect.objectContaining({
       cwd: '/test/project'
     }));
+  });
+
+  it('preserves a successful tool result when event publication fails', async () => {
+    vi.mocked(eventBus.publish).mockRejectedValueOnce(new Error('event bus unavailable'));
+    const executor = new AgentToolExecutor('agent1', sandbox, 'task1', '/test/project');
+
+    const result = await executor.execute({ tool: 'readFile', args: { path: 'test.txt' } });
+
+    expect(result).toEqual({ ok: true, output: 'content' });
+    expect(eventBus.publish).toHaveBeenCalledOnce();
   });
 });

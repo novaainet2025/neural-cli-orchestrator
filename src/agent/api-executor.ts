@@ -14,7 +14,6 @@ import { getApiKeys, getProvider, type ProviderConfig } from '../utils/config.js
 import { createLogger } from '../utils/logger.js';
 import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
-import { resolveProviderModel } from '../utils/mlx-models.js';
 
 const log = createLogger('api-executor');
 
@@ -85,13 +84,34 @@ function getErrorStatus(err: unknown): number | undefined {
   return Number.isFinite(status) ? status : undefined;
 }
 
+function getErrorCode(err: unknown): string | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  if ('code' in err && typeof (err as { code?: unknown }).code === 'string') {
+    return (err as { code: string }).code;
+  }
+  if ('cause' in err) {
+    return getErrorCode((err as { cause?: unknown }).cause);
+  }
+  return undefined;
+}
+
 export function isRetryableHttpError(err: unknown): boolean {
   const status = getErrorStatus(err);
-  return status === 408 || status === 429;
+  if ([408, 429, 500, 502, 503, 504].includes(status ?? 0)) return true;
+
+  const code = getErrorCode(err);
+  if (code === 'ECONNRESET' || code === 'ETIMEDOUT') return true;
+
+  const message = err instanceof Error ? err.message : '';
+  return /\b(?:ECONNRESET|ETIMEDOUT)\b/.test(message);
 }
 
 function getRetryDelayMs(attempt: number): number {
   return 1000 * Math.min(attempt, 3);
+}
+
+function promptForbidsTools(prompt: string): boolean {
+  return /도구\s*\/\s*커맨드\s*사용\s*금지|do not use tools|no tool calls/i.test(prompt);
 }
 
 function withAbortSignal<T>(
@@ -154,11 +174,7 @@ export class ApiExecutor {
   }
 
   private resolveTaskModel(modelOverride?: string): string | null {
-    return resolveProviderModel({
-      id: this.provider.id,
-      model: modelOverride ?? this.provider.model,
-      endpoint: this.provider.endpoint,
-    });
+    return modelOverride ?? this.provider.model ?? null;
   }
 
   async run(taskId: string, prompt: string, options?: RunOptions): Promise<ApiResult> {
@@ -202,8 +218,9 @@ export class ApiExecutor {
         ];
 
     const tools = getNcoOpenAiTools();
+    const toolsAllowed = !promptForbidsTools(prompt);
     let finalOutput = '';
-    let useNativeTools = true;
+    let useNativeTools = toolsAllowed;
 
     try {
       while (iterations < MAX_ITERATIONS) {
@@ -234,14 +251,6 @@ export class ApiExecutor {
             max_tokens: 4096,
             stream: false,
           };
-          // [2026-07-09] rep_penalty 1.25는 구 Qwen3-Coder EOS 폭주 대응책 — Instruct-2507로
-          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. MLX는 temp를 올리고
-          // rep penalty를 기본치로 복귀시켜 경직된 응답을 완화한다.
-          if (this.provider.id === 'mlx') {
-            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.0;
-            (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
-            createParams.temperature = 0.5;
-          }
           if (this.provider.id === 'ollama') {
             (createParams as unknown as Record<string, unknown>).keep_alive = OLLAMA_KEEP_ALIVE;
           }
@@ -361,7 +370,7 @@ export class ApiExecutor {
           const parseSource = fromReasoningFallback
             ? ''
             : textContent.replace(/<think>[\s\S]*?<\/think>/g, '');
-          const fromText = parseSource ? parseToolCalls(parseSource) : [];
+          const fromText = toolsAllowed && parseSource ? parseToolCalls(parseSource) : [];
           if (fromText.length > 0) {
             messages.push({ role: 'assistant', content: textContent });
             const results: string[] = [];
@@ -499,8 +508,9 @@ export class ApiExecutor {
     const teamState = await this.buildTeamContext();
     let systemContent = buildApiAgentSystemPrompt(base, teamState);
     // 로컬 툴유저는 도구 호출 예산을 소폭 완화하되 루프는 막는다.
-    if (['mlx', 'ollama', 'mlx-instruct', 'hermes'].includes(this.provider.id)) {
-      const maxToolUses = ['mlx', 'ollama'].includes(this.provider.id) ? 4 : 3;
+    // (hermes는 2026-07-18 codex CLI(Type B)로 전환 — ApiExecutor 미경유이므로 제외)
+    if (this.provider.id === 'ollama') {
+      const maxToolUses = 4;
       systemContent += '\n\n[출력 규칙] 1) 지식으로 답할 수 있는 질문은 도구 없이 즉시 평문으로 답하라. '
         + `2) 파일 읽기/검색/명령 실행이 실제로 필요할 때만 아래 형식으로 도구를 호출하라 (한 번에 하나, 최대 ${maxToolUses}회 사용 후 반드시 최종 답변):\n`
         + '<function=runCommand>\n<parameter=command>ls -la</parameter>\n</function>\n'
@@ -515,7 +525,7 @@ export class ApiExecutor {
   }
 
   private getCredentialPreflightError(): string | null {
-    // 키 불필요 프로바이더(ollama/mlx 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
+    // 키 불필요 프로바이더(ollama 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
     // 없으면 'no API keys configured'→auth immediateOpen 오분류 (2026-07-03 ollama 부팅 트립 실측)
     const requiresKey = Boolean(this.provider.keyRotation?.enabled || this.provider.apiKeyRef);
     if (!requiresKey) return null;
@@ -543,7 +553,7 @@ export class ApiExecutor {
     const apiKey = this.getNextKey();
     const baseURL = this.provider.endpoint || this.provider.apiConfig?.primary.baseUrl;
 
-    // 로컬 엔드포인트(mlx/ollama)는 단일스레드 서버 경합으로 일시적 connection
+    // 로컬 엔드포인트(ollama)는 단일스레드 서버 경합으로 일시적 connection
     // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: mlx-server
     // POST 200인데 동시요청 경합으로 "Connection error." 실패, circuit open 유발).
     // 원격 API는 기존대로 0: 429 Retry-After(최대 수시간) sleep hang 방지.

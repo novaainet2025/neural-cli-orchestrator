@@ -5,6 +5,7 @@ import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js'
 import { createLogger } from '../utils/logger.js';
 import type { TaskType } from './quality-gate.js';
 import { classifyTier, orderByTier, LAYER_TIER_AGENTS, type Tier } from './tier-policy.js';
+import { adaptiveScorer } from './adaptive-scorer.js';
 
 const log = createLogger('smart-router');
 
@@ -56,7 +57,7 @@ const ROLE_MAP = {
 
 /** Prefer local Ollama first, then vLLM, then other free tiers. */
 export const PROVIDER_COST_ORDER = [
-  'ollama', 'vllm', 'aider', 'codex', 'cursor-agent', 'opencode', 'claude-code',
+  'ollama', 'vllm', 'openrouter', 'aider', 'codex', 'agy', 'cursor-agent', 'opencode', 'claude-code',
 ];
 
 export function sortProvidersByCostOrder(ids: string[]): string[] {
@@ -123,7 +124,12 @@ class SmartRouter {
   /**
    * Select optimal providers based on mode, availability, rate limits, and cost.
    */
-  async selectProviders(mode: DiscussionMode, count?: number, tier?: Tier): Promise<string[]> {
+  async selectProviders(
+    mode: DiscussionMode,
+    count?: number,
+    tier?: Tier,
+    taskType: TaskType = 'general',
+  ): Promise<string[]> {
     const allProviders = agentManager.listEnabledIds();
 
     // Filter out rate-limited agents
@@ -138,7 +144,13 @@ class SmartRouter {
     // tier 지정 시 두뇌/워커 우선순위로 정렬, 없으면 기존 비용순.
     // 두뇌 태스크 → 유료 스마트 우선, 워커 태스크 → 무료 로컬 우선 (반대 tier는 fallback).
     const sorted = tier ? orderByTier(available, tier) : sortProvidersByCostOrder(available);
-    const selected = sorted.slice(0, targetCount);
+    // Keep tier/cost as the coarse policy, then let live domain performance
+    // rank a bounded pool. This wires AdaptiveScorer into the production
+    // router without allowing one noisy row to jump across every tier.
+    const poolSize = Math.min(sorted.length, Math.max(targetCount, targetCount * 2));
+    const adaptivePool = sorted.slice(0, poolSize);
+    const rankedPool = adaptiveScorer.rankAgents(adaptivePool, taskType).map(row => row.agentId);
+    const selected = rankedPool.slice(0, targetCount);
     const requiredMinimum = this.getMinimumCount(mode);
 
     if (selected.length < requiredMinimum) {
@@ -161,10 +173,11 @@ class SmartRouter {
     const complexity = this.analyzeComplexity(prompt);
     const mode = this.selectMode(prompt, complexity);
     const tier = classifyTier(prompt, complexity);
-    const providers = await this.selectProviders(mode, undefined, tier);
+    const taskType = this.inferTaskType(prompt);
+    const providers = await this.selectProviders(mode, undefined, tier, taskType);
 
-    const reasoning = `Complexity ${complexity}/10 → mode: ${mode}, tier: ${tier}(${tier === 'brain' ? '유료 두뇌' : '무료 워커'}), ${providers.length} provider(s): [${providers.join(', ')}]`;
-    log.info({ complexity, mode, tier, providers }, reasoning);
+    const reasoning = `Complexity ${complexity}/10 → mode: ${mode}, tier: ${tier}(${tier === 'brain' ? '유료 두뇌' : '무료 워커'}), taskType: ${taskType}, adaptive-ranked ${providers.length} provider(s): [${providers.join(', ')}]`;
+    log.info({ complexity, mode, tier, taskType, providers }, reasoning);
 
     return { mode, providers, complexity, reasoning, tier };
   }

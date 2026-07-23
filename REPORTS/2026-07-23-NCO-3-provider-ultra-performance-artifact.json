@@ -1,0 +1,396 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "NCO 3-Provider Ultra Performance Operating Model",
+    "description": "Claude, Codex, AGY를 최고 성능으로 조합하기 위한 NCO 기술 운영 보고서",
+    "generatedAt": "2026-07-23T10:07:25Z",
+    "charts": [
+      {
+        "id": "direct_success_rate",
+        "title": "최근 7일 직접 실행 성공률",
+        "subtitle": "AGY 96.1%, Codex 93.5%, Claude 86.1%; 작업 난이도와 유형은 보정하지 않은 운영 신뢰도다.",
+        "type": "bar",
+        "dataset": "provider_operations",
+        "sourceId": "ops_7d",
+        "encodings": {
+          "x": {
+            "field": "provider",
+            "type": "nominal",
+            "label": "Provider"
+          },
+          "y": {
+            "field": "success_rate",
+            "type": "quantitative",
+            "label": "Success rate",
+            "format": "percent"
+          }
+        },
+        "yAxisTitle": "Success rate",
+        "valueFormat": "percent",
+        "layout": "full"
+      },
+      {
+        "id": "direct_success_duration",
+        "title": "최근 7일 성공 실행 평균 소요시간",
+        "subtitle": "성공한 실행만 포함한 산술평균이며, 프로바이더별 작업 복잡도 차이는 보정하지 않았다.",
+        "type": "bar",
+        "dataset": "provider_operations",
+        "sourceId": "ops_7d",
+        "encodings": {
+          "x": {
+            "field": "provider",
+            "type": "nominal",
+            "label": "Provider"
+          },
+          "y": {
+            "field": "avg_success_sec",
+            "type": "quantitative",
+            "label": "Average successful duration",
+            "format": "number",
+            "unit": "sec"
+          }
+        },
+        "yAxisTitle": "Seconds",
+        "valueFormat": "number",
+        "unit": "sec",
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "provider_operations_detail",
+        "title": "프로바이더별 최근 운영 지표",
+        "subtitle": "2026년 7월 16일 19:07부터 7월 23일 19:07까지, KST 기준",
+        "dataset": "provider_operations",
+        "sourceId": "ops_7d",
+        "defaultSort": {
+          "field": "success_rate",
+          "direction": "desc"
+        },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "provider",
+            "label": "Provider",
+            "type": "text"
+          },
+          {
+            "field": "successful",
+            "label": "성공",
+            "format": "number"
+          },
+          {
+            "field": "failed",
+            "label": "실패",
+            "format": "number"
+          },
+          {
+            "field": "total",
+            "label": "전체",
+            "format": "number"
+          },
+          {
+            "field": "success_rate",
+            "label": "성공률",
+            "format": "percent"
+          },
+          {
+            "field": "avg_success_sec",
+            "label": "평균 초",
+            "format": "number"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "ops_7d",
+        "label": "NCO 최근 7일 직접 실행 운영 스냅샷",
+        "path": "REPORTS/2026-07-23-NCO-3-provider-ultra-performance-analysis.sql",
+        "query": {
+          "engine": "SQLite",
+          "language": "sql",
+          "description": "세 프로바이더의 직접 실행 성공률, 성공 실행 평균 지연, 평균 출력 길이, 활성 리드 팀 수와 현재 서킷 상태를 계산했다.",
+          "executed_at": "2026-07-23T10:07:25Z",
+          "sql": "WITH provider_list(provider) AS (VALUES ('claude-code'), ('codex'), ('agy')), run_stats AS (SELECT agent_id AS provider, SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) AS successful, SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failed, COUNT(*) AS total, ROUND(1.0 * SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) / COUNT(*), 3) AS success_rate, ROUND(AVG(CASE WHEN success = 1 THEN duration_ms END) / 1000.0, 1) AS avg_success_sec, ROUND(AVG(CASE WHEN success = 1 THEN output_length END)) AS avg_output_chars FROM main.agent_evolution_log WHERE agent_id IN ('claude-code', 'codex', 'agy') AND created_at >= '2026-07-16 10:07:24' AND created_at < '2026-07-23 10:07:25' GROUP BY agent_id), team_stats AS (SELECT lead AS provider, COUNT(*) AS active_lead_teams FROM main.teams WHERE is_active = 1 AND lead IN ('claude-code', 'codex', 'agy') GROUP BY lead), circuit AS (SELECT agent_id AS provider, state AS circuit_state FROM main.circuit_states WHERE agent_id IN ('claude-code', 'codex', 'agy')) SELECT p.provider, COALESCE(r.successful, 0) AS successful, COALESCE(r.failed, 0) AS failed, COALESCE(r.total, 0) AS total, COALESCE(r.success_rate, 0) AS success_rate, COALESCE(r.avg_success_sec, 0) AS avg_success_sec, COALESCE(r.avg_output_chars, 0) AS avg_output_chars, COALESCE(t.active_lead_teams, 0) AS active_lead_teams, COALESCE(c.circuit_state, 'unknown') AS circuit_state FROM provider_list p LEFT JOIN run_stats r USING (provider) LEFT JOIN team_stats t USING (provider) LEFT JOIN circuit c USING (provider) ORDER BY CASE p.provider WHEN 'claude-code' THEN 1 WHEN 'codex' THEN 2 WHEN 'agy' THEN 3 END",
+          "tables_used": [
+            "main.agent_evolution_log",
+            "main.teams",
+            "main.circuit_states"
+          ],
+          "filters": [
+            "provider in claude-code, codex, agy",
+            "created_at >= 2026-07-16 10:07:24 UTC",
+            "created_at < 2026-07-23 10:07:25 UTC",
+            "teams.is_active = 1"
+          ],
+          "metric_definitions": [
+            "직접 실행 성공률 = agent_evolution_log에서 success=1인 행 / 전체 행",
+            "성공 실행 평균 소요시간 = success=1인 행의 duration_ms 산술평균 / 1000",
+            "평균 출력 글자 = success=1인 행의 output_length 산술평균",
+            "활성 리드 팀 = teams.is_active=1이고 lead가 해당 provider인 팀 수"
+          ]
+        }
+      },
+      {
+        "id": "invocations_7d",
+        "label": "NCO 최근 7일 호출 및 태스크 실패 교차점검",
+        "path": "REPORTS/2026-07-23-NCO-3-provider-ultra-performance-analysis.sql",
+        "query": {
+          "engine": "SQLite",
+          "language": "sql",
+          "description": "호출 추적기의 완료·실패와 태스크 테이블의 주요 실패 유형을 별도 grain으로 교차점검했다.",
+          "executed_at": "2026-07-23T10:07:25Z",
+          "sql": "SELECT target_agent_id AS provider, COUNT(*) AS total_rows, SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed, SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed, ROUND(1.0 * SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN status IN ('completed','failed','cancelled') THEN 1 ELSE 0 END), 0), 3) AS terminal_completion_rate, ROUND(AVG(CASE WHEN status = 'completed' THEN duration_ms END) / 1000.0, 1) AS avg_completed_sec FROM main.agent_invocations WHERE target_agent_id IN ('claude-code','codex','agy') AND created_at >= '2026-07-16 10:07:24' AND created_at < '2026-07-23 10:07:25' GROUP BY target_agent_id ORDER BY target_agent_id",
+          "tables_used": [
+            "main.agent_invocations",
+            "main.tasks"
+          ],
+          "filters": [
+            "provider in claude-code, codex, agy",
+            "same fixed seven-day UTC window"
+          ],
+          "metric_definitions": [
+            "호출 완료율 = completed / terminal(completed, failed, cancelled)",
+            "태스크 실패 유형은 tasks의 failed, timed_out, lease_expired 상태만 집계"
+          ]
+        }
+      },
+      {
+        "id": "provider_config",
+        "label": "NCO provider base configuration",
+        "path": "config/ai-providers.json"
+      },
+      {
+        "id": "provider_overlay",
+        "label": "NCO machine-local provider overrides",
+        "path": "config/ai-providers.local.json"
+      },
+      {
+        "id": "tier_policy",
+        "label": "NCO brain and worker tier policy",
+        "path": "src/core/tier-policy.ts"
+      },
+      {
+        "id": "smart_router",
+        "label": "NCO smart router",
+        "path": "src/core/smart-router.ts"
+      },
+      {
+        "id": "commander_flow",
+        "label": "NCO Commander four-layer flow",
+        "path": "src/core/commander.ts"
+      },
+      {
+        "id": "company_router",
+        "label": "NCO company capability router",
+        "path": "src/core/company-orchestrator.ts"
+      },
+      {
+        "id": "adaptive_scorer",
+        "label": "NCO adaptive scorer",
+        "path": "src/core/adaptive-scorer.ts"
+      },
+      {
+        "id": "comm_graph",
+        "label": "NCO mesh communication graph",
+        "path": "config/comm-graph.json"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# NCO 3-Provider Ultra Performance Operating Model"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "body": "## 기술 요약\n\n**최강 조합은 세 모델의 동시 난사나 다수결이 아니다.** Claude는 목표·아키텍처·최종 승인, Codex는 구현·테스트·통합, AGY는 UI/UX·상태 설계·사용자 관점의 반대심문을 맡는 **비대칭 3인조**가 가장 강하다.\n\n- Claude는 비싼 고지능 호출을 계획과 판정에 집중하고, 일상 구현의 주 작업자가 되지 않는다.\n- Codex는 코드와 검증 명령의 단일 책임자가 되되, 자기 결과를 혼자 승인하지 않는다.\n- AGY는 장식 담당이 아니라 사용자 흐름, 시각 계층, 접근성, 오류·빈·로딩 상태를 소유한다.\n- 모든 복잡 작업은 `Plan → Build → Challenge → Fix → Prove → Approve`를 통과해야 하며, 결정적 테스트 증거가 합의보다 우선한다."
+      },
+      {
+        "id": "operations_finding",
+        "type": "markdown",
+        "sourceId": "ops_7d",
+        "body": "## 최근 데이터는 역할 분리를 지지한다\n\n최근 7일 직접 실행 로그에서 AGY는 **196/204 성공(96.1%)**, Codex는 **808/864 성공(93.5%)**, Claude는 **323/375 성공(86.1%)**이었다. 성공한 실행의 평균 소요시간은 각각 **71.3초, 96.3초, 130.6초**였다.\n\n그러나 이것은 모델 품질 순위가 아니다. 작업 유형과 난이도가 다르고, `success`는 NCO 실행 완료 신호다. 안전한 해석은 세 가지다. **AGY는 현재 안정적인데 호출량이 Codex의 약 4분의 1이고, Codex는 처리량을 대부분 떠받치며, Claude는 가장 느리고 실패 노출이 커서 조정층으로 호출을 절약할 가치가 크다.**"
+      },
+      {
+        "id": "success_chart",
+        "type": "chart",
+        "chartId": "direct_success_rate",
+        "layout": "full"
+      },
+      {
+        "id": "success_chart_note",
+        "type": "markdown",
+        "sourceId": "ops_7d",
+        "body": "### 성공률 차이는 품질 서열이 아니라 운영 배치 신호다\n\n세 프로바이더만 비교하는 사용자 범위 때문에 차트의 범주는 3개다. 더 많은 프로바이더를 섞어 시각 밀도를 높이지 않았다. 이 결과는 AGY를 더 적극적으로 UI·시각·리서치 시각화 작업에 배치하고, Claude의 반복 구현 호출을 줄이라는 방향성 근거로 사용해야 한다."
+      },
+      {
+        "id": "duration_chart",
+        "type": "chart",
+        "chartId": "direct_success_duration",
+        "layout": "full"
+      },
+      {
+        "id": "duration_chart_note",
+        "type": "markdown",
+        "sourceId": "ops_7d",
+        "body": "### 평균 지연은 Claude를 결정 지점에만 쓰라는 신호다\n\n평균은 성공한 실행만 포함하고 복잡도를 보정하지 않았다. 그럼에도 Claude의 성공 실행 평균이 AGY보다 약 1.8배 길다는 사실은, 모든 서브태스크를 Claude에 통과시키는 구조보다 **계획 1회와 최종 판정 1회**에 집중시키는 구조가 처리량과 세션 한도 모두에 유리함을 보여준다."
+      },
+      {
+        "id": "operations_table",
+        "type": "table",
+        "tableId": "provider_operations_detail",
+        "layout": "full"
+      },
+      {
+        "id": "system_findings",
+        "type": "markdown",
+        "body": "## 현행 구현은 역할 철학과 실행 경로가 완전히 일치하지 않는다\n\n1. **성과 학습이 자동 라우팅의 주 경로에 연결되지 않았다.** `adaptive-scorer.ts`의 학습 가중치는 주로 앙상블·하네스에서 쓰이고, `smart-router.ts`와 회사 역량 라우터는 정적 우선순위를 사용한다. 더구나 품질 요약에는 오래된 Codex 코드 표본 15건만 있고 Claude·AGY 표본은 없다.\n\n2. **Commander에 수정 재실행 루프가 없다.** `commander.ts`는 실행 결과를 리뷰한 뒤, 리뷰가 문제를 찾아도 실행자에게 고치게 하지 않고 바로 최종 종합으로 간다. 실행 실패 여부도 최종 완료 전에 강제 게이트로 쓰지 않는다.\n\n3. **AGY의 강점이 UI 밖에서는 밀린다.** 적응형 prior는 AGY를 UI 1순위로 보지만, 회사 `design` 후보에서는 AGY가 Claude·Codex 뒤쪽이다. UI·시각 작업과 일반 설계 작업의 경계가 프롬프트 키워드 하나에 과도하게 의존한다.\n\n4. **같은 작업 폴더의 병렬 수정은 잠금만으로 안전하지 않다.** Claude와 Codex 같은 네이티브 CLI는 자체 도구로 파일을 직접 쓸 수 있어 NCO 외부 도구의 파일 잠금을 우회할 수 있다. 파일 소유권 분리나 작업별 worktree가 없으면 속도가 올라갈수록 충돌 위험도 커진다.\n\n5. **권한 선언과 통신 정책이 어긋난다.** Codex·AGY 설정은 협업 시작이 가능하다고 적지만 `comm-graph.json`은 Claude 계열의 `task` 송신만 명시한다. 현재 기본값은 shadow라 차단되지는 않지만, enforce 전환 시 역할 계약이 깨질 수 있다."
+      },
+      {
+        "id": "scope_definitions",
+        "type": "markdown",
+        "body": "## 범위와 측정 정의\n\n분석 대상은 현재 로컬 NCO 저장소의 `claude-code`, `codex`, `agy` 세 프로바이더다. 실행 창은 **2026년 7월 16일 19:07:24부터 7월 23일 19:07:25까지 KST**다.\n\n- 직접 실행 성공률: `agent_evolution_log`에서 성공 행을 전체 행으로 나눈 값\n- 성공 평균 소요시간: 성공 행의 `duration_ms` 산술평균\n- 활성 리드 팀: 현재 활성 팀 중 해당 프로바이더가 lead인 팀 수\n- 실행 성공: 프로세스·NCO 루프 관점의 성공이며, 사람 기준 정확도·미학·보안 품질을 의미하지 않음\n- 런타임 상태: 보고서 생성 시점의 스냅샷이며 이후 바뀔 수 있음"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "body": "## 분석 방법\n\n실제 병합 설정, CLI 버전, 런타임 API 상태, SQLite 운영 로그, 라우팅·Commander·점수기·통신 정책 코드를 교차검토했다. 운영 성과는 고정된 7일 창으로 다시 계산했고, 호출 추적기와 태스크 실패 패턴은 서로 다른 grain으로 별도 점검했다.\n\n권고안은 단순 성공률 순위가 아니라 **처리량, 역할 적합성, 독립 검증, 파일 충돌 위험, 실패 시 권한 보존**을 함께 최적화하도록 설계했다."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 한계와 강건성 점검\n\n- 최근 작업 배정은 무작위가 아니므로 성공률과 평균 지연을 모델 고유 성능으로 해석할 수 없다.\n- `agent_performance_summary`의 사람 또는 검증기 기반 품질 표본이 세 프로바이더에 균등하지 않다. 따라서 “AGY가 가장 똑똑하다” 같은 결론은 내리지 않았다.\n- 호출 추적기 기준 최근 완료율은 AGY 95.6%, Codex 94.0%, Claude 71.4%로 같은 방향을 보였지만, 직접 실행 로그와 grain이 달라 합산하지 않았다.\n- Claude 태스크에는 최근 `silent-failure: empty output`이 다수 기록되었고 세션 한도 오류도 있었다. 이것이 모델 실패, CLI 출력 수집, 스케줄링 중 어느 비중인지 분리 계측이 더 필요하다.\n- AGY 기본 설정의 비활성·자격증명 만료 메모는 로컬 오버레이와 런타임 활성 상태에 의해 뒤집혀 있다. 운영자는 병합된 유효 설정을 기준으로 판단해야 한다."
+      },
+      {
+        "id": "target_workflow",
+        "type": "markdown",
+        "body": "## 목표 워크플로는 여섯 단계의 증거 루프다\n\n1. **Plan — Claude:** 요구를 목표, 비목표, 제약, 수락 기준, 위험 등급, 파일 소유권으로 고정한다.\n2. **Build — Codex / AGY:** Codex는 코드·테스트·통합을, AGY는 사용자 흐름·화면 상태·시각·접근성을 맡는다. 병렬 실행은 파일 범위가 겹치지 않을 때만 허용한다.\n3. **Challenge — 비작성자:** Codex는 AGY 산출물의 구현 가능성과 성능을, AGY는 Codex 산출물의 사용자 영향과 경계 상태를 반대심문한다. Claude는 아키텍처·범위·위험을 판정한다.\n4. **Fix — 원 작성자:** 리뷰 코멘트를 원 작성자에게 되돌려 최대 2회 수정한다. 리뷰어가 같은 파일을 즉시 덮어쓰지 않는다.\n5. **Prove — 결정적 검증:** 테스트, 타입체크, 빌드, 린트, 필요한 UI 캡처·접근성 검사를 실행하고 명령·종료코드·핵심 출력을 증거로 저장한다.\n6. **Approve — Claude:** 수락 기준과 증거가 모두 통과한 경우에만 최종 승인한다. Claude 부재 시 Codex가 임시 종합은 할 수 있지만 결과는 `provisional`이며 최종 승인으로 위장하지 않는다."
+      },
+      {
+        "id": "routing_rules",
+        "type": "markdown",
+        "body": "## 모든 작업에 세 모델을 다 쓰지 않는다\n\n- **단순·저위험 코드:** Codex 구현 → 결정적 테스트. Claude는 아키텍처 영향이 없으면 생략, AGY는 사용자 노출이 없으면 생략한다.\n- **백엔드·알고리즘·마이그레이션:** Claude가 계약과 위험을 짧게 고정 → Codex 구현·테스트 → Claude 승인. AGY는 사용자 흐름이 변할 때만 참가한다.\n- **UI·UX·대시보드:** AGY가 상태·레이아웃·상호작용 계약을 선행 → Codex가 구현·테스트 → AGY가 시각·접근성 검수 → Claude가 제품·아키텍처 승인한다.\n- **아키텍처·대규모 리팩터링:** 세 프로바이더가 독립 제안 → Codex가 실현 가능성·마이그레이션 비용, AGY가 사용자·운영 흐름 영향, Claude가 trade-off를 종합한다.\n- **장애·핫픽스:** Codex가 재현과 최소 수정의 리드, Claude가 위험·롤백 판정, AGY는 UI 회귀가 있을 때만 투입한다.\n- **최종 보고·릴리스:** Codex가 기술 사실과 명령을 검증, AGY가 독해성과 사용자 전달을 검수, Claude가 최종 서사를 승인한다."
+      },
+      {
+        "id": "operating_contract",
+        "type": "markdown",
+        "body": "## 역할별 운영 계약\n\n**Claude — Commander / Judge**\n\n- 소유: 요구 명세, 분해, 아키텍처, 위험 수용, 충돌 판정, 최종 승인\n- 금지: Codex와 같은 파일을 동시에 구현, 검증 없이 완료 선언, 세부 작업의 상시 병목화\n- 호출 예산: 복잡 작업당 기본 2회—계획 1회, 최종 승인 1회; 중간 호출은 충돌·고위험일 때만\n\n**Codex — Builder / Verifier**\n\n- 소유: 코드 탐색, 구현, 테스트, 리팩터링, 마이그레이션, 빌드·타입체크·성능 검증\n- 금지: 자기 구현의 단독 최종 승인, AGY의 UX 계약을 임의 단순화, 증거 없는 성공 보고\n- 산출 계약: 변경 파일, 핵심 diff, 실행 명령, 종료코드, 실패·잔여 위험\n\n**AGY — Experience Architect / Adversarial Reviewer**\n\n- 소유: 정보구조, 사용자 여정, 시각 계층, 반응형, 접근성, 로딩·빈·오류·권한 상태, UI 회귀\n- 금지: 장식만 제안, 구현 제약을 무시한 목업, 백엔드 정확도에 근거 없는 최종 판정\n- 산출 계약: 상태표, 상호작용 규칙, 디자인 토큰, 접근성 기준, 검수 체크리스트"
+      },
+      {
+        "id": "priority_actions",
+        "type": "markdown",
+        "body": "## 적용 우선순위\n\n**P0 — 즉시 바꿀 것**\n\n1. `triad` DAG를 추가하고 Commander에 `review → fix → re-verify` 루프와 실행 성공 강제 게이트를 넣는다.\n2. 세 프로바이더가 쓰는 작업은 격리 worktree 또는 명시적 파일 소유권으로 분리한다.\n3. 긴 자연어 출력 잘라붙이기 대신 구조화 handoff를 사용한다: `goal`, `acceptance`, `file_scope`, `changes`, `tests`, `evidence`, `risks`, `decision`.\n4. UI 작업은 AGY 우선, 코드 작업은 Codex 우선, 최종 승인만 Claude가 맡도록 역할 기반 라우팅을 고정한다.\n\n**P1 — 다음으로 바꿀 것**\n\n5. `smart-router`와 회사 라우터가 같은 adaptive score를 사용하게 하고, 작업 유형별 최소 20개 검증 표본 전에는 prior와 실제값을 블렌딩한다.\n6. 동시성 기본값을 Claude 1, Codex 2, AGY 1~2로 낮추고, 격리 worktree가 있을 때만 Codex를 3까지 확장한다. 전역 유료 CLI 동시 실행도 4 안팎으로 제한한다.\n7. 정적 provider failover를 역할 인식 failover로 바꾼다. Claude 실패 시 최종 승인을 생략하고 `provisional`; AGY 실패 시 UI 구현은 Codex로 넘기되 UX 검수 공백을 표시한다.\n8. 통신 graph를 실제 역할에 맞게 확장한 뒤 shadow 로그를 확인하고 enforce로 전환한다. `task/approval`은 Claude, `review/request/info`는 세 프로바이더 상호 허용이 적합하다.\n\n**P2 — 성능을 학습하게 만들 것**\n\n9. 모든 실행을 task type, 검증 결과, 재작업 횟수, 비용·토큰, 실패 원인과 함께 품질 테이블에 기록한다.\n10. 성공률만 최적화하지 말고 `검증 통과율 × 품질점수 ÷ (지연 × 비용)`과 재작업률을 함께 최적화한다."
+      },
+      {
+        "id": "success_criteria",
+        "type": "markdown",
+        "body": "## 완성의 정의\n\n새 운영 모델은 다음 네 조건을 동시에 만족해야 한다.\n\n- 검증기 통과율이 프로바이더별·작업 유형별로 측정되고 95% 이상을 안정적으로 유지한다.\n- 같은 파일의 동시 수정 충돌이 0건이다.\n- Claude가 전체 실행 호출의 소수가 되면서도 고위험 작업의 승인 누락이 0건이다.\n- UI 작업에서 AGY의 상태·접근성 검수 증거가 남고, 리뷰 지적이 실제 수정과 재검증으로 닫힌다."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## 추가로 답해야 할 질문\n\n- Claude의 빈 출력 실패 중 세션 한도, 프로세스 종료, 출력 수집 오류가 각각 몇 퍼센트인가?\n- 작업 유형과 복잡도를 보정한 뒤에도 AGY의 낮은 지연과 높은 성공률이 유지되는가?\n- UI 작업에서 AGY 선행 설계가 Codex 단독 구현보다 재작업률과 사용자 결함을 얼마나 줄이는가?\n- worktree 격리의 준비 비용보다 병렬 처리 이득이 커지는 작업 크기 임계점은 어디인가?\n\n이 네 가지를 2주간 계측하면, 정적 역할표를 실제 성과 기반 스케줄러로 전환할 수 있다."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-23T10:07:25Z",
+    "status": "ready",
+    "datasets": {
+      "provider_operations": [
+        {
+          "provider": "claude-code",
+          "successful": 323,
+          "failed": 52,
+          "total": 375,
+          "success_rate": 0.861,
+          "avg_success_sec": 130.6,
+          "avg_output_chars": 1098,
+          "active_lead_teams": 9,
+          "circuit_state": "half-open"
+        },
+        {
+          "provider": "codex",
+          "successful": 808,
+          "failed": 56,
+          "total": 864,
+          "success_rate": 0.935,
+          "avg_success_sec": 96.3,
+          "avg_output_chars": 957,
+          "active_lead_teams": 19,
+          "circuit_state": "closed"
+        },
+        {
+          "provider": "agy",
+          "successful": 196,
+          "failed": 8,
+          "total": 204,
+          "success_rate": 0.961,
+          "avg_success_sec": 71.3,
+          "avg_output_chars": 1233,
+          "active_lead_teams": 4,
+          "circuit_state": "closed"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "ops_7d",
+      "label": "NCO 최근 7일 직접 실행 운영 스냅샷",
+      "path": "REPORTS/2026-07-23-NCO-3-provider-ultra-performance-analysis.sql"
+    },
+    {
+      "id": "invocations_7d",
+      "label": "NCO 최근 7일 호출 및 태스크 실패 교차점검",
+      "path": "REPORTS/2026-07-23-NCO-3-provider-ultra-performance-analysis.sql"
+    },
+    {
+      "id": "provider_config",
+      "label": "NCO provider base configuration",
+      "path": "config/ai-providers.json"
+    },
+    {
+      "id": "provider_overlay",
+      "label": "NCO machine-local provider overrides",
+      "path": "config/ai-providers.local.json"
+    },
+    {
+      "id": "tier_policy",
+      "label": "NCO brain and worker tier policy",
+      "path": "src/core/tier-policy.ts"
+    },
+    {
+      "id": "smart_router",
+      "label": "NCO smart router",
+      "path": "src/core/smart-router.ts"
+    },
+    {
+      "id": "commander_flow",
+      "label": "NCO Commander four-layer flow",
+      "path": "src/core/commander.ts"
+    },
+    {
+      "id": "company_router",
+      "label": "NCO company capability router",
+      "path": "src/core/company-orchestrator.ts"
+    },
+    {
+      "id": "adaptive_scorer",
+      "label": "NCO adaptive scorer",
+      "path": "src/core/adaptive-scorer.ts"
+    },
+    {
+      "id": "comm_graph",
+      "label": "NCO mesh communication graph",
+      "path": "config/comm-graph.json"
+    }
+  ]
+}

@@ -37,7 +37,7 @@ async function postTask() {
     method: 'POST',
     headers: buildHeaders(),
     body: JSON.stringify({
-      ai: 'mlx',
+      ai: 'ollama',
       prompt: '검증: 팀 발사 테스트 — 1+1은?',
       metadata: {
         projectDir: resolveInternalProjectDir(),

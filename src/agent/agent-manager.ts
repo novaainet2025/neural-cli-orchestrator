@@ -127,6 +127,11 @@ class AgentManager {
     const taskId = options?.taskId || createTaskId();
     const startTime = Date.now();
 
+    // [projectDir 백스톱] 내부 호출부(discussion/parallel/hive/message 등)가 projectDir 를 빠뜨려도
+    // codex(Type B, assertTaskProjectDir)가 즉시 실패하지 않도록 env.PROJECT_DIR 로 기본값 채움.
+    // 외부 /api/task 는 task-intake 에서 projectDir 를 필수 검증하므로 이 기본값의 영향 없음(내부 전용).
+    const effectiveProjectDir = options?.projectDir || env.PROJECT_DIR;
+
     if (!sandbox.canExecute()) {
       const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
       return {
@@ -182,7 +187,7 @@ class AgentManager {
             '-p', prompt,
             '--output-format', 'text',
           ], {
-            cwd: options?.projectDir || undefined,
+            cwd: effectiveProjectDir,
             cancelSignal: signal,
             forceKillAfterDelay: 3000, // SIGKILL 3s after SIGTERM if still alive
             detached: process.platform !== 'win32',
@@ -191,7 +196,7 @@ class AgentManager {
               ...process.env, 
               ...provider.env, 
               NCO_HOOK_DISABLED: '1',
-              ...(options?.projectDir ? { PROJECT_DIR: options.projectDir } : {})
+              PROJECT_DIR: effectiveProjectDir,
             },
             reject: false,
             stdin: 'ignore', // stdin을 닫아서 "no stdin data" 경고 방지
@@ -223,7 +228,7 @@ class AgentManager {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             model: options?.model,
-            projectDir: options?.projectDir,
+            projectDir: effectiveProjectDir,
             disableHistory: agentType === 'B_SINGLE_PROMPT',
           });
           output = result.output;
@@ -244,7 +249,7 @@ class AgentManager {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             model: options?.model,
-            projectDir: options?.projectDir,
+            projectDir: effectiveProjectDir,
             signal,
             timeoutMs,
           });
@@ -440,6 +445,9 @@ class AgentManager {
         return [...provider.args, '-p', prompt, '--output-format', 'text'];
       case 'codex':
         return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', prompt];
+      case 'hermes':
+        // hermes = codex CLI 백엔드(gpt-5.6-terra). read-only 프로브 + 모델 강제.
+        return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', ...(provider.model ? ['-m', provider.model] : []), prompt];
       case 'cursor-agent':
         return [...provider.args, '-p', prompt, '--output-format', 'text'];
       case 'higgsfield':

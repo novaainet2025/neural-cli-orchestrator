@@ -1,0 +1,19 @@
+*/5 * * * * /Users/nova-ai/project/neural-cli-orchestrator/scripts/mesh-gc.sh >> /tmp/nco-mesh-gc.log 2>&1
+3 10 * * * /Users/nova-ai/project/nco/scripts/nco-daily-self-review.sh >> /tmp/nco-self-review-cron.log 2>&1
+*/10 * * * * python3 /Users/nova-ai/obsidian/mac-obsidian/obsidian-sync-full.sh >> /tmp/obsidian-sync-full.log 2>&1
+# NOVA SNS Media 자동화
+# 트렌드 수집 (6시간마다)
+0 */6 * * * cd /Users/nova-ai/project/nova-sns && python3 automation/trend-collector.py >> logs/cron.log 2>&1
+
+# 콘텐츠 생성 (새벽 2시)
+
+# 일일 리포트 (자정)
+0 0 * * * cd /Users/nova-ai/project/nova-sns && python3 ops/daily-report.py >> logs/cron.log 2>&1
+
+# SEO 최적화 (새벽 1시)
+0 1 * * * cd /Users/nova-ai/project/nova-sns && python3 automation/seo-optimizer.py >> logs/cron.log 2>&1
+
+# 성과 추적 (매 시간)
+0 * * * * cd /Users/nova-ai/project/nova-sns && python3 automation/performance-tracker.py >> logs/cron.log 2>&1
+7 * * * * bash /Users/nova-ai/nova-fleet-config/install/fleet-sync.sh >> /Users/nova-ai/.claude/logs/fleet-sync.log 2>&1
+0 3 * * 0 /Users/nova-ai/.marm/backup/marm-backup.sh >> /Users/nova-ai/.marm/backup/backup.log 2>&1

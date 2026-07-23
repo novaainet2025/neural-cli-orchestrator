@@ -120,6 +120,7 @@ export class OrchestratedLoop {
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
+    let exitReason: 'completed' | 'max-iterations' | 'circuit-breaker' = 'max-iterations';
     const artifacts: string[] = [];
     const history: Array<{ role: string; content: string }> = [];
 
@@ -160,6 +161,7 @@ export class OrchestratedLoop {
 
       if (!this.sandbox.canExecute()) {
         log.warn({ agentId, iterations }, 'Agent isolated by Circuit Breaker');
+        exitReason = 'circuit-breaker';
         break;
       }
 
@@ -187,6 +189,7 @@ export class OrchestratedLoop {
         history.push({ role: 'assistant', content: aiResponse });
         this.trimConversationHistory(history);
         log.info({ agentId, iterations, totalToolCalls }, 'Loop completed (no more tools)');
+        exitReason = 'completed';
         break;
       }
 
@@ -247,7 +250,20 @@ export class OrchestratedLoop {
         .filter(Boolean)
         .pop() || '';
 
-      return { output, iterations, toolCalls: totalToolCalls, artifacts, success: true };
+      const error = exitReason === 'max-iterations'
+        ? `Loop reached maximum iterations (${MAX_ITERATIONS}) before completion`
+        : exitReason === 'circuit-breaker'
+          ? 'Loop stopped because the Circuit Breaker denied execution'
+          : undefined;
+
+      return {
+        output,
+        iterations,
+        toolCalls: totalToolCalls,
+        artifacts,
+        success: exitReason === 'completed',
+        ...(error ? { error } : {}),
+      };
     } finally {
       trajectoryGuard.endTask(taskId, agentId);
       await sharedState.setAgentState(agentId, {
@@ -318,8 +334,9 @@ export class OrchestratedLoop {
       taskQueue.recordChildProcess(taskId, subprocess.pid);
       subprocess.stdout?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
       subprocess.stderr?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
-      this.abortSignal?.addEventListener('abort', () => {
-        if (!subprocess.pid || process.platform === 'win32') return;
+      const abortSignal = this.abortSignal;
+      const abortHandler = () => {
+        if (!subprocess.pid || subprocess.exitCode !== null || process.platform === 'win32') return;
         try {
           process.kill(-subprocess.pid, 'SIGKILL');
         } catch {
@@ -329,8 +346,14 @@ export class OrchestratedLoop {
             // already gone
           }
         }
-      }, { once: true });
-      const result = await subprocess;
+      };
+      abortSignal?.addEventListener('abort', abortHandler, { once: true });
+      let result: Awaited<typeof subprocess>;
+      try {
+        result = await subprocess;
+      } finally {
+        abortSignal?.removeEventListener('abort', abortHandler);
+      }
       let lastMsg = '';
 
       if (lastMessageFile) {
@@ -429,13 +452,19 @@ export class OrchestratedLoop {
   }
 
   private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
+    // A task-level model overrides the provider default. Legacy provider IDs are
+    // display/routing aliases, not model names accepted by the corresponding CLI.
+    const configuredModel = model || this.provider.model;
+    const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
+      ? configuredModel
+      : undefined;
     switch (this.provider.id) {
       case 'hermes': {
         // 2026-07-18: hermes = codex CLI 백엔드(중간모델 gpt-5.6-terra). ToolUser/추론 워커.
         // read-only 샌드박스: assertTaskProjectDir가 codex 전용이라 hermes는 projectDir 불요
         //   (토론/consensus 등 무프로젝트 작업 보존) + read-only로 NCO 소스 오염 차단.
         // 모델은 options?.model(task 지정) → provider.model(gpt-5.6-terra) 순으로 강제.
-        const hModel = model || this.provider.model;
+        const hModel = selectedModel;
         const hFlags = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', ...(hModel ? ['-m', hModel] : [])];
         return lastMessageFile
           ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
@@ -447,8 +476,8 @@ export class OrchestratedLoop {
         // --sandbox workspace-write: 기본 read-only 샌드박스는 구현 위임이 전부
         //   "patch rejected: read-only sandbox"로 실패한다 (2026-07-03 subnote 실측)
         return lastMessageFile
-          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(model ? ['-m', model] : []), '--output-last-message', lastMessageFile, prompt]
-          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(model ? ['-m', model] : []), prompt];
+          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
       case 'agy':
         // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
         // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가
@@ -468,12 +497,12 @@ export class OrchestratedLoop {
           ? []
           : ['--format', 'json'];
         return baseArgs[0] && !baseArgs[0].startsWith('-')
-          ? [baseArgs[0], ...(model ? ['-m', model] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
-          : ['run', ...(model ? ['-m', model] : []), ...baseArgs, ...formatArgs, prompt];
+          ? [baseArgs[0], ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
+          : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
       }
       case 'cursor-agent':
         // --print: non-interactive output, --trust: skip workspace trust prompt
-        return ['--print', '--trust', '--output-format', 'text', ...(model ? ['--model', model] : []), prompt];
+        return ['--print', '--trust', '--output-format', 'text', ...(selectedModel ? ['--model', selectedModel] : []), prompt];
       case 'higgsfield':
         return ['generate', 'create', this.provider.model || 'higgsfield', '--prompt', prompt];
       default:

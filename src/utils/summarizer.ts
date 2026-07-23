@@ -29,7 +29,7 @@ export async function summarizeText(
       const { sortProvidersByCostOrder } = await import('../core/smart-router.js');
       
       const cheapAgents = sortProvidersByCostOrder(agentManager.listEnabledIds());
-      const agentId = options.agentId || cheapAgents[0]; // mlx, openrouter, etc.
+      const agentId = options.agentId || cheapAgents[0]; // ollama, openrouter, etc.
 
       if (agentId) {
         const prompt = `Summarize the following text to under ${maxLength} characters:\n\n${text.slice(0, 10000)}`;
