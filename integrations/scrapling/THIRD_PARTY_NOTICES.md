@@ -7,7 +7,8 @@ This adapter depends on Scrapling 0.4.11, upstream commit
 - Copyright: Copyright (c) 2024, Karim Shoair
 - License: BSD 3-Clause
 
-The full upstream license is available at
-<https://github.com/D4Vinci/Scrapling/blob/main/LICENSE>. NCO does not use the
-Scrapling author or contributor names to endorse this integration.
-
+The full license is preserved locally in
+[`LICENSE.scrapling`](./LICENSE.scrapling) and is also available from the
+[upstream repository](https://github.com/D4Vinci/Scrapling/blob/main/LICENSE).
+NCO does not use the Scrapling author or contributor names to endorse this
+integration.

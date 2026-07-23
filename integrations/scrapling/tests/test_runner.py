@@ -34,6 +34,7 @@ class ExtractionTests(unittest.TestCase):
             engine="static",
             purpose="test extraction",
             authorization_confirmed=True,
+            authorization_reference="TEST-AUTH-001",
             fields={"title": "h1::text"},
             allowed_domains=(),
             timeout_ms=30_000,
@@ -66,4 +67,3 @@ class ExtractionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

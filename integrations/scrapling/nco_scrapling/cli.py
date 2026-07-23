@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from importlib import metadata
 import json
+from pathlib import Path
 import sys
 from typing import Any
 
@@ -14,6 +15,16 @@ from .runner import execute
 MAX_INPUT_BYTES = 256 * 1024
 
 
+def _browser_installed() -> bool:
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as runtime:
+            return Path(runtime.chromium.executable_path).is_file()
+    except Exception:
+        return False
+
+
 def _capabilities() -> dict[str, Any]:
     try:
         scrapling_version = metadata.version("scrapling")
@@ -21,6 +32,7 @@ def _capabilities() -> dict[str, Any]:
     except metadata.PackageNotFoundError:
         scrapling_version = None
         installed = False
+    browser_installed = installed and _browser_installed()
     return {
         "ok": True,
         "adapterVersion": __version__,
@@ -33,14 +45,15 @@ def _capabilities() -> dict[str, Any]:
         },
         "engines": {
             "static": installed,
-            "dynamic": installed,
-            "stealth": installed and __import__("os").environ.get("NCO_SCRAPLING_ENABLE_STEALTH") == "1",
+            "dynamic": browser_installed,
+            "stealth": browser_installed and __import__("os").environ.get("NCO_SCRAPLING_ENABLE_STEALTH") == "1",
         },
         "guardrails": [
             "public-http-targets-only",
             "robots-txt-fail-closed",
-            "explicit-authorization",
-            "browser-domain-scope",
+            "server-verified-authorization-reference",
+            "browser-exact-host-scope-and-dns-pin",
+            "service-workers-blocked",
             "no-cloudflare-or-captcha-solving",
             "untrusted-content-label",
         ],
@@ -81,4 +94,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

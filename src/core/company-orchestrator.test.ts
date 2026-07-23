@@ -31,6 +31,10 @@ describe('rankTeam', () => {
     expect(rankTeam(team({ slug: 'tech-port-03-recovery-checkpoint', name: '복구 지점팀' }))).toBe(3);
     expect(rankTeam(team({ slug: 'tech-port-08-migration-implementation', name: '이식 실행팀' }))).toBe(8);
   });
+  it('웹 스크래핑 회사의 승인→수집→구현→검증 순서를 slug 번호로 고정', () => {
+    expect(rankTeam(team({ slug: 'web-scrape-01-intake-strategy', name: '승인팀' }))).toBe(1);
+    expect(rankTeam(team({ slug: 'web-scrape-07-report-delivery', name: '전달팀' }))).toBe(7);
+  });
   it('research 팀들을 파이프라인 단계 순서로 랭크', () => {
     expect(rankTeam(team({ slug: 'research-strategy', name: '리서치 기획·전략팀' }))).toBe(1);
     expect(rankTeam(team({ slug: 'research-discovery', name: '탐색·수집팀' }))).toBe(2);
@@ -252,11 +256,26 @@ describe('scopeDecomposedSubtask', () => {
     expect(s).toContain('Cognee 부분 이식 검증');
     expect(s).toContain('데이터 분석');
   });
+
+  it('기술 이식 가치 게이트에는 단일결정 출력 계약을 항상 추가', () => {
+    const s = scopeDecomposedSubtask(
+      team({ slug: 'tech-port-07-value-gate-report', name: '가치판단팀', charter: '증거를 종합한다' }),
+      'Scrapling 이식 검증',
+      '안전성과 기능을 종합해 결론을 낸다.',
+    );
+    expect(s).toContain('[필수 단일결정 출력 계약]');
+    expect(s).toContain('응답 첫 줄');
+    expect(s).toContain('선택하지 않은 결정 문자열');
+  });
 });
 
 describe('allowQueueProviderFailover', () => {
   it('기술 이식 회사는 팀 밖 자동 재위임을 차단', () => {
     expect(allowQueueProviderFailover('technology-porting')).toBe(false);
+  });
+
+  it('웹 스크래핑 회사도 등록 팀 밖 자동 재위임을 차단', () => {
+    expect(allowQueueProviderFailover('web-scraping')).toBe(false);
   });
 
   it('일반 회사의 기존 failover 동작은 유지', () => {

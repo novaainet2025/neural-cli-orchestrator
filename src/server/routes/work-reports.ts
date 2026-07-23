@@ -362,6 +362,67 @@ export async function registerWorkReportRoutes(app: FastifyInstance): Promise<vo
     };
   });
 
+  // 대시보드 최적화: 7일 × am/pm 을 프론트가 14요청으로 팬아웃하던 것을 단일 요청으로 대체.
+  // 프론트는 reports 배열만 사용(자체 트리 빌드)하므로 커버리지 트리는 계산하지 않고
+  // 범위 조회 한 번으로 이벤트 루프 점유·직렬화 비용을 14배 줄인다.
+  // idx_work_reports_date_slot(report_date DESC, report_slot, status)가 범위 스캔을 커버.
+  const RANGE_MAX_DAYS = 31;
+  app.get('/api/work-reports/range', async (req, reply) => {
+    const query = (req.query as { from?: unknown; to?: unknown } | null) ?? {};
+    const today = formatKstDate();
+    const toDate = parseDateParam(query.to, today);
+    if (toDate === null) return reply.code(400).send({ error: 'invalid to (expected YYYY-MM-DD)' });
+    // from 기본값: to 포함 최근 7일 (to - 6일)
+    const defaultFrom = new Date(Date.parse(`${toDate}T00:00:00Z`) - 6 * 86_400_000)
+      .toISOString().slice(0, 10);
+    const fromDate = parseDateParam(query.from, defaultFrom);
+    if (fromDate === null) return reply.code(400).send({ error: 'invalid from (expected YYYY-MM-DD)' });
+    if (fromDate > toDate) return reply.code(400).send({ error: 'from must be <= to' });
+    const spanDays = Math.round(
+      (Date.parse(`${toDate}T00:00:00Z`) - Date.parse(`${fromDate}T00:00:00Z`)) / 86_400_000,
+    ) + 1;
+    if (spanDays > RANGE_MAX_DAYS) {
+      return reply.code(400).send({ error: `range too large (max ${RANGE_MAX_DAYS} days)` });
+    }
+
+    const db = getDb();
+    const orgIds = new Set(
+      (db.prepare('SELECT id FROM organizations').all() as { id: string }[]).map((o) => o.id),
+    );
+    const teamIds = new Set(
+      (db.prepare('SELECT id FROM teams').all() as { id: string }[]).map((t) => t.id),
+    );
+    const rows = db.prepare(`
+      SELECT
+        wr.*,
+        CASE
+          WHEN wr.subject_kind='organization' THEN so.name
+          ELSE st.name
+        END AS subject_name,
+        oo.name AS organization_name,
+        st.name AS team_name
+      FROM work_reports wr
+      LEFT JOIN organizations so ON wr.subject_kind='organization' AND wr.subject_id = so.id
+      LEFT JOIN teams st ON wr.subject_kind='team' AND wr.subject_id = st.id
+      LEFT JOIN organizations oo ON wr.organization_id = oo.id
+      WHERE wr.report_date >= ? AND wr.report_date <= ?
+      ORDER BY wr.report_date ASC, wr.report_slot ASC, wr.org_path ASC, wr.unit_level ASC, wr.subject_kind ASC, wr.subject_id ASC
+    `).all(fromDate, toDate) as WorkReportRow[];
+
+    // 원본 /api/work-reports 의 tree 멤버십 필터와 동일(org 필터 없음 = 전체 허용):
+    // 알 수 없는 subject(삭제된 org/team) 는 제외해 프론트 계약을 유지.
+    const treeReports = rows.filter((report) =>
+      report.subject_kind === 'organization'
+        ? orgIds.has(report.subject_id)
+        : teamIds.has(report.subject_id),
+    );
+
+    return {
+      filters: { from: fromDate, to: toDate },
+      reports: treeReports.map(serializeReport),
+    };
+  });
+
   app.post<{ Params: { id: string } }>('/api/work-reports/:id/submit', async (req, reply) => {
     const { id } = req.params;
     const body = (req.body as {

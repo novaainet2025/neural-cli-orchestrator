@@ -1,20 +1,20 @@
 {
-  "checked_at": "2026-07-23T20:20:00+0900",
+  "checked_at": "2026-07-23T21:20:00+0900",
   "mode": "propose",
   "total": 192,
-  "pass": 187,
-  "fail": 3,
+  "pass": 178,
+  "fail": 12,
   "skip": 1,
   "defer": 1,
   "categories": {
     "provider": {
-      "pass": 8,
-      "fail": 0,
+      "pass": 0,
+      "fail": 8,
       "skip": 1,
       "defer": 0,
-      "pass_rate": 1.0,
+      "pass_rate": 0.0,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     },
     "team": {
       "pass": 50,
@@ -89,13 +89,13 @@
       "meets": true
     },
     "health": {
-      "pass": 1,
-      "fail": 0,
+      "pass": 0,
+      "fail": 1,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 1.0,
+      "pass_rate": 0.0,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     }
   },
   "provider_anomaly": null,
@@ -123,11 +123,83 @@
       "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
       "priority": 2,
       "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
+    },
+    {
+      "id": "provider:agy",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "agy",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:claude-code",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "claude-code",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:codex",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "codex",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:cursor-agent",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "cursor-agent",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:hermes",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "hermes",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:higgsfield",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "higgsfield",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:nvidia",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "nvidia",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:opencode",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "opencode",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "health:nco",
+      "category": "health",
+      "kind": "http-health",
+      "ref": "http://localhost:6200/health",
+      "priority": 5,
+      "detail": "health 실패: timed out"
     }
   ],
   "dispatch": {
     "mode": "propose",
     "dispatched": null,
-    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
+    "skipped_reason": "nova-local-llm.lock 사용 중 (team-runner 등) — 이번 회차 디스패치 보류, 점검은 완료"
   }
 }

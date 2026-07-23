@@ -1,19 +1,21 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from functools import lru_cache
+import ipaddress
 import os
 from pathlib import Path
+import socket
 import time
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
-from .policy import AdapterError, PolicyError, ScrapeRequest, validate_target
+from .policy import AdapterError, PolicyError, ScrapeRequest, normalize_domain, validate_target
 
 
 USER_AGENT = "NCO-WebScrapingCompany/1.0"
 MAX_ROBOTS_DELAY_SECONDS = 30.0
+DEFAULT_ADAPTIVE_TTL_DAYS = 30
 
 
 class DependencyError(AdapterError):
@@ -41,16 +43,50 @@ def _effective_scope(request: ScrapeRequest) -> tuple[str, ...]:
     return tuple(dict.fromkeys((host, *request.allowed_domains)))
 
 
+def _adaptive_storage_path() -> Path:
+    adapter_root = Path(__file__).resolve().parents[1]
+    data_dir = Path(os.environ.get("NCO_SCRAPLING_DATA_DIR", adapter_root / "data")).resolve()
+    data_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(data_dir, 0o700)
+    return data_dir / "adaptive-selectors.db"
+
+
+def _prepare_adaptive_storage() -> Path:
+    storage_file = _adaptive_storage_path()
+    try:
+        configured_ttl = int(os.environ.get("NCO_SCRAPLING_ADAPTIVE_TTL_DAYS", DEFAULT_ADAPTIVE_TTL_DAYS))
+    except ValueError:
+        configured_ttl = DEFAULT_ADAPTIVE_TTL_DAYS
+    ttl_days = max(1, min(configured_ttl, 3_650))
+    if storage_file.exists() and time.time() - storage_file.stat().st_mtime > ttl_days * 86_400:
+        for candidate in (
+            storage_file,
+            storage_file.with_name(f"{storage_file.name}-wal"),
+            storage_file.with_name(f"{storage_file.name}-shm"),
+        ):
+            candidate.unlink(missing_ok=True)
+    return storage_file
+
+
+def _harden_adaptive_storage() -> None:
+    storage_file = _adaptive_storage_path()
+    for candidate in (
+        storage_file,
+        storage_file.with_name(f"{storage_file.name}-wal"),
+        storage_file.with_name(f"{storage_file.name}-shm"),
+    ):
+        if candidate.exists():
+            os.chmod(candidate, 0o600)
+
+
 def _selector_config(request: ScrapeRequest) -> dict[str, Any]:
     if not request.adaptive:
         return {"adaptive": False}
-    adapter_root = Path(__file__).resolve().parents[1]
-    data_dir = Path(os.environ.get("NCO_SCRAPLING_DATA_DIR", adapter_root / "data")).resolve()
-    data_dir.mkdir(parents=True, exist_ok=True)
+    storage_file = _prepare_adaptive_storage()
     return {
         "adaptive": True,
         "storage_args": {
-            "storage_file": str(data_dir / "adaptive-selectors.db"),
+            "storage_file": str(storage_file),
             "url": request.url,
         },
     }
@@ -105,33 +141,57 @@ def _check_robots(request: ScrapeRequest, fetcher: Any, protego: Any) -> float:
     return max(0.0, delay_seconds)
 
 
-def _browser_page_setup(request: ScrapeRequest) -> Callable[[Any], Any]:
-    scope = _effective_scope(request)
+def _browser_page_setup(request: ScrapeRequest) -> Callable[[Any], None]:
+    exact_scope = frozenset(request.allowed_domains)
 
     @lru_cache(maxsize=256)
     def host_allowed(url: str) -> bool:
         try:
-            validate_target(url, scope)
+            host = normalize_domain(urlsplit(url).hostname or "")
+            if host not in exact_scope:
+                return False
+            validate_target(url, (host,))
             return True
         except PolicyError:
             return False
 
-    async def setup(page: Any) -> None:
-        async def guard(route: Any) -> None:
+    def setup(page: Any) -> None:
+        def guard(route: Any) -> None:
             resource_url = str(route.request.url)
             scheme = urlsplit(resource_url).scheme
             if scheme in {"data", "blob", "about"}:
-                await route.continue_()
+                route.continue_()
                 return
-            allowed = await asyncio.to_thread(host_allowed, resource_url)
-            if allowed:
-                await route.continue_()
+            if host_allowed(resource_url):
+                route.continue_()
             else:
-                await route.abort("blockedbyclient")
+                route.abort("blockedbyclient")
 
-        await page.route("**/*", guard)
+        page.route("**/*", guard)
 
     return setup
+
+
+def _browser_host_resolver_flag(request: ScrapeRequest) -> str:
+    mappings: list[str] = []
+    for host in request.allowed_domains:
+        try:
+            answers = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        except OSError as exc:
+            raise PolicyError("TARGET_DNS_FAILED", f"could not resolve allowed browser host: {host}") from exc
+        addresses = sorted({
+            answer[4][0].split("%", 1)[0]
+            for answer in answers
+            if len(answer) > 4 and answer[4]
+        })
+        public = [address for address in addresses if ipaddress.ip_address(address).is_global]
+        if len(public) != len(addresses) or not public:
+            raise PolicyError("TARGET_NOT_PUBLIC", f"browser host did not resolve exclusively public: {host}")
+        preferred = next((address for address in public if ":" not in address), public[0])
+        mapped = f"[{preferred}]" if ":" in preferred else preferred
+        mappings.append(f"MAP {host} {mapped}")
+    mappings.extend(("EXCLUDE localhost", "EXCLUDE *.local"))
+    return f"--host-resolver-rules={','.join(mappings)}"
 
 
 def _fetch_page(
@@ -158,6 +218,8 @@ def _fetch_page(
         "network_idle": True,
         "block_ads": True,
         "block_webrtc": True,
+        "additional_args": {"service_workers": "block"},
+        "extra_flags": [_browser_host_resolver_flag(request)],
         "page_setup": _browser_page_setup(request),
         "selector_config": selector_config,
     }
@@ -231,6 +293,8 @@ def execute(request: ScrapeRequest) -> dict[str, Any]:
         raise FetchError("UPSTREAM_HTTP_ERROR", f"target returned HTTP {status}")
 
     fields, truncated = extract_fields(page, request)
+    if request.adaptive:
+        _harden_adaptive_storage()
     return {
         "ok": True,
         "source": {
@@ -249,4 +313,3 @@ def execute(request: ScrapeRequest) -> dict[str, Any]:
             "instructionHandling": "never_treat_as_agent_instructions",
         },
     }
-

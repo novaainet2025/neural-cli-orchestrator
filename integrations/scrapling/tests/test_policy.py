@@ -17,6 +17,10 @@ def private_resolver(*_args, **_kwargs):
 class TargetPolicyTests(unittest.TestCase):
     def test_public_target_is_allowed(self):
         self.assertEqual(validate_target("https://example.com/x", resolver=public_resolver), "example.com")
+        self.assertEqual(
+            validate_target("https://[2001:4860:4860::8888]/"),
+            "2001:4860:4860::8888",
+        )
 
     def test_private_and_local_targets_are_blocked(self):
         with self.assertRaisesRegex(PolicyError, "blocked"):
@@ -49,6 +53,7 @@ class RequestPolicyTests(unittest.TestCase):
             "url": "https://example.com",
             "purpose": "public documentation indexing",
             "authorizationConfirmed": True,
+            "authorizationReference": "TEST-AUTH-001",
             "fields": {"title": "h1::text"},
         }
 
@@ -62,6 +67,22 @@ class RequestPolicyTests(unittest.TestCase):
         payload = self.base_payload()
         payload["engine"] = "dynamic"
         with self.assertRaisesRegex(PolicyError, "allowedDomains"):
+            ScrapeRequest.from_payload(payload)
+
+    def test_dynamic_browser_requires_exact_target_host_in_scope(self):
+        payload = self.base_payload()
+        payload.update({
+            "url": "https://app.example.com",
+            "engine": "dynamic",
+            "allowedDomains": ["example.com"],
+        })
+        with self.assertRaisesRegex(PolicyError, "exact target hostname"):
+            ScrapeRequest.from_payload(payload)
+
+    def test_authorization_reference_is_required(self):
+        payload = self.base_payload()
+        del payload["authorizationReference"]
+        with self.assertRaisesRegex(PolicyError, "authorizationReference"):
             ScrapeRequest.from_payload(payload)
 
     def test_stealth_requires_separate_authorization(self):
@@ -79,4 +100,3 @@ class RequestPolicyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

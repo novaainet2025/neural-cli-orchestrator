@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 MAX_FIELDS = 50
 MAX_SELECTOR_LENGTH = 512
 MAX_PURPOSE_LENGTH = 500
+MAX_AUTHORIZATION_REFERENCE_LENGTH = 256
 MAX_ALLOWED_DOMAINS = 50
 MAX_OUTPUT_CHARS = 5_000_000
 FIELD_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -58,7 +59,14 @@ def normalize_domain(value: str) -> str:
     if "://" in domain:
         parsed = urlsplit(domain)
         domain = (parsed.hostname or "").rstrip(".").lower()
-    if not domain or "/" in domain or "@" in domain or ":" in domain:
+    domain = domain.removeprefix("[").removesuffix("]")
+    if not domain or "/" in domain or "@" in domain:
+        raise PolicyError("INVALID_SCOPE", f"invalid allowed domain: {value!r}")
+    try:
+        return ipaddress.ip_address(domain.split("%", 1)[0]).compressed
+    except ValueError:
+        pass
+    if ":" in domain:
         raise PolicyError("INVALID_SCOPE", f"invalid allowed domain: {value!r}")
     try:
         return domain.encode("idna").decode("ascii")
@@ -144,6 +152,7 @@ class ScrapeRequest:
     engine: str
     purpose: str
     authorization_confirmed: bool
+    authorization_reference: str
     fields: dict[str, str]
     allowed_domains: tuple[str, ...]
     timeout_ms: int
@@ -178,6 +187,17 @@ class ScrapeRequest:
             raise PolicyError(
                 "AUTHORIZATION_REQUIRED",
                 "authorizationConfirmed=true is required for the target and intended use",
+            )
+
+        authorization_reference = payload.get("authorizationReference")
+        if (
+            not isinstance(authorization_reference, str)
+            or len(authorization_reference.strip()) < 3
+            or len(authorization_reference.strip()) > MAX_AUTHORIZATION_REFERENCE_LENGTH
+        ):
+            raise PolicyError(
+                "AUTHORIZATION_REFERENCE_REQUIRED",
+                f"authorizationReference is required (3-{MAX_AUTHORIZATION_REFERENCE_LENGTH} characters)",
             )
 
         engine = payload.get("engine", "static")
@@ -221,6 +241,12 @@ class ScrapeRequest:
                 "EXPLICIT_SCOPE_REQUIRED",
                 "dynamic and stealth engines require allowedDomains to constrain browser requests",
             )
+        target_host = normalize_domain(urlsplit(url.strip()).hostname or "")
+        if engine in {"dynamic", "stealth"} and target_host not in allowed_domains:
+            raise PolicyError(
+                "EXPLICIT_SCOPE_REQUIRED",
+                "dynamic and stealth allowedDomains must include the exact target hostname",
+            )
 
         wait_selector = payload.get("waitSelector")
         if wait_selector is not None and (
@@ -250,6 +276,7 @@ class ScrapeRequest:
             engine=engine,
             purpose=purpose,
             authorization_confirmed=authorization_confirmed,
+            authorization_reference=authorization_reference.strip(),
             fields=fields,
             allowed_domains=allowed_domains,
             timeout_ms=_bounded_int(payload, "timeoutMs", 30_000, 1_000, 120_000),
@@ -268,4 +295,3 @@ class ScrapeRequest:
         )
         validate_target(request.url, request.allowed_domains)
         return request
-

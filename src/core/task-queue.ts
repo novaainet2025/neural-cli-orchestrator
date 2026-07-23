@@ -657,7 +657,18 @@ class TaskQueueManager {
       async (job: Job<QueuedTask>) => {
         return this.runJob(job.data, entry);
       },
-      { connection, concurrency },
+      {
+        connection,
+        concurrency,
+        // LLM 에이전트 잡은 수 분씩 걸린다. BullMQ 기본 lockDuration(30s)로는
+        // 락 갱신이 한 번만 밀려도(이벤트 루프 지연·Redis 순간 지연) 잡이 stalled로
+        // 처리되어 "could not renew lock"/"Lock mismatch"로 워커가 크래시하고 pm2가
+        // 재시작 루프에 빠진다(→ /api 간헐적 빈응답). 락 유효기간을 10분으로 늘리고
+        // 스톨 감지 주기·허용치를 완화해 장시간 잡을 견딘다.
+        lockDuration: 600_000,
+        stalledInterval: 60_000,
+        maxStalledCount: 3,
+      },
     );
 
     log.debug({ agentId, concurrency }, 'BullMQ queue+worker created');

@@ -127,10 +127,10 @@ const STAGE_KEYWORDS: Array<[number, RegExp]> = [
 ];
 
 export function rankTeam(team: TeamRow): number {
-  // 기술 이식 회사는 안전→복구→측정→가치판단→이식의 고정 순서가
+  // 기술 이식·웹 스크래핑 회사는 안전 게이트가 포함된 고정 순서가
   // 역할 키워드보다 중요하다. 전용 slug 번호를 명시적 stage rank로 사용한다.
-  const technologyPortStage = team.slug.match(/^tech-port-(\d{2})-/);
-  if (technologyPortStage) return Number(technologyPortStage[1]);
+  const controlledStage = team.slug.match(/^(?:tech-port|web-scrape)-(\d{2})-/);
+  if (controlledStage) return Number(controlledStage[1]);
   // 랭킹은 slug+name(깨끗한 단일 역할 토큰)만 사용한다.
   // charter/description 은 "탐색수집팀 핸드오프"·"수집자료→분석" 처럼 타 단계 어휘가
   // 섞여 있어 순서를 오염시키므로 제외한다(그 텍스트는 LLM 분해 프롬프트에서만 사용).
@@ -378,21 +378,31 @@ export function templateSubtask(team: TeamRow, goal: string): string {
 // 분해기가 팀 헌장만 되풀이하거나 핵심 대상을 누락해도 실행자가 목표 범위를 잃지 않게 한다.
 export function scopeDecomposedSubtask(team: TeamRow, goal: string, decomposed?: string): string {
   const specific = decomposed?.trim();
-  if (!specific) return templateSubtask(team, goal);
+  const scoped = specific
+    ? [
+        `[회사 목표] ${goal}`,
+        ``,
+        `[팀 하위작업: ${team.name}]`,
+        specific,
+        ``,
+        `위 하위작업은 회사 목표의 대상·안전 제약·산출물 경로를 그대로 준수해야 합니다.`,
+      ].join('\n')
+    : templateSubtask(team, goal);
+  if (team.slug !== 'tech-port-07-value-gate-report') return scoped;
   return [
-    `[회사 목표] ${goal}`,
+    scoped,
     ``,
-    `[팀 하위작업: ${team.name}]`,
-    specific,
-    ``,
-    `위 하위작업은 회사 목표의 대상·안전 제약·산출물 경로를 그대로 준수해야 합니다.`,
+    `[필수 단일결정 출력 계약]`,
+    `응답 첫 줄에 PORT_DECISION: APPROVE 또는 PORT_DECISION: REJECT 중 판단한 한 줄만 쓰세요.`,
+    `선택하지 않은 결정 문자열은 예시·설명·기본값 문맥을 포함해 응답의 다른 어느 곳에도 쓰지 마세요.`,
+    `두 결정이 함께 있거나 첫 줄에 단일 결정이 없으면 이 단계는 자동 실패합니다.`,
   ].join('\n');
 }
 
-// 기술 이식 회사는 팀 밖의 범용/저신뢰 executor로 재위임하지 않는다.
+// 안전 게이트 회사는 팀 밖의 범용/저신뢰 executor로 재위임하지 않는다.
 // 단계별 failover는 runStageWithFailover가 조직에 등록된 팀원 체인 안에서 수행한다.
 export function allowQueueProviderFailover(orgSlug: string): boolean {
-  return orgSlug !== 'technology-porting';
+  return orgSlug !== 'technology-porting' && orgSlug !== 'web-scraping';
 }
 
 // ── 실행 상태 저장소(인메모리, LRU 상한) ───────────────────────────────
@@ -474,6 +484,16 @@ const TECHNOLOGY_PORT_STAGE_SLUGS = [
   'tech-port-09-post-migration-verify',
 ] as const;
 
+const WEB_SCRAPING_STAGE_SLUGS = [
+  'web-scrape-01-intake-strategy',
+  'web-scrape-02-source-discovery',
+  'web-scrape-03-static-implementation',
+  'web-scrape-04-dynamic-implementation',
+  'web-scrape-05-data-analysis',
+  'web-scrape-06-verification-quality',
+  'web-scrape-07-report-delivery',
+] as const;
+
 export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): CompanyRun {
   const goal = (opts.goal ?? '').trim();
   if (!goal) throw new OrchestrationError(400, 'goal required');
@@ -507,6 +527,19 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
       throw new OrchestrationError(
         409,
         `기술 이식 회사 안전정책 위반: manager=codex 및 9개 필수 팀이 필요합니다${missing.length ? ` (누락: ${missing.join(', ')})` : ''}`,
+      );
+    }
+  }
+  if (org.slug === 'web-scraping') {
+    if (mode !== 'pipeline') {
+      throw new OrchestrationError(400, '웹 스크래핑 회사는 승인·범위 게이트를 위해 pipeline 모드만 허용합니다');
+    }
+    const activeSlugs = new Set(rawTeams.map((team) => team.slug));
+    const missing = WEB_SCRAPING_STAGE_SLUGS.filter((slug) => !activeSlugs.has(slug));
+    if (org.manager !== 'codex' || missing.length > 0) {
+      throw new OrchestrationError(
+        409,
+        `웹 스크래핑 회사 안전정책 위반: manager=codex 및 7개 필수 팀이 필요합니다${missing.length ? ` (누락: ${missing.join(', ')})` : ''}`,
       );
     }
   }

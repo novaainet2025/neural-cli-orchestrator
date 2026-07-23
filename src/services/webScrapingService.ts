@@ -9,6 +9,7 @@ export interface WebScrapingRequest {
   url: string;
   purpose: string;
   authorizationConfirmed: true;
+  authorizationReference: string;
   fields: Record<string, string>;
   engine?: ScrapingEngine;
   allowedDomains?: string[];
@@ -43,6 +44,25 @@ export class WebScrapingError extends Error {
 const MAX_STDOUT_BYTES = 6 * 1024 * 1024;
 const MAX_STDERR_BYTES = 256 * 1024;
 const PROCESS_TIMEOUT_PADDING_MS = 15_000;
+const DEFAULT_MAX_CONCURRENT_SCRAPES = 2;
+const ADAPTER_ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'USERPROFILE',
+  'TMPDIR',
+  'TEMP',
+  'TMP',
+  'LANG',
+  'LC_ALL',
+  'SSL_CERT_FILE',
+  'SSL_CERT_DIR',
+  'PLAYWRIGHT_BROWSERS_PATH',
+  'XDG_CACHE_HOME',
+  'NCO_SCRAPLING_DATA_DIR',
+  'NCO_SCRAPLING_ADAPTIVE_TTL_DAYS',
+  'NCO_SCRAPLING_ENABLE_STEALTH',
+] as const;
+let activeScrapes = 0;
 
 function adapterRoot(): string {
   return resolve(env.ROOT, 'integrations/scrapling');
@@ -67,6 +87,17 @@ export function resolveScraplingPython(): string {
   return 'python3';
 }
 
+export function buildScraplingEnvironment(
+  source: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: '1' };
+  for (const key of ADAPTER_ENV_ALLOWLIST) {
+    const value = source[key];
+    if (value) environment[key] = value;
+  }
+  return environment;
+}
+
 async function invokeAdapter(
   args: string[],
   input: Record<string, unknown> | null,
@@ -76,10 +107,7 @@ async function invokeAdapter(
   return await new Promise<Record<string, unknown>>((resolvePromise, rejectPromise) => {
     const child = spawn(python, ['-m', 'nco_scrapling.cli', ...args], {
       cwd: adapterRoot(),
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-      },
+      env: buildScraplingEnvironment(),
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     });
@@ -166,7 +194,22 @@ export async function getWebScrapingCapabilities(): Promise<Record<string, unkno
 }
 
 export async function runWebScraping(request: WebScrapingRequest): Promise<Record<string, unknown>> {
+  const configured = Number(process.env.NCO_SCRAPLING_MAX_CONCURRENCY ?? DEFAULT_MAX_CONCURRENT_SCRAPES);
+  const maximum = Number.isInteger(configured) && configured > 0
+    ? Math.min(configured, 8)
+    : DEFAULT_MAX_CONCURRENT_SCRAPES;
+  if (activeScrapes >= maximum) {
+    throw new WebScrapingError('ADAPTER_BUSY', `Scrapling concurrency limit reached (${maximum})`);
+  }
+  activeScrapes += 1;
   const timeoutMs = request.timeoutMs ?? 30_000;
-  return invokeAdapter([], request as unknown as Record<string, unknown>, timeoutMs + PROCESS_TIMEOUT_PADDING_MS);
+  try {
+    return await invokeAdapter(
+      [],
+      request as unknown as Record<string, unknown>,
+      timeoutMs + PROCESS_TIMEOUT_PADDING_MS,
+    );
+  } finally {
+    activeScrapes -= 1;
+  }
 }
-
