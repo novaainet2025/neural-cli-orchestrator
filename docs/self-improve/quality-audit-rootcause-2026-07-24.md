@@ -4,8 +4,11 @@
 
 - 요청 지표의 원장은 `team_lifecycle_events`의
   `tle_KYVYFrYSgOHxnL4G`(`score_checked`, 2026-07-24 03:50:00 UTC)와
-  `tle_pVs0F0w2GIXcxFY4`(`hr_directive`, 같은 시각)이다. 두 행 모두
-  `score=82.2`, `sample=48h`, `n=7`, `completion=85.7`을 기록한다.
+  `tle_pVs0F0w2GIXcxFY4`(`hr_directive`, 같은 시각)이다.
+  `score_checked` metadata는 `{"sample":"48h","n":7,"completion":85.7,...}`만
+  저장한다(score 숫자는 이벤트에 없음). HR 프롬프트/라이브 스코어의 score
+  (당시 ~82.2, 재검증 시점 81.7)는 `computeTeamScores`의 volume 항을 포함한
+  별도 산출이며, completion·n은 이벤트와 일치한다.
 - 48시간 원시 terminal 9건 중 `orphaned:%` 인프라 실패 2건을 기존 필터가
   제외하고, 6 completed + 1 failed가 분모 7을 구성했다. 유일한 counted failure
   `task_SMVL4-GzMPj56Wtg`는 품질 감사가 아니라 `commander-perfgoal` 제어면
@@ -35,11 +38,13 @@
   ([`src/mcp/server.ts`](../../src/mcp/server.ts),
   [`src/server/gateway.ts`](../../src/server/gateway.ts)).
 
-수집 시점에 `localhost:6200`은 연결 거부였고 현재 세션에 전용 NCO 커넥터도
-노출되지 않았다. 따라서 HTTP wrapper 호출 성공은 **미검증**이다. 대신 같은 API의
-원천 DB를 `sqlite3 -readonly`로 조회하고, 대상 7건은 `nco_get_task`와 동일하게
-`SELECT * FROM tasks WHERE id=?`로 개별 확인했다. 아래 수치는 이동하는 “현재 48시간”이
-아니라 HR directive 이벤트 시각에 고정했다.
+초안 작성 시점에는 `localhost:6200` 연결 거부였다. cycle 1 T1 재검증
+(2026-07-24 13:41 KST)에서는 `/api/health` healthy, `GET /api/tasks/:id`로
+`task_SMVL4-GzMPj56Wtg`·`task_Pv7u4ADyacqfxLtG`·`task_16HQgVNhF7mF545t`를
+교차확인했고 DB row와 일치했다. `GET /api/tasks?teamId=` 쿼리 필터는
+동작하지 않으므로(gateway list가 team_id를 필터하지 않음) 팀별 전수는
+SQL 또는 ID별 GET이 필요하다. 아래 수치는 이동하는 “현재 48시간”이 아니라
+HR directive 이벤트 시각(03:50 UTC)에 고정했고, 롤링 창 재집계는 별도 표기한다.
 
 ## DB-grounded 증거표: 점수에 포함된 7건
 
@@ -133,10 +138,12 @@ in-place 갱신되고 스코어러 소스도 같은 날 변경됐지만 이벤�
 - 롤백은 조건을 `team_id='team_kd-memory'`로 다시 좁히는 단일 상수 변경이다.
 - 팀 lifecycle 상태, 활성 여부, retirement에는 손대지 않는다.
 
-그러나 commit 이후인 04:20 score event도 여전히 `n=7`, `completion=85.7%`를 기록했다.
-따라서 **소스 수정 존재와 운영 반영은 분리해야 하며, 운영 scorer 재계산/배포 반영은
-미검증**이다. 이 자가학습 하위작업에서는 서비스 재시작이나 lifecycle 조작을 하지 않고
-자가개선팀에 다음을 인계한다.
+그러나 commit 이후인 04:20·04:40 score event도 여전히 `n=7`, `completion=85.7%`를
+기록했고, 라이브 `GET /api/teams/scores`의 `team_quality-audit`도
+`score=81.7, completion=85.7, n=7, sample=48h`다. 같은 DB에 현재 HEAD 필터를
+적용하면 rolling 48h도 `6/6=100%`이므로 **소스 수정 존재와 운영 프로세스 반영은
+분리**된다. 이 자가학습 하위작업에서는 서비스 재시작이나 lifecycle 조작을 하지
+않고 자가개선팀에 다음을 인계한다.
 
 1. 배포된 scorer가 HEAD와 같은 필터를 사용하는지 확인하고, 재계산 응답에서 대상 팀이
    `n=6`인지 T1로 검증한다.
@@ -177,40 +184,48 @@ in-place 갱신되고 스코어러 소스도 같은 날 변경됐지만 이벤�
 
 ## 한계와 추가 질문
 
-- 전용 `nco_list_tasks`/`nco_get_task` HTTP 호출은 NCO API 연결 거부로 미검증이다.
-- 03:50 이벤트가 사용한 `maxN`과 inclusion snapshot은 저장되지 않아 score 82.2의
+- `GET /api/tasks`는 team_id 쿼리 필터가 없어 팀별 목록은 SQL/`GET /api/tasks/:id`가 필요하다.
+  개별 get_task 3건은 cycle 1에서 T1 교차확인 완료.
+- 03:50 이벤트가 사용한 `maxN`과 inclusion snapshot·score 숫자는 metadata에 없어
   volume 항을 정확히 재현할 수 없다.
 - DB 행은 상태 이력을 보존하지 않으므로 02:20→02:30의 개별 task 전환은 알 수 없다.
 - 최신 홍보 패키지 제공 여부와 실제 감사 품질을 확인할 별도 business-outcome 원장은
   현재 표본에 없다.
-- 운영 반영 후 n=6으로 재계산되는지, 그리고 `task_Pv7u4ADyacqfxLtG` 같은 안전한
-  “입력 부족” 결과를 성공/보류 중 무엇으로 정의할지는 자가개선팀과 metric owner가
-  결정해야 한다.
+- 운영 프로세스에 HEAD 필터가 반영된 뒤 n=6으로 재계산되는지, 그리고
+  `task_Pv7u4ADyacqfxLtG` 같은 안전한 “입력 부족” 결과를 성공/보류 중 무엇으로
+  정의할지는 자가개선팀과 metric owner가 결정해야 한다.
+
+## cycle 1 T1 재검증 (2026-07-24 13:41 KST) — surface & hold
+
+| 검증 | 결과 | 등급 |
+|---|---|---|
+| `tle_KYVYFrYSgOHxnL4G` metadata | `n=7`, `completion=85.7`, `sample=48h` (score 필드 없음) | T1 |
+| 고정창 terminal 9건 | 완료 6 / 실패 3(`task_SMVL4` perfgoal, `task_zhONDDhk` orphan+perfgoal, `task_quality_check` orphan) | T1 |
+| HR 당시 조건(orphan 제외) | 7/6 = **85.7%** — directive와 일치 | T1 |
+| HEAD 필터(orphan+perfgoal 제외) | 6/6 = **100.0%** (counterfactual, 운영 회복 주장 아님) | T1 |
+| lease_expired / heartbeat-NULL | scored 분모에서 **0건** | T1 |
+| `GET /api/tasks/task_SMVL4-GzMPj56Wtg` | status=failed, spawned_by_cli=commander-perfgoal, response=필수값 미주입 거부 | T1 |
+| `GET /api/teams/scores` live | quality-audit **score=81.7, completion=85.7, n=7** | T1 |
+| `npm run build` / `vitest team-scorer.test.ts` | exit 0 / 4 passed | T1 |
+
+**판정:** 근본원인은 실감사 누락이 아니라 `commander-perfgoal` 제어면 오계상이다.
+코드 가드(`CONTROL_PLANE_PERFGOAL_EXCLUSION`, commit `1dfa39e5`)는 HEAD에 있으나
+운영 프로세스의 live score는 아직 구필터(n=7)다. 자가학습 범위에서는 추가 diff
+없이 **surface & hold**. 배포/재시작·lifecycle은 HR/자가개선 전권.
 
 ## 검증 영수증
 
-- [변경] `src/core/team-scorer.ts:194-196` — `CONTROL_PLANE_PERFGOAL_EXCLUSION`
-  team-agnostic 상수 추가 (commit `1dfa39e5`)
-- [변경] `src/core/team-scorer.ts:232,238,244,250,255,260` — 6개 CASE WHEN에
-  제어면 제외 조건 적용
-- [변경] `src/core/team-scorer.test.ts:113-154` — 제어면 제외 범위 회귀 테스트 추가
-- [변경] `docs/self-improve/quality-audit-rootcause-2026-07-24.md` — 근본원인
-  분석 및 post-fix DB 검증 결과 기록
-- [DB 검증] directive 필터 재계산: raw `9/6`, 당시 `7/6=85.7%`, 현재 필터
-  `6/6=100.0%`
-- [Post-fix T1 검증] `sqlite3`로 team_quality-audit 48h 전수 조회:
-  terminal=6, completed=6, completion=**100.0%** — 제어면 태스크 2건
-  (`task_SMVL4`, `task_zhONDDhk`) 모두 `CONTROL_PLANE_PERFGOAL_EXCLUSION`에
-  의해 분모에서 제외됨.
-  ```
-  task_SMVL4-GzMPj56Wtg  | failed  | commander-perfgoal | EXCLUDED
-  task_zhONDDhk-axRXUId  | failed  | commander-perfgoal | EXCLUDED
-  task_quality_check     | failed  | (orphaned)         | EXCLUDED
-  ```
-- [이벤트 검증] `tle_KYVYFrYSgOHxnL4G`와 `tle_pVs0F0w2GIXcxFY4`의
-  `82.2 / 85.7% / 48h / 7` 일치
+- [변경] `docs/self-improve/quality-audit-rootcause-2026-07-24.md` — cycle 1 T1
+  재검증(API·live scores·metadata 정정)·surface & hold 기록. 소스 코드 변경 없음.
+- [기존 패치] `src/core/team-scorer.ts:194-196` —
+  `CONTROL_PLANE_PERFGOAL_EXCLUSION` (commit `1dfa39e5`, 이번 하위작업에서 재작성 안 함)
+- [DB 검증] 고정창·롤링창 동일: raw `9/6`, infra `7/6=85.7%`, HEAD 필터 `6/6=100.0%`
+- [API 검증] `/api/health` healthy; `/api/tasks/:id` 3건 DB 일치;
+  `/api/teams/scores` → quality-audit `81.7 / 85.7% / n=7` (운영 미반영 Gap)
+- [이벤트 검증] `tle_KYVYFrYSgOHxnL4G` → `n=7, completion=85.7, sample=48h`
 - [빌드/타입체크] `npm run build` → exit 0 (`tsc`)
 - [관련 테스트] `npx vitest run src/core/team-scorer.test.ts` → 1 file, 4 tests passed
-- [증거 등급] DB row/파일 내용/T1; HTTP wrapper와 운영 재계산은 미검증
-- [Gap] 운영 scorer 재계산 반영 (NCO 서버 재시작 필요), event-time `maxN` snapshot,
-  business-outcome 원장이 없음
+- [증거 등급] T1 (DB row + HTTP body + 파일). 운영 프로세스 reload는 **미실시**
+- [Gap] live scorer가 HEAD 필터를 쓰도록 재시작/재배포; event metadata에 score/maxN/
+  inclusion snapshot 부재; business-outcome 원장 부재
+- [미검증항목] 없음(범위 내). 운영 반영은 자가개선팀 인계.

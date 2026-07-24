@@ -92,6 +92,41 @@ describe('task-intake helpers', () => {
     }).prompt).not.toContain('[06 Improvement Debate 응답 계약]');
   });
 
+  it('adds the evidence contract once to company-run self-improvement diagnostic teams only', () => {
+    const diagnosticTeamIds = [
+      'team_self-learning',
+      'team_self-improvement',
+      'team_error-prevention',
+    ];
+
+    for (const teamId of diagnosticTeamIds) {
+      const metadata = {
+        projectDir: '/repo',
+        teamId,
+        companyRunId: 'corun-cli-design-cycle3',
+      };
+      const first = applyPromptGate('[목표] cli-design 저점 원인을 검증한다', metadata);
+      const retry = applyPromptGate(first.prompt, metadata);
+
+      expect(first.prompt).toContain('[Self-Improvement Diagnostic 응답·증거 계약]');
+      expect(first.prompt).toContain('첫 줄을 `done:`');
+      expect(first.prompt).toContain('첫 줄을 `status:`');
+      expect(first.prompt).toContain('DB 행·파일 내용·명령 출력');
+      expect(first.prompt).toContain('grep 문자열 존재만으로');
+      expect(retry.prompt.match(/\[Self-Improvement Diagnostic 응답·증거 계약\]/g)).toHaveLength(1);
+    }
+
+    expect(applyPromptGate('[목표] 상시 자가학습을 수행한다', {
+      projectDir: '/repo',
+      teamId: 'team_self-learning',
+    }).prompt).not.toContain('[Self-Improvement Diagnostic 응답·증거 계약]');
+    expect(applyPromptGate('[목표] 일반 회사 작업을 수행한다', {
+      projectDir: '/repo',
+      teamId: 'team_other',
+      companyRunId: 'corun-other',
+    }).prompt).not.toContain('[Self-Improvement Diagnostic 응답·증거 계약]');
+  });
+
   it('assigns the default verifier for code work with package.json', () => {
     const verifier = buildDefaultVerifierWithFs({
       prompt: 'src/server/gateway.ts 버그 수정',

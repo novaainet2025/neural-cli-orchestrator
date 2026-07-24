@@ -32,6 +32,12 @@ const SOURCE_DISCOVERY_TEAM_ID = 'team_tech-port-01-source-discovery';
 const SOURCE_DISCOVERY_RESPONSE_CONTRACT = '[01 Source Discovery 응답 계약]';
 const IMPROVEMENT_DEBATE_TEAM_ID = 'team_tech-port-06-improvement-debate';
 const IMPROVEMENT_DEBATE_RESPONSE_CONTRACT = '[06 Improvement Debate 응답 계약]';
+const SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS = new Set([
+  'team_self-learning',
+  'team_self-improvement',
+  'team_error-prevention',
+]);
+const SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT = '[Self-Improvement Diagnostic 응답·증거 계약]';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -67,6 +73,25 @@ export function applyTeamResponseContract(
   prompt: string,
   metadata?: Record<string, unknown>,
 ): string {
+  const companyRunId = typeof metadata?.companyRunId === 'string'
+    ? metadata.companyRunId.trim()
+    : '';
+  const teamId = typeof metadata?.teamId === 'string' ? metadata.teamId : '';
+  if (companyRunId && SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS.has(teamId)) {
+    if (prompt.includes(SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT)) return prompt;
+    return [
+      prompt,
+      '',
+      SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT,
+      '- 현재 단계와 요청된 검증을 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
+      '- 데이터·권한·도구 부족, 부분 완료 또는 차단 상태이면 첫 줄을 `status:`로 시작하고 `[미검증]` 항목을 명시한다.',
+      '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
+      '- task ID, 상태, 수치, 파일 변경, 테스트 결과는 DB 행·파일 내용·명령 출력처럼 재검증 가능한 근거가 있을 때만 주장한다.',
+      '- 도구 함수 설명, 이전 단계 출력 반복, 다른 팀 결과 또는 grep 문자열 존재만으로 현재 작업의 완료를 주장하지 않는다.',
+      '- 변경 작업이면 변경 경로, 실제 검증 결과, Gap과 되돌리기 방법을 기록하고, 변경이 불필요하면 근거와 diff 0을 명시한다.',
+    ].join('\n');
+  }
+
   if (metadata?.teamId === SOURCE_DISCOVERY_TEAM_ID) {
     if (prompt.includes(SOURCE_DISCOVERY_RESPONSE_CONTRACT)) return prompt;
     return [

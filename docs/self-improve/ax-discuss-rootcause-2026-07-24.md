@@ -187,4 +187,56 @@ raw completion을 검증 성공률로 읽는 것도 둘 다 잘못이다.
   `src/verification/response-quality.ts`의 집계·형식 판정 조건 확인
 - [T1] `npx tsc --noEmit` → exit 0
 - [T1] `npm run build` → `tsc`, exit 0
-- [미검증] NCO API 응답 본문과 독립 모델 교차리뷰는 서비스 비가용으로 수행하지 못함
+- [T1] NCO API health는 cycle 3 재검증에서 `healthy:true` 확인 (아래 절)
+- [미검증] 독립 모델 교차리뷰는 본 사이클에서 수행하지 않음
+
+## cycle 3 재검증 영수증 (2026-07-24 13:44 KST)
+
+읽기 전용 DB·API·빌드만 수행했다. lifecycle profile·팀 상태·task 행은 변경하지
+않았다.
+
+### lifecycle 스냅샷 (`tle_6BfVlT0sB85-GlGm`)
+
+```text
+$ bash -lc 'sqlite3 -readonly db/nco.db "SELECT id, event_type, score, improvement_count, metadata_json, created_at FROM team_lifecycle_events WHERE id='\''tle_6BfVlT0sB85-GlGm'\'';"'
+tle_6BfVlT0sB85-GlGm|score_checked|70.9|2|{"sample":"48h","n":14,"completion":71.4,"consecutiveLowChecks":96}|2026-07-24 04:00:00
+```
+
+### 고정 창 terminal 집계 (`[2026-07-22 04:00:00, 2026-07-24 04:00:00)`)
+
+```text
+$ bash -lc 'sqlite3 -readonly db/nco.db < .tmp-ax-verify-tasks.sql'  # status GROUP BY
+completed|10
+failed|4
+lease_expired|1
+timed_out|1
+raw_terminal=16
+```
+
+공식 표본 14건 = raw 16건 − 인프라 failed `task_tcQN27KxLB_Otif1` − never-ran
+lease `task_goC0-dH8ZhbDsAs8` → **completed 10 / failed 3 / timed_out 1**.
+
+### `wr_eZfmihgCSrbtQnSX` 실패 클러스터 (표본 내 4행)
+
+```text
+task_vvo99V0aEDoJkure|failed|opencode|2026-07-24 00:01:56|silent-failure: empty output
+task_qLyVkz5jiVmoaF8W|timed_out|opencode|2026-07-24 00:01:56|timeout(idle)
+task_FCS4xJvFV6Fgt-1l|failed|opencode|2026-07-24 00:02:38|silent-failure: empty output
+task_3v40MbxX9Jcz2rXy|failed|opencode|2026-07-24 00:03:40|silent-failure: empty output
+```
+
+(동일 work report의 lease_expired 1행 `task_goC0-dH8ZhbDsAs8`는 표본 제외.)
+
+### API·빌드
+
+```text
+$ curl -sS --connect-timeout 3 http://127.0.0.1:6200/api/health
+{"healthy":true,"api":{"port":6200},"websocket":{"port":6201},"redis":{"connected":true},"storage":{"kind":"sqlite","path":"/Users/nova-ai/project/nco/db/nco.db"},"timestamp":"2026-07-24T04:44:38.666Z"}
+
+$ npx tsc --noEmit → TSC_EXIT:0
+$ npm run build → tsc, BUILD_EXIT:0
+```
+
+- [등급] T1 — SQLite 원본 행, HTTP health 본문, 실제 명령 exit 코드
+- [Gap] 0% (문서 본문의 48h/14·10/3/1·wr 클러스터·score 70.9와 DB 일치)
+- [미검증항목] rolling 48h live 재계산(스냅샷 고정 창과 혼동 금지)
