@@ -212,6 +212,68 @@ describe('team score aggregation', () => {
     expect(legal).toMatchObject({ completion: 50, n: 2 });
   });
 
+  it('excludes repeated all-failed work-report fan-out but keeps a single failure with a cancelled sibling', () => {
+    const insertMeta = db.prepare(`
+      INSERT INTO tasks (
+        id, team_id, status, error, metadata_json, acked_at, last_heartbeat_at, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    const insertTeam = db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `);
+    insertTeam.run('team_research', 'Research Analysis', 'research-analysis');
+    insertTeam.run('team_single_failure', 'Single Failure', 'single-failure');
+
+    // team_research-analysis 실측 회귀: 완료 13건과 동일 workReportId의 heartbeat 보유
+    // lease_expired 2건. 두 만료는 never-ran 제외 대상이 아니지만, 하나의 scheduler fan-out
+    // 실패이므로 terminal 분모에서 함께 제외되어 13/13을 유지해야 한다.
+    for (let index = 1; index <= 13; index += 1) {
+      insertMeta.run(
+        `research-ok-${index}`, 'team_research', 'completed', null, null,
+        null, null, `-${index} hours`,
+      );
+    }
+    const duplicatedReport = JSON.stringify({ workReportId: 'wr_research_duplicate' });
+    insertMeta.run(
+      'research-expired-1', 'team_research', 'lease_expired', 'lease_expired',
+      duplicatedReport, '2026-07-22 05:02:46', '2026-07-22 05:06:17', '-14 hours',
+    );
+    insertMeta.run(
+      'research-expired-2', 'team_research', 'lease_expired', 'lease_expired',
+      duplicatedReport, '2026-07-22 05:03:18', '2026-07-22 05:04:52', '-15 hours',
+    );
+
+    // 범위 가드: cancelled는 scorer의 실패 상태가 아니다. 같은 workReportId에 cancelled
+    // 형제가 있어도 실제 failed 1건을 "2개 실패 fan-out"으로 오인해 제외하면 안 된다.
+    insertMeta.run(
+      'single-ok', 'team_single_failure', 'completed', null, null,
+      null, null, '-1 hour',
+    );
+    const singletonReport = JSON.stringify({ workReportId: 'wr_single_failure' });
+    insertMeta.run(
+      'single-failed', 'team_single_failure', 'failed', 'actual task failure',
+      singletonReport, '2026-07-24 00:00:00', '2026-07-24 00:01:00', '-2 hours',
+    );
+    insertMeta.run(
+      'single-cancelled', 'team_single_failure', 'cancelled', 'cancelled by operator',
+      singletonReport, null, null, '-3 hours',
+    );
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_research')).toMatchObject({
+      completion: 100,
+      n: 13,
+      sample: '48h',
+    });
+    expect(scores.find((team) => team.teamId === 'team_single_failure')).toMatchObject({
+      completion: 50,
+      n: 2,
+      sample: '48h',
+    });
+  });
+
   afterEach(() => db.close());
 
   it('aggregates scores and serves the live team and organization arrays', async () => {

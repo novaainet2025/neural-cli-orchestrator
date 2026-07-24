@@ -148,6 +148,13 @@ completion 90.9%로 HR 이벤트와 정확히 일치한다.
 completed 9, completion 100.0%다. 이것은 **고정 DB 스냅샷에 대한
 반사실 계산**이며, 운영 점수가 회복됐다는 주장이 아니다.
 
+빌드 후 운영 DB의 임시 백업본에 `dist/core/team-scorer.js`를 실행한
+결과도
+`{"score":94.8,"grade":"A","completion":100,"n":9,"sample":"48h"}`
+였다. score 94.8은 실행 시점 fleet의 상대 volume을 포함한 복사본 측정값일
+뿐, 라이브 API나 다음 HR 이벤트 값으로 해석하지 않는다. 임시 백업은 검증
+직후 삭제했고 원본 DB는 읽거나 백업한 것 외에 변경하지 않았다.
+
 같은 일반 수정이 이미 존재하므로 CFO 예외 코드나 중복 가드를 새로 만들지
 않는다. 현재 NCO API가 중단되어 실행 서비스가 이 commit을 로드했는지,
 다음 HR score event가 어떤 값을 기록할지는 **[미검증]**이다.
@@ -233,6 +240,10 @@ GROUP BY json_extract(metadata_json, '$.workReportId');
   테스트 파일 1개, 테스트 5개 통과.
 - [검증방법] `npx tsc --noEmit` → exit 0, stdout/stderr 없음.
 - [검증방법] `npm run build` → `tsc`, exit 0.
+- [검증방법] `sqlite3 .backup`으로 만든 임시 DB에 빌드된
+  `computeTeamScores` 실행 →
+  `score=94.8, completion=100, n=9, sample=48h`; 실행 뒤 임시 복사본
+  삭제, 운영 결과로는 주장하지 않음.
 - [검증방법] `PRAGMA quick_check` → `ok`;
   `git diff --check -- <두 산출물>` → exit 0.
 - [등급] T1 — SQLite 원본 행, git object, 파일 내용, 명령 출력 직접 확인.

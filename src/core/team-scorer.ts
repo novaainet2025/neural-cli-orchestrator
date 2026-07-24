@@ -266,14 +266,16 @@ const DELIVERED_WORK_REPORTS_JOIN = `LEFT JOIN (
 // silent-failure 3건 + idle timeout 1건으로 팬아웃 → completion 10/14=71.4% 오탐.
 // 제외 시 10/10=100%로 실제 업무 단위 실패를 반영(work_report는 여전히 missed로 별도 추적).
 // 안전 불변식: status<>'completed' 가드로 완료 행은 절대 제외되지 않으며,
-// HAVING COUNT(*)>1로 단일 태스크는 제외되지 않는다(과잉 제외 방지).
+// scorer의 실패 상태(failed/timed_out/lease_expired)만 팬아웃 수에 포함하고
+// HAVING COUNT(*)>1로 단일 실패는 제외되지 않는다. cancelled/활성 형제가 있다는 이유로
+// 실제 단일 실패가 중복으로 오인되지 않는다(과잉 제외 방지).
 // 롤백: 아래 3개 terminal CASE와 main LEFT JOIN에서 이 조건을 제거하면 이전 동작.
 const WORK_REPORT_FANOUT_ALL_FAILED_JOIN = `LEFT JOIN (
       SELECT
         team_id,
         json_extract(metadata_json, '$.workReportId') AS wrid
       FROM tasks
-      WHERE status <> 'completed'
+      WHERE status IN ('failed', 'timed_out', 'lease_expired')
         AND json_valid(metadata_json)
         AND TRIM(COALESCE(json_extract(metadata_json, '$.workReportId'), '')) <> ''
       GROUP BY team_id, json_extract(metadata_json, '$.workReportId')

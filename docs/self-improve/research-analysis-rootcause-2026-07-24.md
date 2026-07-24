@@ -106,8 +106,9 @@ tags:
 
 따라서 05:10의 회복을 05:22 이후 코드 변경의 효과로 보고하면 안 된다. 회복의 직접
 원인은 rolling window age-out이다. 현재 규칙은 같은 패턴이 창 안에 있어도 중복 실패
-행을 제외하는 bounded·reversible 가드지만, all-failed fan-out 전용 회귀 테스트는 현재
-파일에서 확인되지 않았다. 자가개선 단계에서는 이 케이스를 별도 테스트로 고정해야 한다.
+행을 제외하는 bounded·reversible 가드다. 자가개선 단계에서는 fan-out 그룹을 scorer의
+실패 상태(`failed`, `timed_out`, `lease_expired`)로 한정하고, 분석팀의 13/15 재현과
+`failed + cancelled` 비제외 경계를 단위 테스트로 고정했다.
 
 ## Mem0 연동용 지식 항목
 
@@ -124,15 +125,23 @@ tags:
 
 ## 검증 영수증
 
-- [변경] `docs/self-improve/research-analysis-rootcause-2026-07-24.md` — 잘못된 타 팀
-  한 줄/오진 내용을 실제 DB 근거 노트로 교체.
+- [변경] `src/core/team-scorer.ts` — all-failed fan-out 그룹을 scorer의 terminal 실패
+  상태 3종으로 한정해 cancelled/활성 형제에 의한 과잉 제외를 차단.
+- [변경] `src/core/team-scorer.test.ts` — 분석팀 13/15 중복 lease 만료 재현과
+  `failed + cancelled` 비제외 경계 테스트 추가.
+- [변경] `docs/self-improve/research-analysis-rootcause-2026-07-24.md` — 실제 DB 근거,
+  패치 범위와 검증 결과 기록.
 - [검증방법] 고정 48h SQL → `raw 19/13`, 당시 필터 `15/13`, HEAD 필터 `13/13`;
   lifecycle row → `score=84.2`, `completion=86.7`, `n=15`;
   `npx tsc --noEmit` → exit 0;
-  `npx vitest run src/core/team-scorer.test.ts` → 1 file, 5 tests passed;
-  `npm run build` → `tsc`, exit 0.
+  `npx vitest run src/core/team-scorer.test.ts` → 1 file, 6 tests passed;
+  `npm run build` → `tsc`, exit 0;
+  전체 `npx vitest run` → 96 files/477 tests passed, 1 file/1 test failed
+  (`tests/근거.test.ts:20`의 고정 기대값 `2026-07-14`와 실제
+  `data/team-runner/team_ax-collab.last=2026-07-24` 불일치; 본 패치 범위 밖).
 - [등급] T1 — SQLite 원문 행, lifecycle 이벤트, 소스/커밋 직접 확인.
-- [Gap] all-failed fan-out 전용 단위 테스트는 `[미검증]`; 직접 `computeTeamScores` 호출은
-  샌드박스의 tsx IPC `EPERM`으로 실행하지 못했으므로 SQL로 동일 조건을 재현했다.
+- [Gap] 운영 DB는 읽기 전용으로 보존했으며, 패치 후 운영 스코어 이벤트 재계산은 수행하지
+  않았다. 단위 테스트가 `13/15 → 13/13` 및 `failed + cancelled → 1/2` 경계를 직접
+  검증한다. 전체 suite의 기존 날짜 포인터 실패 1건 때문에 저장소 전체 green은 미달이다.
 - [미검증항목] provider 큐 대기시간, 운영 배포 프로세스가 HEAD를 로드했는지 여부.
-- 안전: 팀 삭제·비활성·lifecycle 상태 변경 및 소스코드 변경 없음.
+- 안전: 팀 삭제·비활성·lifecycle 상태 및 task/DB 행 변경 없음.
