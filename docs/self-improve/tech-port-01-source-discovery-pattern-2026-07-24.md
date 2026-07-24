@@ -241,7 +241,11 @@ ORDER BY created_at;
 - [검증방법] DB 재조회, 관련 Vitest, `npx tsc --noEmit`, `npm run build`,
   `git diff --check`.
 - [등급] T1 — SQLite 원본 행, 실제 파일 내용, 실제 명령 출력.
-- [현재 확인] 관련 Vitest `23/23` 통과, `npx tsc --noEmit` exit `0`.
+- [현재 확인] 관련 Vitest `24/24` 통과, `npx tsc --noEmit` exit `0`,
+  `npm run build` exit `0`, 대상 diff 검사 exit `0`.
+- [전체 테스트] `npm run test:run`은 `96` files/`460` tests 통과,
+  `tests/근거.test.ts`의 날짜 고정 기대값 1건 실패로 exit `1`.
+  기대값 `2026-07-14`, 실제 포인터 `2026-07-24`이며 이번 변경 범위 밖이다.
 - [Gap] 운영 NCO가 꺼져 있어 수정 prompt로 실제 team 01 task를 재실행하지
   못했다. 변경 후 48시간 score/completion 효과는 `[미검증]`이다.
 - [미검증항목] source URL의 독립 네트워크 검증, score 산식 독립 재계산,
