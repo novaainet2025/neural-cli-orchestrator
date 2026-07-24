@@ -144,14 +144,21 @@ function computeVolume(n: number, maxN: number): number {
   return (100 * Math.log10(n)) / Math.log10(maxN);
 }
 
-// 인프라 기인 실패(부팅 orphan 복구·graceful shutdown 드레인 타임아웃)는 팀 산출물
-// 품질 신호가 아니라 서버 재시작 이벤트다. src/index.ts가 이들을 'orphaned:%' 접두
-// error로 마킹한다('orphaned: server restart …', 'orphaned: graceful shutdown timeout').
-// completion 분모에 이런 실패를 넣으면 팀이 재시작으로 인해 부당하게 감점된다
-// (실측 2026-07-24: 최근 48h에 38개 팀·64건 orphan-failed). 따라서 terminal 집계에서만
-// 제외한다. 정상 품질 실패(unknown/timeout/lease_expired 등)는 그대로 카운트한다.
-// 롤백: 아래 3개 terminal CASE에서 ORPHAN_EXCLUSION 조건을 제거하면 정확히 이전 동작.
-const ORPHAN_EXCLUSION = `AND (k.error IS NULL OR k.error NOT LIKE 'orphaned:%')`;
+// 인프라 기인 실패(부팅 orphan 복구·graceful shutdown 드레인 타임아웃·에이전트 가용성
+// 서킷브레이커)는 팀 산출물 품질 신호가 아니라 인프라 이벤트다.
+//  - src/index.ts가 재시작 실패를 'orphaned:%' 접두 error로 마킹한다
+//    ('orphaned: server restart …', 'orphaned: graceful shutdown timeout').
+//  - src/agent/agent-manager.ts:135가 에이전트 서킷이 열려 있으면 태스크 실행 *이전*에
+//    'Circuit breaker open for agent …' error로 즉시 실패시킨다(iterations:0, durationMs:0).
+//    즉 팀 작업은 한 줄도 실행되지 않았고, 이는 에이전트 오프라인/레이트리밋 가용성 신호다.
+// completion 분모에 이런 실패를 넣으면 팀이 인프라 이벤트로 부당하게 감점된다
+// (실측 2026-07-24: 최근 48h에 orphan 64건, 서킷브레이커 63건·14개 팀. team_tech-port-02
+//  -safety-license는 5건 실패 중 4건이 동일 workReportId wr_ZKslprd1NUvsf1Fg를 오프라인
+//  claude-code로 팬아웃한 서킷브레이커 실패였고, 같은 work report의 다른 사본은 codex가
+//  완료(task_8L00qmKQxhiqO41O)했다). 따라서 terminal 집계에서만 제외한다. 정상 품질
+//  실패(unknown/timeout/lease_expired 등)는 그대로 카운트한다.
+// 롤백: 아래 3개 terminal CASE에서 INFRA_EXCLUSION 조건을 제거하면 정확히 이전 동작.
+const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%'))`;
 
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const rows = database.prepare(`
@@ -163,7 +170,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-48 hours')
-          ${ORPHAN_EXCLUSION}
+          ${INFRA_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -172,7 +179,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-7 days')
-          ${ORPHAN_EXCLUSION}
+          ${INFRA_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -180,7 +187,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
-          ${ORPHAN_EXCLUSION}
+          ${INFRA_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t

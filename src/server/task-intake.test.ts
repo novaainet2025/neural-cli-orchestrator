@@ -48,6 +48,24 @@ describe('task-intake helpers', () => {
     expect(result.promptGate).toEqual({ score: 100 });
   });
 
+  it('adds the source-discovery protocol contract once and leaves other teams unchanged', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_tech-port-01-source-discovery',
+    };
+    const first = applyPromptGate('[목표] 공식 소스를 조사한다', metadata);
+    const second = applyPromptGate(first.prompt, metadata);
+
+    expect(first.prompt).toContain('[01 Source Discovery 응답 계약]');
+    expect(first.prompt).toContain('첫 줄을 `done:`');
+    expect(first.prompt).toContain('`[미검증]`');
+    expect(second.prompt.match(/\[01 Source Discovery 응답 계약\]/g)).toHaveLength(1);
+    expect(applyPromptGate('[목표] 공식 소스를 조사한다', {
+      projectDir: '/repo',
+      teamId: 'team_other',
+    }).prompt).not.toContain('[01 Source Discovery 응답 계약]');
+  });
+
   it('assigns the default verifier for code work with package.json', () => {
     const verifier = buildDefaultVerifierWithFs({
       prompt: 'src/server/gateway.ts 버그 수정',

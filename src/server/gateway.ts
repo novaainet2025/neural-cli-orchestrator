@@ -587,12 +587,13 @@ export const loadRetryPayload = (
     LIMIT 1
   `).get(taskId) as { ai: string | null; prompt: string | null } | undefined;
   const verifierRow = db.prepare(`
-    SELECT verifier_json, verifier_result_json
+    SELECT verifier_json, verifier_result_json, metadata_json
     FROM tasks
     WHERE id=?
   `).get(taskId) as {
     verifier_json: string | null;
     verifier_result_json: string | null;
+    metadata_json: string | null;
   } | undefined;
   const sourceStatusFilter = opts?.allowCompletedSource
     ? "status IN ('failed', 'timed_out', 'completed')"
@@ -619,9 +620,36 @@ export const loadRetryPayload = (
       return undefined;
     }
   })();
+  // 재시도는 원 태스크의 팀·회사 계보를 유지해야 score/업무보고 피드백에 귀속된다.
+  // quality 판정 자체는 자식의 새 실행 결과이므로 source의 진단 플래그는 승계하지 않는다.
+  const retryMetadata = (() => {
+    if (!verifierRow?.metadata_json) return undefined;
+    try {
+      const source = JSON.parse(verifierRow.metadata_json) as Record<string, unknown>;
+      const inherited: Record<string, unknown> = {};
+      for (const key of [
+        'projectDir',
+        'allowProviderFailover',
+        'organizationId',
+        'teamId',
+        'companyRunId',
+        'workReportId',
+      ]) {
+        if (source[key] !== undefined) inherited[key] = source[key];
+      }
+      return Object.keys(inherited).length > 0 ? inherited : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
   const payload = deadLetter
-    ? { ai: parseRetryTaskAi(deadLetter.ai), prompt: deadLetter.prompt ?? '', verifier: parsedVerifier }
+    ? {
+        ai: parseRetryTaskAi(deadLetter.ai),
+        prompt: deadLetter.prompt ?? '',
+        verifier: parsedVerifier,
+        metadata: retryMetadata,
+      }
     : sourceTask
       ? {
           ai: parseRetryTaskAi(sourceTask.assigned_to),
@@ -640,6 +668,7 @@ export const loadRetryPayload = (
           priority: sourceTask.priority ?? undefined,
           systemPrompt: sourceTask.system_prompt ?? undefined,
           verifier: parsedVerifier,
+          metadata: retryMetadata,
         }
       : null;
 

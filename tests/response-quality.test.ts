@@ -93,9 +93,22 @@ describe('response quality gate', () => {
   it('loads retry payload from completed tasks only when allowCompletedSource is enabled', () => {
     const db = getDb();
     db.prepare(`
-      INSERT INTO tasks (id, mode, prompt, assigned_to, status, completed_at, updated_at)
-      VALUES (?, 'task', ?, 'codex', 'completed', datetime('now'), datetime('now'))
-    `).run('task-quality-completed', 'Investigate response quality gate');
+      INSERT INTO tasks (
+        id, mode, prompt, assigned_to, status, metadata_json, completed_at, updated_at
+      )
+      VALUES (?, 'task', ?, 'codex', 'completed', ?, datetime('now'), datetime('now'))
+    `).run(
+      'task-quality-completed',
+      'Investigate response quality gate',
+      JSON.stringify({
+        projectDir: '/repo',
+        teamId: 'team_tech-port-01-source-discovery',
+        organizationId: 'org_technology-porting',
+        companyRunId: 'corun-1',
+        qualityRejected: true,
+        qualityHeuristics: ['FORMAT_MISMATCH'],
+      }),
+    );
 
     const withoutFlag = loadRetryPayload(db, 'task-quality-completed');
     const withFlag = loadRetryPayload(db, 'task-quality-completed', { allowCompletedSource: true });
@@ -104,5 +117,11 @@ describe('response quality gate', () => {
     expect(withFlag).not.toBeNull();
     expect(withFlag?.prompt).toBe('Investigate response quality gate');
     expect(withFlag?.ai).toBe('codex');
+    expect(withFlag?.metadata).toEqual({
+      projectDir: '/repo',
+      teamId: 'team_tech-port-01-source-discovery',
+      organizationId: 'org_technology-porting',
+      companyRunId: 'corun-1',
+    });
   });
 });
