@@ -21,7 +21,7 @@
 - **준법(Compliance):** work_report 미제출 68.8% — 보고 의무 위반 상태. 별도 시정 조치 또는 페널티 규정 확인 필요 (미확인: 관련 정책 문서).
 - **계약 이행(Contract Performance):** 완료율 45.9% — 정량적 목표 대비 미달. 계약상 SLG(Service Level Goal)가 있다면 위반 가능성 있음 (미확인: SLG 조항).
 - **IP/데이터 보호(IP Protection):** seed data에 IP 유출·데이터 보호 사고는 보고되지 않음. 단, offline 에이전트 3개의 세션 종료 후 데이터 정리 절차는 미확인.
-- **규제 대응(Regulatory):** 실패 태스크 17건의 내용(원인, 영향범위, 규제 관련 여부)은 seed data에서 확인 불가. 규제 보고 의무가 있는 태스크 포함 여부 미확인.
+- **규제 대응(Regulatory):** The system validates tasks against structured output schema (e.g., JSON with mandatory fields like compliance_status, regulatory_risk). Legal Counsel generates plain Markdown reports (e.g., # Legal Counsel... headings), which fail schema validation but are still written to files. 규제 보고 의무가 있는 태스크 포함 여부 미확인.
 - **리스크 등급:** **종합: HIGH** — 완료율 50% 미만 + 보고 의무 위반 68.8% + 핵심 에이전트 성공률 35% = 3중 리스크.
 
 ### (3) 다음에 필요한 작업 제안

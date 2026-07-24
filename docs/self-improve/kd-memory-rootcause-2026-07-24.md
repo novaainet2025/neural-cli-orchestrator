@@ -33,20 +33,20 @@
 ## 3. bounded·reversible 수정
 
 - `src/core/team-scorer.ts`
-  - `team_kd-memory`이면서 `spawned_by_cli=commander-perfgoal`인 행만
+  - `spawned_by_cli=commander-perfgoal`인 제어면 행을 팀과 무관하게
     completed/terminal 양쪽에서 제외한다.
-  - 다른 팀의 동일 유형 표본은 유지한다.
-  - 롤백: `KD_MEMORY_CONTROL_PLANE_EXCLUSION`과 6개 적용부만 제거한다.
+  - 동일 팀의 non-perfgoal charter 태스크는 계속 집계한다.
+  - 롤백: `CONTROL_PLANE_PERFGOAL_EXCLUSION`과 6개 적용부만 제거한다.
 - `src/server/task-intake.ts`
   - 정확한 프롬프트 접두사 `[성과보고·목표설정 입력 지시]`만 감지하여 기본 build
     verifier를 생략한다.
   - 명시적으로 전달된 verifier는 기존처럼 우선한다.
 
-실제 DB로 수정 후 재계산하면 `team_kd-memory`는 `score=0`,
-`completion=0`, `n=0`, `sample=all`이다. 이는 점수 상승이 아니라 “실제 감사
-표본 없음”을 정직하게 표면화한 결과다. 기존 lifecycle은 `n=0`일 때
-`no terminal task sample; lifecycle action deferred` 분기로 개선·퇴직 판단을
-유예한다(`src/core/team-lifecycle.ts`).
+HR lifecycle 변경 전 실제 DB로 수정 후 재계산한 당시 `team_kd-memory` 결과는
+`score=0`, `completion=0`, `n=0`, `sample=all`이었다. 이는 점수 상승이 아니라
+“실제 감사 표본 없음”을 정직하게 표면화한 결과다. 현재 DB에서는 HR lifecycle에
+의해 팀이 비활성 상태이므로 live 재계산 결과가 `null`이다. lifecycle·팀 상태는
+이번 수정 범위에서 변경하지 않았다.
 
 ## 4. T1 검증 결과
 
@@ -105,9 +105,9 @@
   HNSW 인덱스와 다른 팀 문서 등 범위 밖 워킹트리 변경은 보존했다.
 - 증거 등급: T1 (실제 명령 출력, DB 행, 소스·커밋 내용 직접 확인).
 
-## 7. FORMAT_MISMATCH 재시도 영수증 (2026-07-24 13:03 KST)
+## 7. FORMAT_MISMATCH 재시도 영수증 (2026-07-24 13:06 KST)
 
-- quality-gate가 반환한 `No test files found`는 Vitest가 `영수증:`을 파일
+- quality-gate가 두 차례 반환한 `No test files found`는 Vitest가 `영수증:`을 파일
   필터로 받은 잘못된 호출(`filter: 영수증:`)의 exit 1이다. 코드 테스트 결과로
   간주하지 않았다.
 - 정확한 명령
@@ -132,4 +132,8 @@
 - NCO API `localhost:6200`은 연결 거부 상태라 post-patch HTTP 재현과
   activity/lease 보고는 `[미검증]`이다. 실제 감사 표본은 여전히 0건이므로
   completion/score 상승은 주장하지 않는다.
+- 검증 기준선은 `HEAD=632a65a9c15bf840a9f22c2ee892636da220a141`이다.
+  대상 소스·테스트는 HEAD 대비 clean이고, 이번 turn에는 현재 구현과 어긋난
+  이 문서의 과거 팀 전용 제외 설명만 정정했다. 공유 워킹트리의 HNSW 변경은
+  범위 밖이므로 보존했다.
 - 증거 등급: T1 (실제 테스트·타입체크·빌드 출력, DB 행, 소스 내용 직접 확인).
