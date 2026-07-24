@@ -26,6 +26,7 @@ const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|
 // 오분류되어 npm build 검증기가 붙고, 게이트가 JSON 배열 응답을 FORMAT_MISMATCH로
 // 무한 반려한다 (실측 2026-07-19). "오직 JSON …만" 출력 지시가 있으면 검증기를 생략한다.
 const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
+const WORK_REPORT_PATTERN = /^\s*\[업무보고 작성\]/;
 const SOURCE_DISCOVERY_TEAM_ID = 'team_tech-port-01-source-discovery';
 const SOURCE_DISCOVERY_RESPONSE_CONTRACT = '[01 Source Discovery 응답 계약]';
 
@@ -44,6 +45,10 @@ export function isTextOnlyPrompt(prompt: string): boolean {
 
 export function isStructuredOutputPrompt(prompt: string): boolean {
   return STRUCTURED_OUTPUT_PATTERN.test(prompt);
+}
+
+export function isWorkReportPrompt(prompt: string): boolean {
+  return WORK_REPORT_PATTERN.test(prompt);
 }
 
 /**
@@ -153,6 +158,9 @@ export function buildDefaultVerifierWithFs(
   if (!projectDir || !isCodeWorkPrompt(input.prompt)) return undefined;
   if (isTextOnlyPrompt(input.prompt)) return undefined;
   if (isStructuredOutputPrompt(input.prompt)) return undefined;
+  // 업무보고는 prompt-gate 보강문의 "수정/빌드" 때문에 코드 작업으로 오탐될 수 있다.
+  // 자유형 Markdown 보고에는 기본 build verifier를 붙이지 않는다.
+  if (isWorkReportPrompt(input.prompt)) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;
 
   return {

@@ -241,7 +241,7 @@ ORDER BY created_at;
 - [검증방법] DB 재조회, 관련 Vitest, `npx tsc --noEmit`, `npm run build`,
   `git diff --check`.
 - [등급] T1 — SQLite 원본 행, 실제 파일 내용, 실제 명령 출력.
-- [현재 확인] 관련 Vitest `24/24` 통과, `npx tsc --noEmit` exit `0`,
+- [현재 확인] 관련 Vitest `25/25` 통과, `npx tsc --noEmit` exit `0`,
   `npm run build` exit `0`, 대상 diff 검사 exit `0`.
 - [전체 테스트] `npm run test:run`은 `96` files/`460` tests 통과,
   `tests/근거.test.ts`의 날짜 고정 기대값 1건 실패로 exit `1`.

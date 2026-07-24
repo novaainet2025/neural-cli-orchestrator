@@ -10,6 +10,7 @@ import {
   inferTaskType,
   isCodeWorkPrompt,
   isTextOnlyPrompt,
+  isWorkReportPrompt,
   validateProjectDirMetadataWithFs,
 } from './task-intake.js';
 
@@ -94,6 +95,21 @@ describe('task-intake helpers', () => {
     }, () => true);
 
     expect(verifier).toBeUndefined();
+  });
+
+  it('does not assign a build verifier to work reports after prompt enrichment', () => {
+    const prompt = [
+      '[업무보고 작성] 2026-07-24 오전 보고서를 작성하라.',
+      '요청 범위 밖 파일 수정 금지.',
+      '검증기준은 빌드/타입체크 통과.',
+    ].join('\n');
+
+    expect(isWorkReportPrompt(prompt)).toBe(true);
+    expect(buildDefaultVerifierWithFs({
+      prompt,
+      metadata: { projectDir: '/repo' },
+      verifier: undefined,
+    }, () => true)).toBeUndefined();
   });
 
   it('detects text-only prompts', () => {
