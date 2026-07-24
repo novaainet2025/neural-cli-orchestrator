@@ -1,23 +1,23 @@
 {
-  "checked_at": "2026-07-23T21:20:00+0900",
+  "checked_at": "2026-07-24T11:00:01+0900",
   "mode": "propose",
-  "total": 192,
-  "pass": 178,
-  "fail": 12,
-  "skip": 1,
-  "defer": 1,
+  "total": 208,
+  "pass": 208,
+  "fail": 0,
+  "skip": 0,
+  "defer": 0,
   "categories": {
     "provider": {
-      "pass": 0,
-      "fail": 8,
-      "skip": 1,
+      "pass": 9,
+      "fail": 0,
+      "skip": 0,
       "defer": 0,
-      "pass_rate": 0.0,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "team": {
-      "pass": 50,
+      "pass": 61,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -26,16 +26,16 @@
       "meets": true
     },
     "hook": {
-      "pass": 81,
-      "fail": 3,
+      "pass": 84,
+      "fail": 0,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 0.9643,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "script": {
-      "pass": 12,
+      "pass": 17,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -80,126 +80,29 @@
       "meets": true
     },
     "build": {
-      "pass": 0,
+      "pass": 1,
       "fail": 0,
       "skip": 0,
-      "defer": 1,
+      "defer": 0,
       "pass_rate": 1.0,
       "threshold": 1.0,
       "meets": true
     },
     "health": {
-      "pass": 0,
-      "fail": 1,
+      "pass": 1,
+      "fail": 0,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 0.0,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     }
   },
   "provider_anomaly": null,
-  "failures": [
-    {
-      "id": "hook:nova-voice-tts-pretool.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 217: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 220: syntax error: unexpected end of file"
-    },
-    {
-      "id": "hook:nova-voice-tts-progress.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 368: unexpected EOF while looking for matching `''\n/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 376: syntax error: unexpected end of file"
-    },
-    {
-      "id": "hook:universal-verify.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
-    },
-    {
-      "id": "provider:agy",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "agy",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:claude-code",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "claude-code",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:codex",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "codex",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:cursor-agent",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "cursor-agent",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:hermes",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "hermes",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:higgsfield",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "higgsfield",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:nvidia",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "nvidia",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:opencode",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "opencode",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "health:nco",
-      "category": "health",
-      "kind": "http-health",
-      "ref": "http://localhost:6200/health",
-      "priority": 5,
-      "detail": "health 실패: timed out"
-    }
-  ],
+  "failures": [],
   "dispatch": {
     "mode": "propose",
     "dispatched": null,
-    "skipped_reason": "nova-local-llm.lock 사용 중 (team-runner 등) — 이번 회차 디스패치 보류, 점검은 완료"
+    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
   }
 }

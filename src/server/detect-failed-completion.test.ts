@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { classifyResult } from '../core/task-queue.js';
-import { detectFailedCompletion, isTextReportTask } from './gateway.js';
+import {
+  classifyFailedCompletionReason,
+  detectFailedCompletion,
+  isTextReportTask,
+} from './gateway.js';
 
 /**
  * detectFailedCompletion 회귀 테스트 (2026-07-16).
@@ -22,6 +26,21 @@ describe('detectFailedCompletion', () => {
     expect(detectFailedCompletion('error: 전체 Vitest 검증 기준을 충족하지 못했습니다.')).toBe(true);
     expect(detectFailedCompletion('error: Unsupported shell metacharacter in command')).toBe(true);
     expect(detectFailedCompletion('Error: connection refused')).toBe(true);
+  });
+
+  it('실패 패턴을 집계 가능한 구체 원인으로 분류한다', () => {
+    expect(classifyFailedCompletionReason(
+      "error: curl: (7) Failed to connect to localhost: Couldn't connect to server",
+    )).toBe('failure-pattern: connection failure');
+    expect(classifyFailedCompletionReason(
+      'error: required fields targetValue and direction are unknown',
+    )).toBe('failure-pattern: missing required input');
+    expect(classifyFailedCompletionReason(
+      'Deployment failed to start.',
+    )).toBe('failure-pattern: operation failed');
+    expect(classifyFailedCompletionReason(
+      'ERROR: request timed out',
+    )).toBe('failure-pattern: request timed out');
   });
 
   it('소스코드/상태 브리프 에코 라인은 실패 신호로 보지 않는다 (에코-FP 방어)', () => {

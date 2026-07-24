@@ -680,6 +680,19 @@ async function executeTeamLifecycleReview(
       },
     });
 
+    if (team.organizationId === 'org_nco-self') {
+      database.prepare(`
+        UPDATE team_lifecycle_profiles
+        SET
+          status = 'active',
+          active_run_id = NULL,
+          updated_at = datetime('now')
+        WHERE team_id = ?
+      `).run(team.teamId);
+      result.protectedFromRetirement += 1;
+      continue;
+    }
+
     const bottleneck = bottleneckEvidence(database, team);
     if (bottleneck.immediate) {
       if (profile.protected) {
@@ -714,10 +727,6 @@ async function executeTeamLifecycleReview(
     }
 
     if (profile.status === 'probation') result.probation += 1;
-    if (team.organizationId === 'org_nco-self') {
-      result.protectedFromRetirement += 1;
-      continue;
-    }
     if (profile.activeRunId) {
       result.alreadyImproving += 1;
       continue;

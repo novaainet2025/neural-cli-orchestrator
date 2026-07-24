@@ -4,6 +4,8 @@ import { resolve } from 'path';
 import { closeDb, getDb, runMigrations } from '../storage/database.js';
 import { sweepExpiredTaskLeasesOnce } from './lease-sweeper.js';
 import { env } from '../utils/config.js';
+import { markTaskExecutionStarted } from './task-queue.js';
+import { transitionTask } from './task-state.js';
 
 describe.sequential('lease sweeper', () => {
   const testDbPath = resolve(env.ROOT, 'db/test-lease-sweeper.db');
@@ -66,5 +68,33 @@ describe.sequential('lease sweeper', () => {
     expect(row.status).toBe('failed');
     expect(row.error).toBe('lease_expired_twice');
     expect(onLeaseExpired).not.toHaveBeenCalled();
+  });
+
+  it('allows a recovered queued task to finish after worker start', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, orphan_requeue_count)
+      VALUES (?, 'task', ?, ?, 'queued', 1)
+    `).run('lease-recovered-queued', 'prompt', 'codex');
+
+    const started = markTaskExecutionStarted('lease-recovered-queued');
+    expect(started.ok).toBe(true);
+
+    const running = db.prepare('SELECT status FROM tasks WHERE id=?')
+      .get('lease-recovered-queued') as { status: string };
+    expect(running.status).toBe('running');
+
+    const completed = transitionTask(db, 'lease-recovered-queued', 'completed', {
+      response: 'done: recovered task completed',
+      completedAt: true,
+    });
+    expect(completed.ok).toBe(true);
+
+    const terminal = db.prepare('SELECT status, response FROM tasks WHERE id=?')
+      .get('lease-recovered-queued') as { status: string; response: string | null };
+    expect(terminal).toEqual({
+      status: 'completed',
+      response: 'done: recovered task completed',
+    });
   });
 });

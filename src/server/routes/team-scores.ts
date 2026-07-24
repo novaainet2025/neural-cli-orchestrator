@@ -8,6 +8,7 @@ import {
   runTeamLifecycleReview,
   runWeeklyWorkforcePlanning,
 } from '../../core/team-lifecycle.js';
+import { runHourlyRoleAudit } from '../../core/hourly-role-oversight.js';
 import { getDb } from '../../storage/database.js';
 
 export async function registerTeamScoreRoutes(
@@ -112,5 +113,25 @@ export async function registerTeamScoreRoutes(
 
   app.post('/api/hr/weekly-actions/run', async () => ({
     result: await runWeeklyWorkforcePlanning(database),
+  }));
+
+  app.get('/api/hr/hourly-audits', async (request) => {
+    const rawLimit = Number((request.query as { limit?: string }).limit ?? 100);
+    const limit = Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 100, 500);
+    return {
+      audits: database.prepare(`
+        SELECT
+          id, subject_kind AS subjectKind, subject_id AS subjectId,
+          status, checks_json AS checksJson, evidence_json AS evidenceJson,
+          source, created_at AS createdAt
+        FROM hourly_role_audits
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      `).all(limit),
+    };
+  });
+
+  app.post('/api/hr/hourly-audits/run', async () => ({
+    result: runHourlyRoleAudit({ database, source: 'manual' }),
   }));
 }

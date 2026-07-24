@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3';
 
 export const TERMINAL_STATES = new Set(['completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']);
 
+const UNKNOWN_FAILURE_REASON = 'unknown: failure reason unavailable';
+
 export const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
   queued: new Set(['assigned', 'running', 'cancelled', 'failed']),
   assigned: new Set(['running', 'streaming', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
@@ -38,14 +40,17 @@ export function transitionTask(
 
   const sets = ['status=?', "updated_at=datetime('now')"];
   const params: unknown[] = [next];
+  const transitionError = next === 'failed' && !extra?.error?.trim()
+    ? UNKNOWN_FAILURE_REASON
+    : extra?.error;
 
   if (extra?.response !== undefined) {
     sets.push('response=?');
     params.push(extra.response);
   }
-  if (extra?.error !== undefined) {
+  if (transitionError !== undefined) {
     sets.push('error=?');
-    params.push(extra.error);
+    params.push(transitionError);
   }
   if (extra?.completedAt) {
     sets.push("completed_at=datetime('now')");

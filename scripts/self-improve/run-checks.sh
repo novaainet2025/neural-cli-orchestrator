@@ -105,7 +105,7 @@ def check_item(it):
     if kind == "tsc-noemit":
         if not is_due("tsc", cfg.get("expensive_checks",{}).get("build",{}).get("every_hours",6)):
             return "defer","6h 주기 미도래"
-        rc, o = run(["npx","tsc","--noEmit"], cwd=nco, timeout=300)
+        rc, o = run(["/opt/homebrew/bin/npx","tsc","--noEmit"], cwd=nco, timeout=300)
         stamp("tsc")
         if rc==0: return "pass",""
         errs = [l for l in o.splitlines() if "error TS" in l]

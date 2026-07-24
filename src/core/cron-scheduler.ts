@@ -17,6 +17,11 @@ import {
   TEAM_LIFECYCLE_JOB_ID,
   TEAM_LIFECYCLE_SCHEDULE,
 } from './team-lifecycle.js';
+import {
+  HR_HOURLY_ROLE_AUDIT_JOB_ID,
+  HR_HOURLY_ROLE_AUDIT_SCHEDULE,
+  runHourlyRoleAudit,
+} from './hourly-role-oversight.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -376,6 +381,8 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
         }
       } else if (action === 'hr-weekly-workforce-planning') {
         result = JSON.stringify(await runWeeklyWorkforcePlanning());
+      } else if (action === 'hr-hourly-role-audit') {
+        result = JSON.stringify(runHourlyRoleAudit({ source: 'scheduled' }));
       } else {
         throw new Error(`Unknown internal cron action: ${String(action)}`);
       }
@@ -473,6 +480,20 @@ function ensureDefaultInternalJobs(): void {
       schedule: '0 9 * * 1',
       taskType: 'internal',
       payload: { action: 'hr-weekly-workforce-planning' },
+      timezone: getDefaultTimezone(),
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob(HR_HOURLY_ROLE_AUDIT_JOB_ID)) {
+    scheduleCronJob({
+      id: HR_HOURLY_ROLE_AUDIT_JOB_ID,
+      description: 'Hourly HR role, daily goal coverage, and self-improvement evidence audit',
+      schedule: HR_HOURLY_ROLE_AUDIT_SCHEDULE,
+      taskType: 'internal',
+      payload: { action: 'hr-hourly-role-audit' },
       timezone: getDefaultTimezone(),
       maxRetries: 1,
       backoffMs: 60_000,

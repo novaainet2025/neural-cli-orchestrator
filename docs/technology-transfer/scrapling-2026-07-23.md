@@ -129,73 +129,82 @@ STOP 해제에는 S2-01~S2-03 수정과 회귀 테스트, S2-04 SBOM/provenance 
 
 ## 3. 복구 지점
 
-3단계 판정: `PASS_WITH_LIMITATIONS`
+STAGE_03_DECISION: PASS_WITH_LIMITATIONS
 
-체크포인트 ID: `scrapling-stage03-20260723-215336-KST`
+RECOVERY_GATE: READY_WITH_LIMITATIONS
+
+체크포인트 ID: `scrapling-stage03-20260723-221817-KST`
 
 ### 기준점과 dirty worktree 보존
 
-- 작업 시작 HEAD: `4cbcc6b9799728a795f9352019de687e7c961cbb`
-- Scrapling 코드 도입 전 anchor:
-  `a0d3852e8b5c380f0d101ebd1b6e46894911d96d`
-- 도입 이력: Python adapter는 `63989220691eda995cf4cdbdda7d43af5aa45ee8`,
-  TypeScript service/route는 `782e22140dde2c55f764247eb6ea8afd6dfeb414`,
-  080/081/082와 후속 보완은 `4cbcc6b9799728a795f9352019de687e7c961cbb`에
-  포함된다. 세 commit에는 무관한 파일도 함께 있으므로 commit 전체 revert를
+- 검증 시작 HEAD는 `88d3efe794690107c14c6e459b705a05c698a0be` (`main`)다.
+- Scrapling 도입 전 anchor는
+  `a0d3852e8b5c380f0d101ebd1b6e46894911d96d`다.
+- Python adapter 도입 commit은
+  `63989220691eda995cf4cdbdda7d43af5aa45ee8`, TypeScript
+  service/route/gateway 연결은
+  `782e22140dde2c55f764247eb6ea8afd6dfeb414`다. 080/081/082와
+  후속 보완은 `4cbcc6b9799728a795f9352019de687e7c961cbb`에 함께 들어갔다.
+  세 commit 모두 무관 변경을 포함하므로 commit 전체 revert나 anchor 전체 restore는
   롤백 수단으로 사용하지 않는다.
-- 캡처 시점 worktree에는 수정 12개와 미추적 15개가 있었다. 수정 파일은 HNSW index
-  5개, 이 문서, baseline runner, `src/core/cron-scheduler.ts`,
-  `src/core/team-scorer.ts`, `src/index.ts`, `src/server/gateway.ts`,
-  `src/server/routes/team-scores.ts`다. 미추적 파일은 083 migration,
-  07 value-gate 문서, baseline `evidence-final`/`evidence-rerun` 각 6개,
-  `src/core/team-lifecycle.ts`다.
-- 위 27개 파일의 캡처 시점 내용을
-  `db/backups/scrapling-stage03-20260723-215336-KST/dirty-worktree.tar.gz`에
-  보존했다. 체크포인트 생성 후 shared worktree가 계속 변할 수 있으므로 실제 롤백
-  직전에는 새 체크포인트를 다시 생성해야 한다.
-- 백업 디렉터리는 `.gitignore`의 `db/backups/` 규칙에 의해 추적되지 않으며 mode
-  `0700`, 내부 파일은 `0600`이다. 원본에는 stash, reset, checkout, 삭제를 수행하지
-  않았다.
+- 22:19 최초 캡처에는 tracked 수정 9개와 untracked 3개가 있었다. 캡처 직후 다른
+  작업이 `data/self-improve/*`, `db/hnsw-indices/agy.hnsw`,
+  `scripts/self-improve/_synthtest.sh`를 추가로 수정해, 문서 편집 직전인
+  22:22:51 보충 캡처는 tracked 수정 13개와 untracked 3개다.
+- 보충 patch에는 위 파일 외에 기존의 baseline 보고서, HNSW index 4개,
+  `src/core/lease-sweeper.test.ts`, `src/core/task-queue.ts`,
+  `src/core/team-lifecycle.ts`와 그 test가 들어 있다. untracked archive에는
+  `docs/obsidian-improvement-no`,
+  `docs/reports/web-scrape-03-static-implementation-improvement-2026-07-23.md`,
+  `obsidian_vault/improvement_notes/team-tech-port-04-baseline-cycle1-20260723.md`가
+  들어 있다.
+- 원본에는 stash, reset, checkout, 삭제를 수행하지 않았다. 체크포인트 디렉터리는
+  `.gitignore` 대상인 `db/backups/` 아래 mode `0700`, 내부 자산은 `0600`이다.
+  shared worktree는 계속 변할 수 있으므로 실제 롤백 직전에 같은 캡처를 다시 만든다.
 
-### 설정·DB 백업 영수증
+### 설정·DB·worktree 백업 영수증
 
-| 파일 | 내용 | 크기 | SHA-256 |
+| 자산 | 내용 | 크기 | SHA-256 |
 |---|---|---:|---|
-| `nco.db` | SQLite online backup | 339,001,344 B | `98739bbdbd2a27bf20ea7e7512fd40a27f5b048ed0cd12763cb51c7a2baa778c` |
-| `config-private.tar.gz` | `.env`, `topology.json`, public/local provider config | 7,908 B | `6f672f485e96f7dfeb7a205a006c60f22e41601343d70285e5208a13a805b2a2` |
-| `dirty-worktree.tar.gz` | 캡처 시점 dirty/untracked 27개 파일 | 4,165,357 B | `83a126c8d4979a2ee8e6b0016b5f21e07b99d4eb224dfee32023e5f9d89ca381` |
-| `worktree-status.txt` | porcelain v2 상태 27건 | 2,958 B | `088d1c0348b4354f9919edbe7ea1a5020fe1d561749962dfac6c9937a3f4679f` |
-| `web-team-task-links.csv` | 웹 팀을 참조하는 task 9건의 ID/team/status | 10 lines | `357b9453521c7e9b9d2aef9fd6785a8e140c9e915fe8df6edbc952315d1a3685` |
+| `nco.db` | SQLite online backup | 339,648,512 B | `dd787fdbfed0b0f3c3af435c68ebc8f803ac10114209ca5c07d792f5456db8c6` |
+| `config-private.tar.gz` | `.env`, topology, public/local provider config | 7,863 B | `a27474da2fabef5a1433584a69ba81821b86488ee028a541d35438caf4d174f7` |
+| `tracked-supplement.patch` | 22:22 tracked 수정 13개 | 39,839 B | `9050a4a3e7fef4419e12227fec7f6f6a88bfe21c674e6b57b3086c2376a73275` |
+| `untracked-files-supplement.tar.gz` | 22:22 untracked 파일 3개 | 4,128 B | `2e9dc7d7b29cfba26cd85ff6a2b5970f3a1d4f52b5f893829cab15c4935fd249` |
+| `worktree-status-supplement.nul` | porcelain v2 상태 16건 | 2,079 B | `3b98a53f99553b86b60b080412d99c74377685f37bbb09818a12ca0392b6da2f` |
+| `web-team-task-links.csv` | 웹 팀 참조 task 9건의 ID/team/status | 638 B | `357b9453521c7e9b9d2aef9fd6785a8e140c9e915fe8df6edbc952315d1a3685` |
 
-설정 archive에서 다시 계산한 원본 hash는 `.env`
-`98453783762c02f777484c7190dd9bd51d5c7fbcc5c8561d9a76de116cd541c2`,
-`topology.json` `1e5dbc9df7ebd300a89c61e9721fb79de95bdf7f28c00b0294fcc954b4117908`,
-`ai-providers.json` `533200d754ad4969bcd9caeaf55802751f4f3169011ced8c07742596918742c7`,
-`ai-providers.local.json`
-`4984fc44ec02da146f1382078bb6b63c2609cd5688ccdd09d2ed2e387fcac46f`와
-일치했다. archive에는 비밀정보가 있으므로 commit, 첨부, 로그 출력은 금지한다.
+`shasums.txt`의 모든 항목은 재계산 결과와 일치했다. tracked patch는 임시 Git
+index의 checkpoint HEAD에 `git apply --cached --check`로 적용 가능했고 untracked
+archive는 `tar -tzf`로 읽혔다. 설정 archive를 mode `0700` 임시 디렉터리에 시험
+복원한 결과 4개 원본 hash가 모두 일치했다. archive에는 비밀정보가 있으므로 commit,
+첨부, 일반 로그 출력은 금지한다.
 
-백업 DB는 `PRAGMA quick_check`가 `ok`이고 `PRAGMA foreign_key_check` 결과가
-0건이다. 080/081/082 ledger가 모두 존재하며 현재 DB에는 기술이전·웹 조직 2개,
-웹 팀 7개, 멤버 14개, 웹 목표 1개, 승인 record 1개가 있다.
+백업 DB는 immutable read-only 검증에서 `PRAGMA quick_check=ok`,
+`PRAGMA foreign_key_check` 0건이었다. 080/081/082 ledger는 각 1건이며 웹 조직
+1개, 웹 팀 7개, 멤버 14개, 전용 goal 1개, 승인 record 1개, 웹 팀 참조 task
+9개가 확인됐다.
 
-### 롤백 전제와 명령
+### 롤백 범위와 소스 명령
 
-아래 명령은 이 단계에서 실행하지 않았다. 데이터 연결 변경·파일 제거는 명시적 롤백
-승인 후에만 실행한다. 먼저 NCO를 중지하고 같은 방식의 최신 DB/config/worktree
-백업을 하나 더 만든다.
+080은 9단계 기술이전 회사 공용 migration과 감사 문서를 유지하는 범위다. Scrapling
+runtime, service/route, gateway 등록, 081 웹 회사와 실제 의존 migration인 082만
+롤백한다. 081/082 파일을 남긴 채 ledger만 지우면 다음 migration 실행에서
+재적용되므로 소스 롤백을 먼저 배포한다.
 
-소스 롤백은 dirty shared worktree가 아니라 현재 HEAD에서 만든 별도 worktree에서
-수행한다. 080 기술이전 회사와 감사 문서는 유지하고 Scrapling runtime 경로,
-gateway 등록, 081/082만 제거한다.
+아래 명령은 명시적 롤백 승인 후 별도 worktree에서만 실행한다. 현재 dirty main에서는
+실행하지 않았다.
 
 ```bash
-git worktree add ../nco-scrapling-rollback \
-  4cbcc6b9799728a795f9352019de687e7c961cbb
-cd ../nco-scrapling-rollback
+git worktree add --detach /Users/nova-ai/project/nco-scrapling-rollback \
+  88d3efe794690107c14c6e459b705a05c698a0be
+cd /Users/nova-ai/project/nco-scrapling-rollback
 git switch -c rollback/scrapling-20260723
-git restore --source=a0d3852e8b5c380f0d101ebd1b6e46894911d96d -- \
-  src/server/gateway.ts
+
+git show --format= 782e22140dde2c55f764247eb6ea8afd6dfeb414 \
+  -- src/server/gateway.ts | git apply -R --check
+git show --format= 782e22140dde2c55f764247eb6ea8afd6dfeb414 \
+  -- src/server/gateway.ts | git apply -R
+
 git rm -r -- integrations/scrapling
 git rm -- src/services/webScrapingService.ts \
   src/services/webScrapingService.test.ts \
@@ -205,66 +214,70 @@ git rm -- src/services/webScrapingService.ts \
   db/migrations/082_web_scraping_authorizations.sql
 ```
 
-081만 ledger에서 지우고 파일을 남기면 다음 기동 시 migration runner가 즉시
-재적용한다. 실제 DB 역마이그레이션은 위 소스 롤백 배포가 준비된 뒤 수행한다.
-`tasks.team_id`는 `ON DELETE NO ACTION`이고 현재 웹 팀을 참조하는 task가 9건이므로,
-task를 삭제하지 않고 checkpoint CSV에 보존한 연결만 해제한다.
+gateway 전용 reverse patch는 현재 HEAD에서 `--check`를 통과했다.
+`src/core/company-orchestrator.ts`의 web-scraping pipeline/failover guard는
+`4cbcc6b...`의 무관 변경과 같은 hunk에 섞여 있고 081 제거 후 도달 불가능하므로
+안전한 운영 롤백에서는 inert 상태로 유지한다. anchor 버전으로 파일 전체를 덮는 것은
+후속 사용자 변경을 잃으므로 금지한다.
 
-```sql
-PRAGMA foreign_keys = ON;
-BEGIN IMMEDIATE;
+### DB 역마이그레이션과 리허설
 
-UPDATE tasks
-SET team_id = NULL
-WHERE team_id IN (
-  SELECT id FROM teams WHERE organization_id = 'org_web-scraping'
-);
+실행 파일은
+`db/backups/scrapling-stage03-20260723-221817-KST/rollback-081-082.sql`
+(SHA-256
+`4bb9df2f0ff743f00730273fa697fcde55e63194b28f9ab718de6d6dcb6b92bc`)다.
+`tasks.team_id`가 `ON DELETE NO ACTION`이므로 task를 삭제하지 않고 웹 팀 연결만
+해제한 뒤 goal/member/team/organization, authorization table, 082/081 ledger
+순으로 제거한다. 080 ledger와 조직은 유지한다.
 
-DELETE FROM team_goals
-WHERE id = 'goal_web_scraping_quality_2026_07';
-DELETE FROM team_members
-WHERE team_id IN (
-  SELECT id FROM teams WHERE organization_id = 'org_web-scraping'
-);
-DELETE FROM teams
-WHERE organization_id = 'org_web-scraping';
-DELETE FROM organizations
-WHERE id = 'org_web-scraping';
+운영 DB에는 실행하지 않았다. 대신 백업 DB의 권한 제한 복사본에 적용한 리허설 결과는
+다음과 같다.
 
-DROP INDEX IF EXISTS idx_web_scraping_auth_reference;
-DROP TABLE IF EXISTS web_scraping_authorizations;
+| 검증 | 기대 | 결과 |
+|---|---:|---:|
+| `PRAGMA quick_check` | `ok` | `ok` |
+| `PRAGMA foreign_key_check` | 0건 | 0건 |
+| 080 ledger | 1 | 1 |
+| 081/082 ledger | 0 | 0 |
+| 웹 org/team/member/goal | 각 0 | 각 0 |
+| authorization table | 0 | 0 |
+| 캡처 task 보존 + `team_id IS NULL` | 9 | 9 |
 
-DELETE FROM schema_migrations
-WHERE filename IN (
-  '082_web_scraping_authorizations.sql',
-  '081_web_scraping_company.sql'
-);
+리허설 원시 결과는 `rollback-rehearsal.txt` (SHA-256
+`72269a409095ce381eeda32361fbd00206d3400afb661f6a5a1169da44aa92d1`)에
+보존했다. 같은 시각 운영 DB는 081/082 ledger 2건, 웹 조직 1개, task 연결 9건으로
+변하지 않았음을 재확인했다.
 
-COMMIT;
-PRAGMA foreign_key_check;
+실제 롤백은 NCO를 중지하고 최신 DB/config/worktree 백업을 다시 만든 뒤, 위 source
+rollback이 배포된 상태에서만 다음 SQL을 실행한다.
+
+```bash
+sqlite3 -readonly db/nco.db \
+  "PRAGMA quick_check; PRAGMA foreign_key_check;"
+sqlite3 db/nco.db \
+  < db/backups/scrapling-stage03-20260723-221817-KST/rollback-081-082.sql
 ```
 
-080은 9단계 기술이전 조직을 재현하는 공용 migration이므로 삭제하거나 ledger에서
-제거하지 않는다. 082는 최초 요청에 명시된 080/081 외의 실제 의존 migration으로
-발견됐으며, authorization table을 남긴 불완전 롤백을 막기 위해 함께 기록했다.
+설정 전체 archive의 자동 덮어쓰기는 금지한다. 설정 복구가 필요하면 mode `0700`
+임시 디렉터리에 먼저 풀고 현재 설정과 diff한 뒤, 승인된 Scrapling 관련 키만
+선택적으로 복원한다.
 
 ### 롤백 검증 체크리스트
 
-- backup SHA-256 5개를 재계산하고 config archive를 권한 제한된 임시 디렉터리에
-  시험 복원한 뒤 원본 4개 hash와 대조한다.
-- 복원 DB에서 `PRAGMA quick_check`가 `ok`, `PRAGMA foreign_key_check`가 0건인지
-  다시 확인한다.
-- rollback DB에서 080 ledger는 1건, 081/082 ledger는 0건인지 확인한다.
-- `org_web-scraping`, 소속 team/member, 전용 goal이 0건이고
-  `web_scraping_authorizations` table/index가 없는지 확인한다.
-- 캡처된 task 9건이 모두 남아 있고 `team_id IS NULL`인지 checkpoint CSV와
-  ID 단위로 대조한다.
-- 별도 rollback worktree에서 `npx tsc --noEmit`, `npm run build`,
-  `npm run test:run`을 실행하고 gateway에 web-scraping route가 등록되지 않는지
-  실제 HTTP 404 본문으로 확인한다.
-- 실패 시 운영 DB를 더 수정하지 말고 중지 상태를 유지한 채 검증된 `nco.db`와
-  private config archive로 복원한다. 이 복원 rehearsal과 실제 rollback 실행은
-  아직 미실행이다.
+- [x] 시작 HEAD와 pre-port anchor를 고정했다.
+- [x] 기존 dirty/untracked 파일을 원본 변경 없이 patch/archive로 보존했다.
+- [x] 동시 worktree 변경을 보충 캡처하고 patch 적용 가능성과 tar 가독성을 확인했다.
+- [x] private config archive를 시험 복원해 원본 4개 hash와 대조했다.
+- [x] SQLite online backup의 quick/foreign-key 검사를 통과했다.
+- [x] 081/082 역마이그레이션을 DB 복사본에서 리허설하고 task 9건 보존을 확인했다.
+- [x] gateway 전용 reverse patch의 `git apply -R --check`를 통과했다.
+- [ ] 별도 rollback worktree의 실제 source 변경·build/test는 롤백 승인 전이라 미실행이다.
+- [ ] 운영 DB 역마이그레이션과 실제 HTTP 404 smoke는 롤백 승인 전이라 미실행이다.
+- [ ] 백업은 로컬·동일 디스크이며 off-host/암호화 보관은 미확인이다.
+
+따라서 복구 자산과 DB reverse path는 검증됐지만, 공유 worktree churn, 동일 디스크
+백업, 실제 source/runtime rollback 미실행 때문에 제한부 통과다. 2단계
+`STOP`과 전체 `PORT_DECISION: REJECT`는 이 판정으로 해제되지 않는다.
 
 ## 4. 기준선
 

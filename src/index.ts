@@ -20,6 +20,7 @@ import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
 import { providerProber } from './core/provider-prober.js';
 import { startTeamLifecycleEventMonitor } from './core/team-lifecycle.js';
+import { runHourlyRoleAudit } from './core/hourly-role-oversight.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
@@ -299,6 +300,18 @@ async function boot(): Promise<void> {
   await gateway.listen({ port: env.PORT, host: process.env.HOST ?? '0.0.0.0' });
   log.info({ port: env.PORT }, 'API Gateway listening');
   stopTeamLifecycleEventMonitor = startTeamLifecycleEventMonitor(db);
+  try {
+    const hourlyAudit = runHourlyRoleAudit({ database: db, source: 'startup' });
+    log.info({
+      hrStatus: hourlyAudit.hr.status,
+      selfImprovementStatus: hourlyAudit.selfImprovement.status,
+      goalCoverage: hourlyAudit.goalCoverage,
+    }, 'Startup HR role and goal coverage audit completed');
+  } catch (error) {
+    log.warn({
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Startup HR role and goal coverage audit failed');
+  }
 
   // 9. WebSocket Bridge (:6201)
   log.info('Starting WebSocket Bridge...');

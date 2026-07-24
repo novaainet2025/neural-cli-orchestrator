@@ -25,6 +25,7 @@ import { acknowledgeTaskLease, recordTaskHeartbeat } from './lease-sweeper.js';
 import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from './task-escalation.js';
 import { resolveExecutorChain, providerModelDispatchable, type TeamRow, type AvailabilityFn } from './company-orchestrator.js';
 import { logDecision } from './decision-log.js';
+import { transitionTask } from './task-state.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -96,6 +97,18 @@ export function resolveVerifierProjectDir(task: Pick<QueuedTask, 'metadata'>): s
     ? task.metadata.projectDir.trim()
     : '';
   return requested || env.PROJECT_DIR;
+}
+
+/**
+ * Persist the worker start before execution.
+ *
+ * Startup recovery deliberately puts orphaned work back in `queued`. Without
+ * this transition, a successful recovered worker later attempts
+ * `queued -> completed`, which the task state machine correctly rejects.
+ */
+export function markTaskExecutionStarted(taskId: string): { ok: boolean; prev?: string } {
+  acknowledgeTaskLease(taskId);
+  return transitionTask(getDb(), taskId, 'running');
 }
 
 type TaskExecutionResult = {
@@ -1273,7 +1286,13 @@ class TaskQueueManager {
       lastHeartbeatFlushAt: 0,
     };
     this.runtimes.set(task.taskId, runtime);
-    acknowledgeTaskLease(task.taskId);
+    const started = markTaskExecutionStarted(task.taskId);
+    if (!started.ok && started.prev !== 'running') {
+      log.warn(
+        { taskId: task.taskId, prev: started.prev },
+        'Task execution started without a valid running-state transition',
+      );
+    }
     this.flushActivityToDb(runtime);
   }
 

@@ -241,6 +241,13 @@ describe('HR team lifecycle policy', () => {
         'self-learning', 'codex', 1, '2026-01-01'
       )
     `).run();
+    db.prepare(`
+      INSERT INTO team_lifecycle_profiles (
+        team_id, status, improvement_count, active_run_id, protected
+      ) VALUES (
+        'team_self-learning', 'probation', 2, 'stale-recursive-run', 1
+      )
+    `).run();
     const triggerImprovement = vi.fn();
 
     const result = await runTeamLifecycleReview({
@@ -259,8 +266,14 @@ describe('HR team lifecycle policy', () => {
     expect(result.protectedFromRetirement).toBe(1);
     expect(triggerImprovement).not.toHaveBeenCalled();
     expect(db.prepare(`
-      SELECT protected FROM team_lifecycle_profiles WHERE team_id = 'team_self-learning'
-    `).get()).toEqual({ protected: 1 });
+      SELECT protected, status, active_run_id
+      FROM team_lifecycle_profiles
+      WHERE team_id = 'team_self-learning'
+    `).get()).toEqual({
+      protected: 1,
+      status: 'active',
+      active_run_id: null,
+    });
   });
 
   it('soft-retires a team after three completed improvements leave it below target', async () => {

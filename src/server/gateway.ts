@@ -48,6 +48,67 @@ type TaskFailureContext = {
 
 type FailedCompletionOptions = { reportMode?: boolean };
 
+type FailurePattern = {
+  reason: string;
+  pattern: RegExp;
+};
+
+const HARD_FAILURE_PATTERNS: readonly FailurePattern[] = [
+  { reason: 'failure-pattern: action required', pattern: /\bActionRequiredError\b/i },
+  { reason: 'failure-pattern: provider model not found', pattern: /\bProviderModelNotFoundError\b/i },
+  { reason: 'failure-pattern: connection refused', pattern: /\b(?:connection\s*refused|ECONNREFUSED)\b/i },
+  { reason: 'failure-pattern: request timed out', pattern: /\brequest\s+timed\s+out\b/i },
+  // 오케스트레이터가 붙이는 선두 래퍼("[codex: no final response — process failed]")만.
+  // 리뷰가 이 문자열을 인용하는 경우(본문 중간)는 제외하려고 ^ 앵커 사용.
+  {
+    reason: 'failure-pattern: no final response',
+    pattern: /^\[[\w-]+:[^\]]*\bno final response\b/i,
+  },
+  { reason: 'failure-pattern: failed status', pattern: /^status:\s*failed\b/im },
+];
+
+const REPORTED_ERROR_CAUSE_PATTERNS: readonly FailurePattern[] = [
+  {
+    reason: 'failure-pattern: connection failure',
+    pattern: /\b(?:connection\s*refused|ECONNREFUSED|failed\s+to\s+connect|couldn['’]t\s+connect\s+to\s+(?:the\s+)?server)\b/i,
+  },
+  {
+    reason: 'failure-pattern: missing required input',
+    pattern: /\brequired fields?\b.{0,120}\b(?:unknown|missing)\b/i,
+  },
+];
+
+const SOFT_FAILURE_PATTERNS: readonly FailurePattern[] = [
+  { reason: 'failure-pattern: operation failed', pattern: /\bfailed\s+(?:to|with)\b/i },
+  {
+    reason: 'failure-pattern: error occurred',
+    pattern: /\b(?:error|exception)\b.{0,15}\b(?:occurred|happened|encountered)\b/i,
+  },
+  {
+    reason: 'failure-pattern: quota or rate limit',
+    pattern: /\b(?:exceeded|over)\b.{0,20}\b(?:limit|quota|rate)\b/i,
+  },
+  {
+    reason: 'failure-pattern: API access failure',
+    pattern: /\bAPI\s*(?:key|quota|limit)\b.{0,20}\b(?:invalid|expired|exceeded)\b/i,
+  },
+  { reason: 'failure-pattern: execution error', pattern: /\b(?:streaming|execution)\s+error\b/i },
+  { reason: 'failure-pattern: usage exceeded', pattern: /\busage.{0,20}exceeded\b/i },
+  {
+    reason: 'failure-pattern: timeout',
+    pattern: /\btimeout\b.{0,20}\b(?:error|exceeded|after)\b/i,
+  },
+  { reason: 'failure-pattern: usage limit', pattern: /\busage\s+limit\b/i },
+  {
+    reason: 'failure-pattern: usage limit',
+    pattern: /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
+  },
+];
+
+function matchFailureReason(text: string, patterns: readonly FailurePattern[]): string | undefined {
+  return patterns.find(({ pattern }) => pattern.test(text))?.reason;
+}
+
 export function isTextReportTask(task: TaskFailureContext): boolean {
   const prompt = task.prompt?.trimStart() ?? '';
   if (prompt.startsWith('[업무보고') || prompt.startsWith('[팀 상시 임무')) return true;
@@ -56,12 +117,12 @@ export function isTextReportTask(task: TaskFailureContext): boolean {
   return mode === 'report' || mode.endsWith('-report');
 }
 
-/** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
-export function detectFailedCompletion(
+/** 응답 텍스트에서 안정적인 저카디널리티 실패 원인을 반환한다. */
+export function classifyFailedCompletionReason(
   response: string | null | undefined,
   options: FailedCompletionOptions = {},
-): boolean {
-  if (!response) return false;
+): string | undefined {
+  if (!response) return undefined;
   const text = response.trim();
 
   // 성공 프로토콜 가드(2026-07-16, claude-2 관측 + T1 실데이터: 2일 7건 중 4건 오탐).
@@ -69,9 +130,8 @@ export function detectFailedCompletion(
   // 태스크는 응답 본문에 401/403/'usage limit'/'error:' 같은 어휘가 필연적이라, 'done:'로
   // 시작하는(=에이전트가 명시적으로 성공을 선언한) 응답은 텍스트 실패 스캔에서 제외한다.
   // 실제 실패는 'error:' 프리픽스나 프로토콜 없는 원시 에러로 남아 아래 스캔에 걸린다.
-  if (/^done:/i.test(text)) return false;
-
-  if (/^Error:\s/i.test(text)) return true;
+  if (/^done:/i.test(text)) return undefined;
+  const startsWithError = /^Error:\s/i.test(text);
 
   // 에코-오탐 방어(2026-07-15 라이브 프로브에서 실증): 소스코드/상태 브리프를
   // 인용한 라인은 실패 신호 스캔에서 제외한다 (orchestrated-loop 3세대와 동일 계열).
@@ -79,40 +139,32 @@ export function detectFailedCompletion(
 
   // HARD 시그니처: 정상 콘텐츠(코드리뷰·작업로그)에 등장하지 않는 강한 실패 신호.
   // 위치/길이 무관하게 실패로 판정한다.
-  const hard = [
-    /\bActionRequiredError\b/i,
-    /\bProviderModelNotFoundError\b/i,
-    /\b(?:connection\s*refused|ECONNREFUSED)\b/i,
-    /\brequest\s+timed\s+out\b/i,
-    // 오케스트레이터가 붙이는 선두 래퍼("[codex: no final response — process failed]")만.
-    // 리뷰가 이 문자열을 인용하는 경우(본문 중간)는 제외하려고 ^ 앵커 사용.
-    /^\[[\w-]+:[^\]]*\bno final response\b/i,
-    /^\s*ERROR:\s/im,
-    /^status:\s*failed\b/im,
-  ];
-  if (hard.some(p => p.test(scanText))) return true;
+  const hardReason = matchFailureReason(scanText, HARD_FAILURE_PATTERNS);
+  if (hardReason) return hardReason;
+  const hasReportedError = /^\s*ERROR:\s/im.test(scanText);
+  if (hasReportedError || startsWithError) {
+    return matchFailureReason(scanText, REPORTED_ERROR_CAUSE_PATTERNS)
+      ?? 'failure-pattern: agent reported error';
+  }
 
   // 텍스트 보고서는 에러 현황 자체를 설명하므로 정상 본문의 SOFT 어휘를 실패로 보지 않는다.
   // HARD 시그니처는 위에서 계속 검사하며, 빈 출력은 task-queue.classifyResult가 계속 차단한다.
-  if (options.reportMode) return false;
+  if (options.reportMode) return undefined;
 
   // SOFT 시그니처: 정상 텍스트에도 등장할 수 있는 단어들(error/failed/usage limit 등).
   // 긴 substantive 출력의 본문 중간 등장은 오탐이므로, 짧은 출력 전체 또는 긴 출력의
   // 선두 200자에서만 판정한다. 근접 제한(.{0,N})으로 span-매칭 오탐도 차단.
-  const soft = [
-    /\bfailed\s+(?:to|with)\b/i,
-    /\b(?:error|exception)\b.{0,15}\b(?:occurred|happened|encountered)\b/i,
-    /\b(?:exceeded|over)\b.{0,20}\b(?:limit|quota|rate)\b/i,
-    /\bAPI\s*(?:key|quota|limit)\b.{0,20}\b(?:invalid|expired|exceeded)\b/i,
-    /\b(?:streaming|execution)\s+error\b/i,
-    /\busage.{0,20}exceeded\b/i,
-    /\btimeout\b.{0,20}\b(?:error|exceeded|after)\b/i,
-    /\busage\s+limit\b/i,
-    /\bhit\s+your\s+(?:usage\s+)?limit\b/i,
-  ];
   const SHORT_OUTPUT = 500;
   const target = scanText.length <= SHORT_OUTPUT ? scanText : scanText.slice(0, 200);
-  return soft.some(p => p.test(target));
+  return matchFailureReason(target, SOFT_FAILURE_PATTERNS);
+}
+
+/** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */
+export function detectFailedCompletion(
+  response: string | null | undefined,
+  options: FailedCompletionOptions = {},
+): boolean {
+  return classifyFailedCompletionReason(response, options) !== undefined;
 }
 
 function buildFailureError(
@@ -120,7 +172,7 @@ function buildFailureError(
   options: FailedCompletionOptions = {},
 ): string {
   return result.error
-    || (result.output && detectFailedCompletion(result.output, options) ? 'unknown: failure pattern in output' : undefined)
+    || classifyFailedCompletionReason(result.output, options)
     || 'unknown: execution failed';
 }
 

@@ -1,1 +1,3 @@
-#!/usr/bin/env bash\n# synthtest: bash-syntax gate validation\n:\n
+#!/usr/bin/env bash
+# synthtest: bash-syntax gate validation
+:
