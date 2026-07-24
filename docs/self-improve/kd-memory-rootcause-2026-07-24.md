@@ -104,3 +104,32 @@
 - 대상 소스·테스트는 HEAD 대비 clean이며 이번 turn의 기록 변경은 이 문서뿐이다.
   HNSW 인덱스와 다른 팀 문서 등 범위 밖 워킹트리 변경은 보존했다.
 - 증거 등급: T1 (실제 명령 출력, DB 행, 소스·커밋 내용 직접 확인).
+
+## 7. FORMAT_MISMATCH 재시도 영수증 (2026-07-24 13:03 KST)
+
+- quality-gate가 반환한 `No test files found`는 Vitest가 `영수증:`을 파일
+  필터로 받은 잘못된 호출(`filter: 영수증:`)의 exit 1이다. 코드 테스트 결과로
+  간주하지 않았다.
+- 정확한 명령
+  `npm run test:run -- src/core/team-scorer.test.ts src/server/task-intake.test.ts src/core/team-lifecycle.test.ts`
+  재실행 결과는 3 files, **25 tests passed**, exit 0이다.
+- `npx tsc --noEmit`은 exit 0, `npm run build`는 `tsc` 후 exit 0이다.
+- 읽기 전용 DB 원문에서 `team_kd-memory`의 tasks는 3건이며 모두
+  `spawned_by_cli='commander-perfgoal'`이다. 현재 제외 조건을 적용한 원시 집계는
+  `terminal_after_exclusion=0`, `completed_after_exclusion=0`이다.
+- 현재 `teams.is_active=0`이므로 빌드된 `computeTeamScores(db)`의 kd-memory
+  결과는 `null`이다. 이를 활성 팀의 `{n: 0}` 결과라고 바꾸어 보고하지 않는다.
+  최신 lifecycle 원문은 2026-07-24 03:20:01 UTC의 HR scheduled
+  `event_type='retired'`, `score=1.8`,
+  `metadata_json={"immediate":false,"activeTasks":false}`다. 이번 검증은 DB를
+  읽기 전용으로만 열었고 팀 상태·lifecycle·retirement를 변경하지 않았다.
+- 검증 도중 공유 브랜치에 `c31625f`와 `259d198`이 연속 커밋되어 scorer의
+  제어면 제외 범위가 다른 팀 작업과 경합했다. 검증한 워킹트리는
+  `CONTROL_PLANE_PERFGOAL_EXCLUSION`을 completed/terminal 6개 CASE에 대칭
+  적용하며, 같은 팀의 non-perfgoal charter 태스크를 유지하는 회귀 테스트까지
+  통과한다. 따라서 6절의 “대상 소스·테스트가 HEAD 대비 clean”은 당시 스냅샷
+  설명이며 현재 스냅샷 설명으로 재사용하지 않는다.
+- NCO API `localhost:6200`은 연결 거부 상태라 post-patch HTTP 재현과
+  activity/lease 보고는 `[미검증]`이다. 실제 감사 표본은 여전히 0건이므로
+  completion/score 상승은 주장하지 않는다.
+- 증거 등급: T1 (실제 테스트·타입체크·빌드 출력, DB 행, 소스 내용 직접 확인).
