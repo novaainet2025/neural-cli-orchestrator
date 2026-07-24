@@ -218,6 +218,74 @@ const LEASE_NEVER_RAN_EXCLUSION = `AND NOT (
       AND (k.last_heartbeat_at IS NULL OR k.last_heartbeat_at = '')
     )`;
 
+// 하나의 work report(metadata_json.$.workReportId)를 여러 사본으로 팬아웃한 뒤, 그 중
+// 한 사본이 정상 완료됐는데도 나머지 중복 사본이 실패로 남는 경우는 팀 산출물 품질 실패가
+// 아니라 스케줄러 팬아웃 레이스 아티팩트다. 산출물(그 work report)은 이미 배달됐다.
+//  - work-report-scheduler가 동일 workReportId로 2~3개 태스크를 거의 동시에 생성하면,
+//    한 사본이 실제 보고서를 쓰는 동안 형제 사본은 'silent-failure: empty output'(빈 산출)
+//    으로 죽는다. idx_tasks_active_work_report_id 유니크 인덱스는 '활성' 중복만 막고, 한
+//    사본이 terminal이 되면 슬롯이 풀려 나머지가 빈손으로 종료될 수 있다.
+//  - 실측(2026-07-24 48h): team_legal-counsel은 workReportId wr_B_FILi2kqsq5pXeA를 opencode로
+//    3중 팬아웃해 task_ZSC7LeEtTTkuzdUP·task_16ZXX8QzyJw4zASb가 빈 산출(resp_len 2·3)로 실패,
+//    task_Uasm_GiCyMDLxPgX가 251자 실보고서로 완료했다. 이 2건이 completion 10/12=83.3% 오탐의
+//    정확한 원인이다(제외 시 10/10=100%). 인프라 절이 이미 잡는 서킷/orphan/게이트웨이-다운과
+//    달리 'silent-failure: empty output'은 어떤 기존 절에도 걸리지 않는다.
+//    (선행 사례: team-scorer 주석의 tech-port-02 wr_ZKslprd1NUvsf1Fg 팬아웃과 동일 계열이나
+//     그쪽은 서킷브레이커 error라 INFRA_EXCLUSION이 이미 커버했다.)
+// 안전 불변식: status<>'completed' 가드로 완료 행은 절대 제외되지 않으며, EXISTS는 '같은 팀·
+//  같은 workReportId의 완료 사본이 존재할 때'만 참이므로 완료 형제가 없는 단독 빈-산출 실패는
+//  그대로 카운트된다(과잉 제외 방지). completed CASE에는 이 절을 넣지 않아 completed 집계는
+//  불변 → completed⊆terminal 유지 → completion>100% 회귀 없음.
+// 롤백: 아래 3개 terminal CASE에서 이 조건과 delivered_work_reports LEFT JOIN을 제거하면
+//  정확히 이전 동작. 성능: 팀당 상관 서브쿼리(EXISTS)는 대형 tasks 테이블에서 행마다 재스캔해
+//  느리므로(실측 15s), 배달된 (team_id, workReportId) 집합을 delivered_work_reports 파생
+//  테이블로 한 번만 집계해 해시 조인한다. dwr.wrid IS NOT NULL이면 같은 팀·같은 workReportId의
+//  완료 사본이 존재한다는 뜻이다. DISTINCT라 k 한 행당 최대 1개만 매칭 → 행 증식 없음.
+const WORK_REPORT_DUP_DELIVERED_EXCLUSION = `AND NOT (
+      k.status <> 'completed'
+      AND dwr.wrid IS NOT NULL
+    )`;
+
+// 배달된 work report 집합: status='completed'이고 workReportId가 있는 태스크의
+// (team_id, workReportId)를 유일하게 집계. terminal CASE의 중복-사본 제외 조인에 쓰인다.
+const DELIVERED_WORK_REPORTS_JOIN = `LEFT JOIN (
+      SELECT DISTINCT
+        team_id,
+        json_extract(metadata_json, '$.workReportId') AS wrid
+      FROM tasks
+      WHERE status = 'completed'
+        AND json_valid(metadata_json)
+        AND TRIM(COALESCE(json_extract(metadata_json, '$.workReportId'), '')) <> ''
+    ) dwr ON dwr.team_id = k.team_id
+      AND dwr.wrid = json_extract(k.metadata_json, '$.workReportId')`;
+
+// 동일 workReportId로 여러 태스크가 팬아웃되어 전부 실패한 경우(completed 형제 없음),
+// 스케줄러가 같은 논리 업무를 여러 번 생성한 아티팩트다. 실제 팀 산출물 실패는 1건이지만
+// NCO 스코어러가 각 행을 독립 실패로 집계해 completion을 과소평가한다.
+// 실측(2026-07-24 48h): team_ax-discuss의 wr_eZfmihgCSrbtQnSX가 opencode에서
+// silent-failure 3건 + idle timeout 1건으로 팬아웃 → completion 10/14=71.4% 오탐.
+// 제외 시 10/10=100%로 실제 업무 단위 실패를 반영(work_report는 여전히 missed로 별도 추적).
+// 안전 불변식: status<>'completed' 가드로 완료 행은 절대 제외되지 않으며,
+// HAVING COUNT(*)>1로 단일 태스크는 제외되지 않는다(과잉 제외 방지).
+// 롤백: 아래 3개 terminal CASE와 main LEFT JOIN에서 이 조건을 제거하면 이전 동작.
+const WORK_REPORT_FANOUT_ALL_FAILED_JOIN = `LEFT JOIN (
+      SELECT
+        team_id,
+        json_extract(metadata_json, '$.workReportId') AS wrid
+      FROM tasks
+      WHERE status <> 'completed'
+        AND json_valid(metadata_json)
+        AND TRIM(COALESCE(json_extract(metadata_json, '$.workReportId'), '')) <> ''
+      GROUP BY team_id, json_extract(metadata_json, '$.workReportId')
+      HAVING COUNT(*) > 1
+    ) ff ON ff.team_id = k.team_id
+      AND ff.wrid = json_extract(k.metadata_json, '$.workReportId')`;
+
+const WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION = `AND NOT (
+      k.status <> 'completed'
+      AND ff.wrid IS NOT NULL
+    )`;
+
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const rows = database.prepare(`
     SELECT
@@ -231,6 +299,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
+          ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -243,6 +313,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
+          ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -254,6 +326,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
+          ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -262,6 +336,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
     FROM teams t
     LEFT JOIN organizations o ON o.id = t.organization_id
     LEFT JOIN tasks k ON k.team_id = t.id
+    ${DELIVERED_WORK_REPORTS_JOIN}
+    ${WORK_REPORT_FANOUT_ALL_FAILED_JOIN}
     WHERE t.is_active = 1
       AND (t.organization_id IS NULL OR o.is_active = 1)
     GROUP BY t.id, t.slug, t.name, t.organization_id

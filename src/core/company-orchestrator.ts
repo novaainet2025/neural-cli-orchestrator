@@ -11,6 +11,7 @@
 //   - 완료 대기 = tasks.status 폴링(터미널: completed/failed/timed_out/cancelled).
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../storage/database.js';
+import { checkResponseQuality } from '../verification/response-quality.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
@@ -361,6 +362,18 @@ export function isSubstantiveOutput(response: string | null | undefined): boolea
   text = text.replace(/\[Evidence Tier \d\][^\n]*/gi, '');
   text = text.replace(/(file|content|command output)\s+verified/gi, '');
   return text.trim().length >= MIN_SUBSTANTIVE_CHARS;
+}
+
+export function isCompanyStageOutputAcceptable(
+  response: string | null | undefined,
+  options: { isLastStage: boolean; requireProtocolPrefix: boolean },
+): boolean {
+  const quality = checkResponseQuality(response ?? '', {
+    requireProtocolPrefix: options.requireProtocolPrefix,
+    rejectToolEchoes: true,
+  });
+  if (!quality.pass) return false;
+  return options.isLastStage || isSubstantiveOutput(response);
 }
 
 // 분해 실패/미매칭 팀용 결정론적 템플릿.
@@ -956,9 +969,13 @@ async function runStageWithFailover(
     stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
     stage.outputChars = (result.response ?? '').length;
     touch(run);
-    // 최종 stage 는 하류 캐스케이드가 없으므로 substantive 게이트 예외(완성률 순손실 방지).
-    const substantive = isLastStage || isSubstantiveOutput(result.response);
-    if (result.status === 'completed' && substantive) {
+    // 최종 stage는 길이 게이트만 예외다. 품질 게이트까지 우회하면 도구 호출 에코가
+    // 완료로 오인되어 같은 회사 실행을 다시 트리거하므로 모든 단계에 품질 검사를 적용한다.
+    const acceptable = isCompanyStageOutputAcceptable(result.response, {
+      isLastStage,
+      requireProtocolPrefix: result.requireProtocolPrefix,
+    });
+    if (result.status === 'completed' && acceptable) {
       stage.error = undefined;
       return true;
     }
@@ -991,6 +1008,7 @@ async function dispatchStage(app: FastifyInstance, run: CompanyRun, stage: RunSt
           organizationId: run.orgId,
           teamId: stage.teamId,
           companyRunId: run.id,
+          qualityRetryOwner: 'company-orchestrator',
         },
       },
     });
@@ -1072,16 +1090,32 @@ function withHardTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 // tasks.status 폴링으로 태스크 완료 대기. 터미널 상태 또는 timeout 시 반환.
-async function waitForTask(taskId: string, timeoutMs: number): Promise<{ status: string; response: string | null }> {
+async function waitForTask(taskId: string, timeoutMs: number): Promise<{
+  status: string;
+  response: string | null;
+  requireProtocolPrefix: boolean;
+}> {
   const db = getDb();
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const row = db.prepare(`SELECT status, response FROM tasks WHERE id=?`).get(taskId) as
-      { status: string | null; response: string | null } | undefined;
+    const row = db.prepare(`SELECT status, response, verifier_json FROM tasks WHERE id=?`).get(taskId) as
+      { status: string | null; response: string | null; verifier_json: string | null } | undefined;
     const status = row?.status ?? 'failed';
-    if (!row) return { status: 'failed', response: null };
-    if (TERMINAL.has(status)) return { status, response: row.response ?? null };
-    if (Date.now() >= deadline) return { status: 'timed_out', response: row.response ?? null };
+    if (!row) return { status: 'failed', response: null, requireProtocolPrefix: false };
+    if (TERMINAL.has(status)) {
+      return {
+        status,
+        response: row.response ?? null,
+        requireProtocolPrefix: Boolean(row.verifier_json),
+      };
+    }
+    if (Date.now() >= deadline) {
+      return {
+        status: 'timed_out',
+        response: row.response ?? null,
+        requireProtocolPrefix: Boolean(row.verifier_json),
+      };
+    }
     await sleep(POLL_MS);
   }
 }
@@ -1093,7 +1127,10 @@ async function collectStage(stage: RunStage, run: CompanyRun): Promise<void> {
   const result = await waitForTask(stage.taskId, PARALLEL_STAGE_TIMEOUT_MS);
   stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
   stage.outputChars = (result.response ?? '').length;
-  if (result.status === 'completed' && isSubstantiveOutput(result.response)) {
+  if (result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
+    isLastStage: false,
+    requireProtocolPrefix: result.requireProtocolPrefix,
+  })) {
     stage.status = 'completed';
   } else if (result.status === 'completed') {
     stage.status = 'failed';

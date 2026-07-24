@@ -10,6 +10,8 @@ const INTERNAL_THOUGHT_TAGS = [
 
 const PROTOCOL_PREFIX = /^(?:done|status|question|error):/i;
 const TOOL_ECHO_LINE = /^\s*\[tool:[^\]\n]+\]\s*$/i;
+const TOOL_CALL_NAME = /^(?:searchCode|searchFiles|readFile|writeFile|editFile|createFile|runCommand|runTest|gitCommit)$/i;
+const TOOL_DESCRIPTION = /\b`?(?:searchCode|searchFiles|readFile|writeFile|editFile|createFile|runCommand|runTest|gitCommit)`?\s+function\s+is\s+used\s+to\b/i;
 // 프로바이더 wrapper가 붙이는 실패 마커로 *시작*하는 응답 — 실질 출력 없이 completed로
 // 빠지는 케이스 (실측: "[codex: no final response — process failed] — Reading additional input from stdin...")
 // 정상 응답 뒤에 마커가 꼬리로 붙는 경우는 통과해야 하므로 시작 위치만 검사한다.
@@ -55,9 +57,28 @@ function isToolEcho(text: string): boolean {
   return substantive.length === 0;
 }
 
+function isSerializedToolCallEcho(text: string): boolean {
+  const trimmed = text.trim();
+  const prefix = trimmed.match(
+    /^\{\s*"name"\s*:\s*"([^"]+)"\s*,\s*"(?:parameters|arguments)"\s*:/i,
+  );
+  if (prefix && TOOL_CALL_NAME.test(prefix[1])) return true;
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') return false;
+    const record = parsed as Record<string, unknown>;
+    const name = typeof record.name === 'string' ? record.name : '';
+    const args = record.parameters ?? record.arguments;
+    return TOOL_CALL_NAME.test(name) && typeof args === 'object' && args !== null;
+  } catch {
+    return false;
+  }
+}
+
 export function checkResponseQuality(
   text: string,
-  opts?: { requireProtocolPrefix?: boolean },
+  opts?: { requireProtocolPrefix?: boolean; rejectToolEchoes?: boolean },
 ): { pass: boolean; heuristics: string[] } {
   const heuristics: string[] = [];
   const normalized = text ?? '';
@@ -66,6 +87,12 @@ export function checkResponseQuality(
 
   if (isThinkingOnly(normalized)) heuristics.push('THINKING_ONLY');
   if (isToolEcho(normalized)) heuristics.push('TOOL_ECHO');
+  if (opts?.rejectToolEchoes && isSerializedToolCallEcho(normalized)) {
+    heuristics.push('TOOL_CALL_ECHO');
+  }
+  if (opts?.rejectToolEchoes && TOOL_DESCRIPTION.test(normalized)) {
+    heuristics.push('TOOL_DESCRIPTION');
+  }
   // EMPTY_OR_SHORT는 빈 응답 또는 문자·숫자가 전혀 없는 기호/공백 잔해만 reject.
   // 단순 길이(<50) 기준은 정당한 단답("OK", "done: 통과")까지 reject해 retry cap을
   // 전소시키는 현장 결함이 확인되어 제거 (실측 2026-07-03, claude-3 보고).

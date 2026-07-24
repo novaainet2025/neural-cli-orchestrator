@@ -13,6 +13,7 @@ import {
   scopeDecomposedSubtask,
   templateSubtask,
   isSubstantiveOutput,
+  isCompanyStageOutputAcceptable,
   type TeamRow,
 } from './company-orchestrator.js';
 
@@ -225,6 +226,39 @@ describe('isSubstantiveOutput (빈 산출물 게이트)', () => {
   });
   it('짧은 실질 내용(200자 미만)도 비실질로 게이트', () => {
     expect(isSubstantiveOutput('조달우수는 조달청 제도다.')).toBe(false);
+  });
+});
+
+describe('isCompanyStageOutputAcceptable (중복 품질 재시도 게이트)', () => {
+  it('최종 단계라도 직렬화된 도구 호출은 거부', () => {
+    const response = JSON.stringify({
+      name: 'searchCode',
+      parameters: { query: 'quality-audit' },
+    });
+    expect(isCompanyStageOutputAcceptable(response, {
+      isLastStage: true,
+      requireProtocolPrefix: true,
+    })).toBe(false);
+  });
+
+  it('최종 단계라도 도구 설명 에코는 거부', () => {
+    const response = 'The `searchFiles` function is used to find files. '.repeat(8);
+    expect(isCompanyStageOutputAcceptable(response, {
+      isLastStage: true,
+      requireProtocolPrefix: false,
+    })).toBe(false);
+  });
+
+  it('verifier-backed 단계는 protocol prefix를 요구', () => {
+    const response = '실제 DB 행과 파일 내용을 확인했고 관련 테스트도 통과했습니다.';
+    expect(isCompanyStageOutputAcceptable(response, {
+      isLastStage: true,
+      requireProtocolPrefix: true,
+    })).toBe(false);
+    expect(isCompanyStageOutputAcceptable(`done: ${response}`, {
+      isLastStage: true,
+      requireProtocolPrefix: true,
+    })).toBe(true);
   });
 });
 

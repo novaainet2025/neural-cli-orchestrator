@@ -1,0 +1,1 @@
+Improvement cycle=2/3. Use actual NCO task evidence to identify the root cause and implement a bounded, reversible fix. Run relevant tests/build, record evidence, and do not fabricate metrics. Do not delete or deactivate teams. HR alone owns lifecycle status and retirement decisions.

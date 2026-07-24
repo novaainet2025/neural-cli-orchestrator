@@ -714,6 +714,20 @@ export const loadRetryPayload = (
   return payload;
 };
 
+export function isCompanyOrchestratorQualityRetryOwner(
+  metadataJson: string | null | undefined,
+): boolean {
+  if (!metadataJson) return false;
+  try {
+    const metadata = JSON.parse(metadataJson) as Record<string, unknown>;
+    return metadata.qualityRetryOwner === 'company-orchestrator'
+      && typeof metadata.companyRunId === 'string'
+      && metadata.companyRunId.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function updateTaskQualityMetadata(
   db: ReturnType<typeof getDb>,
   taskId: string,
@@ -1159,14 +1173,21 @@ export async function createGateway() {
   const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
     const db = getDb();
     const taskRow = db.prepare(`
-      SELECT assigned_to, verifier_json, parent_task_id
+      SELECT assigned_to, verifier_json, parent_task_id, metadata_json
       FROM tasks
       WHERE id=?
-    `).get(taskId) as { assigned_to: string | null; verifier_json: string | null; parent_task_id: string | null } | undefined;
+    `).get(taskId) as {
+      assigned_to: string | null;
+      verifier_json: string | null;
+      parent_task_id: string | null;
+      metadata_json: string | null;
+    } | undefined;
     if (!taskRow) return;
 
+    const companyOwnsRetry = isCompanyOrchestratorQualityRetryOwner(taskRow.metadata_json);
     const quality = checkResponseQuality(response, {
       requireProtocolPrefix: Boolean(taskRow.verifier_json),
+      rejectToolEchoes: companyOwnsRetry,
     });
     if (quality.pass) {
       try {
@@ -1181,6 +1202,13 @@ export async function createGateway() {
     }
 
     updateTaskQualityMetadata(db, taskId, quality.heuristics);
+    if (companyOwnsRetry) {
+      log.info(
+        { taskId, heuristics: quality.heuristics },
+        'Quality retry delegated to company orchestrator',
+      );
+      return;
+    }
 
     // 같은 프로바이더 재시도는 quota/고장 상태에서 cap 3을 전소시킴 (E2E 실측 2026-07-03:
     // codex quota 중 ERROR_MARKER reject가 codex로 3연속 재배정) — 실패 failover와 동일한

@@ -35,6 +35,7 @@ describe('team score aggregation', () => {
     db.exec('ALTER TABLE tasks ADD COLUMN spawned_by_cli TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN acked_at TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN last_heartbeat_at TEXT');
+    db.exec('ALTER TABLE tasks ADD COLUMN metadata_json TEXT');
 
     const insert = db.prepare(`
       INSERT INTO tasks (id, team_id, status, created_at)
@@ -181,6 +182,34 @@ describe('team score aggregation', () => {
     // 제외 후 terminal = {ok×3, ran-timeout, noack} = 5, completed = 3 → completion 60.
     // never-ran 3건을 제외하지 않으면 terminal=8·completion=37.5로 팀이 부당 감점된다.
     expect(triad).toMatchObject({ completion: 60, n: 5 });
+  });
+
+  it('excludes failed work-report fan-out siblings whose report was delivered by a completed copy', () => {
+    // team_legal-counsel 회귀: 동일 workReportId를 여러 사본으로 팬아웃한 뒤 한 사본이 실보고서를
+    // 완료했는데 나머지 중복 사본이 'silent-failure: empty output'으로 죽으면, 산출물은 이미
+    // 배달됐으므로 그 실패는 팀 품질 신호가 아니라 스케줄러 레이스 아티팩트다 → terminal 제외.
+    const insertMeta = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
+      .run('team_legal', 'org_active', 'Legal', 'legal');
+
+    const wrA = JSON.stringify({ workReportId: 'wr_A' });
+    // wr_A: 한 사본 완료 + 빈-산출 중복 사본 2건(제외 대상).
+    insertMeta.run('legal-wrA-ok', 'team_legal', 'completed', null, wrA, '-1 hour');
+    insertMeta.run('legal-wrA-dup1', 'team_legal', 'failed', 'silent-failure: empty output', wrA, '-2 hours');
+    insertMeta.run('legal-wrA-dup2', 'team_legal', 'failed', 'silent-failure: empty output', wrA, '-3 hours');
+    // 범위 가드: 완료 형제가 없는 단독 빈-산출 실패(wr_B)는 실제 품질 실패라 그대로 카운트.
+    insertMeta.run(
+      'legal-wrB-fail', 'team_legal', 'failed', 'silent-failure: empty output',
+      JSON.stringify({ workReportId: 'wr_B' }), '-4 hours',
+    );
+
+    const legal = computeTeamScores(db).find((t) => t.teamId === 'team_legal');
+    // 제외 후 terminal = {wrA-ok, wrB-fail} = 2, completed = 1 → completion 50.
+    // 중복 사본을 제외하지 않으면 terminal=4·completion=25로 팀이 부당 감점된다.
+    expect(legal).toMatchObject({ completion: 50, n: 2 });
   });
 
   afterEach(() => db.close());

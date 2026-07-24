@@ -3,7 +3,10 @@ import { existsSync, unlinkSync } from 'fs';
 import { resolve } from 'path';
 import { env } from '../src/utils/config.js';
 import { closeDb, getDb, runMigrations } from '../src/storage/database.js';
-import { loadRetryPayload } from '../src/server/gateway.js';
+import {
+  isCompanyOrchestratorQualityRetryOwner,
+  loadRetryPayload,
+} from '../src/server/gateway.js';
 import { checkResponseQuality } from '../src/verification/response-quality.js';
 
 describe('response quality gate', () => {
@@ -67,6 +70,43 @@ describe('response quality gate', () => {
     expect(
       checkResponseQuality('[broken json', { requireProtocolPrefix: true }).heuristics,
     ).toContain('FORMAT_MISMATCH');
+  });
+
+  it('rejects serialized tool-call echoes in company-owned quality gates', () => {
+    const validEcho = JSON.stringify({
+      name: 'searchCode',
+      parameters: { query: 'quality-audit' },
+    });
+    const truncatedEcho = '{"name":"searchCode","parameters":{"query":"\\u3000\\u3000';
+
+    expect(checkResponseQuality(validEcho, {
+      requireProtocolPrefix: true,
+      rejectToolEchoes: true,
+    }).heuristics).toContain('TOOL_CALL_ECHO');
+    expect(checkResponseQuality(truncatedEcho, {
+      requireProtocolPrefix: true,
+      rejectToolEchoes: true,
+    }).heuristics).toContain('TOOL_CALL_ECHO');
+  });
+
+  it('rejects tool-description handoffs without changing ordinary documentation checks', () => {
+    const description = 'The `searchFiles` function is used to find the requested file.';
+
+    expect(checkResponseQuality(description, {
+      rejectToolEchoes: true,
+    }).heuristics).toContain('TOOL_DESCRIPTION');
+    expect(checkResponseQuality(description).pass).toBe(true);
+  });
+
+  it('delegates quality retry only for explicitly owned company-run tasks', () => {
+    expect(isCompanyOrchestratorQualityRetryOwner(JSON.stringify({
+      companyRunId: 'corun-1',
+      qualityRetryOwner: 'company-orchestrator',
+    }))).toBe(true);
+    expect(isCompanyOrchestratorQualityRetryOwner(JSON.stringify({
+      companyRunId: 'corun-1',
+    }))).toBe(false);
+    expect(isCompanyOrchestratorQualityRetryOwner('{broken')).toBe(false);
   });
 
   it('rejects responses starting with a provider error marker', () => {
