@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-24T12:20:00+0900",
+  "checked_at": "2026-07-24T13:20:00+0900",
   "mode": "propose",
   "total": 208,
   "pass": 205,
@@ -120,8 +120,8 @@
   "dispatch": {
     "mode": "propose",
     "dispatched": {
-      "id": "hook:nova-voice-tts-progress.sh",
-      "taskId": "task_8YFd8R3il6AmUyIU"
+      "id": "hook:universal-verify.sh",
+      "taskId": "task_CTlLxe25U_KhiP0e"
     },
     "skipped_reason": null
   }
