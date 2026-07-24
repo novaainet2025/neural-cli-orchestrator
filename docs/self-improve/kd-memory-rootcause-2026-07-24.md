@@ -73,7 +73,34 @@
   재현은 수행하지 못했다.
 - 실제 kd-memory 감사 태스크가 아직 0건이므로 개선 후 completion/score 상승은
   주장하지 않는다.
-- `.git/index.lock` 쓰기가 샌드박스에서 거부되어 단일 커밋 생성은 수행하지
-  못했다. 변경은 파일 단위로 가역적이지만 현재 미커밋 상태다.
+- 최초 조사 시 `.git/index.lock` 쓰기가 샌드박스에서 거부되어 그 turn에서는
+  단일 커밋을 생성하지 못했다. 이후 스코어러 변경은 `aff5990`, intake 변경은
+  `ade3456`에 포함되었다. 이 항목은 최초 조사 당시의 제약이며 현재 상태를
+  “미커밋”으로 뜻하지 않는다.
 - Mem0/Obsidian 연동 상태를 바꾸는 외부 쓰기는 이번 코드 수정 범위에서 수행하지
   않았다.
+
+## 6. cycle 3 재검증 영수증 (2026-07-24 12:56 KST)
+
+- 관련 회귀:
+  `npm run test:run -- src/core/team-scorer.test.ts src/server/task-intake.test.ts src/core/team-lifecycle.test.ts`
+  → 3 files, **25 tests passed**, exit 0. 요청문에 적힌 23은 기대치였고 현재
+  브랜치에는 후속 회귀 테스트가 추가되어 실측은 25다.
+- 타입체크: `npx tsc --noEmit` → exit 0, 출력 없음.
+- 빌드: `npm run build` → `tsc`, exit 0.
+- 실제 DB 원문: `tasks WHERE team_id='team_kd-memory'`는 3건이고 세 건 모두
+  `spawned_by_cli='commander-perfgoal'`이다. 현재 제외식을 직접 적용한 집계는
+  `terminal_all=0`, `completed_all=0`이다.
+- 현재 live DB에서 `teams.is_active=0`이고 최근 lifecycle 원문에
+  `event_type='retired'`가 있으므로, 활성 팀만 반환하는
+  `computeTeamScores(db)`에는 kd-memory 행이 없다(`null`). 따라서 현재 시점의
+  live 재계산을 `n=0` 행이라고 재보고하지 않는다. 위 4절의 `n=0`은 HR lifecycle
+  변경 전 실행 증거이고, 단위 테스트는 활성 kd-memory 표본에서
+  `{ completion: 0, n: 0, sample: 'all' }` 회귀를 계속 검증한다.
+- lifecycle/팀 상태는 읽기 전용으로만 조회했으며 활성화·비활성화·retirement
+  변경을 수행하지 않았다.
+- NCO API `localhost:6200`은 이번 재검증에서도 연결 거부되어 post-patch HTTP
+  재현과 activity/lease 보고는 `[미검증]`이다.
+- 대상 소스·테스트는 HEAD 대비 clean이며 이번 turn의 기록 변경은 이 문서뿐이다.
+  HNSW 인덱스와 다른 팀 문서 등 범위 밖 워킹트리 변경은 보존했다.
+- 증거 등급: T1 (실제 명령 출력, DB 행, 소스·커밋 내용 직접 확인).

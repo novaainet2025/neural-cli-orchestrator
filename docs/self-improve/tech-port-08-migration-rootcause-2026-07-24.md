@@ -5,6 +5,7 @@ team_id: team_tech-port-08-migration-implementation
 team_slug: tech-port-08-migration-implementation
 improvement_cycle: 1
 snapshot_utc: "2026-07-24 03:10:00"
+revalidated_utc: "2026-07-24 03:57:43"
 score: 71.4
 completion: 75
 sample: 48h/4
@@ -47,11 +48,12 @@ T1은 위 DB 필드와 저장된 응답·verifier 본문이 실제로 존재한�
 `neural-cli-orchestrator@1.0.0 build > tsc`이므로 대상 프로젝트 nova-use의
 전체 테스트 실패를 반증하지 않는다.
 
-### 현재 `FORMAT_MISMATCH` 재시도와의 경계
+### `FORMAT_MISMATCH` 재시도와의 경계
 
-현재 요청 머리말의 `[Quality-gate reject: quality_rejected:
-FORMAT_MISMATCH]`는 대상 팀 표본의 task error가 아니다. 이 재시도 task
-`task_ZZg5UdtnMmIzauL5`는 `team_id=team_self-learning`,
+이 요청 머리말의 `[Quality-gate reject: quality_rejected:
+FORMAT_MISMATCH]`는 대상 팀 표본의 task error가 아니다. 스냅샷 이후
+재시도 행의 조회 예시인 `task_ZZg5UdtnMmIzauL5`는
+`team_id=team_self-learning`,
 `created_at=2026-07-24 03:12:33 UTC`로, 위 lifecycle 스냅샷
 `2026-07-24 03:10:00 UTC` 이후 생성됐다. 대상 4개 행의
 `metadata_json.qualityRejected`와 `qualityHeuristics`는 모두 NULL이다.
@@ -244,7 +246,7 @@ sample=[
 ]
 actions=8, handoffs=0
 qualityMarkedInSample=0
-qualityRetry={
+qualityRetryExample={
   taskId:task_ZZg5UdtnMmIzauL5,
   teamId:team_self-learning,
   createdAt:"2026-07-24 03:12:33"

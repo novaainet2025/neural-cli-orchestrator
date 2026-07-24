@@ -110,7 +110,11 @@ describe('team score aggregation', () => {
     expect(gateway).toMatchObject({ completion: 66.7, n: 3 });
   });
 
-  it('excludes kd-memory control-plane reporting tasks without changing another team sample', () => {
+  it('excludes commander-perfgoal control-plane tasks for any team while keeping charter tasks', () => {
+    // team_quality-audit 회귀: commander-perfgoal은 목표/성과보고를 NCO 제어면에 입력하는
+    // 관리 태스크라 팀 charter 산출물이 아니다. 에이전트가 미주입 필수값을 정상 거부하면
+    // 실패로 마킹되는데, 이는 팀 감사 품질 신호가 아니므로 팀 무관하게 terminal에서 제외한다.
+    // 범위 가드: 같은 팀의 non-perfgoal charter 태스크는 그대로 카운트되어야 한다(과잉 제외 방지).
     const insertTask = db.prepare(`
       INSERT INTO tasks (id, team_id, status, spawned_by_cli, created_at)
       VALUES (?, ?, ?, ?, datetime('now', ?))
@@ -122,20 +126,28 @@ describe('team score aggregation', () => {
     insertTeam.run('team_kd-memory', 'Memory Audit', 'kd-memory');
     insertTeam.run('team_control', 'Control', 'control');
 
+    // 두 팀 모두 perfgoal 제어면 태스크 3건씩 — 팀 무관하게 전부 제외 대상.
     for (const teamId of ['team_kd-memory', 'team_control']) {
       insertTask.run(`${teamId}-admin-failed`, teamId, 'failed', 'commander-perfgoal', '-1 hour');
       insertTask.run(`${teamId}-admin-expired`, teamId, 'lease_expired', 'commander-perfgoal', '-2 hours');
       insertTask.run(`${teamId}-admin-completed`, teamId, 'completed', 'commander-perfgoal', '-3 hours');
     }
+    // team_control은 실제 charter 태스크(비-perfgoal) 3건 보유 — 이건 그대로 카운트돼야 한다.
+    insertTask.run('team_control-work-1', 'team_control', 'completed', 'team-runner', '-1 hour');
+    insertTask.run('team_control-work-2', 'team_control', 'completed', 'team-runner', '-2 hours');
+    insertTask.run('team_control-work-3', 'team_control', 'failed', 'team-runner', '-3 hours');
 
     const scores = computeTeamScores(db);
+    // kd-memory: perfgoal 3건 전부 제외 → 표본 없음.
     expect(scores.find((team) => team.teamId === 'team_kd-memory')).toMatchObject({
       completion: 0,
       n: 0,
       sample: 'all',
     });
+    // control: perfgoal 3건 제외, charter 3건만 남아 terminal=3·completed=2 → completion 66.7.
+    // 제외가 과잉 적용돼 charter 태스크까지 빠지면 n=0이 되어 이 기대값이 깨진다.
     expect(scores.find((team) => team.teamId === 'team_control')).toMatchObject({
-      completion: 33.3,
+      completion: 66.7,
       n: 3,
       sample: '48h',
     });
