@@ -128,6 +128,44 @@ describe('task-intake helpers', () => {
     }).prompt).not.toContain('[Self-Improvement Diagnostic 응답·증거 계약]');
   });
 
+  it('adds the research-strategy response contract once to company runs only', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_research-strategy',
+      companyRunId: 'corun_research',
+    };
+    const first = applyPromptGate('[목표] 연구질문과 성공기준을 설계한다', metadata);
+    const retry = applyPromptGate(first.prompt, metadata);
+
+    expect(first.prompt).toContain('[Research Strategy 응답 계약]');
+    expect(first.prompt).toContain('첫 줄을 `done:`');
+    expect(first.prompt).toContain('첫 줄을 `status:`');
+    expect(first.prompt).toContain('확인하지 않은 출처·수치·파일·검증 결과');
+    expect(retry.prompt.match(/\[Research Strategy 응답 계약\]/g)).toHaveLength(1);
+    expect(checkResponseQuality('done: 연구질문과 성공기준 설계를 완료했습니다.', {
+      requireProtocolPrefix: true,
+    })).toEqual({ pass: true, heuristics: [] });
+    expect(buildDefaultVerifierWithFs({
+      prompt: first.prompt,
+      metadata,
+      verifier: undefined,
+    }, () => true)).toEqual({
+      type: 'run',
+      command: 'npm run build',
+      timeoutMs: 120_000,
+    });
+
+    expect(applyPromptGate('[목표] 일반 리서치 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_research-strategy',
+    }).prompt).not.toContain('[Research Strategy 응답 계약]');
+    expect(applyPromptGate('[목표] 다른 팀 회사 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_other',
+      companyRunId: 'corun_other',
+    }).prompt).not.toContain('[Research Strategy 응답 계약]');
+  });
+
   it('keeps tool-description false reports rejected while allowing an honest blocked status', () => {
     const prompt = applyPromptGate('[목표] cli-design 저점 원인을 검증한다', {
       projectDir: '/repo',
@@ -184,8 +222,14 @@ describe('task-intake helpers', () => {
       metadata: { projectDir: '/repo' },
       verifier: undefined,
     }, () => true);
+    const tersePingVerifier = buildDefaultVerifierWithFs({
+      prompt: `핑 검증: 역할을 한 문장으로 답하라. 도구 금지, 텍스트만.`,
+      metadata: { projectDir: '/repo' },
+      verifier: undefined,
+    }, () => true);
 
     expect(verifier).toBeUndefined();
+    expect(tersePingVerifier).toBeUndefined();
   });
 
   it('does not assign a build verifier to work reports after prompt enrichment', () => {
@@ -222,6 +266,7 @@ describe('task-intake helpers', () => {
   it('detects text-only prompts', () => {
     expect(isTextOnlyPrompt('(텍스트만 응답, 도구/커맨드 사용 금지)')).toBe(true);
     expect(isTextOnlyPrompt('오직 텍스트만 생성한다')).toBe(true);
+    expect(isTextOnlyPrompt('역할을 답하라. 도구 금지, 텍스트만.')).toBe(true);
     expect(isTextOnlyPrompt('gateway 버그 수정')).toBe(false);
   });
 

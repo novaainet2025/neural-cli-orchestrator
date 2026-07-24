@@ -20,7 +20,7 @@ const CODE_WORK_PATTERN = /\b(implement|implementation|fix|bug|patch|refactor|re
 // 빌드 검증기(verifier)를 붙일 수 없다. verifier가 붙으면 gateway의 품질 게이트가
 // requireProtocolPrefix=true로 전환되어 자유형 리포트를 FORMAT_MISMATCH로 무한 반려한다
 // (실측 2026-07-18: 자가개선팀 등 상시 임무 반복 반려). 이 마커가 있으면 검증기를 생략한다.
-const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|도구\s*\/\s*커맨드\s*사용\s*금지/;
+const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|도구\s*\/\s*커맨드\s*사용\s*금지|도구\s*금지\s*,?\s*텍스트만/;
 
 // 문서 편집(docs-ai) 태스크는 편집 규칙 보일러플레이트의 "수정" 때문에 CODE_WORK로
 // 오분류되어 npm build 검증기가 붙고, 게이트가 JSON 배열 응답을 FORMAT_MISMATCH로
@@ -38,6 +38,8 @@ const SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS = new Set([
   'team_error-prevention',
 ]);
 const SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT = '[Self-Improvement Diagnostic 응답·증거 계약]';
+const RESEARCH_STRATEGY_TEAM_ID = 'team_research-strategy';
+const RESEARCH_STRATEGY_RESPONSE_CONTRACT = '[Research Strategy 응답 계약]';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -89,6 +91,23 @@ export function applyTeamResponseContract(
       '- task ID, 상태, 수치, 파일 변경, 테스트 결과는 DB 행·파일 내용·명령 출력처럼 재검증 가능한 근거가 있을 때만 주장한다.',
       '- 도구 함수 설명, 이전 단계 출력 반복, 다른 팀 결과 또는 grep 문자열 존재만으로 현재 작업의 완료를 주장하지 않는다.',
       '- 변경 작업이면 변경 경로, 실제 검증 결과, Gap과 되돌리기 방법을 기록하고, 변경이 불필요하면 근거와 diff 0을 명시한다.',
+    ].join('\n');
+  }
+
+  // research-strategy company run은 build verifier가 protocol prefix를 요구하지만 원래
+  // 프롬프트에는 그 계약이 없어, 실질 산출물을 낸 completed 부모도 FORMAT_MISMATCH로
+  // 반복 반려됐다(2026-07-24 48h: company-orchestrator 부모 3건, direct retry 8건).
+  // 회사 실행에만 계약을 주입해 일반 업무보고·핑·독립 태스크의 출력 형식은 바꾸지 않는다.
+  if (companyRunId && teamId === RESEARCH_STRATEGY_TEAM_ID) {
+    if (prompt.includes(RESEARCH_STRATEGY_RESPONSE_CONTRACT)) return prompt;
+    return [
+      prompt,
+      '',
+      RESEARCH_STRATEGY_RESPONSE_CONTRACT,
+      '- 요구한 연구질문 분해·범위·방법론·성공기준·핸드오프를 완료했으면 첫 줄을 `done:`으로 시작한다.',
+      '- 자료·권한·도구 부족, 부분 완료 또는 차단 상태이면 첫 줄을 `status:`로 시작하고 `[미검증]` 항목을 명시한다.',
+      '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
+      '- 확인하지 않은 출처·수치·파일·검증 결과를 만들지 않는다.',
     ].join('\n');
   }
 
