@@ -1,0 +1,92 @@
+{
+  "meta": {
+    "team": "team_tech-port-06-improvement-debate",
+    "slug": "tech-port-06-improvement-debate",
+    "generated": "2026-07-24",
+    "author": "중복에러방지팀 (duplicate-error-prevention)",
+    "purpose": "Cross-analyze auto-audit + team-06 task failure patterns; define bounded Circuit-Breaker/Gate rules that block repeated NON-quality errors; independently verify the self-improvement patch (e6efcf1 + INFRA_EXCLUSION) is a real fix and not a fabricated (metric-gamed) improvement.",
+    "evidence_source": "db/nco.db (T1, direct SQL) + src/core/team-scorer.ts + src/security/circuit-breaker-registry.ts + git",
+    "data_availability_note": "No dedicated auto-audit *error* log stream is injected/persisted for team-06; data/team-runner/team_quality-audit-*.md are promo-package quality audits of a DIFFERENT team, not team-06 error traces. All figures below are recomputed live from the tasks table. No numbers were invented; absent data is marked 'unavailable'."
+  },
+
+  "failure_pattern_analysis_48h": {
+    "raw_terminal": 12,
+    "completed": 7,
+    "breakdown": {
+      "completed": 7,
+      "failed_orphan_infra": 1,
+      "failed_gateway_down_infra": 1,
+      "lease_expired_real": 3
+    },
+    "evidence_task_ids": {
+      "completed": ["task_lue2DAqFKkmNm23z", "task_53r-X8exdmIhmHco", "task_9NxxNDRueeHKplTB", "task_Pe00dCrVyKbbWFcM", "task_-JdHSjEtuok4zBx6", "task_zpPvDFRqCqWu4NUE", "task_f2rIUTYccNHb5T72"],
+      "infra_orphan_excluded": "task_1SAeDCVfMO8FDlBz",
+      "infra_gateway_down_excluded": "task_eTYAEfE-U8SP4X8F",
+      "real_failures_kept": ["task_T42Cd0mgElSOaoXU", "task_xn-WyOVjIHSEgnD0", "task_WHn4No9eM_HH6WJQ"]
+    },
+    "repeated_error_finding": {
+      "hypothesis_from_directive": "동일 FORMAT_MISMATCH 산출물의 무한 재시도 루프가 team-06 실패율을 부풀린다",
+      "verdict": "NOT_CONFIRMED_AT_TASK_LAYER",
+      "evidence": "SELECT ... LIKE '%FORMAT_MISMATCH%' over team-06 tasks (error||response) = 0 rows across all statuses; reruns of the exact HR-directive prompt = 0. The FORMAT_MISMATCH loop is a report/quality-gate (Stop-hook) layer phenomenon, NOT a persisted task retry storm. A task-level circuit breaker therefore cannot see it; no retry-count metric is fabricated."
+    }
+  },
+
+  "rules": [
+    {
+      "id": "GATE-06-R1",
+      "type": "changed",
+      "status": "ALREADY_LANDED",
+      "layer": "scoring (completion denominator)",
+      "location": "src/core/team-scorer.ts:175 INFRA_EXCLUSION",
+      "commit": "e6efcf1 + subsequent gateway-down/circuit-open evolution",
+      "rule": "Exclude from the terminal (completion denominator) any task whose failure is infra-caused, NOT quality-caused: error LIKE 'orphaned:%' (boot orphan / graceful-shutdown drain), error LIKE 'Circuit breaker open%' (agent offline/rate-limit, iterations=0), OR (status<>'completed' AND error LIKE 'unknown: failure pattern in output%' AND response contains a localhost:6200 connection-refused). Completed and genuine-quality failures (unknown/timeout/lease_expired) are untouched.",
+      "safety_invariant": "completed ⊆ terminal preserved (double-guarded by status<>'completed'), so completion can never exceed 100%; connection-refused exclusion requires BOTH the failure-class error label AND the response body match, so completed tasks that merely quote a past connection error are not dropped.",
+      "evidence_task_ids": ["task_1SAeDCVfMO8FDlBz", "task_eTYAEfE-U8SP4X8F"],
+      "rollback": "Remove INFRA_EXCLUSION from the 3 terminal CASE blocks (48h/7d/all) → exact prior behavior."
+    },
+    {
+      "id": "GATE-06-R2",
+      "type": "new",
+      "status": "PROPOSAL_NOT_IMPLEMENTED",
+      "layer": "pre-dispatch (prevent the error at source, not just discount it)",
+      "target_error_class": "gateway-down (curl (7) Failed to connect to localhost port 6200)",
+      "rule": "Before dispatching a work_report whose target requires an HTTP POST to localhost:6200, probe GET /health once; if unreachable, short-circuit the dispatch with a distinct terminal error 'infra: gateway unreachable (pre-dispatch skip)' instead of letting the agent run and fail. This eliminates the gateway-down failure class at the source rather than excluding it after the fact.",
+      "rationale_evidence": "48h global: 13 gateway-down failures across teams; team-06 contributed task_eTYAEfE-U8SP4X8F. These waste an agent run and pollute logs even though R1 already keeps them out of the score.",
+      "bounded": true,
+      "reversible": "Single guarded probe; feature-flag off = current behavior.",
+      "risk": "Adds one health round-trip per gateway-targeted dispatch; must cache health for a short TTL to avoid probe storms. NOT implemented in this deliverable — proposal only."
+    },
+    {
+      "id": "GATE-06-R3",
+      "type": "observation",
+      "status": "OUT_OF_TEAM06_SCOPE",
+      "layer": "report / Stop-hook quality gate",
+      "rule": "The recurring FORMAT_MISMATCH rejection on text-only role/debate deliverables is a grader-format contract mismatch (grader expects 'changed files + diff + build pass'; a debate summary legitimately has none). Recommend the Gap/quality gate classify text-only deliverables separately rather than re-dispatching. No code change made here — flagged for the gate owner. Fabricating a rule-count or a synthetic diff would itself be a false report.",
+      "evidence": "team-06 persisted FORMAT_MISMATCH tasks = 0; loop lives above the task table."
+    }
+  ],
+
+  "cross_verification": {
+    "patch_under_test": "e6efcf1 + current INFRA_EXCLUSION (src/core/team-scorer.ts:175)",
+    "completion_before_patch": {"formula": "completed/raw_terminal", "value": "7/12", "pct": 58.3},
+    "completion_after_patch": {"formula": "completed/infra_excluded_terminal", "value": "7/10", "pct": 70.0},
+    "delta_pct": 11.7,
+    "why_it_moved": "Denominator shrank by exactly the 2 verified infra failures (orphan + gateway-down). Numerator (completed=7) is UNCHANGED — no fake completions were added. The 3 lease_expired real failures remain counted.",
+    "false_report_verdict": "GENUINE_FIX / NOT_FABRICATED",
+    "false_report_reasoning": [
+      "Improvement comes from removing 2 non-quality failures, each independently verified as infra: task_1SAeDCVf has error 'orphaned: server restart' + 0-length response; task_eTYAEfE response body contains 'Failed to connect to localhost port 6200 ... Couldn''t connect to server' (gateway down — team work never executed).",
+      "completed count is identical before/after (7) — the patch does not inflate the numerator.",
+      "Genuine-quality failures are preserved: 3 lease_expired NOT excluded.",
+      "Safety invariant completed(7) ⊆ terminal(10) holds; no completion>100% regression.",
+      "Fix is bounded (single SQL clause) and reversible (git revert / remove INFRA_EXCLUSION)."
+    ],
+    "verification_tier": "T1 (direct db/nco.db SQL recompute + source read + git hash)"
+  },
+
+  "unverified_items": [
+    "No dedicated auto-audit error-log stream for team-06 was available; analysis used the live tasks table only.",
+    "Runtime score recompute lands on next cron/restart; the stored score row (60.2) may lag the recomputed 70.0% until then.",
+    "GATE-06-R2 and R3 are proposals/observations — not implemented or tested in this deliverable.",
+    "lease_expired root cause (worker offline) is an availability issue outside this patch's scope."
+  ]
+}

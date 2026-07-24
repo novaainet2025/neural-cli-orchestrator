@@ -9,6 +9,7 @@ import {
   getWorkReportId,
   inferTaskType,
   isCodeWorkPrompt,
+  isPerformanceGoalInputPrompt,
   isTextOnlyPrompt,
   isWorkReportPrompt,
   validateProjectDirMetadataWithFs,
@@ -67,6 +68,30 @@ describe('task-intake helpers', () => {
     }).prompt).not.toContain('[01 Source Discovery 응답 계약]');
   });
 
+  it('adds the improvement-debate protocol contract only for the team or its diagnostic target', () => {
+    const directMetadata = {
+      projectDir: '/repo',
+      teamId: 'team_tech-port-06-improvement-debate',
+    };
+    const direct = applyPromptGate('[목표] 개선 방향을 토론한다', directMetadata);
+    const retry = applyPromptGate(direct.prompt, directMetadata);
+    const diagnostic = applyPromptGate('[목표] 낮은 점수의 원인을 진단한다', {
+      projectDir: '/repo',
+      teamId: 'team_self-improvement',
+      diagnosticTargetTeamId: 'team_tech-port-06-improvement-debate',
+    });
+
+    expect(direct.prompt).toContain('[06 Improvement Debate 응답 계약]');
+    expect(direct.prompt).toContain('첫 줄을 `done:`');
+    expect(direct.prompt).toContain('검증 명령과 결과, Gap, 되돌리기 방법');
+    expect(retry.prompt.match(/\[06 Improvement Debate 응답 계약\]/g)).toHaveLength(1);
+    expect(diagnostic.prompt).toContain('[06 Improvement Debate 응답 계약]');
+    expect(applyPromptGate('[목표] 개선 방향을 토론한다', {
+      projectDir: '/repo',
+      teamId: 'team_other',
+    }).prompt).not.toContain('[06 Improvement Debate 응답 계약]');
+  });
+
   it('assigns the default verifier for code work with package.json', () => {
     const verifier = buildDefaultVerifierWithFs({
       prompt: 'src/server/gateway.ts 버그 수정',
@@ -105,6 +130,22 @@ describe('task-intake helpers', () => {
     ].join('\n');
 
     expect(isWorkReportPrompt(prompt)).toBe(true);
+    expect(buildDefaultVerifierWithFs({
+      prompt,
+      metadata: { projectDir: '/repo' },
+      verifier: undefined,
+    }, () => true)).toBeUndefined();
+  });
+
+  it('does not assign a build verifier to performance-goal HTTP input tasks', () => {
+    const prompt = [
+      '[성과보고·목표설정 입력 지시] 실제 HTTP 호출로 목표와 성과보고를 입력하라.',
+      '[제약] 요청 범위 밖 파일 수정 금지. 기존 동작 회귀 금지.',
+      '[검증기준] 빌드/타입체크 통과.',
+    ].join('\n');
+
+    expect(isCodeWorkPrompt(prompt)).toBe(true);
+    expect(isPerformanceGoalInputPrompt(prompt)).toBe(true);
     expect(buildDefaultVerifierWithFs({
       prompt,
       metadata: { projectDir: '/repo' },

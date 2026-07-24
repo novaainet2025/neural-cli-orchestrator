@@ -27,8 +27,11 @@ const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|
 // 무한 반려한다 (실측 2026-07-19). "오직 JSON …만" 출력 지시가 있으면 검증기를 생략한다.
 const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
 const WORK_REPORT_PATTERN = /^\s*\[업무보고 작성\]/;
+const PERFORMANCE_GOAL_INPUT_PATTERN = /^\s*\[성과보고·목표설정 입력 지시\]/;
 const SOURCE_DISCOVERY_TEAM_ID = 'team_tech-port-01-source-discovery';
 const SOURCE_DISCOVERY_RESPONSE_CONTRACT = '[01 Source Discovery 응답 계약]';
+const IMPROVEMENT_DEBATE_TEAM_ID = 'team_tech-port-06-improvement-debate';
+const IMPROVEMENT_DEBATE_RESPONSE_CONTRACT = '[06 Improvement Debate 응답 계약]';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -51,26 +54,45 @@ export function isWorkReportPrompt(prompt: string): boolean {
   return WORK_REPORT_PATTERN.test(prompt);
 }
 
+export function isPerformanceGoalInputPrompt(prompt: string): boolean {
+  return PERFORMANCE_GOAL_INPUT_PATTERN.test(prompt);
+}
+
 /**
- * Team 01의 verifier-backed 태스크는 응답 첫 줄 protocol을 요구하면서도 프롬프트에는
- * 그 계약이 없어 FORMAT_MISMATCH가 반복됐다. 팀 범위에만 결정론적 계약을 추가한다.
+ * Verifier-backed 태스크가 응답 첫 줄 protocol을 요구하면서도 프롬프트에는 계약이
+ * 없어 FORMAT_MISMATCH가 반복된 실측 팀에만 결정론적 계약을 추가한다.
  * 재시도는 원 프롬프트를 다시 intake하므로 marker로 중복 추가를 막는다.
  */
 export function applyTeamResponseContract(
   prompt: string,
   metadata?: Record<string, unknown>,
 ): string {
-  if (metadata?.teamId !== SOURCE_DISCOVERY_TEAM_ID) return prompt;
-  if (prompt.includes(SOURCE_DISCOVERY_RESPONSE_CONTRACT)) return prompt;
+  if (metadata?.teamId === SOURCE_DISCOVERY_TEAM_ID) {
+    if (prompt.includes(SOURCE_DISCOVERY_RESPONSE_CONTRACT)) return prompt;
+    return [
+      prompt,
+      '',
+      SOURCE_DISCOVERY_RESPONSE_CONTRACT,
+      '- 요구한 소스 발굴을 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
+      '- 자료 부족·접근 불가·미완료이면 첫 줄을 `status:`로 시작하고 확인하지 못한 항목을 `[미검증]`으로 표시한다.',
+      '- 후보 dossier를 요구받은 경우 공식 URL, 버전 또는 commit SHA, 검증일, 라이선스·보안 상태, 대안을 근거와 함께 기록한다.',
+      '- 도구 함수 설명이나 지시문 반복을 현재 작업의 산출물로 대신하지 않으며, 확인하지 않은 수치·완료 상태를 만들지 않는다.',
+    ].join('\n');
+  }
+
+  const targetsImprovementDebate = metadata?.teamId === IMPROVEMENT_DEBATE_TEAM_ID
+    || metadata?.diagnosticTargetTeamId === IMPROVEMENT_DEBATE_TEAM_ID;
+  if (!targetsImprovementDebate) return prompt;
+  if (prompt.includes(IMPROVEMENT_DEBATE_RESPONSE_CONTRACT)) return prompt;
 
   return [
     prompt,
     '',
-    SOURCE_DISCOVERY_RESPONSE_CONTRACT,
-    '- 요구한 소스 발굴을 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
-    '- 자료 부족·접근 불가·미완료이면 첫 줄을 `status:`로 시작하고 확인하지 못한 항목을 `[미검증]`으로 표시한다.',
-    '- 후보 dossier를 요구받은 경우 공식 URL, 버전 또는 commit SHA, 검증일, 라이선스·보안 상태, 대안을 근거와 함께 기록한다.',
-    '- 도구 함수 설명이나 지시문 반복을 현재 작업의 산출물로 대신하지 않으며, 확인하지 않은 수치·완료 상태를 만들지 않는다.',
+    IMPROVEMENT_DEBATE_RESPONSE_CONTRACT,
+    '- 요구한 토론·개선 작업과 검증을 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
+    '- 데이터·권한 부족 또는 미완료이면 첫 줄을 `status:`로 시작하고 확인하지 못한 항목을 `[미검증]`으로 표시한다.',
+    '- 소스 변경 작업이면 변경 경로, 검증 명령과 결과, Gap, 되돌리기 방법을 기록한다.',
+    '- 도구 함수 설명, 이전 단계 출력의 반복 또는 다른 팀 결과를 현재 작업 산출물로 대신하지 않는다.',
   ].join('\n');
 }
 
@@ -161,6 +183,9 @@ export function buildDefaultVerifierWithFs(
   // 업무보고는 prompt-gate 보강문의 "수정/빌드" 때문에 코드 작업으로 오탐될 수 있다.
   // 자유형 Markdown 보고에는 기본 build verifier를 붙이지 않는다.
   if (isWorkReportPrompt(input.prompt)) return undefined;
+  // 목표/성과 입력은 HTTP 제어면 작업이다. prompt-gate 보강문의 "수정/빌드"를 코드 작업으로
+  // 오인하면 실제 POST 성공 여부와 무관한 build/format gate가 추가된다.
+  if (isPerformanceGoalInputPrompt(input.prompt)) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;
 
   return {

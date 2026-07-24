@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-07-24T11:20:00+0900",
+  "checked_at": "2026-07-24T12:20:00+0900",
   "mode": "propose",
   "total": 208,
-  "pass": 204,
-  "fail": 3,
+  "pass": 205,
+  "fail": 2,
   "skip": 0,
   "defer": 1,
   "categories": {
@@ -26,11 +26,11 @@
       "meets": true
     },
     "hook": {
-      "pass": 81,
-      "fail": 3,
+      "pass": 82,
+      "fail": 2,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 0.9643,
+      "pass_rate": 0.9762,
       "threshold": 1.0,
       "meets": false
     },
@@ -101,14 +101,6 @@
   "provider_anomaly": null,
   "failures": [
     {
-      "id": "hook:nova-voice-tts-pretool.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 217: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 220: syntax error: unexpected end of file"
-    },
-    {
       "id": "hook:nova-voice-tts-progress.sh",
       "category": "hook",
       "kind": "bash-syntax",
@@ -128,8 +120,8 @@
   "dispatch": {
     "mode": "propose",
     "dispatched": {
-      "id": "hook:nova-voice-tts-pretool.sh",
-      "taskId": "task_wz_rUUF-_0bMGLco"
+      "id": "hook:nova-voice-tts-progress.sh",
+      "taskId": "task_8YFd8R3il6AmUyIU"
     },
     "skipped_reason": null
   }
