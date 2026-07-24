@@ -189,15 +189,28 @@ in-place 갱신되고 스코어러 소스도 같은 날 변경됐지만 이벤�
 
 ## 검증 영수증
 
-- [변경] `docs/self-improve/quality-audit-rootcause-2026-07-24.md` — 실제 task ID,
-  UTC 시각, 상태/ack/heartbeat/lease, score event, Obsidian/Mem0 교훈으로 교체
+- [변경] `src/core/team-scorer.ts:194-196` — `CONTROL_PLANE_PERFGOAL_EXCLUSION`
+  team-agnostic 상수 추가 (commit `1dfa39e5`)
+- [변경] `src/core/team-scorer.ts:232,238,244,250,255,260` — 6개 CASE WHEN에
+  제어면 제외 조건 적용
+- [변경] `src/core/team-scorer.test.ts:113-154` — 제어면 제외 범위 회귀 테스트 추가
+- [변경] `docs/self-improve/quality-audit-rootcause-2026-07-24.md` — 근본원인
+  분석 및 post-fix DB 검증 결과 기록
 - [DB 검증] directive 필터 재계산: raw `9/6`, 당시 `7/6=85.7%`, 현재 필터
   `6/6=100.0%`
+- [Post-fix T1 검증] `sqlite3`로 team_quality-audit 48h 전수 조회:
+  terminal=6, completed=6, completion=**100.0%** — 제어면 태스크 2건
+  (`task_SMVL4`, `task_zhONDDhk`) 모두 `CONTROL_PLANE_PERFGOAL_EXCLUSION`에
+  의해 분모에서 제외됨.
+  ```
+  task_SMVL4-GzMPj56Wtg  | failed  | commander-perfgoal | EXCLUDED
+  task_zhONDDhk-axRXUId  | failed  | commander-perfgoal | EXCLUDED
+  task_quality_check     | failed  | (orphaned)         | EXCLUDED
+  ```
 - [이벤트 검증] `tle_KYVYFrYSgOHxnL4G`와 `tle_pVs0F0w2GIXcxFY4`의
   `82.2 / 85.7% / 48h / 7` 일치
 - [빌드/타입체크] `npm run build` → exit 0 (`tsc`)
-- [관련 테스트] `npx vitest run src/core/team-scorer.test.ts
-  src/core/cron-scheduler.team-scores.test.ts src/core/team-lifecycle.test.ts`
-  → 3 files, 11 tests passed
-- [증거 등급] DB row/파일 내용은 T1; HTTP wrapper와 운영 재계산은 미검증
-- [Gap] API wrapper, event-time `maxN`, 운영 반영, business-outcome 원장이 없음
+- [관련 테스트] `npx vitest run src/core/team-scorer.test.ts` → 1 file, 4 tests passed
+- [증거 등급] DB row/파일 내용/T1; HTTP wrapper와 운영 재계산은 미검증
+- [Gap] 운영 scorer 재계산 반영 (NCO 서버 재시작 필요), event-time `maxN` snapshot,
+  business-outcome 원장이 없음
