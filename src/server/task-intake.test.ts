@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyPromptGate,
   buildDefaultVerifierWithFs,
+  findActiveWorkReportTask,
+  getWorkReportId,
   inferTaskType,
   isCodeWorkPrompt,
   isTextOnlyPrompt,
@@ -9,6 +14,13 @@ import {
 } from './task-intake.js';
 
 describe('task-intake helpers', () => {
+  let database: Database.Database | undefined;
+
+  afterEach(() => {
+    database?.close();
+    database = undefined;
+  });
+
   it('enriches prompts below the prompt-gate threshold', () => {
     const result = applyPromptGate('[목표] 버그 수정', { projectDir: '/repo' });
 
@@ -98,5 +110,59 @@ describe('task-intake helpers', () => {
     expect(isCodeWorkPrompt('회의록 요약')).toBe(false);
     expect(inferTaskType('리팩터 진행')).toBe('refactor');
     expect(inferTaskType('새 모듈 구현')).toBe('implementation');
+  });
+
+  it('normalizes work-report ids and finds the existing active task', () => {
+    database = new Database(':memory:');
+    database.exec(`
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        assigned_to TEXT,
+        status TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    const insert = database.prepare(`
+      INSERT INTO tasks (id, assigned_to, status, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    insert.run('task-failed', 'codex', 'failed', '{"workReportId":"wr-1"}', '2026-07-24 00:00:00');
+    insert.run('task-active', 'claude-code', 'assigned', '{"workReportId":"wr-1"}', '2026-07-24 00:01:00');
+
+    expect(getWorkReportId({ workReportId: '  wr-1  ' })).toBe('wr-1');
+    expect(getWorkReportId({ workReportId: '   ' })).toBeUndefined();
+    expect(findActiveWorkReportTask(database, 'wr-1')).toEqual({
+      id: 'task-active',
+      assigned_to: 'claude-code',
+    });
+  });
+
+  it('enforces one active task per work-report id while allowing a terminal retry', () => {
+    database = new Database(':memory:');
+    database.exec(`
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        assigned_to TEXT,
+        status TEXT NOT NULL,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
+    database.exec(readFileSync(
+      resolve(process.cwd(), 'db/migrations/085_active_work_report_task_idempotency.sql'),
+      'utf8',
+    ));
+    const insert = database.prepare(`
+      INSERT INTO tasks (id, assigned_to, status, metadata_json, created_at)
+      VALUES (?, 'codex', ?, '{"workReportId":"wr-1"}', ?)
+    `);
+
+    insert.run('task-1', 'assigned', '2026-07-24 00:00:00');
+    expect(() => insert.run('task-2', 'assigned', '2026-07-24 00:00:01'))
+      .toThrow(/idx_tasks_active_work_report_id/);
+
+    database.prepare(`UPDATE tasks SET status='failed' WHERE id='task-1'`).run();
+    expect(() => insert.run('task-2', 'assigned', '2026-07-24 00:00:02')).not.toThrow();
   });
 });

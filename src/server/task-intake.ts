@@ -1,5 +1,6 @@
 import { existsSync } from 'fs';
 import { resolve } from 'path';
+import type Database from 'better-sqlite3';
 import type { CreateTaskInputType } from '../utils/validation.js';
 import { analyzePrompt, enrichPrompt } from './prompt-gate.js';
 
@@ -26,6 +27,11 @@ const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|
 // 무한 반려한다 (실측 2026-07-19). "오직 JSON …만" 출력 지시가 있으면 검증기를 생략한다.
 const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
 
+export interface ActiveWorkReportTask {
+  id: string;
+  assigned_to: string | null;
+}
+
 export function isCodeWorkPrompt(prompt: string): boolean {
   return CODE_WORK_PATTERN.test(prompt);
 }
@@ -43,6 +49,28 @@ export function inferTaskType(prompt: string): string | undefined {
   if (/(?:bug|fix|patch|버그|수정)/i.test(prompt)) return 'bugfix';
   if (/(?:implement|implementation|구현)/i.test(prompt)) return 'implementation';
   return undefined;
+}
+
+export function getWorkReportId(metadata?: Record<string, unknown>): string | undefined {
+  const workReportId = typeof metadata?.workReportId === 'string'
+    ? metadata.workReportId.trim()
+    : '';
+  return workReportId || undefined;
+}
+
+export function findActiveWorkReportTask(
+  database: Database.Database,
+  workReportId: string,
+): ActiveWorkReportTask | undefined {
+  return database.prepare(`
+    SELECT id, assigned_to
+    FROM tasks
+    WHERE status IN ('pending','queued','assigned','running','streaming','reviewing')
+      AND json_valid(metadata_json)
+      AND json_extract(metadata_json, '$.workReportId') = ?
+    ORDER BY created_at ASC, id ASC
+    LIMIT 1
+  `).get(workReportId) as ActiveWorkReportTask | undefined;
 }
 
 export function applyPromptGate(prompt: string, metadata?: Record<string, unknown>): {

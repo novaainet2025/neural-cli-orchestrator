@@ -10,7 +10,14 @@ import { getRedis, isRedisConnected, redisHealthCheck } from '../storage/redis.j
 import { getDb } from '../storage/database.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { validateDelegationPayload } from '../utils/delegation-payload.js';
-import { applyPromptGate, buildDefaultVerifier, type PromptGateInfo, validateProjectDirMetadata } from './task-intake.js';
+import {
+  applyPromptGate,
+  buildDefaultVerifier,
+  findActiveWorkReportTask,
+  getWorkReportId,
+  type PromptGateInfo,
+  validateProjectDirMetadata,
+} from './task-intake.js';
 import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
 import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
@@ -1462,16 +1469,8 @@ export async function createGateway() {
     if (typeof input.prompt === 'string' && input.prompt.length > MAX_PLAN_CHARS) {
       input.prompt = compressPlan(input.prompt);
     }
-    const taskId = createTaskId();
     const requestedProvider = input.ai ?? 'claude-code';
     const allowProviderFailover = input.metadata?.allowProviderFailover === true;
-    const providerSelection = selectTaskProvider(requestedProvider, allowProviderFailover);
-    if ('error' in providerSelection) {
-      reply.code(409);
-      return providerSelection.error;
-    }
-    const agentId = providerSelection.agentId;
-    if (providerSelection.failover) logDecision({ taskId, phase: 'routing', decision: `route:${requestedProvider}->${agentId}`, reason: providerSelection.failover.originalGate });
     const projectDirError = validateProjectDirMetadata(input.metadata);
     if (projectDirError) {
       reply.code(400);
@@ -1530,6 +1529,27 @@ export async function createGateway() {
         };
       }
     }
+    const workReportId = getWorkReportId(input.metadata);
+    if (workReportId) {
+      const existingTask = findActiveWorkReportTask(db, workReportId);
+      if (existingTask) {
+        reply.code(202);
+        return {
+          taskId: existingTask.id,
+          agentId: existingTask.assigned_to,
+          deduplicated: true,
+        };
+      }
+    }
+
+    const taskId = createTaskId();
+    const providerSelection = selectTaskProvider(requestedProvider, allowProviderFailover);
+    if ('error' in providerSelection) {
+      reply.code(409);
+      return providerSelection.error;
+    }
+    const agentId = providerSelection.agentId;
+    if (providerSelection.failover) logDecision({ taskId, phase: 'routing', decision: `route:${requestedProvider}->${agentId}`, reason: providerSelection.failover.originalGate });
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
@@ -1554,6 +1574,17 @@ export async function createGateway() {
         VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, taskTeamId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
     } catch (dbErr) {
+      if (workReportId) {
+        const existingTask = findActiveWorkReportTask(db, workReportId);
+        if (existingTask) {
+          reply.code(202);
+          return {
+            taskId: existingTask.id,
+            agentId: existingTask.assigned_to,
+            deduplicated: true,
+          };
+        }
+      }
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert task');
       reply.code(500); return { error: 'Failed to create task' };
     }
