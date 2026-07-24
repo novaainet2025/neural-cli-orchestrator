@@ -144,6 +144,15 @@ function computeVolume(n: number, maxN: number): number {
   return (100 * Math.log10(n)) / Math.log10(maxN);
 }
 
+// 인프라 기인 실패(부팅 orphan 복구·graceful shutdown 드레인 타임아웃)는 팀 산출물
+// 품질 신호가 아니라 서버 재시작 이벤트다. src/index.ts가 이들을 'orphaned:%' 접두
+// error로 마킹한다('orphaned: server restart …', 'orphaned: graceful shutdown timeout').
+// completion 분모에 이런 실패를 넣으면 팀이 재시작으로 인해 부당하게 감점된다
+// (실측 2026-07-24: 최근 48h에 38개 팀·64건 orphan-failed). 따라서 terminal 집계에서만
+// 제외한다. 정상 품질 실패(unknown/timeout/lease_expired 등)는 그대로 카운트한다.
+// 롤백: 아래 3개 terminal CASE에서 ORPHAN_EXCLUSION 조건을 제거하면 정확히 이전 동작.
+const ORPHAN_EXCLUSION = `AND (k.error IS NULL OR k.error NOT LIKE 'orphaned:%')`;
+
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const rows = database.prepare(`
     SELECT
@@ -154,6 +163,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-48 hours')
+          ${ORPHAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -162,6 +172,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-7 days')
+          ${ORPHAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -169,6 +180,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
+          ${ORPHAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE WHEN k.status = 'completed' THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t

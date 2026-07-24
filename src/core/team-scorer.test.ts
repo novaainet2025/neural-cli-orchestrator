@@ -19,6 +19,7 @@ describe('team score aggregation', () => {
       );
       CREATE TABLE tasks (
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
+        error TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -36,11 +37,21 @@ describe('team score aggregation', () => {
       INSERT INTO tasks (id, team_id, status, created_at)
       VALUES (?, ?, ?, datetime('now', ?))
     `);
+    const insertWithError = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, created_at)
+      VALUES (?, ?, ?, ?, datetime('now', ?))
+    `);
     insert.run('a1', 'team_alpha', 'completed', '-1 hour');
     insert.run('a2', 'team_alpha', 'completed', '-2 hours');
     insert.run('a3', 'team_alpha', 'completed', '-3 hours');
     insert.run('a4', 'team_alpha', 'failed', '-4 hours');
     insert.run('a-running', 'team_alpha', 'running', '-1 hour');
+    // 인프라 기인 실패(서버 재시작 orphan)는 completion 분모에서 제외되어야 한다.
+    // 이 행이 카운트되면 alpha n=5·completion=60이 되어 아래 기대값(n=4·completion=75)이 깨진다.
+    insertWithError.run(
+      'a-orphan', 'team_alpha', 'failed',
+      'orphaned: server restart (poison — requeued 2x)', '-2 hours',
+    );
 
     insert.run('b1', 'team_beta', 'completed', '-1 hour');
     insert.run('b2', 'team_beta', 'failed', '-3 days');
