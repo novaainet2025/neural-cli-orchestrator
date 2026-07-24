@@ -47,6 +47,17 @@ T1은 위 DB 필드와 저장된 응답·verifier 본문이 실제로 존재한�
 `neural-cli-orchestrator@1.0.0 build > tsc`이므로 대상 프로젝트 nova-use의
 전체 테스트 실패를 반증하지 않는다.
 
+### 현재 `FORMAT_MISMATCH` 재시도와의 경계
+
+현재 요청 머리말의 `[Quality-gate reject: quality_rejected:
+FORMAT_MISMATCH]`는 대상 팀 표본의 task error가 아니다. 이 재시도 task
+`task_ZZg5UdtnMmIzauL5`는 `team_id=team_self-learning`,
+`created_at=2026-07-24 03:12:33 UTC`로, 위 lifecycle 스냅샷
+`2026-07-24 03:10:00 UTC` 이후 생성됐다. 대상 4개 행의
+`metadata_json.qualityRejected`와 `qualityHeuristics`는 모두 NULL이다.
+따라서 현재 진단 산출물의 형식 반려를 대상 팀의 75% 완료율 원인으로
+소급하지 않는다.
+
 ## 판정
 
 `n=4`의 직접 근본원인은 표본 오염이 아니라
@@ -159,7 +170,8 @@ verifier 결과도 두 건뿐이어서 감사 가능성은 낮지만, 현재 tea
 이 문서가 canonical 개선 노트다:
 [[tech-port-08-migration-rootcause-2026-07-24|08 Migration Implementation cycle 1 개선 노트]].
 
-- [공용 Obsidian 개선 노트](../obsidian-improvement-no)
+공용 Obsidian vault에서 별도 동기화본은 발견하지 못했으므로 **[미검증]**이며,
+존재하지 않는 외부 노트 링크를 만들지 않는다.
 
 ## 재현 쿼리
 
