@@ -149,11 +149,7 @@ describe('task-intake helpers', () => {
       prompt: first.prompt,
       metadata,
       verifier: undefined,
-    }, () => true)).toEqual({
-      type: 'run',
-      command: 'npm run build',
-      timeoutMs: 120_000,
-    });
+    }, () => true)).toBeUndefined();
 
     expect(applyPromptGate('[목표] 일반 리서치 태스크', {
       projectDir: '/repo',

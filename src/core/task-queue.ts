@@ -9,6 +9,7 @@
  */
 
 import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import type Database from 'better-sqlite3';
 import { spawn, execFileSync, type ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
@@ -124,6 +125,40 @@ type TaskExecutionResult = {
   };
 };
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
+
+/**
+ * Persist the terminal result of a task re-enqueued during startup recovery.
+ *
+ * Normal API tasks are terminalized by the gateway caller after enqueue()
+ * resolves. Startup recovery has no gateway request waiting on the promise, so
+ * it must explicitly persist the result or the task remains `running` and is
+ * treated as another orphan on the next restart.
+ */
+export function persistRecoveredTaskResult(
+  db: Database.Database,
+  taskId: string,
+  result: TaskExecutionResult,
+): { ok: boolean; prev?: string } {
+  const nextStatus = result.status === 'cancelled'
+    ? 'cancelled'
+    : result.status === 'timed_out'
+        || result.error === 'timeout(idle)'
+        || result.error === 'timeout(hardcap)'
+      ? 'timed_out'
+      : result.success
+        ? 'completed'
+        : 'failed';
+  const error = nextStatus === 'completed'
+    ? undefined
+    : result.error || 'unknown: execution failed';
+
+  return transitionTask(db, taskId, nextStatus, {
+    response: result.output || undefined,
+    error,
+    completedAt: nextStatus !== 'cancelled',
+    evidenceJson: nextStatus === 'completed' ? result.evidenceJson : undefined,
+  });
+}
 
 type VerifierResult = {
   type: 'run';

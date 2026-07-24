@@ -15,6 +15,7 @@ export interface TeamScore {
   grade: TeamScoreGrade;
   completion: number;
   n: number;
+  maxN: number;
   sample: TeamScoreSample;
 }
 
@@ -361,6 +362,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       grade: gradeTeamScore(score),
       completion: sample.completion,
       n: sample.n,
+      maxN,
       sample: sample.sample,
     };
   });

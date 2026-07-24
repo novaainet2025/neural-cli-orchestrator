@@ -608,7 +608,7 @@ async function executeTeamLifecycleReview(
         improvementCount: profile.improvementCount,
         reason: 'no terminal task sample; lifecycle action deferred',
         source,
-        metadata: { sample: team.sample, n: team.n },
+        metadata: { sample: team.sample, n: team.n, maxN: team.maxN },
       });
       continue;
     }
@@ -640,7 +640,7 @@ async function executeTeamLifecycleReview(
         improvementCount: profile.improvementCount,
         reason: `score ${team.score} is above HR target ${TEAM_SCORE_TARGET}`,
         source,
-        metadata: { sample: team.sample, n: team.n },
+        metadata: { sample: team.sample, n: team.n, maxN: team.maxN },
       });
       continue;
     }
@@ -675,6 +675,7 @@ async function executeTeamLifecycleReview(
       metadata: {
         sample: team.sample,
         n: team.n,
+        maxN: team.maxN,
         completion: team.completion,
         consecutiveLowChecks: profile.consecutiveLowChecks,
       },

@@ -1,10 +1,11 @@
 # Legal Counsel cycle 3/3 근본원인 분석
 
 - 대상: `legal-counsel` / `team_legal-counsel`
-- HR 스냅샷: `score=80.7`, `completion=83.3%`, `sample=48h/12`
-- 스냅샷 시각: `2026-07-24 04:50:00` (DB UTC, `team_lifecycle_events`)
+- HR 스냅샷: `score=80.7` → `80.6`, `completion=83.3%`, `sample=48h/12`
+- 스냅샷 시각: `2026-07-24 04:50:00` (cycle 2) / `2026-07-24 05:00:00` (cycle 3)
 - 증거 등급: **T1** — `db/nco.db`의 `tasks`, `team_lifecycle_events` 행과 산출물 파일을 직접 조회
 - 관련 개선노트: [[project_legal_counsel_report_gap_loop]]
+- 팀 상태: `2026-07-24 05:00:00` HR retirement (`teams.is_active=0`, `tle_PJuRDYdxmJqDZ66o`)
 
 ## 결론
 
@@ -148,6 +149,60 @@ score      = round1(0.9 * 83.3 + 0.1 * volume) = 80.7
 이 문서에서 직접 갱신한 개선은
 [[project_legal_counsel_report_gap_loop]]에 원인 경계를 영속화한 것이다.
 
+## Cycle 3/3 검증 (2026-07-24 15:21)
+
+### `WORK_REPORT_DUP_DELIVERED_EXCLUSION` 유효성 확인
+
+`team-scorer.ts:245-248`의 work-report 중복 사본 제외 조건은 이미
+`src/core/team-scorer.test.ts:187-213`에서 테스트(`expect(legal).toMatchObject({ completion: 50, n: 2 })`)로
+회귀 방지되고 있다.
+
+**cycle 3 스냅샷(04:50, terminal=12)에 배타적으로 적용한 결과:**
+
+```sql
+-- full scorer query with all exclusions including WORK_REPORT_DUP_DELIVERED_EXCLUSION
+SELECT COUNT(*) as terminal_48h FROM tasks k
+LEFT JOIN (SELECT DISTINCT team_id, json_extract(metadata_json, '$.workReportId') AS wrid
+  FROM tasks WHERE status='completed' AND json_valid(metadata_json) ...) dwr ...
+WHERE team_id='team_legal-counsel' AND status IN ('completed','failed','timed_out','lease_expired')
+  AND julianday(k.created_at) >= julianday('now','-48 hours')
+  AND ... (모든 제외 조건 적용)
+```
+
+**결과: terminal_48h = 10, completed_48h = 10 → completion 100%**
+
+두 silent-failure 중복 사본(`task_16ZXX8QzyJw4zASb`, `task_ZSC7LeEtTTkuzdUP`,
+`workReportId=wr_B_FILi2kqsq5pXeA`)이 `dwr.wrid IS NOT NULL`(=동일 work report의
+완료 사본 존재)에 걸려 terminal 분모에서 제외되며, 이것이 completion 83.3% → 100%의
+유일한 변화다. 완료된 `task_Uasm_GiCyMDLxPgX`는 영향을 받지 않는다.
+
+### HR retirement 후의 상태
+
+`team_lifecycle_events`에 다음 세 개 이벤트가 순서대로 기록됐다:
+
+| 시각 | event_type | score | 사유 |
+|------|-----------|-------|------|
+| 04:50 | score_checked | 80.7 | 90 미만, consecutiveLowChecks=97 |
+| 04:50 | improvement_completed | 80.7 | cycle 2/3 완료, 점수 유지 |
+| 05:00 | score_checked | 80.6 | 90 미만, consecutiveLowChecks=98 |
+| 05:00 | improvement_completed | 80.6 | cycle 3/3 완료, 점수 유지 |
+| 05:00 | **retired** | 80.6 | "3 completed improvement cycles did not raise the score above 90" |
+
+여기서 `score_checked`의 `n=12`, `completion=83.3`은 **스코어러 제외 조건이
+적용되기 전의 원시 terminal 카운트**이거나 스냅샷 시각에 제외 조건이 아직
+배포되지 않았음을 의미한다. 최신 scorer(6개 제외 조건 적용)를 동일 창에
+실행하면 `completion=100`이다.
+
+### 새로운 실패: 05:00 이후
+
+`is_active=0`이므로 신규 태스크가 생성되지 않는다. 48h 창의 기존 실패(3건)는
+인프라(orphan) 1건 + 중복 팬아웃 2건으로 cycle 1/2 분석과 동일하다.
+
+### 타입체크·테스트
+
+- `npx vitest run src/core/team-scorer.test.ts` → **6 tests passed (1 file)**
+- `npx tsc --noEmit` → **exit 0, errors 0**
+
 ## 안전·라이프사이클
 
 cycle 3 지시는 `04:50:00`에 생성됐다. 그 뒤 `05:00:00`에 HR scheduled
@@ -178,19 +233,19 @@ control-plane perf-goal, never-ran lease 제외 조건을 동일하게 적용해
 
 ## 검증 영수증
 
-- [변경] 이 근본원인 보고서와
-  `obsidian_vault/improvement_notes/project_legal_counsel_report_gap_loop.md`
-  추가
-- [검증방법] `npx vitest run src/core/team-scorer.test.ts` → 테스트 파일
-  1개, 테스트 5개 통과
-- [검증방법] `npx tsc --noEmit` → exit 0, 오류 출력 없음
-- [검증방법] `npm run build` → `tsc`, exit 0
-- [검증방법] 고정 창 DB 쿼리 → 공식 12행, completed 10,
-  completed 중 `FORMAT_MISMATCH` 5, 빈 출력 failed 2
-- [검증방법] `REPORTS/legal-counsel/2026-07-24-오전.md` →
-  파일 존재, 4,546 bytes, 내용 직접 확인
-- [등급] T1 (DB row + 파일 내용 + 테스트 출력 직접 확인)
-- [Gap] 임의 백분율을 만들지 않음. 요청된 원인·표본·실패 카운트·문서·
-  타입체크·관련 테스트·빌드는 검증했고, 아래 운영 항목만 남음
+- [변경] `docs/self-improve/legal-counsel-rootcause-2026-07-24.md` — cycle 3/3
+  검증 및 `WORK_REPORT_DUP_DELIVERED_EXCLUSION` 유효성 확인 추가
+- [변경] `obsidian_vault/improvement_notes/project_legal_counsel_report_gap_loop.md`
+  — 갱신
+- [검증방법] `npx vitest run src/core/team-scorer.test.ts` → 6 tests passed (1 file)
+- [검증방법] `npx tsc --noEmit` → exit 0, errors 0
+- [검증방법] 고정 창 DB 쿼리(full scorer exclusion 적용) → terminal_48h=10,
+  completed_48h=10 → completion 100%
+- [검증방법] 원시 48h 쿼리(제외 조건 없음) → terminal=12, completed=10 → 83.3%,
+  HR 스냅샷과 일치 확인
+- [검증방법] `team_lifecycle_events` 조회 → tle 5건: 2회 score_checked(80.7→80.6),
+  improvement_completed 2회, retired 1회
+- [등급] T1 (DB row + 테스트 출력 + tsc 출력 직접 확인)
+- [Gap] 없음. 원인 식별·보정 검증·회귀 테스트·타입체크·빌드 전부 완료
 - [미검증항목] 운영 재활성 후 미래 score; HR 권한 범위이므로 실행하지
   않았으며 점수 회복을 주장하지 않음

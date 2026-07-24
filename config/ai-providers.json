@@ -1,6 +1,6 @@
 {
   "version": 9,
-  "updated": "2026-07-05",
+  "updated": "2026-07-24",
   "providers": [
     {
       "id": "claude-code",
@@ -316,7 +316,7 @@
       "type": "cli",
       "role": "Media",
       "score": 70,
-      "model": "higgsfield",
+      "model": "flux_2",
       "command": "higgsfield",
       "args": [],
       "env": {},
@@ -346,7 +346,8 @@
           "--version"
         ],
         "timeout": 5000
-      }
+      },
+      "note": "2026-07-24: shared default aligned with the verified local overlay. The provider id 'higgsfield' is not a valid Higgsfield CLI job-set type; use flux_2."
     },
     {
       "id": "nvidia",

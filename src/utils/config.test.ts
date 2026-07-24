@@ -29,4 +29,15 @@ describe('config JSON validation', () => {
       providers: [{ id: 'test' }],
     })).toThrow('[config] ai-providers.json providers[0].name is required');
   });
+
+  it('uses a CLI job-set type instead of the Higgsfield provider id', () => {
+    const loaded = loadJSON<{
+      providers: Array<{ id: string; model: string | null }>;
+    }>('ai-providers.json');
+    const higgsfield = loaded.providers.find(provider => provider.id === 'higgsfield');
+
+    expect(higgsfield).toBeDefined();
+    expect(higgsfield?.model).toBe('flux_2');
+    expect(higgsfield?.model).not.toBe(higgsfield?.id);
+  });
 });

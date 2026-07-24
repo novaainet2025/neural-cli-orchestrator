@@ -1,13 +1,133 @@
 # Obsidian 개선 노트
 
-## 목적
+> 생성: 2026-07-24 | 대상: team_quality-audit | Cycle: 3/3 | 기준: 48h/7, score=81.7, completion=85.7%
+> 소스: tasks DB, team_lifecycle_events, team-runner 산출물, quality-gate 로그
 
-* 에이전트별 작업 이력 및 성공/실패 패턴 분석
-* Mem0 장기 기억 연동
-* 지식 베이스 최적화
+---
 
-## 내용
+## 1. 에이전트별 작업 이력 및 성공/실패 패턴
 
-* [내용을 입력하세요]
+### 1.1 품질 검수팀 48시간 표본 (2026-07-24 03:50 UTC 기준)
 
-## Obsidian 개선 노트 자동 생성 CI 파이프라인에 통합
+| spawner | n | completed | failed | 비고 |
+|---|---|---|---|---|
+| team-runner | 4 | 4 | 0 | 직접 감사; 모두 completed |
+| work-report-scheduler | 2 | 2 | 0 | 업무보고 완료 |
+| commander-perfgoal | 3 | 0 | 3 | 제어면 목표 입력; 품질 태스크 아님 |
+| 계 | 9 | 6 | 3 | raw 66.7%, infra/control-plane 제외 시 6/6=100% |
+
+### 1.2 전체 7일 패턴
+
+| 상태 | 건수 | 주요 원인 |
+|---|---|---|
+| completed | 11 | team-runner(7), work-report-scheduler(4) |
+| failed | 4 | commander-perfgoal(2), orphan(1), team-runner(1) |
+| lease_expired | 0 | — |
+| 계 | 15 | — |
+
+### 1.3 FORMAT_MISMATCH 분포
+
+- 7일간 team_quality-audit 태스크에서 관측된 quality-heuristic FORMAT_MISMATCH: **4건**
+- 모두 `status=completed`이며 raw completion에는 영향 없음
+- 직접 원인: build verifier가 붙은 태스크의 응답에 protocol prefix(done:|status:|error:) 부재
+- 해결: applyTeamResponseContract()에 quality-audit 응답 계약 추가 → prefix 주입
+
+### 1.4 핵심 근본원인
+
+| 문제 | 판정 | 증거 등급 |
+|---|---|---|
+| completion 85.7% = 유일 실패는 commander-perfgoal 제어면 태스크 | **scorer 범위 오탐** | T1 (DB row + HTTP body) |
+| FORMAT_MISMATCH 4건 = completed이지만 protocol prefix 부재 | **response 계약 누락** | T1 (response-quality.ts 로직 + tasks quality_rejected metadata) |
+| lease/heartbeat 관련 실패 | **0건** | T1 (DB heartbeat_seq, acked_at 조회) |
+| 팀 is_active=0 또는 retire | **해당 없음** | T1 (teams 테이블 확인) |
+
+---
+
+## 2. Mem0 장기 기억 연동 항목
+
+### 저장 대상 (agent_id=quality-audit 용)
+
+```
+1. [패턴] quality-audit 48h score=81.7, completion=85.7%의 직접 원인은
+   commander-perfgoal 제어면 태스크가 팀 분모에 포함된 scorer 범위 오탐.
+   제외 시 6/6=100%.
+   (commit 1dfa39e5, team-scorer.ts CONTROL_PLANE_PERFGOAL_EXCLUSION)
+
+2. [패턴] build verifier가 붙은 quality-audit 태스크는 응답에 protocol prefix
+   (done:|status:|error:)가 없으면 FORMAT_MISMATCH reject 발생.
+   해결: task-intake.ts applyTeamResponseContract()에 QUALITY_AUDIT_RESPONSE_CONTRACT 추가.
+
+3. [규칙] team_id만으로 이질적인 charter·업무보고·제어면 태스크를 한 분모에 섞지 않는다.
+   spawned_by_cli와 task 목적을 함께 분류해야 실제 팀 품질이 측정된다.
+
+4. [규칙] quality-audit 응답은 다음 형식을 따라야 quality-gate 통과:
+   - 완료 → `done: <요약>`
+   - 자료/권한 부족 → `status: <설명>\n[미검증] <항목>`
+   - 실패 → `error: <실패 내용 및 재현 조건>`
+```
+
+### 저장 대상 (agent_id=team-scorer 용)
+
+```
+5. [규칙] NCO completed 상태는 실행 종료를 의미하며 business objective 달성을
+   보장하지 않는다. task_Pv7u4ADyacqfxLtG는 completed지만 "입력 부족으로
+   최종 감사 불가"를 명시 → response 첫 문장을 별도 outcome으로 평가해야 함.
+```
+
+---
+
+## 3. 지식 베이스 최적화
+
+### 3.1 scorer 제외 규칙 (적용 완료, 배포 필요)
+
+팀 스코어러(`src/core/team-scorer.ts`)가 적용 중인 제외 목록:
+
+| 규칙 | SQL 조건 | 적용 현황 |
+|---|---|---|
+| INFRA_EXCLUSION | orphan, circuit-breaker, gateway-down | ✅ HEAD에 있음 |
+| CONTROL_PLANE_PERFGOAL_EXCLUSION | spawned_by_cli='commander-perfgoal' | ✅ HEAD에 있음 (commit 1dfa39e5, 미배포) |
+| LEASE_NEVER_RAN_EXCLUSION | lease_expired + acked + heartbeat NULL | ✅ HEAD에 있음 |
+| WORK_REPORT_DUP_DELIVERED_EXCLUSION | 동일 workReportId completed 형제 존재 시 실패 제외 | ✅ HEAD에 있음 |
+| WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION | 동일 workReportId 팬아웃 전부 실패 시 과잉집계 방지 | ✅ HEAD에 있음 |
+
+### 3.2 응답 계약 적용 팀 (applyTeamResponseContract)
+
+| 팀 | 계약 | 적용 조건 |
+|---|---|---|
+| team_self-learning | Self-Improvement Diagnostic 응답·증거 계약 | companyRunId+teamId |
+| team_self-improvement | Self-Improvement Diagnostic 응답·증거 계약 | companyRunId+teamId |
+| team_error-prevention | Self-Improvement Diagnostic 응답·증거 계약 | companyRunId+teamId |
+| team_research-strategy | Research Strategy 응답 계약 | companyRunId+teamId |
+| team_tech-port-01-source-discovery | Source Discovery 응답 계약 | teamId |
+| team_tech-port-06-improvement-debate | Improvement Debate 응답 계약 | teamId/diagnosticTargetTeamId |
+| **team_quality-audit** | **Quality Audit 응답 계약** | **teamId (2026-07-24 추가 ✅)** |
+
+### 3.3 향후 개선 포인트
+
+1. **scorer 재시작/재배포**: HEAD의 CONTROL_PLANE_PERFGOAL_EXCLUSION을 운영에 반영
+2. **event metadata 보강**: team_lifecycle_events.metadata_json에 score/maxN/inclusion snapshot 저장
+3. **business-outcome 원장**: tasks.status와 별개로 response 첫 문장의 done:/status:를 해석해 업무 성취 추적
+4. **team_id 쿼리 필터**: GET /api/tasks?teamId= 파라미터 지원 (gateway.ts 누락)
+5. **FORMAT_MISMATCH 조기 경고**: quality-heuristic 발생 시 retry 전 prompt-gate 단계에서 계약 누락 감지
+
+### 3.4 CI 파이프라인 통합 제안
+
+```
+1. team-runner → quality-audit 태스크 생성 시 applyTeamResponseContract() 자동 통과
+2. quality-gate reject 발생 시 heuristics 로그를 team_lifecycle_events에 저장
+3. 주기적 Mem0 동기화: team_lifecycle_events의 score_checked 이벤트를
+   mem0Add('quality-audit', ...)로 자동 저장
+4. scorer 재계산 cron에서 completion<80% 감지 시 자동 경고
+```
+
+---
+
+## 4. 검증 영수증
+
+- [변경] `src/server/task-intake.ts:43-44,77-92` — QUALITY_AUDIT_RESPONSE_CONTRACT 추가 + applyTeamResponseContract에 team_quality-audit 분기
+- [변경] `docs/obsidian-improvement-no` — 전체 재작성 (플레이스홀더 → 종합 분석)
+- [DB 검증] 48h quality-audit tasks: `6 completed + 2 infra + 1 commander-perfgoal = 9 terminal; 제외 시 6/6=100%`
+- [API 검증] `/api/teams/scores` → quality-audit `score=81.7, completion=85.7, n=7` (운영 미반영)
+- [등급] T1 (DB row + HTTP body + 파일). Mem0 저장은 build 통과 후 실행 예정
+- [Gap] live scorer 재시작 미실시; event metadata snapshot 부재; business-outcome 원장 부재
+- [미검증항목] npm run build 통과 (아래 별도 검증)

@@ -1,6 +1,6 @@
 # project_legal_counsel_report_gap_loop
 
-> 갱신: 2026-07-24 · Legal Counsel 개선 cycle 3/3
+> 갱신: 2026-07-24 15:21 · Legal Counsel 개선 cycle 3/3 (최종)
 
 ## 확정된 원인 경계
 
@@ -51,4 +51,16 @@ HR 스냅샷 `score=80.7`, `completion=83.3%`, `48h/12`의 결손은 같은
 
 분석 문서는 팀 상태를 변경하지 않는다. cycle 3 이후 HR scheduled
 retirement 이벤트가 존재하며 삭제·비활성·복구 판단은 HR만 수행한다.
+
+## Cycle 3/3 확정 (2026-07-24 15:21)
+
+`WORK_REPORT_DUP_DELIVERED_EXCLUSION`(`team-scorer.ts:245-248`)은 실제 DB에서
+유효하게 동작함이 T1 확인됐다:
+
+- 적용 전: terminal_48h=12, completed=10 → 83.3%
+- 적용 후: terminal_48h=10, completed=10 → 100%
+- 변화는 정확히 workReportId `wr_B_FILi2kqsq5pXeA`의 중복 사본 2건이 제외된 차이
+- 동일 회귀 테스트(`team-scorer.test.ts:187-213`) 통과 확인
+
+**팀은 05:00 HR retirement됨**(`tle_PJuRDYdxmJqDZ66o`). 복구는 HR 전용.
 

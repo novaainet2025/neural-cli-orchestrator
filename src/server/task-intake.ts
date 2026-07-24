@@ -40,6 +40,8 @@ const SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS = new Set([
 const SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT = '[Self-Improvement Diagnostic 응답·증거 계약]';
 const RESEARCH_STRATEGY_TEAM_ID = 'team_research-strategy';
 const RESEARCH_STRATEGY_RESPONSE_CONTRACT = '[Research Strategy 응답 계약]';
+const QUALITY_AUDIT_TEAM_ID = 'team_quality-audit';
+const QUALITY_AUDIT_RESPONSE_CONTRACT = '[Quality Audit 응답 계약]';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -108,6 +110,24 @@ export function applyTeamResponseContract(
       '- 자료·권한·도구 부족, 부분 완료 또는 차단 상태이면 첫 줄을 `status:`로 시작하고 `[미검증]` 항목을 명시한다.',
       '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
       '- 확인하지 않은 출처·수치·파일·검증 결과를 만들지 않는다.',
+    ].join('\n');
+  }
+
+  // quality-audit 팀은 build verifier가 protocol prefix를 요구하는데 원래 프롬프트에는
+  // 계약이 없어 실질 산출물을 낸 completed 태스크도 FORMAT_MISMATCH로 반려될 수 있다.
+  // 팀이 자유형 감사 보고서를 작성하는 경우에도 프리픽스(quality-gate 통과)를 요구하므로
+  // 항상(회사 실행 외부에서도) 계약을 주입해 일관된 형식을 보장한다.
+  if (metadata?.teamId === QUALITY_AUDIT_TEAM_ID) {
+    if (prompt.includes(QUALITY_AUDIT_RESPONSE_CONTRACT)) return prompt;
+    return [
+      prompt,
+      '',
+      QUALITY_AUDIT_RESPONSE_CONTRACT,
+      '- 감사·검수를 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
+      '- 자료·권한 부족, 부분 감사 또는 차단 상태이면 첫 줄을 `status:`로 시작하고 `[미검증]` 항목을 명시한다.',
+      '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
+      '- 주장하는 모든 수치·파일·검증 결과는 재검증 가능한 근거(DB 행, 파일 내용, 명령 출력)가 있어야 한다.',
+      '- 도구 함수 설명, 이전 단계 출력 반복, grep 문자열 존재만으로 현재 작업의 완료를 주장하지 않는다.',
     ].join('\n');
   }
 
@@ -230,6 +250,14 @@ export function buildDefaultVerifierWithFs(
   // 목표/성과 입력은 HTTP 제어면 작업이다. prompt-gate 보강문의 "수정/빌드"를 코드 작업으로
   // 오인하면 실제 POST 성공 여부와 무관한 build/format gate가 추가된다.
   if (isPerformanceGoalInputPrompt(input.prompt)) return undefined;
+  // research-strategy company run은 prompt-gate 보강문의 "수정/빌드" 때문에 코드 작업으로
+  // 오탐되어 build verifier가 붙고, 그게 requireProtocolPrefix=true를 활성화해 자유형
+  // 연구 보고서를 FORMAT_MISMATCH로 반려한다 (실측 2026-07-24: company-orchestrator 부모
+  // 3건, direct retry 8건). build verifier는 코드 산출물 검증용이므로 연구/기획 팀에는
+  // 붙이지 않는다 — 품질 검증은 내용 기반(response-quality.ts)으로만 수행한다.
+  if (input.metadata?.teamId === RESEARCH_STRATEGY_TEAM_ID
+    && typeof input.metadata?.companyRunId === 'string'
+    && input.metadata.companyRunId.trim()) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;
 
   return {

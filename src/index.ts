@@ -9,7 +9,7 @@ import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
 import { circuitBreakerRegistry } from './security/circuit-breaker-registry.js';
 import { sessionManager } from './agent/session-manager.js';
-import { taskQueue } from './core/task-queue.js';
+import { persistRecoveredTaskResult, taskQueue } from './core/task-queue.js';
 import { transitionTask } from './core/task-state.js';
 import { loadCronJobs } from './core/cron-scheduler.js';
 import { startWorkReportScheduler } from './core/work-report-scheduler.js';
@@ -266,7 +266,34 @@ async function boot(): Promise<void> {
       reRouted++;
     }
     try {
-      taskQueue.enqueue({ taskId: o.taskId, agentId: target, prompt: o.prompt, model: o.model, systemPrompt: o.systemPrompt, verifier: o.verifier });
+      void taskQueue.enqueue({
+        taskId: o.taskId,
+        agentId: target,
+        prompt: o.prompt,
+        model: o.model,
+        systemPrompt: o.systemPrompt,
+        verifier: o.verifier,
+      }).then(result => {
+        const moved = persistRecoveredTaskResult(getDb(), o.taskId, result);
+        if (!moved.ok) {
+          log.warn(
+            { taskId: o.taskId, prev: moved.prev, resultStatus: result.status },
+            'Skipped recovered task terminal update',
+          );
+        }
+      }).catch(error => {
+        const message = error instanceof Error ? error.message : String(error);
+        const moved = persistRecoveredTaskResult(getDb(), o.taskId, {
+          success: false,
+          output: '',
+          error: message,
+          status: 'failed',
+        });
+        log.warn(
+          { taskId: o.taskId, err: message, persisted: moved.ok, prev: moved.prev },
+          'Orphan re-enqueue failed',
+        );
+      });
       reEnqueued++;
     } catch (e) {
       log.warn({ taskId: o.taskId, err: (e as Error).message }, 'orphan re-enqueue failed');

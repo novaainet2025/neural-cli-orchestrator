@@ -17,6 +17,7 @@ function score(
     grade: 'B',
     completion: 80,
     n: 2,
+    maxN: 0,
     sample: '48h',
     ...overrides,
   };

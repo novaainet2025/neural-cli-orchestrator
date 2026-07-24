@@ -54,6 +54,7 @@ describe('team score diagnostic cron', () => {
       grade: 'F',
       completion: 40 + index,
       n: 2,
+      maxN: 2,
       sample: '48h',
     }));
     scores.push({
@@ -65,6 +66,7 @@ describe('team score diagnostic cron', () => {
       grade: 'A',
       completion: 100,
       n: 2,
+      maxN: 2,
       sample: '48h',
     });
     scores.push({
@@ -76,6 +78,7 @@ describe('team score diagnostic cron', () => {
       grade: 'F',
       completion: 0,
       n: 0,
+      maxN: 0,
       sample: 'all',
     });
 

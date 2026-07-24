@@ -289,6 +289,7 @@ describe('team score aggregation', () => {
         grade: 'C',
         completion: 75,
         n: 4,
+        maxN: 4,
         sample: '48h',
       },
       {
@@ -300,6 +301,7 @@ describe('team score aggregation', () => {
         grade: 'F',
         completion: 50,
         n: 2,
+        maxN: 4,
         sample: '7d',
       },
     ]);
