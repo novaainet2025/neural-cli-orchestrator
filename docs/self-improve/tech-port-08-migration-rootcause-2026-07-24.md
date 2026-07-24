@@ -243,6 +243,12 @@ sample=[
   task_XtFCIG_7GJR9uohX
 ]
 actions=8, handoffs=0
+qualityMarkedInSample=0
+qualityRetry={
+  taskId:task_ZZg5UdtnMmIzauL5,
+  teamId:team_self-learning,
+  createdAt:"2026-07-24 03:12:33"
+}
 memoryId=mem0-1784864143027-z2icbt
 memoryMatches=1, duplicateCount=1
 knowledgeId=kb_aFFYr7tYT__np3nv, knowledgeMatches=1
