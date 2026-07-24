@@ -180,15 +180,19 @@ const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' 
            OR COALESCE(k.response, '') LIKE '%Failed to connect to 127.0.0.1 port 6200%')
     )`;
 
-// commander-perfgoal은 팀의 실제 감사 산출물이 아니라 목표/성과보고를 NCO 제어면에
-// 입력하는 관리 태스크다. team_kd-memory의 유일한 표본 3건이 모두 이 유형이었고,
-// 연결거부·미주입 필수값·lease 만료가 팀 감사 품질 실패로 오계상됐다
-// (task_pKVM8hAZUmzskqwL, task_WpB7UCfWLhPnwx-u, task_tnhlWTnnJz5dVshv).
-// 대상 팀에만 한정하고 completed/terminal 양쪽에 같은 조건을 적용해
-// completed⊆terminal 불변식을 보존한다. 롤백은 아래 조건과 6개 삽입부만 제거한다.
-const KD_MEMORY_CONTROL_PLANE_EXCLUSION = `AND NOT (
-      k.team_id = 'team_kd-memory'
-      AND COALESCE(k.spawned_by_cli, '') = 'commander-perfgoal'
+// commander-perfgoal은 팀의 실제 감사/구현 산출물이 아니라 목표/성과보고를 NCO 제어면에
+// 입력하는 관리 태스크다('[성과보고·목표설정 입력 지시]' 프롬프트로 POST /api/goals 수행).
+// 에이전트는 필수 목표값(targetValue·direction·unit 등)이 주입되지 않으면 조작 금지 규칙에
+// 따라 정상적으로 거부하는데, 이 거부·연결거부·lease 만료가 팀 charter 품질 실패로 오계상된다.
+// team_kd-memory에서 처음 관찰됐으나(표본 3건 전부 이 유형), 실측 2026-07-24 결과 거의 모든
+// 팀에 동일 패턴이 존재한다(team_quality-audit task_SMVL4-GzMPj56Wtg: ollama가 미주입 필수값을
+// 정상 거부 → completion 6/7=85.7% 오탐; 제외 시 6/6=100%로 실제 감사 품질을 반영).
+// spawned_by_cli='commander-perfgoal'은 perf-goal 제어면 전용 스포너라 team charter 작업과
+// 겹치지 않으므로 팀 무관하게(team-agnostic) 제외한다. completed/terminal 양쪽에 같은 조건을
+// 적용해 completed⊆terminal 불변식을 보존한다(실측: 활성 팀 전수 comp_all>term_all 0건).
+// 롤백: 아래 조건을 team_id='team_kd-memory'로 다시 좁히거나 6개 삽입부에서 제거하면 이전 동작.
+const CONTROL_PLANE_PERFGOAL_EXCLUSION = `AND NOT (
+      COALESCE(k.spawned_by_cli, '') = 'commander-perfgoal'
     )`;
 
 // lease_expired 중 '에이전트가 리스를 잡았지만 한 줄도 실행하지 않은' 케이스는 팀 품질
@@ -225,35 +229,35 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-48 hours')
           ${INFRA_EXCLUSION}
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-48 hours')
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_48h,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-7 days')
           ${INFRA_EXCLUSION}
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-7 days')
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           ${INFRA_EXCLUSION}
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
-          ${KD_MEMORY_CONTROL_PLANE_EXCLUSION}
+          ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t
     LEFT JOIN organizations o ON o.id = t.organization_id
