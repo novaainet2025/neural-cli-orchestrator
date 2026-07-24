@@ -19,7 +19,7 @@ describe('team score aggregation', () => {
       );
       CREATE TABLE tasks (
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
-        error TEXT,
+        error TEXT, response TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
 
@@ -32,6 +32,9 @@ describe('team score aggregation', () => {
         ('team_inactive', 'org_active', 'Inactive Team', 'inactive-team', 0),
         ('team_hidden', 'org_inactive', 'Hidden Team', 'hidden-team', 1);
     `);
+    db.exec('ALTER TABLE tasks ADD COLUMN spawned_by_cli TEXT');
+    db.exec('ALTER TABLE tasks ADD COLUMN acked_at TEXT');
+    db.exec('ALTER TABLE tasks ADD COLUMN last_heartbeat_at TEXT');
 
     const insert = db.prepare(`
       INSERT INTO tasks (id, team_id, status, created_at)
@@ -63,6 +66,109 @@ describe('team score aggregation', () => {
     insert.run('b2', 'team_beta', 'failed', '-3 days');
     insert.run('inactive-1', 'team_inactive', 'completed', '-1 hour');
     insert.run('hidden-1', 'team_hidden', 'completed', '-1 hour');
+  });
+
+  it('excludes only NCO gateway-down failures, keeping quotes and other server failures', () => {
+    // team_kd-harness 회귀: 게이트웨이 다운 시 성과보고 태스크는 정직하게 실패 보고하지만
+    // 팀 품질 신호가 아니라 인프라 가용성 이벤트다. terminal 분모에서 제외되어야 한다.
+    const insertFull = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
+      .run('team_gw', 'org_active', 'Gateway', 'gateway');
+
+    // 정상 완료 1건.
+    insertFull.run('gw-ok', 'team_gw', 'completed', null, 'goal+report posted 201', '-1 hour');
+    // 게이트웨이 다운으로 실패한 2건 — 제외 대상.
+    insertFull.run(
+      'gw-down-1', 'team_gw', 'failed', 'unknown: failure pattern in output',
+      "error: 목표설정 HTTP 호출이 실패했습니다.\ncurl: (7) Failed to connect to localhost port 6200 after 0 ms: Couldn't connect to server",
+      '-2 hours',
+    );
+    insertFull.run(
+      'gw-down-2', 'team_gw', 'failed', 'unknown: failure pattern in output',
+      "curl: (7) Failed to connect to 127.0.0.1 port 6200: Couldn't connect to server",
+      '-3 hours',
+    );
+    // 불변식 가드: 완료 보고서가 과거 연결오류를 인용해도(error NULL) terminal에서 빠지면 안 된다.
+    insertFull.run(
+      'gw-quote', 'team_gw', 'completed', null,
+      "지난주 Couldn't connect to server 장애를 복구했고 오늘 201 확인.", '-4 hours',
+    );
+    // 범위 가드: 같은 error·curl 문구라도 NCO 포트가 아니면 팀 실패로 남아야 한다.
+    insertFull.run(
+      'other-server-down', 'team_gw', 'failed', 'unknown: failure pattern in output',
+      "curl: (7) Failed to connect to localhost port 11434: Couldn't connect to server",
+      '-5 hours',
+    );
+
+    const gateway = computeTeamScores(db).find((t) => t.teamId === 'team_gw');
+    // 제외 후: terminal = {gw-ok, gw-quote, other-server-down} = 3,
+    // completed = 2 → completion 66.7. NCO 포트 한정이 없으면 other-server-down까지
+    // 빠져 n=2·completion=100으로 실패를 은폐한다.
+    expect(gateway).toMatchObject({ completion: 66.7, n: 3 });
+  });
+
+  it('excludes kd-memory control-plane reporting tasks without changing another team sample', () => {
+    const insertTask = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, spawned_by_cli, created_at)
+      VALUES (?, ?, ?, ?, datetime('now', ?))
+    `);
+    const insertTeam = db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `);
+    insertTeam.run('team_kd-memory', 'Memory Audit', 'kd-memory');
+    insertTeam.run('team_control', 'Control', 'control');
+
+    for (const teamId of ['team_kd-memory', 'team_control']) {
+      insertTask.run(`${teamId}-admin-failed`, teamId, 'failed', 'commander-perfgoal', '-1 hour');
+      insertTask.run(`${teamId}-admin-expired`, teamId, 'lease_expired', 'commander-perfgoal', '-2 hours');
+      insertTask.run(`${teamId}-admin-completed`, teamId, 'completed', 'commander-perfgoal', '-3 hours');
+    }
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_kd-memory')).toMatchObject({
+      completion: 0,
+      n: 0,
+      sample: 'all',
+    });
+    expect(scores.find((team) => team.teamId === 'team_control')).toMatchObject({
+      completion: 33.3,
+      n: 3,
+      sample: '48h',
+    });
+  });
+
+  it('excludes acked-but-never-ran lease expiries while keeping lease timeouts that produced heartbeats', () => {
+    // team_triad-command-judge 회귀: 에이전트가 리스를 acked했으나 heartbeat 0으로 만료된
+    // never-ran lease_expired는 서킷브레이커와 동일한 가용성 이벤트라 terminal에서 제외한다.
+    // heartbeat가 있는 lease_expired(실작업 타임아웃)는 정상 품질 실패로 그대로 카운트한다.
+    const insertLease = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, acked_at, last_heartbeat_at, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
+      .run('team_triad', 'org_active', 'Triad', 'triad');
+
+    // 정상 완료 3건.
+    insertLease.run('tri-ok-1', 'team_triad', 'completed', null, null, '-1 hour');
+    insertLease.run('tri-ok-2', 'team_triad', 'completed', null, null, '-2 hours');
+    insertLease.run('tri-ok-3', 'team_triad', 'completed', null, null, '-3 hours');
+    // acked됐지만 heartbeat 0으로 만료된 never-ran 3건 — 제외 대상(가용성 이벤트).
+    insertLease.run('tri-never-1', 'team_triad', 'lease_expired', '2026-07-24 00:05:53', null, '-4 hours');
+    insertLease.run('tri-never-2', 'team_triad', 'lease_expired', '2026-07-24 00:05:47', null, '-5 hours');
+    insertLease.run('tri-never-3', 'team_triad', 'lease_expired', '2026-07-24 00:05:49', null, '-6 hours');
+    // 범위 가드: heartbeat가 있는 lease_expired는 실작업 타임아웃이므로 실패로 남아야 한다.
+    insertLease.run('tri-ran-timeout', 'team_triad', 'lease_expired', '2026-07-24 00:05:00', '2026-07-24 00:06:17', '-7 hours');
+    // 범위 가드: acked_at이 없으면(리스를 잡지도 못함) 이 제외 규칙 대상이 아니다.
+    insertLease.run('tri-noack', 'team_triad', 'lease_expired', null, null, '-8 hours');
+
+    const triad = computeTeamScores(db).find((t) => t.teamId === 'team_triad');
+    // 제외 후 terminal = {ok×3, ran-timeout, noack} = 5, completed = 3 → completion 60.
+    // never-ran 3건을 제외하지 않으면 terminal=8·completion=37.5로 팀이 부당 감점된다.
+    expect(triad).toMatchObject({ completion: 60, n: 5 });
   });
 
   afterEach(() => db.close());
