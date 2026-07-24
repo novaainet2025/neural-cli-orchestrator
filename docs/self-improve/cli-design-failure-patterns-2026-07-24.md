@@ -22,15 +22,15 @@ bounded 가드가 이미 존재한다(`src/core/team-scorer.ts:194-196`, 적용�
 
 ## 조회 방법과 한계
 
-현재 `localhost:6200`은 연결 거부 상태여서 `nco_list_tasks`와
-`nco_get_task` HTTP wrapper를 직접 호출할 수 없었다. 두 API가 조회하는 원천
-테이블인 `db/nco.db.tasks`를 `sqlite3 -readonly`로 조회했다. `/api/tasks`의
-구현은 같은 `tasks` 테이블을 읽으며, `/api/tasks/:id`도 ID로 같은 행 전체를
-반환한다(`src/server/gateway.ts:1716-1741`, `:1896-1902`).
+초안 작성 시점에는 `localhost:6200` 연결 거부였다. cycle 2 T1 재검증(2026-07-24
+13:30 KST)에서는 `/api/health` 200, `/api/tasks/:id` 8건 교차확인, SQLite
+read-only 재조회가 일치했다. `/api/tasks?limit=500`은 team_id 필터가 없어
+팀별 목록은 ID별 GET 또는 SQL이 필요하다(`src/server/gateway.ts:1716-1741`,
+`:1896-1902`).
 
 48시간 창은 변하는 현재 시각이 아니라 HR 기록과 동일한
-`2026-07-24 03:50:00 UTC`를 상한으로 고정했다. 운영 API 재기동, HR 재계산,
-Mem0 write/sync는 이 분석에서 수행하지 않았다.
+`2026-07-24 03:50:00 UTC`를 상한으로 고정했다. HR 재계산·운영 프로세스 reload는
+이번 surface & hold 범위에서 수행하지 않았다.
 
 ## HR 48시간 task 증거
 
@@ -120,25 +120,38 @@ ollama는 값을 꾸며내지 않고 `error:`로 거부했고, 이 행이 기존
 | 인프라 orphan이 계속 감점됐다 | 기각 | orphan 제외 후 HR의 7/6이 재현됨 |
 | perf-goal 제어면 실패가 charter 분모를 오염했다 | 채택 | 해당 행 제외 시 동일 표본 6/6 |
 
-## Mem0·에이전트 지식 베이스 연동 후보
+## Mem0·에이전트 지식 베이스 연동
 
-아래는 장기기억에 저장할 **후보 문장**이며, 이번 작업에서 Mem0 write를
-수행했다고 주장하지 않는다.
+cycle 2 T1 재검증에서 `POST /api/mem0/self-learning/add`로 5건 저장 후
+`GET /api/mem0/self-learning?userId=team_cli-design` 및 search로 확인했다.
 
-1. 팀 품질 분석은 `team_id`만 보지 말고 `spawned_by_cli`를 함께 확인해
-   `commander-perfgoal` 같은 제어면 task와 charter task를 분리한다.
-2. text-only 산출물은 diff 부재만으로 실패로 추정하지 말고 task status,
-   verifier 결과, 실제 응답 계약을 먼저 확인한다.
-3. FORMAT_MISMATCH는 metadata의 `qualityRejected`와 `qualityHeuristics`를
-   task별로 확인하고, score 기준 시간창 밖 사건을 현재 감점 원인으로 연결하지 않는다.
-4. completion before/after는 동일한 고정 시간창과 같은 DB 행으로 재계산하며,
-   counterfactual 값과 저장된 운영 lifecycle 값을 명확히 구분한다.
-5. 필수 목표값이 없는 write 지시는 값을 날조하지 않고 거부해야 하며, 그 정직한
-   거부를 팀의 본업 품질 실패로 평가하지 않는다.
+| Mem0 ID | 요약 |
+|---|---|
+| `mem0-1784867411714-v75rzn` | perfgoal 제어면 vs charter 분리; `task_dWW-eyL6sIl07j77` 정직 거부 |
+| `mem0-1784867426098-00zyn7` | text-only team-runner 완료 2건 diff 부재로 실패 추정 금지 |
+| `mem0-1784867430856-6v09n8` | 고정 48h FORMAT_MISMATCH 0건; 창 밖 사건 연결 금지 |
+| `mem0-1784867430857-210oum` | counterfactual 6/6 vs 저장 lifecycle 구분 |
+| `mem0-1784867430985-yk6t3k` | orphan perfgoal `task_UbgK8HFH0-cvvwtt`는 infra 제외 |
+
+- agent/user: `self-learning` / `team_cli-design`
+- search: `POST /api/mem0/self-learning/search` query
+  `cli-design perfgoal contamination commander-perfgoal` → mode `semantic`, 2건 매칭
+  (BM25 폴백은 `NCO_MEM0_NO_EMBED=1` 환경에서만; 현재 런타임은 semantic 우선)
+
+**Knowledge base (`kb_*`)**: cycle 2에서 `POST /api/learn/save`로 1건 저장·
+`GET /api/learn/query`로 확인했다.
+
+| KB ID | category | source task |
+|---|---|---|
+| `kb_cli_design_cycle2_20260724` | `bug_pattern` | `task_dWW-eyL6sIl07j77` |
+
+요약: root cause = commander-perfgoal contamination; surface & hold;
+`CONTROL_PLANE_PERFGOAL_EXCLUSION`(commit `1dfa39e`); FORMAT_MISMATCH·text-only
+오탐 아님.
 
 ## 검증 영수증
 
-- [변경] `docs/self-improve/cli-design-failure-patterns-2026-07-24.md` 신규 작성
+- [변경] `docs/self-improve/cli-design-failure-patterns-2026-07-24.md` 작성·Mem0/KB 증거 보강
 - [DB] lifecycle `tle_Ka6JnpUXkSxhQ1Y8`에서 score `82.2`,
   completion `85.7`, n `7`, sample `48h` 확인
 - [DB] 고정 48시간 raw/HR/current 조건 재계산:
@@ -152,5 +165,8 @@ ollama는 값을 꾸며내지 않고 `error:`로 거부했고, 이 행이 기존
   1 file, 4 tests passed, exit 0
 - [build] `npm run build` → `tsc`, exit 0
 - [등급] T1
-- [미검증] live `/api/tasks`(6200 연결 거부), 다음 HR lifecycle score,
-  운영 프로세스 reload, Mem0 write/sync
+- [Mem0] 5건 write·list·search 확인 (IDs 위 표)
+- [KB] `kb_cli_design_cycle2_20260724` write·query 확인
+- [API] `/api/health` 200; `/api/tasks/:id` 8건 SQL과 일치
+- [미검증] 다음 HR lifecycle score 반영, 운영 프로세스 reload,
+  BM25-only search(`NCO_MEM0_NO_EMBED=1`)

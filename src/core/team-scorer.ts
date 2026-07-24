@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3';
 import { getDb } from '../storage/database.js';
 
-export const TEAM_SCORE_TARGET = 90;
+export const 90 = 90;
 
 export type TeamScoreGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 export type TeamScoreSample = '48h' | '7d' | 'all';
