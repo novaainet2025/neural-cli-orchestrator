@@ -26,7 +26,9 @@
    계약을 포함하지 않았다.
 4. 재발 방지를 위해 intake에 **회사 진단 task 전용 응답·증거 Gate**를 추가했다.
    형식 면제나 성공 간주가 아니라, 기존 품질 게이트가 요구하던 계약을 prompt에
-   공개하고 T1 근거 없는 완료 주장을 금지하는 변경이다.
+   공개하고 T1 근거 없는 완료 주장을 프롬프트 계약상 금지하는 변경이다. 다만
+   `done:` 뒤의 수치·사실을 의미적으로 검증하는 기능은 아니므로 실제 task 재생성과
+   T1 교차검증은 계속 필요하다.
 5. 팀·task·lifecycle DB 행은 변경하지 않았다. 검증 도중 DB에서 확인한 현재
    상태는 `teams.is_active=0`, lifecycle profile `retired`이며, 이는 scheduled
    HR event `tle_F1PSEH94ADt2qbCU`(04:20 UTC)가 만든 후속 상태다. HR 전권이므로
@@ -129,11 +131,15 @@ protocol 요구와 저품질 tool-description 출력이 결합해 retry가 반�
   - 같은 세 팀의 상시 task라도 `companyRunId`가 없으면 적용하지 않는다.
   - 다른 팀의 company task에는 적용하지 않는다.
 - rollback:
-  - 위 marker 상수·조건 블록과 대응 테스트 한 건을 제거하면 이전 동작으로
+  - 위 marker 상수·조건 블록과 대응 테스트들을 제거하면 이전 동작으로
     돌아간다. DB migration이나 lifecycle 변경은 없다.
+  - 동시 세션이 Gate와 최초 테스트·보고서를 다른 작업의 다중 파일 commit
+    `e8cd75b`에 함께 포함했다. 해당 commit 전체 revert는 범위 밖 변경까지
+    되돌리므로 안전하지 않으며, 위 조건 블록과 테스트만 부분 revert해야 한다.
 
 이 Gate는 FORMAT을 우회하지 않는다. 위반 출력은 기존
-`checkResponseQuality()`가 계속 `FORMAT_MISMATCH`로 reject한다.
+`checkResponseQuality()`가 계속 `FORMAT_MISMATCH`로 reject한다. 단,
+protocol prefix만 맞춘 허위 `done:`의 사실성까지 판별하지는 않는다.
 
 ### scorer / Circuit Breaker
 
@@ -153,7 +159,7 @@ Gap은 요청된 필수 증거 항목 중 누락 수로 기록해 임의 백분�
 
 | 보고 | task / 판정 | 등급 | Gap | 근거 |
 |---|---|---|---|---|
-| 자가학습팀 | `task_KLaxV3UGHj3ewDdR` | T2 이하 | 4/4 | 응답 스스로 “Data missing”을 명시했고, 실 task ID·카운트, top3, 근본원인, Mem0/gbrain 교훈을 모두 제시하지 못했다. |
+| 자가학습팀 | `task_KLaxV3UGHj3ewDdR` | T4 | 4/4 | “Evidence Tier 2”라는 자기 표기는 검증 근거가 아니다. 실제 응답은 LLM 자연어뿐이며, 실 task ID·카운트, top3, 근본원인, Mem0/gbrain 교훈을 모두 제시하지 못했다. |
 | 자가개선팀 | `task_B0ilYjeV-Dz8MQWc` | T4 | 5/5 | commit/라인, tsc, 관련 vitest 통과 수, 전후 score 실측, revert hash가 모두 없다. `FORMAT_MISMATCH`이며 도구 설명 반복이다. |
 
 체크리스트:
@@ -181,16 +187,20 @@ Gap은 요청된 필수 증거 항목 중 누락 수로 기록해 임의 백분�
 
 - 새 단위 테스트는 세 진단 team ID 각각에 contract가 정확히 한 번 들어가는지,
   같은 팀의 non-company task와 다른 company team에는 들어가지 않는지 확인한다.
+  또한 도구 설명 응답은 계속 `FORMAT_MISMATCH`로 거부되고 정직한 차단
+  `status:` 응답은 통과하는지 한 테스트에서 결합 재현한다.
 - build 산출물 결합 재현은 `markerCount=1`,
   prefix 없는 도구 설명 응답은 `pass=false`,
   `heuristics=["FORMAT_MISMATCH"]`, 정직한
   `status: ... [미검증]` 응답은 `pass=true`를 반환했다.
+- 이 재현은 계약 주입과 형식 판정을 검증하며, 모델의 계약 준수나 응답 내용의
+  사실성을 증명하지 않는다.
 - `npx vitest run src/server/task-intake.test.ts tests/response-quality.test.ts src/core/team-scorer.test.ts`
-  → 3 files, **30/30 passed**, exit 0.
+  → 3 files, **31/31 passed**, exit 0.
 - `npx tsc --noEmit` → 출력 없음, exit 0.
 - `npm run build` → `tsc`, exit 0.
-- `npx vitest run` → **97 files 중 96 passed, 1 failed; 468 tests 중
-  467 passed, 1 failed**. 실패는 범위 밖 기존 고정 날짜 단언:
+- `npx vitest run` → **97 files 중 96 passed, 1 failed; 469 tests 중
+  468 passed, 1 failed**. 실패는 범위 밖 기존 고정 날짜 단언:
   `tests/근거.test.ts:20`은 `2026-07-14`를 기대하지만
   `data/team-runner/team_ax-collab.last`는 `2026-07-24`다.
 - `PRAGMA quick_check` → `ok`.
@@ -213,5 +223,8 @@ Gap은 요청된 필수 증거 항목 중 누락 수로 기록해 임의 백분�
   - [ ] 운영 프로세스 reload 및 post-patch lifecycle/score: 미실행
   - [ ] full suite 기존 날짜 테스트 1건: 범위 밖 실패
   - [ ] 독립 task-linked auto-audit log: 로그 부재
+  - [ ] protocol prefix를 갖춘 응답의 의미적 사실성 자동검증: 미구현
+  - [ ] Gate 전용 단일 commit: 동시 세션 commit `e8cd75b`에 범위 밖 변경과 함께
+    포함되어 전체 commit revert 불가
 - [안전] 이 작업은 팀 삭제·비활성화·복원, lifecycle/profile 변경, task 상태
   변경을 수행하지 않았다.

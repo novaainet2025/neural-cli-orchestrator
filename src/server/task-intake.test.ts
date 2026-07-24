@@ -14,6 +14,7 @@ import {
   isWorkReportPrompt,
   validateProjectDirMetadataWithFs,
 } from './task-intake.js';
+import { checkResponseQuality } from '../verification/response-quality.js';
 
 describe('task-intake helpers', () => {
   let database: Database.Database | undefined;
@@ -125,6 +126,36 @@ describe('task-intake helpers', () => {
       teamId: 'team_other',
       companyRunId: 'corun-other',
     }).prompt).not.toContain('[Self-Improvement Diagnostic 응답·증거 계약]');
+  });
+
+  it('keeps tool-description false reports rejected while allowing an honest blocked status', () => {
+    const prompt = applyPromptGate('[목표] cli-design 저점 원인을 검증한다', {
+      projectDir: '/repo',
+      teamId: 'team_error-prevention',
+      companyRunId: 'corun-cli-design-cycle3',
+    }).prompt;
+    const toolDescription = [
+      'The runCommand function is used to run git status.',
+      'The runTest function is used to run tests.',
+    ].join(' ');
+    const honestBlocked = [
+      'status: list_tasks 접근이 차단되어 분석을 완료하지 못했습니다.',
+      '[미검증] 실제 task 이력',
+    ].join('\n');
+
+    expect(prompt.match(/\[Self-Improvement Diagnostic 응답·증거 계약\]/g)).toHaveLength(1);
+    expect(checkResponseQuality(toolDescription, {
+      requireProtocolPrefix: true,
+    })).toEqual({
+      pass: false,
+      heuristics: ['FORMAT_MISMATCH'],
+    });
+    expect(checkResponseQuality(honestBlocked, {
+      requireProtocolPrefix: true,
+    })).toEqual({
+      pass: true,
+      heuristics: [],
+    });
   });
 
   it('assigns the default verifier for code work with package.json', () => {
