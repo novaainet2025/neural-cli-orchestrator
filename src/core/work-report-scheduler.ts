@@ -7,6 +7,7 @@ import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 const log = createLogger('work-report-scheduler');
 const KST_OFFSET_HOURS = 9;
@@ -899,7 +900,29 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
   }
   if (eligible.length === 0) return;
 
-  const candidates: ReportTaskCandidate[] = eligible.map((row) => {
+  // circuit breaker가 열린 리드에게 재발행하면 태스크가 즉시 "Circuit breaker open"으로 실패하고,
+  // 실패한 보고는 다음 틱에서 다시 unlink→재발행되어 매 틱 새 실패 태스크를 양산하는 무한 루프가 된다
+  // (2026-07-25 실측: '[업무보고 작성]' 태스크가 opencode/claude-code로 매 틱 재투입되어 분당 ~20건
+  //  "Circuit breaker open" 실패 대량 생성 → 대시보드 실패 토스트 폭주). 회로가 닫혀 있거나 cooldown
+  //  경과로 half-open 복구를 시도할 수 있는 리드에게만 발행한다. 회로 회복 시 자동으로 재개된다.
+  const breakerDecision = new Map<string, boolean>();
+  const canDispatchLead = (lead: string): boolean => {
+    let decision = breakerDecision.get(lead);
+    if (decision === undefined) {
+      decision = circuitBreakerRegistry.canExecute(lead);
+      breakerDecision.set(lead, decision);
+    }
+    return decision;
+  };
+  const dispatchable = eligible.filter((row) => canDispatchLead(row.lead.trim()));
+  const breakerSkipped = eligible.length - dispatchable.length;
+  if (breakerSkipped > 0) {
+    const tripped = [...new Set(eligible.map(r => r.lead.trim()).filter(lead => !canDispatchLead(lead)))];
+    log.warn({ reportDate, skipped: breakerSkipped, tripped }, 'Redispatch skipped for leads with open circuit breaker');
+  }
+  if (dispatchable.length === 0) return;
+
+  const candidates: ReportTaskCandidate[] = dispatchable.map((row) => {
     const team: TeamRow = {
       id: row.team_id,
       organization_id: row.team_org_id,

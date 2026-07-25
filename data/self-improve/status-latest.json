@@ -1,20 +1,20 @@
 {
-  "checked_at": "2026-07-25T11:20:01+0900",
+  "checked_at": "2026-07-25T15:20:00+0900",
   "mode": "propose",
   "total": 208,
-  "pass": 205,
-  "fail": 2,
+  "pass": 196,
+  "fail": 12,
   "skip": 0,
-  "defer": 1,
+  "defer": 0,
   "categories": {
     "provider": {
-      "pass": 9,
-      "fail": 0,
+      "pass": 0,
+      "fail": 9,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 1.0,
+      "pass_rate": 0.0,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     },
     "team": {
       "pass": 61,
@@ -81,12 +81,12 @@
     },
     "build": {
       "pass": 0,
-      "fail": 0,
+      "fail": 1,
       "skip": 0,
-      "defer": 1,
-      "pass_rate": 1.0,
+      "defer": 0,
+      "pass_rate": 0.0,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     },
     "health": {
       "pass": 1,
@@ -100,6 +100,14 @@
   },
   "provider_anomaly": null,
   "failures": [
+    {
+      "id": "build:tsc",
+      "category": "build",
+      "kind": "tsc-noemit",
+      "ref": "/Users/nova-ai/project/nco",
+      "priority": 1,
+      "detail": "tsc 오류 0건: "
+    },
     {
       "id": "hook:nova-voice-tts-progress.sh",
       "category": "hook",
@@ -115,11 +123,86 @@
       "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
       "priority": 2,
       "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
+    },
+    {
+      "id": "provider:agy",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "agy",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:claude-code",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "claude-code",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:codex",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "codex",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:cursor-agent",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "cursor-agent",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:hermes",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "hermes",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:higgsfield",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "higgsfield",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:nvidia",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "nvidia",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:ollama",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "ollama",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
+    },
+    {
+      "id": "provider:opencode",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "opencode",
+      "priority": 4,
+      "detail": "NCO offline — 등록 확인 불가"
     }
   ],
   "dispatch": {
     "mode": "propose",
-    "dispatched": null,
-    "skipped_reason": "nova-local-llm.lock 사용 중 (team-runner 등) — 이번 회차 디스패치 보류, 점검은 완료"
+    "dispatched": {
+      "id": "build:tsc",
+      "taskId": "task_x9aExb0AkvzwI8BY"
+    },
+    "skipped_reason": null
   }
 }

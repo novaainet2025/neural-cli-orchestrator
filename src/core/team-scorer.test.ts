@@ -20,7 +20,10 @@ describe('team score aggregation', () => {
       CREATE TABLE tasks (
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
         error TEXT, response TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        completed_at TEXT,
+        lease_expires_at TEXT,
+        result_json TEXT
       );
 
       INSERT INTO organizations (id, name, is_active) VALUES

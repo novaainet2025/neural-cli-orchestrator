@@ -701,6 +701,15 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       .filter(p => p.enabled !== false); // 비활성 에이전트 제외
 
     const states = await sharedState.getAllAgentStates();
+    const sessionActivity = await analyzeSessionActivity();
+    const pushedAgentMap = new Map<string, { status: string; currentTask: string | null }>();
+    for (const pr of getPushReports()) {
+      for (const a of pr.agents) {
+        if (!pushedAgentMap.has(a.id)) {
+          pushedAgentMap.set(a.id, { status: a.status ?? 'idle', currentTask: a.currentTask ?? null });
+        }
+      }
+    }
 
     // 전체 태스크 통계 (완료 수 + 평균 소요시간 — completed_at-created_at 기반)
     const taskRows = db.prepare(
@@ -755,13 +764,21 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const agents = providers.map(p => {
       const state = states[p.id] as any || {};
       const activeTask = activeMap.get(p.id);
+      const pushed = pushedAgentMap.get(p.id);
+      const sessionAct = sessionActivity.get(p.id) ?? sessionActivity.get(`${p.id}-triad`);
 
-      // 우선순위: DB 실행중 태스크 > sharedState > 기본값
+      // 우선순위: DB 실행중 태스크 > pushed 상태 > sessionActivity > sharedState > 기본값
       let agentStatus: string;
       let currentTask: string | null = null;
       if (activeTask) {
         agentStatus = 'working';
         currentTask = activeTask.prompt?.slice(0, 80) ?? null;
+      } else if (pushed && pushed.status === 'working') {
+        agentStatus = 'working';
+        currentTask = pushed.currentTask;
+      } else if (sessionAct && sessionAct.status === 'working') {
+        agentStatus = 'working';
+        currentTask = sessionAct.lastMsgText?.slice(0, 80) ?? null;
       } else {
         const rawStatus = state.status as string | undefined;
         agentStatus = rawStatus === 'working' ? 'working'

@@ -108,7 +108,7 @@ def check_item(it):
         rc, o = run(["/opt/homebrew/bin/npx","tsc","--noEmit"], cwd=nco, timeout=300)
         stamp("tsc")
         if rc==0: return "pass",""
-        errs = [l for l in o.splitlines() if "error TS" in l]
+        errs = [l for l in o.splitlines() if "tsc 비정상... (truncated" in l]
         return "fail", f"tsc 오류 {len(errs)}건: " + " | ".join(errs[:3])
     if kind == "http-health":
         try:
