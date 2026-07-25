@@ -1,0 +1,4 @@
+# Legal Counsel (legal-counsel) — 일일 산출물 (2026-07-25, ai=claude-code, taskId=task_jqvkFUnZUPEmBOWx)
+
+{"type":"error","timestamp":1784932268809,"sessionID":"ses_069bf0c3dffe3AlRzBC5L32ndk","error":{"name":"APIError","data":{"message":"Error from provider (Console): Upstream request failed","statusCode":400,"isRetryable":false,"responseHeaders":{"cache-control":"private, no-store, no-cache, max-age=0","cf-placement":"remote-ORD","cf-ray":"a2065f949d070024-PDX","connection":"keep-alive","content-length":"153","content-type":"application/json","date":"Fri, 24 Jul 2026 22:31:08 GMT","server":"cloudflare"},"responseBody":"{\"error\":{\"message\":\"Error from provider (Console): Upstream request failed\",\"type\":\"invalid_request_error\",\"param\":null,\"code\":\"invalid_request_error\"}}","metadata":{"url":"https://opencode.ai/zen/v1/chat/completions"}}}}
+
