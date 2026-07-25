@@ -289,6 +289,43 @@ const WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION = `AND NOT (
       AND ff.wrid IS NOT NULL
     )`;
 
+// team-runner 데일리 진단 태스크가 에이전트에 배정된 뒤, 에이전트가 ack하고 몇 번의
+// heartbeat만 남긴 채 죽거나 행(hang)이 걸려 lease가 만료된 케이스는 팀 산출물 품질
+// 실패가 아니라 서킷브레이커·lease-never-ran과 동일한 에이전트 가용성/생존(liveness)
+// 이벤트다.
+//  - 에이전트가 acked 후 heartbeat_seq가 몇 번 증가하다 멈추면 lease_expires_at
+//    (=last_heartbeat_at + lease TTL ~90s)이 지나 lease가 만료된다. 그러나 이 태스크는
+//    lease 리퍼가 lease_expired로 수확하지 못하고, team-runner의 job-wait가 결국
+//    1230000ms(20.5분) 후 타임아웃하며 'Job wait … timed out before finishing, no finish
+//    notification arrived' error로 status='failed' 마킹한다. response·result_json 모두
+//    비어 있어 산출물이 전혀 없다 = 오프라인/행/레이트리밋으로 실행 중 사망.
+//  - 반면 실제로 계속 작업하다 job-wait를 초과한 '느린' 에이전트는 heartbeat가 계속
+//    갱신되어 실패 시점(completed_at)에도 lease가 살아 있다(lease_expires_at >= completed_at).
+//    이런 정상 성능/품질 실패는 그대로 카운트한다.
+//  실측 근거(2026-07-25): 7d 'Job wait … timed out' 실패 19건 전부 response 길이 0이고,
+//   lease가 만료된(completed_at > lease_expires_at) 건은 전부 heartbeat 정지 후 수백~수천 초
+//   지나 job-wait가 마킹했다(team_ax-collab task_ZRAxVGlgpf7C0WwY: hermes가 4 heartbeat 후
+//   21:30:12에 정지, lease 21:31:42 만료, job-wait가 22:02:36 실패 마킹 = lease 만료 1854초
+//   후, 산출물 0). 이 1건이 team_ax-collab 48h completion 5/6=83.3% 오탐의 정확한 원인이며
+//   제외 시 5/5=100%로 실제 팀 품질을 반영한다. 동일 패턴이 hr-director·cfo·marketing-lead·
+//   self-learning 등 10개+ 팀, hermes·ollama·opencode·nvidia·agy 6개 에이전트에 걸쳐 있어
+//   team-agnostic 인프라 이벤트임이 확인된다.
+// 안전 불변식: status<>'completed' 가드로 완료 행은 절대 제외되지 않으며(completed는 이
+//  error를 갖지 않음, 실측 0건) completed⊆terminal이 유지되어 completion>100% 회귀가 없다.
+//  또한 (a) 이 특정 error 문자열, (b) lease_expires_at < completed_at(실패 시점에 이미 lease
+//  만료 = 에이전트 사망 확정), (c) response·result_json 모두 공백 3중 가드로, 산출물을 낸
+//  실패나 실패 시점에 lease가 살아 있던 '느리지만 생존' 실패는 제외하지 않는다(과잉 제외 방지).
+// 롤백: 아래 3개 terminal CASE에서 이 조건을 제거하면 정확히 이전 동작.
+const JOB_WAIT_DEAD_AGENT_EXCLUSION = `AND NOT (
+      k.status <> 'completed'
+      AND COALESCE(k.error, '') LIKE 'Job wait%timed out before finishing%'
+      AND k.lease_expires_at IS NOT NULL
+      AND k.completed_at IS NOT NULL
+      AND julianday(k.completed_at) > julianday(k.lease_expires_at)
+      AND COALESCE(k.response, '') = ''
+      AND COALESCE(k.result_json, '') = ''
+    )`;
+
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const rows = database.prepare(`
     SELECT
@@ -304,6 +341,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+          ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -318,6 +356,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+          ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -331,6 +370,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+          ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
