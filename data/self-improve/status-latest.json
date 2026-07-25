@@ -1,20 +1,20 @@
 {
-  "checked_at": "2026-07-25T15:20:00+0900",
+  "checked_at": "2026-07-25T22:20:00+0900",
   "mode": "propose",
   "total": 208,
-  "pass": 196,
-  "fail": 12,
+  "pass": 205,
+  "fail": 3,
   "skip": 0,
   "defer": 0,
   "categories": {
     "provider": {
-      "pass": 0,
-      "fail": 9,
+      "pass": 9,
+      "fail": 0,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 0.0,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "team": {
       "pass": 61,
@@ -123,85 +123,13 @@
       "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
       "priority": 2,
       "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
-    },
-    {
-      "id": "provider:agy",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "agy",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:claude-code",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "claude-code",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:codex",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "codex",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:cursor-agent",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "cursor-agent",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:hermes",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "hermes",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:higgsfield",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "higgsfield",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:nvidia",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "nvidia",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:ollama",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "ollama",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
-    },
-    {
-      "id": "provider:opencode",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "opencode",
-      "priority": 4,
-      "detail": "NCO offline — 등록 확인 불가"
     }
   ],
   "dispatch": {
     "mode": "propose",
     "dispatched": {
       "id": "build:tsc",
-      "taskId": "task_x9aExb0AkvzwI8BY"
+      "taskId": "task_JMF5MNJcUTXhZHW_"
     },
     "skipped_reason": null
   }
