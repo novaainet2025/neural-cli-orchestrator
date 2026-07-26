@@ -1,9 +1,9 @@
 {
-  "checked_at": "2026-07-26T12:20:00+0900",
+  "checked_at": "2026-07-26T13:15:31+0900",
   "mode": "propose",
   "total": 208,
-  "pass": 205,
-  "fail": 2,
+  "pass": 207,
+  "fail": 0,
   "skip": 0,
   "defer": 1,
   "categories": {
@@ -26,13 +26,13 @@
       "meets": true
     },
     "hook": {
-      "pass": 82,
-      "fail": 2,
+      "pass": 84,
+      "fail": 0,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 0.9762,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "script": {
       "pass": 17,
@@ -99,30 +99,10 @@
     }
   },
   "provider_anomaly": null,
-  "failures": [
-    {
-      "id": "hook:nova-voice-tts-progress.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 368: unexpected EOF while looking for matching `''\n/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh: line 376: syntax error: unexpected end of file"
-    },
-    {
-      "id": "hook:universal-verify.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
-      "priority": 2,
-      "detail": "/Users/nova-ai/.claude/hooks/universal-verify.sh: line 223: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/universal-verify.sh: line 227: syntax error: unexpected end of file"
-    }
-  ],
+  "failures": [],
   "dispatch": {
     "mode": "propose",
-    "dispatched": {
-      "id": "hook:nova-voice-tts-progress.sh",
-      "taskId": "task_RyF_BS4WHZRtz53Y"
-    },
-    "skipped_reason": null
+    "dispatched": null,
+    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
   }
 }

@@ -562,6 +562,38 @@ export function buildReportPrompt(
   ].filter(Boolean).join('\n');
 }
 
+/**
+ * 팀 리드의 회로차단기(circuit breaker) 상태로 발행 가능 여부를 캐시하며 판정한다.
+ * 초기 dispatch·redispatch 양 경로에서 공용으로 쓰여, breaker가 열린 리드에게 work-report를
+ * 발행해 즉시 "Circuit breaker open"으로 실패시키고 매 틱 새 실패 태스크를 양산하던 무한 루프를 차단한다.
+ *
+ * ※ non-mutating 판정: 기존 redispatch 가드는 circuitBreakerRegistry.canExecute()를 썼으나,
+ *    canExecute()는 cooldown 만료 시 회로를 half-open으로 전이시키고 true를 반환한다. 그 결과 매 틱
+ *    실제 work-report 1건이 프로브로 흘러 들어가 실패→재개방을 반복하는 누수가 생겼다(2026-07-26 실측:
+ *    가드 도입 후에도 오늘 50여 건 잔여 실패). getAvailability()는 만료된 회로를 자가복구(closed)하거나
+ *    아직 open이면 available=false로 스킵하므로 프로브 누수가 없다. 회로가 복구되면 자동으로 재개된다.
+ */
+function makeLeadDispatchGuard(): { dispatchable: (lead: string) => boolean; tripped: () => string[] } {
+  const cache = new Map<string, boolean>();
+  const tripped = new Set<string>();
+  return {
+    dispatchable: (lead: string): boolean => {
+      let decision = cache.get(lead);
+      if (decision === undefined) {
+        try {
+          decision = circuitBreakerRegistry.getAvailability(lead).available;
+        } catch {
+          decision = true; // 판정 실패 시 보수적으로 발행 허용(기존 동작 유지)
+        }
+        cache.set(lead, decision);
+        if (!decision) tripped.add(lead);
+      }
+      return decision;
+    },
+    tripped: () => [...tripped],
+  };
+}
+
 async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTaskCandidate[]): Promise<{ created: number; failed: number }> {
   const db = getDb();
   let created = 0;
@@ -651,6 +683,15 @@ export async function issueWorkReports(
   let pending = 0;
   let waived = 0;
 
+  // breaker 열린 리드로의 초기 발행을 사전 차단(트랜잭션 밖에서 판정 — getAvailability의
+  // 자가복구 커밋이 work_reports 트랜잭션에 섞이지 않게 함). report 행은 'pending'으로 남고
+  // 회로 복구 후 redispatchUnlinkedTeamReports가 자동 발행한다.
+  const dispatchGuard = makeLeadDispatchGuard();
+  for (const team of teams) {
+    const lead = team.lead?.trim();
+    if (lead) dispatchGuard.dispatchable(lead);
+  }
+
   const insert = db.prepare(`
     INSERT OR IGNORE INTO work_reports (
       id, report_date, report_slot, subject_kind, subject_id, organization_id, team_id,
@@ -711,7 +752,7 @@ export async function issueWorkReports(
         created += 1;
         if (status === 'pending') pending += 1;
         if (status === 'waived') waived += 1;
-        if (status === 'pending' && team.lead?.trim()) {
+        if (status === 'pending' && team.lead?.trim() && dispatchGuard.dispatchable(team.lead.trim())) {
           taskCandidates.push({
             reportId,
             teamId: team.id,
@@ -725,6 +766,12 @@ export async function issueWorkReports(
   });
 
   tx();
+
+  const breakerTripped = dispatchGuard.tripped();
+  if (breakerTripped.length > 0) {
+    log.warn({ reportDate, reportSlot, tripped: breakerTripped },
+      'Initial dispatch skipped for leads with open circuit breaker — reports stay pending for redispatch');
+  }
 
   const taskResult = await createTeamReportTasks(app, taskCandidates);
   const existing = organizations.length + teams.length - created;
@@ -872,9 +919,8 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
     JOIN teams tm ON tm.id = wr.team_id
     WHERE wr.report_date=? AND wr.subject_kind='team' AND wr.status='pending' AND wr.source_task_id IS NULL
       AND tm.lead IS NOT NULL AND TRIM(tm.lead) != ''
-    ORDER BY wr.due_at ASC
-    LIMIT ?
-  `).all(reportDate, REDISPATCH_LIMIT) as Array<{
+    ORDER BY wr.due_at ASC, wr.rowid ASC
+  `).all(reportDate) as Array<{
     report_id: string;
     report_slot: WorkReportSlot;
     organization_id: string | null;
@@ -904,25 +950,33 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
   // 실패한 보고는 다음 틱에서 다시 unlink→재발행되어 매 틱 새 실패 태스크를 양산하는 무한 루프가 된다
   // (2026-07-25 실측: '[업무보고 작성]' 태스크가 opencode/claude-code로 매 틱 재투입되어 분당 ~20건
   //  "Circuit breaker open" 실패 대량 생성 → 대시보드 실패 토스트 폭주). 회로가 닫혀 있거나 cooldown
-  //  경과로 half-open 복구를 시도할 수 있는 리드에게만 발행한다. 회로 회복 시 자동으로 재개된다.
-  const breakerDecision = new Map<string, boolean>();
-  const canDispatchLead = (lead: string): boolean => {
-    let decision = breakerDecision.get(lead);
-    if (decision === undefined) {
-      decision = circuitBreakerRegistry.canExecute(lead);
-      breakerDecision.set(lead, decision);
-    }
-    return decision;
-  };
-  const dispatchable = eligible.filter((row) => canDispatchLead(row.lead.trim()));
+  //  경과로 회로가 자가복구된 리드에게만 발행한다. 회로 회복 시 자동으로 재개된다.
+  //  (초기 dispatch와 동일한 non-mutating 가드 사용 — half-open 프로브 누수 제거)
+  const dispatchGuard = makeLeadDispatchGuard();
+  const dispatchable = eligible.filter((row) => dispatchGuard.dispatchable(row.lead.trim()));
   const breakerSkipped = eligible.length - dispatchable.length;
   if (breakerSkipped > 0) {
-    const tripped = [...new Set(eligible.map(r => r.lead.trim()).filter(lead => !canDispatchLead(lead)))];
-    log.warn({ reportDate, skipped: breakerSkipped, tripped }, 'Redispatch skipped for leads with open circuit breaker');
+    log.warn({ reportDate, skipped: breakerSkipped, tripped: dispatchGuard.tripped() }, 'Redispatch skipped for leads with open circuit breaker');
   }
   if (dispatchable.length === 0) return;
 
-  const candidates: ReportTaskCandidate[] = dispatchable.map((row) => {
+  // 틱당 재발행 상한(REDISPATCH_LIMIT)은 '실제 발행 가능한' 행에만 적용한다. 이전에는 SQL
+  // LIMIT이 breaker·미등록 필터보다 먼저 걸려, 열린 breaker 리드의 보고가 창을 독점하면
+  // 건강한 리드의 보고가 영원히 선택되지 못하고 finalize에서 missed로 확정됐다
+  // (2026-07-26 실측: am 보고 중 codex 25건·agy 8건이 breaker-open으로 매 틱 LIMIT 20을
+  //  소진, due_at 정렬 26위였던 ollama-리드 wr__HnEYtQh7mQzh1HI는 한 번도 재발행되지 못하고
+  //  missed — team_computer-use-safety completion 5/6 하락의 직접 원인). 발행 불가 행은
+  //  어차피 태스크를 만들지 않으므로 상한에서 제외해도 틱당 생성량 상한은 동일하게 유지된다.
+  // 롤백: SELECT에 `LIMIT ?`(+ REDISPATCH_LIMIT 바인딩)를 되돌리고 아래 slice를 제거하면 이전 동작.
+  const batch = dispatchable.slice(0, REDISPATCH_LIMIT);
+  if (batch.length < dispatchable.length) {
+    log.info(
+      { reportDate, dispatchable: dispatchable.length, deferred: dispatchable.length - batch.length },
+      'Redispatch capped for this tick — remainder retried next tick',
+    );
+  }
+
+  const candidates: ReportTaskCandidate[] = batch.map((row) => {
     const team: TeamRow = {
       id: row.team_id,
       organization_id: row.team_org_id,

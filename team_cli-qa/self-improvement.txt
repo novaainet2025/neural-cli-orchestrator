@@ -1,0 +1,1 @@
+Analyze agent work history and success/failure patterns to improve Obsidian notes, integrate with Mem0 long-term memory, and optimize agent knowledge base.

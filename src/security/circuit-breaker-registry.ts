@@ -304,12 +304,49 @@ class CircuitBreakerRegistry {
     this.commit(next, 'Circuit manually reset');
   }
 
+  /**
+   * cooldown이 만료된 open 회로(비-auth)를 closed로 자가복구한다.
+   * 상태 전이는 canExecute()에서만 lazy하게 일어나므로, 태스크 유입이 없는 idle
+   * 프로바이더는 cooldown이 하루 전에 지나도 'open'에 영구 고착 → 대시보드가 'error'/
+   * '해제 대기'로 잘못 표시되던 버그(2026-07-26 nova-macstudio 실측: 6개 프로바이더가
+   * 만료 17~27h 경과 후에도 available=false)를 수정한다. 리포팅 메서드에서 호출.
+   * auth는 cooldownUntil=null이라 대상 아님(키 수정 전까지 유지가 정상).
+   */
+  private recoverIfExpired(agentId: string): CircuitSnapshot {
+    const current = this.ensure(agentId);
+    if (
+      current.state === 'open' &&
+      current.reason !== 'auth' &&
+      current.cooldownUntil != null &&
+      Date.now() >= current.cooldownUntil
+    ) {
+      const next: CircuitSnapshot = {
+        agentId,
+        state: 'closed',
+        failureCount: 0,
+        openedAt: null,
+        cooldownUntil: null,
+        reason: null,
+      };
+      this.commit(next, 'Circuit auto-recovered after cooldown expiry (idle)');
+      void eventBus.publish({
+        type: 'provider:available',
+        agentId,
+        previousState: current.state,
+        state: 'closed',
+        reasonCleared: current.reason,
+      });
+      return next;
+    }
+    return current;
+  }
+
   getSnapshot(agentId: string): CircuitSnapshot {
-    return { ...this.ensure(agentId) };
+    return { ...this.recoverIfExpired(agentId) };
   }
 
   getAvailability(agentId: string): ProviderAvailabilitySnapshot {
-    const snapshot = this.ensure(agentId);
+    const snapshot = this.recoverIfExpired(agentId);
     const isOpenProbeEligible = snapshot.state === 'open'
       && snapshot.reason !== 'auth'
       && snapshot.cooldownUntil != null
@@ -341,7 +378,8 @@ class CircuitBreakerRegistry {
     if (agentIds) {
       return agentIds.map(agentId => this.getSnapshot(agentId));
     }
-    return Array.from(this.states.values()).map(snapshot => ({ ...snapshot }));
+    // 전량 조회 시에도 만료 회로를 자가복구 후 반환
+    return Array.from(this.states.keys()).map(agentId => ({ ...this.recoverIfExpired(agentId) }));
   }
 
   private ensure(agentId: string): CircuitSnapshot {
