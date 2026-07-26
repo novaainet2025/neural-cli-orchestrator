@@ -10,6 +10,9 @@ import {
   buildDecompositionPrompt,
   buildPipelineHandoffSubtask,
   allowQueueProviderFailover,
+  validateCompanyPolicy,
+  NCO_FOUNDATION_COMPANY_POLICIES,
+  OrchestrationError,
   scopeDecomposedSubtask,
   templateSubtask,
   isSubstantiveOutput,
@@ -28,6 +31,75 @@ function team(partial: Partial<TeamRow> & { slug: string; name: string }): TeamR
   };
 }
 
+const foundationCases = [
+  {
+    slug: 'nco-command',
+    manager: 'claude-code',
+    stages: [
+      'gov-command-strategic',
+      'gov-command-intake',
+      'gov-command-routing',
+      'gov-command-collaboration',
+      'gov-command-incident',
+    ],
+  },
+  {
+    slug: 'nco-evolution',
+    manager: 'opencode',
+    stages: [
+      'gov-evolution-learning',
+      'gov-evolution-memory',
+      'gov-evolution-evaluation',
+      'gov-evolution-improvement',
+      'gov-evolution-skills',
+    ],
+  },
+  {
+    slug: 'nco-engineering',
+    manager: 'codex',
+    stages: [
+      'gov-engineering-experts',
+      'gov-engineering-architecture',
+      'gov-engineering-build',
+      'gov-engineering-release',
+      'gov-engineering-reliability',
+    ],
+  },
+  {
+    slug: 'nco-assurance',
+    manager: 'cursor-agent',
+    stages: [
+      'gov-assurance-safety',
+      'gov-assurance-redteam',
+      'gov-assurance-verification',
+      'gov-assurance-resilience',
+      'gov-assurance-audit',
+    ],
+  },
+  {
+    slug: 'nco-government',
+    manager: 'nvidia',
+    stages: [
+      'gov-government-constitution',
+      'gov-government-rights',
+      'gov-government-hr',
+      'gov-government-treasury',
+      'gov-government-transparency',
+    ],
+  },
+] as const;
+
+function expectPolicyError(run: () => void, code: number, message: RegExp): void {
+  try {
+    run();
+    throw new Error('expected company policy violation');
+  } catch (error) {
+    expect(error).toBeInstanceOf(OrchestrationError);
+    expect((error as OrchestrationError).code).toBe(code);
+    expect((error as Error).message).toMatch(message);
+  }
+}
+
 describe('rankTeam', () => {
   it('기술 이식 회사의 번호 stage를 안전 순서 그대로 랭크', () => {
     expect(rankTeam(team({ slug: 'tech-port-03-recovery-checkpoint', name: '복구 지점팀' }))).toBe(3);
@@ -36,6 +108,11 @@ describe('rankTeam', () => {
   it('웹 스크래핑 회사의 승인→수집→구현→검증 순서를 slug 번호로 고정', () => {
     expect(rankTeam(team({ slug: 'web-scrape-01-intake-strategy', name: '승인팀' }))).toBe(1);
     expect(rankTeam(team({ slug: 'web-scrape-07-report-delivery', name: '전달팀' }))).toBe(7);
+  });
+  it('AI 정부 5대 회사는 각 회사의 헌정 stage를 1→5로 고정', () => {
+    for (const company of foundationCases) {
+      expect(company.stages.map((slug) => rankTeam(team({ slug, name: slug })))).toEqual([1, 2, 3, 4, 5]);
+    }
   });
   it('research 팀들을 파이프라인 단계 순서로 랭크', () => {
     expect(rankTeam(team({ slug: 'research-strategy', name: '리서치 기획·전략팀' }))).toBe(1);
@@ -102,6 +179,71 @@ describe('orderTeams', () => {
       team({ slug: 'sales', name: 'Sales' }),
     ];
     expect(orderTeams(input).map((t) => t.slug)).toEqual(['research-strategy', 'legal', 'sales']);
+  });
+
+  it('AI 정부 5대 회사는 DB 이름/생성순과 무관하게 헌정 순서로 정렬', () => {
+    for (const company of foundationCases) {
+      const scrambled = [...company.stages].reverse().map((slug) => team({ slug, name: slug }));
+      expect(orderTeams(scrambled).map((row) => row.slug)).toEqual([...company.stages]);
+    }
+  });
+});
+
+describe('validateCompanyPolicy (AI 정부 헌정 게이트)', () => {
+  it('5개 회사의 manager·정확한 5팀·pipeline 조합을 허용', () => {
+    expect(Object.keys(NCO_FOUNDATION_COMPANY_POLICIES).sort())
+      .toEqual(foundationCases.map((company) => company.slug).sort());
+    for (const company of foundationCases) {
+      const rows = company.stages.map((slug) => team({ slug, name: slug }));
+      expect(() => validateCompanyPolicy(
+        { slug: company.slug, manager: company.manager },
+        'pipeline',
+        rows,
+      )).not.toThrow();
+    }
+  });
+
+  it('5개 회사 모두 parallel 실행을 fail-closed 거부', () => {
+    for (const company of foundationCases) {
+      const rows = company.stages.map((slug) => team({ slug, name: slug }));
+      expectPolicyError(
+        () => validateCompanyPolicy({ slug: company.slug, manager: company.manager }, 'parallel', rows),
+        400,
+        /pipeline 모드만 허용/,
+      );
+    }
+  });
+
+  it('manager 변조, 필수팀 누락, 미승인팀 추가를 409로 거부', () => {
+    const company = foundationCases[0];
+    const rows = company.stages.map((slug) => team({ slug, name: slug }));
+    expectPolicyError(
+      () => validateCompanyPolicy({ slug: company.slug, manager: 'codex' }, 'pipeline', rows),
+      409,
+      /manager=claude-code/,
+    );
+    expectPolicyError(
+      () => validateCompanyPolicy({ slug: company.slug, manager: company.manager }, 'pipeline', rows.slice(1)),
+      409,
+      /누락: gov-command-strategic/,
+    );
+    expectPolicyError(
+      () => validateCompanyPolicy(
+        { slug: company.slug, manager: company.manager },
+        'pipeline',
+        [...rows, team({ slug: 'gov-command-unapproved', name: '미승인팀' })],
+      ),
+      409,
+      /미승인: gov-command-unapproved/,
+    );
+  });
+
+  it('기존 일반 회사는 신규 헌정 게이트로 제한하지 않음', () => {
+    expect(() => validateCompanyPolicy(
+      { slug: 'research', manager: 'claude-2' },
+      'parallel',
+      [team({ slug: 'research-strategy', name: '전략팀' })],
+    )).not.toThrow();
   });
 });
 
@@ -349,6 +491,12 @@ describe('allowQueueProviderFailover', () => {
 
   it('웹 스크래핑 회사도 등록 팀 밖 자동 재위임을 차단', () => {
     expect(allowQueueProviderFailover('web-scraping')).toBe(false);
+  });
+
+  it('AI 정부 5대 회사도 헌정 팀 밖 자동 재위임을 차단', () => {
+    for (const company of foundationCases) {
+      expect(allowQueueProviderFailover(company.slug)).toBe(false);
+    }
   });
 
   it('일반 회사의 기존 failover 동작은 유지', () => {

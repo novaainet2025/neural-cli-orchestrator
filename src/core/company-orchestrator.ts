@@ -152,11 +152,11 @@ export const NCO_ENGINEERING_STAGE_SLUGS = [
 ] as const;
 
 export const NCO_ASSURANCE_STAGE_SLUGS = [
-  'gov-assurance-verification',
   'gov-assurance-safety',
   'gov-assurance-redteam',
-  'gov-assurance-audit',
+  'gov-assurance-verification',
   'gov-assurance-resilience',
+  'gov-assurance-audit',
 ] as const;
 
 export const NCO_GOVERNMENT_STAGE_SLUGS = [
@@ -167,13 +167,25 @@ export const NCO_GOVERNMENT_STAGE_SLUGS = [
   'gov-government-transparency',
 ] as const;
 
-const GOV_SLUGS_ORDER = [
-  ...NCO_COMMAND_STAGE_SLUGS,
-  ...NCO_EVOLUTION_STAGE_SLUGS,
-  ...NCO_ENGINEERING_STAGE_SLUGS,
-  ...NCO_ASSURANCE_STAGE_SLUGS,
-  ...NCO_GOVERNMENT_STAGE_SLUGS,
-];
+export interface NcoFoundationCompanyPolicy {
+  manager: string;
+  slugs: readonly string[];
+  name: string;
+}
+
+export const NCO_FOUNDATION_COMPANY_POLICIES: Readonly<Record<string, NcoFoundationCompanyPolicy>> = {
+  'nco-command': { manager: 'claude-code', slugs: NCO_COMMAND_STAGE_SLUGS, name: '지휘' },
+  'nco-evolution': { manager: 'opencode', slugs: NCO_EVOLUTION_STAGE_SLUGS, name: '학습·진화' },
+  'nco-engineering': { manager: 'codex', slugs: NCO_ENGINEERING_STAGE_SLUGS, name: '전문기술' },
+  'nco-assurance': { manager: 'cursor-agent', slugs: NCO_ASSURANCE_STAGE_SLUGS, name: '독립검증·안전' },
+  'nco-government': { manager: 'nvidia', slugs: NCO_GOVERNMENT_STAGE_SLUGS, name: '헌정·행정' },
+};
+
+const NCO_FOUNDATION_STAGE_RANKS = new Map<string, number>(
+  Object.values(NCO_FOUNDATION_COMPANY_POLICIES).flatMap((policy) =>
+    policy.slugs.map((slug, index) => [slug, index + 1] as const),
+  ),
+);
 
 export function rankTeam(team: TeamRow): number {
   // 기술 이식·웹 스크래핑 회사는 안전 게이트가 포함된 고정 순서가
@@ -181,8 +193,8 @@ export function rankTeam(team: TeamRow): number {
   const controlledStage = team.slug.match(/^(?:tech-port|web-scrape)-(\d{2})-/);
   if (controlledStage) return Number(controlledStage[1]);
 
-  const govIndex = GOV_SLUGS_ORDER.indexOf(team.slug);
-  if (govIndex !== -1) return govIndex + 1;
+  const foundationStage = NCO_FOUNDATION_STAGE_RANKS.get(team.slug);
+  if (foundationStage !== undefined) return foundationStage;
 
   // 랭킹은 slug+name(깨끗한 단일 역할 토큰)만 사용한다.
   // charter/description 은 "탐색수집팀 핸드오프"·"수집자료→분석" 처럼 타 단계 어휘가
@@ -499,7 +511,9 @@ export function buildPipelineHandoffSubtask(
 // 안전 게이트 회사는 팀 밖의 범용/저신뢰 executor로 재위임하지 않는다.
 // 단계별 failover는 runStageWithFailover가 조직에 등록된 팀원 체인 안에서 수행한다.
 export function allowQueueProviderFailover(orgSlug: string): boolean {
-  return orgSlug !== 'technology-porting' && orgSlug !== 'web-scraping';
+  return orgSlug !== 'technology-porting'
+    && orgSlug !== 'web-scraping'
+    && NCO_FOUNDATION_COMPANY_POLICIES[orgSlug] === undefined;
 }
 
 // ── 실행 상태 저장소(인메모리, LRU 상한) ───────────────────────────────
@@ -634,25 +648,22 @@ export function validateCompanyPolicy(org: { slug: string; manager: string | nul
     }
   }
 
-  const govPolicies: Record<string, { manager: string; slugs: readonly string[]; name: string }> = {
-    'nco-command': { manager: 'claude-code', slugs: NCO_COMMAND_STAGE_SLUGS, name: '지휘' },
-    'nco-evolution': { manager: 'opencode', slugs: NCO_EVOLUTION_STAGE_SLUGS, name: '학습·진화' },
-    'nco-engineering': { manager: 'codex', slugs: NCO_ENGINEERING_STAGE_SLUGS, name: '구현' },
-    'nco-assurance': { manager: 'cursor-agent', slugs: NCO_ASSURANCE_STAGE_SLUGS, name: '검증·안전' },
-    'nco-government': { manager: 'nvidia', slugs: NCO_GOVERNMENT_STAGE_SLUGS, name: '헌정·행정' },
-  };
-
-  const govPolicy = govPolicies[org.slug];
+  const govPolicy = NCO_FOUNDATION_COMPANY_POLICIES[org.slug];
   if (govPolicy) {
     if (mode !== 'pipeline') {
       throw new OrchestrationError(400, `NCO AI 정부 ${govPolicy.name} 회사는 권력분립과 안전 게이트를 위해 pipeline 모드만 허용합니다`);
     }
     const activeSlugs = new Set(rawTeams.map((team) => team.slug));
     const missing = govPolicy.slugs.filter((slug) => !activeSlugs.has(slug));
-    if (org.manager !== govPolicy.manager || missing.length > 0) {
+    const unexpected = [...activeSlugs].filter((slug) => !govPolicy.slugs.includes(slug));
+    if (org.manager !== govPolicy.manager || missing.length > 0 || unexpected.length > 0) {
+      const teamMismatch = [
+        missing.length ? `누락: ${missing.join(', ')}` : '',
+        unexpected.length ? `미승인: ${unexpected.join(', ')}` : '',
+      ].filter(Boolean).join(' / ');
       throw new OrchestrationError(
         409,
-        `NCO AI 정부 ${govPolicy.name} 회사 안전정책 위반: manager=${govPolicy.manager} 및 5개 필수 팀이 필요합니다${missing.length ? ` (누락: ${missing.join(', ')})` : ''}`,
+        `NCO AI 정부 ${govPolicy.name} 회사 안전정책 위반: manager=${govPolicy.manager} 및 승인된 5개 활성 팀이 정확히 필요합니다${teamMismatch ? ` (${teamMismatch})` : ''}`,
       );
     }
   }
@@ -666,7 +677,7 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
   const org = loadOrg(opts.orgIdOrSlug);
   const rawTeams = loadTeams(org.id);
   if (rawTeams.length === 0) throw new OrchestrationError(400, `organization has no active teams: ${org.slug}`);
-  
+
   validateCompanyPolicy(org, mode, rawTeams);
 
   const ordered = orderTeams(rawTeams);
