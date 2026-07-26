@@ -10,8 +10,11 @@
 
 import { Queue, Worker, Job, QueueEvents, UnrecoverableError } from 'bullmq';
 import type Database from 'better-sqlite3';
-import { spawn, execFileSync, type ChildProcessByStdio } from 'child_process';
+import { spawn, execFileSync, type ChildProcessByStdio, execSync } from 'child_process';
 import type { Readable } from 'stream';
+import { mkdtempSync, existsSync, symlinkSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { getDb } from '../storage/database.js';
@@ -51,7 +54,6 @@ const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 // 기본 hard timeout(20분)보다 2분 길게 유지해 실행 중 BullMQ lock 실종을 막는다.
 export const BULLMQ_LOCK_DURATION_MS = 22 * 60_000;
 export const BULLMQ_JOB_ATTEMPTS = 1;
-export const VERIFIER_BASELINE_TTL_MS = 60_000;
 const TASK_MONITOR_INTERVAL_MS = 15_000;
 const PARTIAL_OUTPUT_LIMIT = 64 * 1024;
 const DEFAULT_VERIFIER_ALLOWLIST = ['node', 'npx', 'npm', 'git', 'curl', 'true', 'false', 'sleep', 'cat', 'ls', 'grep', 'ps', 'pgrep', 'sqlite3', 'tsc', 'vitest'];
@@ -215,43 +217,6 @@ export type VerifierProcessResult = {
   timedOut: boolean;
 };
 
-type VerifierBaselineCacheEntry = {
-  expiresAt: number;
-  result: Promise<VerifierProcessResult>;
-};
-
-const verifierBaselineCache = new Map<string, VerifierBaselineCacheEntry>();
-
-/**
- * A shared worktree can already have a failing build before the current task.
- * Cache the lazy baseline by the exact verifier scope so concurrent failures do
- * not fan out into duplicate builds.
- */
-export function getVerifierBaseline(
-  cwd: string,
-  command: string,
-  run: () => Promise<VerifierProcessResult>,
-  now = Date.now(),
-): Promise<VerifierProcessResult> {
-  const key = JSON.stringify([cwd, command]);
-  const cached = verifierBaselineCache.get(key);
-  if (cached && cached.expiresAt > now) return cached.result;
-
-  for (const [candidateKey, entry] of verifierBaselineCache) {
-    if (entry.expiresAt <= now) verifierBaselineCache.delete(candidateKey);
-  }
-
-  const result = run().catch(error => {
-    verifierBaselineCache.delete(key);
-    throw error;
-  });
-  verifierBaselineCache.set(key, {
-    expiresAt: now + VERIFIER_BASELINE_TTL_MS,
-    result,
-  });
-  return result;
-}
-
 export function shouldPurgeStaleJob(status: string | undefined): boolean {
   return status === undefined || TERMINAL_STATES.has(status);
 }
@@ -282,6 +247,18 @@ export function isDuplicateExecutionFailure(
   result: Pick<TaskExecutionResult, 'success' | 'error'>,
 ): boolean {
   return !result.success && (result.error ?? '').startsWith('duplicate_execution:');
+}
+
+export function duplicateExecutionResultFromError(
+  error: unknown,
+): TaskExecutionResult | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const result: TaskExecutionResult = {
+    success: false,
+    output: '',
+    error: message,
+  };
+  return isDuplicateExecutionFailure(result) ? result : null;
 }
 
 function loadTaskMetadata(taskId: string): Record<string, unknown> {
@@ -456,10 +433,109 @@ async function waitForExitWithTimeout(
   });
 }
 
+/**
+ * Capture the verifier result before the agent can mutate the task worktree.
+ *
+ * This is intentionally per execution rather than a cwd/command TTL cache:
+ * another task can change the same shared worktree between cache reads, so a
+ * cached failure is not proof of this task's pre-existing state.
+ */
+export async function captureVerifierBaseline(
+  task: QueuedTask,
+  controllerSignal: AbortSignal,
+): Promise<VerifierProcessResult | null> {
+  if (task.verifier?.type !== 'run') return null;
+
+  const timeoutMs = task.verifier.timeoutMs ?? 60_000;
+  const [binary, ...args] = task.verifier.command.trim().split(/\s+/);
+  if (!binary || binary.includes('/') || binary.includes('\\')) return null;
+  if (!verifierCommandGate.validate(binary, args).ok) return null;
+
+  const projectDir = resolveVerifierProjectDir(task);
+  try {
+    const child = spawn(binary, args, {
+      cwd: projectDir,
+      env: process.env,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      signal: controllerSignal,
+    });
+    return await waitForExitWithTimeout(child, timeoutMs);
+  } catch (error) {
+    log.warn({
+      taskId: task.taskId,
+      cwd: projectDir,
+      command: task.verifier.command,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Pre-task verifier baseline could not be captured');
+    return null;
+  }
+}
+
+/**
+ * Run the verifier on a clean HEAD checkout to distinguish pre-existing
+ * build failures from task-caused regressions. Symlinks node_modules
+ * from the working project so build tools resolve dependencies.
+ */
+export async function captureHeadBaseline(
+  task: QueuedTask,
+  signal: AbortSignal,
+): Promise<VerifierProcessResult | null> {
+  if (task.verifier?.type !== 'run') return null;
+
+  const timeoutMs = task.verifier.timeoutMs ?? 60_000;
+  const [binary, ...args] = task.verifier.command.trim().split(/\s+/);
+  if (!binary || binary.includes('/') || binary.includes('\\')) return null;
+  if (!verifierCommandGate.validate(binary, args).ok) return null;
+
+  const projectDir = resolveVerifierProjectDir(task);
+  const tmpDir = mkdtempSync(join(tmpdir(), 'nco-verify-head-'));
+
+  try {
+    execFileSync('git', ['worktree', 'add', '--detach', tmpDir, 'HEAD'], {
+      cwd: projectDir,
+      stdio: 'ignore',
+      timeout: 30_000,
+    });
+
+    const nmSrc = join(projectDir, 'node_modules');
+    if (existsSync(nmSrc)) {
+      symlinkSync(nmSrc, join(tmpDir, 'node_modules'));
+    }
+
+    const child = spawn(binary, args, {
+      cwd: tmpDir,
+      env: process.env,
+      detached: process.platform !== 'win32',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      signal,
+    });
+    return await waitForExitWithTimeout(child, timeoutMs);
+  } catch (error) {
+    log.warn({
+      taskId: task.taskId,
+      cwd: projectDir,
+      command: task.verifier.command,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'HEAD-clean verifier baseline could not be captured; falling back to dirty-tree baseline');
+    return null;
+  } finally {
+    try {
+      execFileSync('git', ['worktree', 'remove', '--force', tmpDir], {
+        cwd: projectDir,
+        stdio: 'ignore',
+        timeout: 15_000,
+      });
+    } catch { /* cleanup best-effort */ }
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* already removed */ }
+  }
+}
+
 export async function applyVerifierGate(
   task: QueuedTask,
   classified: TaskExecutionResult,
   controllerSignal: AbortSignal,
+  preTaskBaseline: VerifierProcessResult | null = null,
 ): Promise<TaskExecutionResult> {
   if (!classified.success) {
     return classified;
@@ -605,22 +681,23 @@ export async function applyVerifierGate(
       return classified;
     }
 
-    try {
-      const baseline = await getVerifierBaseline(
-        projectDir,
-        task.verifier.command,
-        async () => {
-          const baselineChild = spawn(binary, args, {
-            cwd: projectDir,
-            env: process.env,
-            detached: process.platform !== 'win32',
-            stdio: ['ignore', 'pipe', 'pipe'],
-          });
-          return waitForExitWithTimeout(baselineChild, timeoutMs);
-        },
-      );
-      if (baseline.code !== 0 || baseline.timedOut) {
-        const skippedResult = reconcileVerifierBaseline(verifierResult, baseline);
+    if (preTaskBaseline && (preTaskBaseline.code !== 0 || preTaskBaseline.timedOut)) {
+      // Dirty-tree baseline also failed — distinguish pre-existing from
+      // task-caused by running the verifier on a clean HEAD checkout.
+      // HEAD also fails → truly pre-existing (committed code is broken).
+      // HEAD passes → dirty changes caused the failure; the task may have
+      // introduced or been affected by them — do not skip verifier.
+      const headBaseline = await captureHeadBaseline(task, controllerSignal);
+      if (headBaseline && headBaseline.code === 0 && !headBaseline.timedOut) {
+        log.warn({
+          taskId: task.taskId,
+          cwd: projectDir,
+          command: task.verifier.command,
+          preExitCode: preTaskBaseline.code,
+          headExitCode: headBaseline.code,
+        }, 'HEAD-clean verifier passed — dirty-worktree baseline failure is not pre-existing');
+      } else {
+        const skippedResult = reconcileVerifierBaseline(verifierResult, preTaskBaseline);
         try {
           persistVerifierResult(task.taskId, skippedResult);
         } catch (persistErr) {
@@ -628,13 +705,6 @@ export async function applyVerifierGate(
         }
         return classified;
       }
-    } catch (baselineError) {
-      log.warn({
-        taskId: task.taskId,
-        cwd: projectDir,
-        command: task.verifier.command,
-        error: baselineError instanceof Error ? baselineError.message : String(baselineError),
-      }, 'Verifier baseline could not be established; preserving verifier failure');
     }
 
     try {
@@ -761,7 +831,20 @@ class TaskQueueManager {
   private initialized = false;
   private shutdownSignal: string | null = null;
   private runtimes = new Map<string, TaskRuntimeEntry>();
+  private verifierBaselines = new Map<string, Promise<VerifierProcessResult | null>>();
+  private enqueueScopes = new Map<string, number>();
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
+
+  private getOrCaptureVerifierBaseline(
+    task: QueuedTask,
+    signal: AbortSignal,
+  ): Promise<VerifierProcessResult | null> {
+    const existing = this.verifierBaselines.get(task.taskId);
+    if (existing) return existing;
+    const baseline = captureVerifierBaseline(task, signal);
+    this.verifierBaselines.set(task.taskId, baseline);
+    return baseline;
+  }
 
   private getEffectiveConcurrency(agentId: string, configuredConcurrency: number): number {
     const configured = Math.max(1, configuredConcurrency);
@@ -909,10 +992,11 @@ class TaskQueueManager {
     }
 
     try {
+      const verifierBaseline = await this.getOrCaptureVerifierBaseline(task, controller.signal);
       const result = await this.executor(task, controller.signal);
       const finalized = this.finalizeRuntime(task.taskId, result);
       const classified = classifyResult(finalized);
-      const gated = await applyVerifierGate(task, classified, controller.signal);
+      const gated = await applyVerifierGate(task, classified, controller.signal, verifierBaseline);
       const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
       // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
       paLifecycle.markUsed(task.agentId, Date.now());
@@ -944,6 +1028,12 @@ class TaskQueueManager {
       entry.activeControllers.delete(task.taskId);
       entry.active = Math.max(0, entry.active - 1);
       entry.semaphore.release();
+      // Jobs preserved across a restart can run without a local enqueue()
+      // waiter. They have no retry scope in this process, so release their
+      // baseline after the worker finishes.
+      if (!this.enqueueScopes.has(task.taskId)) {
+        this.verifierBaselines.delete(task.taskId);
+      }
     }
   }
 
@@ -957,6 +1047,21 @@ class TaskQueueManager {
    * The taskId is stable across retries so the DB record stays consistent.
    */
   async enqueue(task: QueuedTask): Promise<TaskExecutionResult> {
+    this.enqueueScopes.set(task.taskId, (this.enqueueScopes.get(task.taskId) ?? 0) + 1);
+    try {
+      return await this.enqueueWithRetries(task);
+    } finally {
+      const remaining = (this.enqueueScopes.get(task.taskId) ?? 1) - 1;
+      if (remaining <= 0) {
+        this.enqueueScopes.delete(task.taskId);
+        this.verifierBaselines.delete(task.taskId);
+      } else {
+        this.enqueueScopes.set(task.taskId, remaining);
+      }
+    }
+  }
+
+  private async enqueueWithRetries(task: QueuedTask): Promise<TaskExecutionResult> {
     let lastError = '';
     let currentAgentId = task.agentId;
     let currentMetadata: Record<string, unknown> = { ...(task.metadata ?? {}) };
@@ -991,7 +1096,14 @@ class TaskQueueManager {
         }
       }
 
-      const result = await this.runEnqueue({ ...task, agentId: currentAgentId, metadata: currentMetadata });
+      let result: TaskExecutionResult;
+      try {
+        result = await this.runEnqueue({ ...task, agentId: currentAgentId, metadata: currentMetadata });
+      } catch (error) {
+        const duplicate = duplicateExecutionResultFromError(error);
+        if (duplicate) return duplicate;
+        throw error;
+      }
 
       if (result.success) return result;
       // BullMQ waitUntilFinished() surfaces an UnrecoverableError as a failed result.
@@ -1338,10 +1450,11 @@ class TaskQueueManager {
     }
 
     try {
+      const verifierBaseline = await this.getOrCaptureVerifierBaseline(task, controller.signal);
       const result = await this.executor(task, controller.signal);
       const finalized = this.finalizeRuntime(task.taskId, result);
       const classified = classifyResult(finalized);
-      const gated = await applyVerifierGate(task, classified, controller.signal);
+      const gated = await applyVerifierGate(task, classified, controller.signal, verifierBaseline);
       const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
       // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
       paLifecycle.markUsed(task.agentId, Date.now());

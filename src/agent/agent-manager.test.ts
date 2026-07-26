@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { mockExeca, loadEnabledProviders, env, mockProviders } = vi.hoisted(() => {
   const providers = [
@@ -6,7 +6,10 @@ const { mockExeca, loadEnabledProviders, env, mockProviders } = vi.hoisted(() =>
       id: 'aider',
       role: 'execution',
       type: 'orchestrated',
+      command: 'aider',
+      args: [],
       env: {} as Record<string, string>,
+      persona: { systemPrompt: 'test aider prompt' },
     },
     {
       id: 'claude-code',
@@ -15,6 +18,7 @@ const { mockExeca, loadEnabledProviders, env, mockProviders } = vi.hoisted(() =>
       command: 'claude',
       args: ['--test-flag'],
       env: { SOME_VAR: 'val' } as Record<string, string>,
+      persona: { systemPrompt: 'test claude prompt' },
     }
   ];
   return {
@@ -40,16 +44,8 @@ vi.mock('execa', () => ({
   execa: mockExeca,
 }));
 
-vi.mock('../security/sandbox-manager.js', () => ({
-  createSandbox: () => ({
-    getTimeout: () => 5000,
-    canExecute: () => true,
-    recordSuccess: vi.fn(),
-    circuitBreaker: {
-      getState: vi.fn(() => 'closed'),
-      recordSuccess: vi.fn(),
-    },
-  }),
+vi.mock('../storage/database.js', () => ({
+  getDb: () => { throw new Error('database unavailable in unit test'); },
 }));
 
 vi.mock('../core/event-bus.js', () => ({
@@ -62,6 +58,15 @@ vi.mock('../core/shared-state.js', () => ({
   sharedState: {
     setAgentState: vi.fn(),
     heartbeat: vi.fn(),
+    getAllAgentStates: vi.fn(async () => ({})),
+    isAgentAlive: vi.fn(async () => true),
+    getAgentState: vi.fn(async () => ({ status: 'idle' })),
+  },
+}));
+
+vi.mock('../security/verification-gate.js', () => ({
+  verificationGate: {
+    verify: vi.fn(async () => ({ passed: true, results: [] })),
   },
 }));
 
@@ -93,10 +98,18 @@ vi.mock('../utils/logger.js', () => ({
 }));
 
 import { agentManager, formatProviderUnavailableError } from './agent-manager.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 describe('AgentManager', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    circuitBreakerRegistry.reset('aider');
+    circuitBreakerRegistry.reset('claude-code');
+  });
+
+  afterEach(() => {
+    agentManager.destroy();
+    vi.useRealTimers();
   });
 
   it('injectDerivedKeys binds OPENROUTER_API_KEY from OPENROUTER_API_KEYS plural variable', async () => {
@@ -156,5 +169,35 @@ describe('AgentManager', () => {
     expect(opts.timeout).toBe(30_000);
 
     agentManager.destroy();
+  });
+
+  it('executes one Type B iteration while holding the sole half-open probe slot', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-26T00:00:00.000Z'));
+    await agentManager.init();
+
+    circuitBreakerRegistry.recordFailure('aider', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    expect(circuitBreakerRegistry.getSnapshot('aider').state).toBe('open');
+    vi.advanceTimersByTime(50);
+
+    const result = await agentManager.executeTask('aider', 'run one smoke iteration', {
+      projectDir: '/dummy/project',
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      output: 'mocked output',
+      iterations: 1,
+    });
+    expect(mockExeca).toHaveBeenCalledWith(
+      'aider',
+      expect.any(Array),
+      expect.objectContaining({ cwd: '/dummy/project' }),
+    );
+    expect(circuitBreakerRegistry.getSnapshot('aider').state).toBe('closed');
   });
 });

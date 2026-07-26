@@ -105,4 +105,36 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.canExecute()).toBe(true);
     expect(breaker.getState()).toBe('half-open');
   });
+
+  // Regression test for A (half-open probe slot): getSnapshot() is a
+  // non-mutating observer that must NOT consume a probe slot. Only
+  // canExecute() should consume it. Without this guard, a nested
+  // getSnapshot() call inside the probe execution would starve the
+  // sole half-open slot and prevent circuit recovery.
+  it('getSnapshot() does not consume the half-open probe slot', () => {
+    const breaker = new CircuitBreaker('half-open-slot-test', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    breaker.reset();
+
+    breaker.recordFailure('boom');
+    expect(breaker.getState()).toBe('open');
+
+    vi.advanceTimersByTime(50);
+
+    // Acquire the sole probe slot — first canExecute() returns true
+    expect(breaker.canExecute()).toBe(true);
+    expect(breaker.getState()).toBe('half-open');
+
+    // getSnapshot() (simulating nested observation) must NOT consume a slot
+    // Second canExecute() must still return false
+    expect(breaker.getState()).toBe('half-open'); // observation, no slot consumed
+    expect(breaker.canExecute()).toBe(false); // slot still held
+
+    // Release the probe slot
+    circuitBreakerRegistry.releaseProbeSlot('half-open-slot-test');
+    expect(breaker.canExecute()).toBe(true); // new probe can proceed
+  });
 });

@@ -91,6 +91,8 @@ describe('failure learning writer and consumer', () => {
     expect(learned[0]).toMatchObject({
       signature,
       sourceCount: 3,
+      reason: 'generic',
+      immediateOpen: false,
     });
     expect(learned[0].regex.test(signature)).toBe(true);
     expect(learned[0].regex.test(`prefix ${signature}`)).toBe(false);
@@ -111,8 +113,26 @@ describe('failure learning writer and consumer', () => {
       context: JSON.stringify({
         sourceCount: 3,
         matchMode: 'full_signature',
-        promotedReason: 'quota',
+        promotedReason: 'generic',
+        immediateOpen: false,
       }),
+    });
+  });
+
+  it('promotes repeated transient signatures without quota or immediate-open semantics', () => {
+    const signature = 'ECONNRESET';
+    for (let index = 0; index < 3; index++) {
+      recordLearningEvent({
+        agentId: 'provider-transient',
+        eventType: 'circuit_unclassified',
+        pattern: signature,
+      }, db);
+    }
+
+    expect(matchLearnedCircuitPattern(signature, db)).toMatchObject({
+      signature,
+      reason: 'generic',
+      immediateOpen: false,
     });
   });
 

@@ -36,6 +36,8 @@ export interface LearnedCircuitPattern {
   firstSeen: string;
   lastSeen: string;
   regex: RegExp;
+  reason: 'generic' | 'rate-limit' | 'quota' | 'auth';
+  immediateOpen: boolean;
 }
 
 export interface FailureDigest {
@@ -160,6 +162,12 @@ function readLearnedCircuitPatterns(
       firstSeen: row.first_seen,
       lastSeen: row.last_seen,
       regex: new RegExp(`^${escapeRegExp(signature)}$`, 'u'),
+      // Only errors that did not match an explicit provider pattern are
+      // recorded as circuit_unclassified, so promotion must preserve them as
+      // thresholded generic failures. Treating every learned signature as
+      // quota made transient errors such as ECONNRESET open immediately.
+      reason: 'generic',
+      immediateOpen: false,
     }];
   });
 }
@@ -211,7 +219,8 @@ export function recordLearnedCircuitPatternApplication(
     context: {
       sourceCount: learned.sourceCount,
       matchMode: 'full_signature',
-      promotedReason: 'quota',
+      promotedReason: learned.reason,
+      immediateOpen: learned.immediateOpen,
     },
     autoApplied: true,
   }, db);
@@ -309,6 +318,8 @@ export function getFailureDigest(
         sourceCount: pattern.sourceCount,
         firstSeen: pattern.firstSeen,
         lastSeen: pattern.lastSeen,
+        reason: pattern.reason,
+        immediateOpen: pattern.immediateOpen,
       })),
     };
   } catch (error) {

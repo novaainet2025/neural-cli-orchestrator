@@ -8,6 +8,7 @@ import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { createLogger } from '../utils/logger.js';
 import type { ToolCall } from './tool-parser.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 const log = createLogger('agent-tools');
 
@@ -30,7 +31,10 @@ export class AgentToolExecutor {
   }
 
   async execute(call: ToolCall): Promise<ToolResult> {
-    if (!this.sandbox.canExecute()) {
+    // The task admission path owns canExecute() and any half-open probe slot.
+    // Tool execution is nested inside that admitted task and must not acquire
+    // a second probe slot.
+    if (circuitBreakerRegistry.getSnapshot(this.agentId).state === 'open') {
       return { ok: false, output: '', error: 'Agent isolated by Circuit Breaker' };
     }
 

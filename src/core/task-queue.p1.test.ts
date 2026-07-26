@@ -1,16 +1,16 @@
 import Database from 'better-sqlite3';
 import { UnrecoverableError } from 'bullmq';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   BULLMQ_JOB_ATTEMPTS,
   BULLMQ_LOCK_DURATION_MS,
-  getVerifierBaseline,
+  captureVerifierBaseline,
+  duplicateExecutionResultFromError,
   isDuplicateExecutionFailure,
   persistVerifierResultToDb,
   reconcileVerifierBaseline,
   shouldPurgeStaleJob,
   terminalDuplicateExecutionError,
-  VERIFIER_BASELINE_TTL_MS,
 } from './task-queue.js';
 
 describe('task queue P1 reliability guards', () => {
@@ -42,27 +42,61 @@ describe('task queue P1 reliability guards', () => {
       success: false,
       error: 'provider failed',
     })).toBe(false);
+    expect(duplicateExecutionResultFromError(error)).toEqual({
+      success: false,
+      output: '',
+      error: error?.message,
+    });
+    expect(duplicateExecutionResultFromError(new Error('provider failed'))).toBeNull();
   });
 
-  it('caches a verifier baseline by cwd and command for 60 seconds', async () => {
-    const run = vi.fn().mockResolvedValue({
+  it('captures a fresh verifier baseline for each task execution', async () => {
+    const task = {
+      taskId: 'baseline-task',
+      agentId: 'codex',
+      prompt: 'test',
+      verifier: {
+        type: 'run' as const,
+        command: 'false',
+        timeoutMs: 5_000,
+      },
+      metadata: {},
+    };
+
+    const first = await captureVerifierBaseline(task, new AbortController().signal);
+    const second = await captureVerifierBaseline(task, new AbortController().signal);
+
+    expect(first).toMatchObject({
       code: 1,
-      stdout: '',
-      stderr: 'build failed',
       timedOut: false,
     });
-    const now = 1_000_000;
-
-    await getVerifierBaseline('/repo-a', 'npm test', run, now);
-    await getVerifierBaseline('/repo-a', 'npm test', run, now + VERIFIER_BASELINE_TTL_MS - 1);
-    expect(run).toHaveBeenCalledTimes(1);
-
-    await getVerifierBaseline('/repo-a', 'npm test', run, now + VERIFIER_BASELINE_TTL_MS);
-    await getVerifierBaseline('/repo-b', 'npm test', run, now + VERIFIER_BASELINE_TTL_MS);
-    expect(run).toHaveBeenCalledTimes(3);
+    expect(second).toMatchObject({
+      code: 1,
+      timedOut: false,
+    });
+    expect(second).not.toBe(first);
   });
 
-  it('records why a failed verifier is skipped when the baseline also fails', () => {
+  it('passes the task abort signal to the pre-task baseline child', async () => {
+    const controller = new AbortController();
+    const baseline = captureVerifierBaseline({
+      taskId: 'aborted-baseline-task',
+      agentId: 'codex',
+      prompt: 'test',
+      verifier: {
+        type: 'run',
+        command: 'sleep 5',
+        timeoutMs: 10_000,
+      },
+      metadata: {},
+    }, controller.signal);
+
+    controller.abort(new Error('cancelled'));
+
+    await expect(baseline).resolves.toBeNull();
+  });
+
+  it('records why a failed verifier is skipped when its pre-task baseline failed', () => {
     const result = reconcileVerifierBaseline({
       type: 'run',
       command: 'npx tsc --noEmit',

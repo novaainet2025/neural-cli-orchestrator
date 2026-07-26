@@ -12,6 +12,7 @@ import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { ECHO_LINE_RE } from '../utils/echo-filter.js';
 
 const log = createLogger('orchestrated-loop');
@@ -159,7 +160,11 @@ export class OrchestratedLoop {
         };
       }
 
-      if (!this.sandbox.canExecute()) {
+      // executeTask() already acquired the sole half-open probe slot. Calling
+      // canExecute() again here would try to acquire a second slot and reject
+      // the probe that is already in flight. Internal checks must only observe
+      // whether another failure has opened the circuit during this task.
+      if (circuitBreakerRegistry.getSnapshot(agentId).state === 'open') {
         log.warn({ agentId, iterations }, 'Agent isolated by Circuit Breaker');
         exitReason = 'circuit-breaker';
         break;

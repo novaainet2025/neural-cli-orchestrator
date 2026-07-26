@@ -14,6 +14,7 @@ import { getApiKeys, getProvider, type ProviderConfig } from '../utils/config.js
 import { createLogger } from '../utils/logger.js';
 import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 const log = createLogger('api-executor');
 
@@ -239,7 +240,10 @@ export class ApiExecutor {
           messages.push(sys, initialUser, ...recent);
         }
 
-        if (!this.sandbox.canExecute()) break;
+        // AgentManager owns the single mutating canExecute() admission check.
+        // A half-open task already holds its probe slot, so only observe a
+        // circuit that was opened while this execution was in flight.
+        if (circuitBreakerRegistry.getSnapshot(this.provider.id).state === 'open') break;
 
         const client = this.createClient();
         const model = this.resolveTaskModel(options?.model) || 'default';

@@ -178,9 +178,12 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
   const learned = matchLearnedCircuitPattern(message);
   if (learned) {
     return {
-      reason: 'quota',
-      immediateOpen: true,
-      resetTime,
+      // Learned signatures originated from the unclassified path. They remain
+      // thresholded generic failures; only explicit provider patterns above
+      // may opt into immediate opening.
+      reason: learned.reason,
+      immediateOpen: learned.immediateOpen,
+      resetTime: learned.immediateOpen ? resetTime : null,
       matchedText: learned.signature,
       learnedSignature: learned.signature,
     };
