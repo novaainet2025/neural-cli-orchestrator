@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-07-25T22:20:00+0900",
+  "checked_at": "2026-07-26T12:20:00+0900",
   "mode": "propose",
   "total": 208,
   "pass": 205,
-  "fail": 3,
+  "fail": 2,
   "skip": 0,
-  "defer": 0,
+  "defer": 1,
   "categories": {
     "provider": {
       "pass": 9,
@@ -81,12 +81,12 @@
     },
     "build": {
       "pass": 0,
-      "fail": 1,
+      "fail": 0,
       "skip": 0,
-      "defer": 0,
-      "pass_rate": 0.0,
+      "defer": 1,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "health": {
       "pass": 1,
@@ -100,14 +100,6 @@
   },
   "provider_anomaly": null,
   "failures": [
-    {
-      "id": "build:tsc",
-      "category": "build",
-      "kind": "tsc-noemit",
-      "ref": "/Users/nova-ai/project/nco",
-      "priority": 1,
-      "detail": "tsc 오류 0건: "
-    },
     {
       "id": "hook:nova-voice-tts-progress.sh",
       "category": "hook",
@@ -128,8 +120,8 @@
   "dispatch": {
     "mode": "propose",
     "dispatched": {
-      "id": "build:tsc",
-      "taskId": "task_JMF5MNJcUTXhZHW_"
+      "id": "hook:nova-voice-tts-progress.sh",
+      "taskId": "task_RyF_BS4WHZRtz53Y"
     },
     "skipped_reason": null
   }
