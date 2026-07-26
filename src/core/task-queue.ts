@@ -8,7 +8,7 @@
  * limits concurrency so CLI processes don't conflict.
  */
 
-import { Queue, Worker, Job, QueueEvents } from 'bullmq';
+import { Queue, Worker, Job, QueueEvents, UnrecoverableError } from 'bullmq';
 import type Database from 'better-sqlite3';
 import { spawn, execFileSync, type ChildProcessByStdio } from 'child_process';
 import type { Readable } from 'stream';
@@ -25,8 +25,9 @@ import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js'
 import { acknowledgeTaskLease, recordTaskHeartbeat } from './lease-sweeper.js';
 import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from './task-escalation.js';
 import { resolveExecutorChain, providerModelDispatchable, type TeamRow, type AvailabilityFn } from './company-orchestrator.js';
+import { listActivelyRateLimited } from './rate-limit-state.js';
 import { logDecision } from './decision-log.js';
-import { transitionTask } from './task-state.js';
+import { transitionTask, TERMINAL_STATES } from './task-state.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -46,6 +47,10 @@ function isRateLimitError(message: string): boolean {
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 5_000; // 5s, then 10s, then 20s
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
+// 기본 hard timeout(20분)보다 2분 길게 유지해 실행 중 BullMQ lock 실종을 막는다.
+export const BULLMQ_LOCK_DURATION_MS = 22 * 60_000;
+export const BULLMQ_JOB_ATTEMPTS = 1;
+export const VERIFIER_BASELINE_TTL_MS = 60_000;
 const TASK_MONITOR_INTERVAL_MS = 15_000;
 const PARTIAL_OUTPUT_LIMIT = 64 * 1024;
 const DEFAULT_VERIFIER_ALLOWLIST = ['node', 'npx', 'npm', 'git', 'curl', 'true', 'false', 'sleep', 'cat', 'ls', 'grep', 'ps', 'pgrep', 'sqlite3', 'tsc', 'vitest'];
@@ -112,7 +117,7 @@ export function markTaskExecutionStarted(taskId: string): { ok: boolean; prev?: 
   return transitionTask(getDb(), taskId, 'running');
 }
 
-type TaskExecutionResult = {
+export type TaskExecutionResult = {
   success: boolean;
   output: string;
   error?: string;
@@ -125,6 +130,35 @@ type TaskExecutionResult = {
   };
 };
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
+
+export const GRACEFUL_SHUTDOWN_INTERRUPTION = 'orphaned: graceful shutdown signal';
+const PROCESS_INTERRUPT_PATTERN = /SIGINT|exit(?: code)?=130|exit 130|aborting operation/i;
+
+/**
+ * PM2 sends SIGINT to the NCO process group during a restart, so active provider
+ * CLIs can report exit 130 before the shutdown drain observes them. Keep that
+ * infrastructure interruption out of team-quality failures without masking
+ * unrelated provider failures that merely finish while shutdown is in progress.
+ */
+export function normalizeGracefulShutdownInterruption(
+  result: TaskExecutionResult,
+  shutdownSignal: string | null,
+): TaskExecutionResult {
+  if (
+    !shutdownSignal
+    || result.success
+    || !PROCESS_INTERRUPT_PATTERN.test(result.error ?? '')
+  ) {
+    return result;
+  }
+
+  return {
+    ...result,
+    success: false,
+    status: 'cancelled',
+    error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (${shutdownSignal})`,
+  };
+}
 
 /**
  * Persist the terminal result of a task re-enqueued during startup recovery.
@@ -160,7 +194,7 @@ export function persistRecoveredTaskResult(
   });
 }
 
-type VerifierResult = {
+export type VerifierResult = {
   type: 'run';
   command: string;
   timeoutMs: number;
@@ -170,7 +204,84 @@ type VerifierResult = {
   passed: boolean;
   outputSnippet: string;
   spawnError?: string;
+  verifier_skipped?: 'pre-existing build failure';
 };
+
+export type VerifierProcessResult = {
+  code: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+};
+
+type VerifierBaselineCacheEntry = {
+  expiresAt: number;
+  result: Promise<VerifierProcessResult>;
+};
+
+const verifierBaselineCache = new Map<string, VerifierBaselineCacheEntry>();
+
+/**
+ * A shared worktree can already have a failing build before the current task.
+ * Cache the lazy baseline by the exact verifier scope so concurrent failures do
+ * not fan out into duplicate builds.
+ */
+export function getVerifierBaseline(
+  cwd: string,
+  command: string,
+  run: () => Promise<VerifierProcessResult>,
+  now = Date.now(),
+): Promise<VerifierProcessResult> {
+  const key = JSON.stringify([cwd, command]);
+  const cached = verifierBaselineCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.result;
+
+  for (const [candidateKey, entry] of verifierBaselineCache) {
+    if (entry.expiresAt <= now) verifierBaselineCache.delete(candidateKey);
+  }
+
+  const result = run().catch(error => {
+    verifierBaselineCache.delete(key);
+    throw error;
+  });
+  verifierBaselineCache.set(key, {
+    expiresAt: now + VERIFIER_BASELINE_TTL_MS,
+    result,
+  });
+  return result;
+}
+
+export function shouldPurgeStaleJob(status: string | undefined): boolean {
+  return status === undefined || TERMINAL_STATES.has(status);
+}
+
+export function reconcileVerifierBaseline(
+  verifierResult: VerifierResult,
+  baseline: Pick<VerifierProcessResult, 'code' | 'timedOut'>,
+): VerifierResult {
+  if (baseline.code === 0 && !baseline.timedOut) return verifierResult;
+  return {
+    ...verifierResult,
+    passed: true,
+    verifier_skipped: 'pre-existing build failure',
+  };
+}
+
+export function terminalDuplicateExecutionError(
+  taskId: string,
+  status: string | undefined,
+): UnrecoverableError | null {
+  if (!status || !TERMINAL_STATES.has(status)) return null;
+  return new UnrecoverableError(
+    `duplicate_execution: task ${taskId} already terminal (${status})`,
+  );
+}
+
+export function isDuplicateExecutionFailure(
+  result: Pick<TaskExecutionResult, 'success' | 'error'>,
+): boolean {
+  return !result.success && (result.error ?? '').startsWith('duplicate_execution:');
+}
 
 function loadTaskMetadata(taskId: string): Record<string, unknown> {
   const row = getDb().prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as { metadata_json: string | null } | undefined;
@@ -282,13 +393,20 @@ function mergeVerifierOutput(stdout: string, stderr: string): string {
   return `${stdout}${stdout && stderr ? '\n' : ''}${stderr}`.slice(0, 2000);
 }
 
-function persistVerifierResult(taskId: string, verifierResult: VerifierResult): void {
-  const db = getDb();
+export function persistVerifierResultToDb(
+  db: Database.Database,
+  taskId: string,
+  verifierResult: VerifierResult,
+): void {
   db.prepare(`
     UPDATE tasks
     SET verifier_result_json=?, updated_at=datetime('now')
     WHERE id=?
   `).run(JSON.stringify(verifierResult), taskId);
+}
+
+function persistVerifierResult(taskId: string, verifierResult: VerifierResult): void {
+  persistVerifierResultToDb(getDb(), taskId, verifierResult);
 }
 
 async function waitForExitWithTimeout(
@@ -456,8 +574,9 @@ export async function applyVerifierGate(
   }
 
   try {
+    const projectDir = resolveVerifierProjectDir(task);
     const child = spawn(binary, args, {
-      cwd: resolveVerifierProjectDir(task),
+      cwd: projectDir,
       env: process.env,
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -476,16 +595,52 @@ export async function applyVerifierGate(
       passed,
       outputSnippet,
     };
-    try {
-      persistVerifierResult(task.taskId, verifierResult);
-    } catch (err) {
-      log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
-    }
-
     if (passed) {
+      try {
+        persistVerifierResult(task.taskId, verifierResult);
+      } catch (err) {
+        log.warn({ taskId: task.taskId, err }, 'Failed to persist verifier result');
+      }
       return classified;
     }
 
+    try {
+      const baseline = await getVerifierBaseline(
+        projectDir,
+        task.verifier.command,
+        async () => {
+          const baselineChild = spawn(binary, args, {
+            cwd: projectDir,
+            env: process.env,
+            detached: process.platform !== 'win32',
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          return waitForExitWithTimeout(baselineChild, timeoutMs);
+        },
+      );
+      if (baseline.code !== 0 || baseline.timedOut) {
+        const skippedResult = reconcileVerifierBaseline(verifierResult, baseline);
+        try {
+          persistVerifierResult(task.taskId, skippedResult);
+        } catch (persistErr) {
+          log.warn({ taskId: task.taskId, err: persistErr }, 'Failed to persist skipped verifier result');
+        }
+        return classified;
+      }
+    } catch (baselineError) {
+      log.warn({
+        taskId: task.taskId,
+        cwd: projectDir,
+        command: task.verifier.command,
+        error: baselineError instanceof Error ? baselineError.message : String(baselineError),
+      }, 'Verifier baseline could not be established; preserving verifier failure');
+    }
+
+    try {
+      persistVerifierResult(task.taskId, verifierResult);
+    } catch (persistErr) {
+      log.warn({ taskId: task.taskId, err: persistErr }, 'Failed to persist verifier result');
+    }
     return {
       ...classified,
       success: false,
@@ -603,6 +758,7 @@ class TaskQueueManager {
   private agents = new Map<string, AgentQueueEntry>();
   private executor: TaskExecutor | null = null;
   private initialized = false;
+  private shutdownSignal: string | null = null;
   private runtimes = new Map<string, TaskRuntimeEntry>();
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -629,6 +785,10 @@ class TaskQueueManager {
    */
   setExecutor(fn: TaskExecutor): void {
     this.executor = fn;
+  }
+
+  beginShutdown(signal: string): void {
+    this.shutdownSignal ??= signal;
   }
 
   /**
@@ -699,6 +859,7 @@ class TaskQueueManager {
 
     entry.queue = new Queue<QueuedTask>(queueName, { connection });
     entry.queueEvents = new QueueEvents(queueName, { connection });
+    await this.purgeStaleJobs(entry.queue);
 
     entry.worker = new Worker<QueuedTask>(
       queueName,
@@ -711,9 +872,10 @@ class TaskQueueManager {
         // LLM 에이전트 잡은 수 분씩 걸린다. BullMQ 기본 lockDuration(30s)로는
         // 락 갱신이 한 번만 밀려도(이벤트 루프 지연·Redis 순간 지연) 잡이 stalled로
         // 처리되어 "could not renew lock"/"Lock mismatch"로 워커가 크래시하고 pm2가
-        // 재시작 루프에 빠진다(→ /api 간헐적 빈응답). 락 유효기간을 10분으로 늘리고
+        // 재시작 루프에 빠진다(→ /api 간헐적 빈응답). 락 유효기간을 기본 hard
+        // timeout(20분)+2분으로 늘리고
         // 스톨 감지 주기·허용치를 완화해 장시간 잡을 견딘다.
-        lockDuration: 600_000,
+        lockDuration: BULLMQ_LOCK_DURATION_MS,
         stalledInterval: 60_000,
         maxStalledCount: 3,
       },
@@ -729,7 +891,14 @@ class TaskQueueManager {
     await entry.semaphore.acquire();
 
     const controller = new AbortController();
-    this.startRuntime(task, controller);
+    try {
+      this.startRuntime(task, controller);
+    } catch (err) {
+      // startRuntime can throw (P1-1 duplicate-execution guard) before the runtime is
+      // registered — release the slot we already acquired or it leaks permanently.
+      entry.semaphore.release();
+      throw err;
+    }
     entry.activeControllers.set(task.taskId, controller);
     entry.active++;
 
@@ -824,6 +993,13 @@ class TaskQueueManager {
       const result = await this.runEnqueue({ ...task, agentId: currentAgentId, metadata: currentMetadata });
 
       if (result.success) return result;
+      // BullMQ waitUntilFinished() surfaces an UnrecoverableError as a failed result.
+      // Do not turn the blocked duplicate into an enqueue-loop retry or escalation.
+      if (isDuplicateExecutionFailure(result)) return result;
+      // A cancellation is terminal. In particular, graceful-shutdown SIGINT
+      // normalization must not fall through to tier escalation and start a new
+      // provider while the process is draining.
+      if (result.status === 'cancelled') return result;
 
       // ── P11: 팀 위임 transient 실패 → 팀 실행자 체인 다음 후보로 1회 재시도(team-aware) ──
       // company-orchestrator 파이프라인의 stage-failover(P5)를 단일 팀 위임(/api/task 직행)에도 부여.
@@ -948,10 +1124,7 @@ class TaskQueueManager {
     // Prefer free/local agents, exclude rate-limited ones
     try {
       const db = getDb();
-      const limited = new Set(
-        (db.prepare(`SELECT agent_id FROM rate_limit_state WHERE is_limited=1 AND reset_at > datetime('now')`).all() as any[])
-          .map((r: any) => r.agent_id)
-      );
+      const limited = listActivelyRateLimited(db);
 
       const candidates = providers
         .filter(p => p.id !== currentAgentId && p.id !== originalAgentId && !limited.has(p.id))
@@ -1002,7 +1175,9 @@ class TaskQueueManager {
       removeOnComplete: 100,
       removeOnFail: 50,
       priority: task.priority ?? 5,
-      attempts: 3,
+      // 재시도·에스컬레이션은 enqueue()의 단일 루프가 담당한다. BullMQ까지 재시도하면
+      // 동일 taskId가 이중 실행되고 terminal 결과가 매몰될 수 있다.
+      attempts: BULLMQ_JOB_ATTEMPTS,
     });
     entry.waiting++;
     let leftWaiting = false;
@@ -1090,6 +1265,42 @@ class TaskQueueManager {
     });
   }
 
+  /**
+   * Redis에 남은 terminal/missing job만 제거한다. 비종결 queued job은 부팅 orphan
+   * 복구가 같은 jobId로 이어받아야 하므로 보존한다.
+   */
+  private async purgeStaleJobs(queue: Queue<QueuedTask>): Promise<number> {
+    try {
+      const jobs = await queue.getJobs(
+        ['wait', 'delayed', 'prioritized', 'paused', 'completed', 'failed'],
+        0,
+        999,
+        true,
+      );
+      const db = getDb();
+      const readStatus = db.prepare('SELECT status FROM tasks WHERE id=?');
+      let removed = 0;
+      for (const job of jobs) {
+        const row = readStatus.get(job.data.taskId) as { status?: string } | undefined;
+        if (!shouldPurgeStaleJob(row?.status)) continue;
+        try {
+          await job.remove();
+          removed++;
+        } catch {
+          // 다른 worker가 상태를 바꾼 경합은 다음 부팅/정리 주기에 재평가한다.
+        }
+      }
+      if (removed > 0) log.info({ queue: queue.name, removed }, 'Purged stale BullMQ jobs');
+      return removed;
+    } catch (error) {
+      log.warn({
+        queue: queue.name,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Failed to purge stale BullMQ jobs');
+      return 0;
+    }
+  }
+
   private async enqueueSemaphore(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
     if (!this.executor) return { success: false, output: '', error: 'Executor not set' };
 
@@ -1099,7 +1310,13 @@ class TaskQueueManager {
     entry.waiting = Math.max(0, entry.waiting - 1);
 
     const controller = new AbortController();
-    this.startRuntime(task, controller);
+    try {
+      this.startRuntime(task, controller);
+    } catch (err) {
+      // Same slot-leak hazard as the BullMQ path (P1-1) — release before propagating.
+      entry.semaphore.release();
+      throw err;
+    }
     entry.activeControllers.set(task.taskId, controller);
     entry.active++;
 
@@ -1327,6 +1544,21 @@ class TaskQueueManager {
     this.runtimes.set(task.taskId, runtime);
     const started = markTaskExecutionStarted(task.taskId);
     if (!started.ok && started.prev !== 'running') {
+      // P1-1: task-state.transitionTask already rejects queued/assigned→running dupes at
+      // the DB layer, but a stale BullMQ job (redispatched/retried against an already
+      // terminal task) previously fell through to this warn-and-continue path and executed
+      // anyway, producing "buried" duplicate results. If the task is already terminal, abort
+      // this execution before it burns provider budget — and throw UnrecoverableError so
+      // BullMQ does not retry (a plain Error would trigger another wasted attempt).
+      const duplicateError = terminalDuplicateExecutionError(task.taskId, started.prev);
+      if (duplicateError) {
+        this.runtimes.delete(task.taskId);
+        log.warn(
+          { taskId: task.taskId, prev: started.prev },
+          'Duplicate execution blocked — task already in terminal state',
+        );
+        throw duplicateError;
+      }
       log.warn(
         { taskId: task.taskId, prev: started.prev },
         'Task execution started without a valid running-state transition',
@@ -1359,7 +1591,10 @@ class TaskQueueManager {
     const error = aborted
       ? (runtime.abortReason || result.error)
       : (result.error || (!result.success ? 'unknown: execution failed' : undefined));
-    return { ...result, success, output, error, status };
+    return normalizeGracefulShutdownInterruption(
+      { ...result, success, output, error, status },
+      this.shutdownSignal,
+    );
   }
 
   private applyRuntimeMetadata(taskId: string, result: TaskExecutionResult, finalized: TaskExecutionResult): TaskExecutionResult {

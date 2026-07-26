@@ -21,6 +21,8 @@ import { classifyTier, type Tier } from './tier-policy.js';
 import type { TaskType } from './quality-gate.js';
 import { acquireComputerUseLease } from './computer-use-company.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
+import { hasResponseContract } from './response-contract.js';
+import { listActivelyRateLimited } from './rate-limit-state.js';
 
 // 프로바이더 가용성 판정: 등록되어 있고 서킷이 열려있지 않은(리밋/quota/실패로 차단 안 된) 것만 true.
 // 리밋 걸린 프로바이더를 선택 단계에서 즉시 걸러 폴백이 지연 없이 이뤄지게 한다.
@@ -32,10 +34,8 @@ function liveAvailability(known: Set<string>): AvailabilityFn {
     if (limited) return limited;
     limited = new Set<string>();
     try {
-      const rows = getDb()
-        .prepare(`SELECT agent_id FROM rate_limit_state WHERE is_limited=1`)
-        .all() as Array<{ agent_id: string }>;
-      for (const r of rows) limited.add(r.agent_id);
+      // is_limited=1 alone is not enough — expired reset_at must not permanently exclude.
+      limited = listActivelyRateLimited(getDb());
     } catch { /* 테이블 없음/오류 → 리밋 정보 없이 진행 */ }
     return limited;
   };
@@ -92,6 +92,10 @@ export interface CompanyRun {
   mode: OrchestrationMode;
   status: RunStatus;
   dryRun: boolean;
+  projectDir: string;
+  maxIterations: number;
+  completedIterations: number;
+  resumeCount: number;
   createdAt: string;
   updatedAt: string;
   decomposer: string | null;   // 분해 담당 LLM(실제 사용된 agent)
@@ -109,6 +113,19 @@ export interface CompanyRun {
     activatedAt?: string;
     releasedAt?: string;
   };
+}
+
+export function decideCompanyRunResume(input: {
+  incomplete: boolean;
+  resumeCount: number;
+  completedIterations: number;
+  maxIterations: number;
+  maxResumes?: number;
+}): 'complete' | 'continue' | 'recovery_budget_exhausted' | 'iteration_budget_exhausted' {
+  if (!input.incomplete) return 'complete';
+  if (input.resumeCount > (input.maxResumes ?? 3)) return 'recovery_budget_exhausted';
+  if (input.completedIterations >= input.maxIterations) return 'iteration_budget_exhausted';
+  return 'continue';
 }
 
 // ── 순수 유틸(테스트 대상) ─────────────────────────────────────────────
@@ -559,9 +576,74 @@ function isDeclaredTeamExecutor(team: TeamRow, executor: string): boolean {
 // ── 실행 상태 저장소(인메모리, LRU 상한) ───────────────────────────────
 const RUNS = new Map<string, CompanyRun>();
 const MAX_RUNS = 200;
+const ACTIVE_RUN_DRIVERS = new Set<string>();
+const NON_TERMINAL_RUN_STATUSES = new Set<RunStatus>([
+  'pending', 'decomposing', 'dispatching', 'running', 'dispatched',
+]);
 
-function putRun(run: CompanyRun): void {
+function persistRun(run: CompanyRun): boolean {
+  try {
+    getDb().prepare(`
+      INSERT INTO company_runs
+        (id, org_id, org_slug, goal, mode, status, dry_run, project_dir,
+         run_json, created_at, updated_at, finished_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        status=excluded.status,
+        run_json=excluded.run_json,
+        updated_at=excluded.updated_at,
+        finished_at=excluded.finished_at
+    `).run(
+      run.id,
+      run.orgId,
+      run.orgSlug,
+      run.goal,
+      run.mode,
+      run.status,
+      run.dryRun ? 1 : 0,
+      run.projectDir,
+      JSON.stringify(run),
+      run.createdAt,
+      run.updatedAt,
+      NON_TERMINAL_RUN_STATUSES.has(run.status) ? null : run.updatedAt,
+    );
+    return true;
+  } catch (error) {
+    log.error({
+      runId: run.id,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Company run persistence failed; durability guarantee is degraded');
+    return false;
+  }
+}
+
+function parsePersistedRun(value: string): CompanyRun | null {
+  try {
+    const parsed = JSON.parse(value) as CompanyRun;
+    if (!parsed?.id || !Array.isArray(parsed.stages)) return null;
+    parsed.projectDir ||= process.cwd();
+    parsed.maxIterations = Math.min(
+      ABSOLUTE_MAX_RUN_ITERATIONS,
+      Math.max(1, parsed.maxIterations ?? MAX_RUN_ITERATIONS),
+    );
+    parsed.completedIterations = Math.max(0, parsed.completedIterations ?? 0);
+    parsed.resumeCount = Math.max(0, parsed.resumeCount ?? 0);
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function putRun(run: CompanyRun, requirePersistence = false): void {
   RUNS.set(run.id, run);
+  const persisted = persistRun(run);
+  if (requirePersistence && !persisted) {
+    RUNS.delete(run.id);
+    throw new OrchestrationError(
+      503,
+      `company run persistence unavailable: ${run.id}`,
+    );
+  }
   while (RUNS.size > MAX_RUNS) {
     const oldest = RUNS.keys().next().value;
     if (oldest === undefined) break;
@@ -570,15 +652,39 @@ function putRun(run: CompanyRun): void {
 }
 
 export function getCompanyRun(runId: string): CompanyRun | null {
-  return RUNS.get(runId) ?? null;
+  const cached = RUNS.get(runId);
+  if (cached) return cached;
+  try {
+    const row = getDb().prepare(
+      'SELECT run_json FROM company_runs WHERE id=?'
+    ).get(runId) as { run_json: string } | undefined;
+    const run = row ? parsePersistedRun(row.run_json) : null;
+    if (run) putRun(run);
+    return run;
+  } catch {
+    return null;
+  }
 }
 
 export function listCompanyRuns(limit = 20): CompanyRun[] {
-  return [...RUNS.values()].slice(-limit).reverse();
+  try {
+    const rows = getDb().prepare(
+      'SELECT run_json FROM company_runs ORDER BY created_at DESC LIMIT ?'
+    ).all(limit) as Array<{ run_json: string }>;
+    return rows.map((row) => parsePersistedRun(row.run_json)).filter((run): run is CompanyRun => Boolean(run));
+  } catch {
+    return [...RUNS.values()].slice(-limit).reverse();
+  }
 }
 
 function touch(run: CompanyRun): void {
   run.updatedAt = new Date().toISOString();
+  if (!persistRun(run)) {
+    throw new OrchestrationError(
+      503,
+      `company run persistence unavailable: ${run.id}`,
+    );
+  }
 }
 
 // ── DB 로더 ─────────────────────────────────────────────────────────────
@@ -621,6 +727,7 @@ export interface StartRunOptions {
   mode?: OrchestrationMode;
   projectDir: string;
   dryRun?: boolean;
+  maxIterations?: number;
 }
 
 const TECHNOLOGY_PORT_STAGE_SLUGS = [
@@ -736,6 +843,13 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
     mode,
     status: 'pending',
     dryRun: opts.dryRun === true,
+    projectDir: opts.projectDir,
+    maxIterations: Math.min(
+      ABSOLUTE_MAX_RUN_ITERATIONS,
+      Math.max(1, Math.floor(opts.maxIterations ?? MAX_RUN_ITERATIONS)),
+    ),
+    completedIterations: 0,
+    resumeCount: 0,
     createdAt: now,
     updatedAt: now,
     decomposer: decomposerCandidates[0] ?? null,
@@ -762,19 +876,146 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
       };
     }),
   };
-  putRun(run);
+  putRun(run, true);
 
   // 실행은 비동기로 구동(HTTP 응답을 막지 않음). 파이프라인은 수분 걸릴 수 있음.
-  void driveRun(app, run.id, ordered, opts.projectDir, decomposerCandidates).catch((err) => {
-    const r = RUNS.get(run.id);
-    if (r) { r.status = 'failed'; r.error = err instanceof Error ? err.message : String(err); touch(r); }
-    log.error({ err: err instanceof Error ? err.message : String(err), runId: run.id }, 'company run drive failed');
-  });
+  launchRunDriver(app, run, ordered, decomposerCandidates, false);
 
   return run;
 }
 
-async function driveRun(app: FastifyInstance, runId: string, teams: TeamRow[], projectDir: string, decomposers: string[]): Promise<void> {
+function launchRunDriver(
+  app: FastifyInstance,
+  run: CompanyRun,
+  teams: TeamRow[],
+  decomposers: string[],
+  resume: boolean,
+): void {
+  if (ACTIVE_RUN_DRIVERS.has(run.id)) return;
+  ACTIVE_RUN_DRIVERS.add(run.id);
+  void (async () => {
+    if (resume) {
+      await reconcilePersistedStages(run);
+      const incomplete = run.stages.some((stage) => stage.status !== 'completed');
+      run.resumeCount += 1;
+      touch(run);
+      const decision = decideCompanyRunResume({
+        incomplete,
+        resumeCount: run.resumeCount,
+        completedIterations: run.completedIterations,
+        maxIterations: run.maxIterations,
+        maxResumes: MAX_RUN_RESUMES,
+      });
+      if (decision === 'recovery_budget_exhausted') {
+        finalizeRun(run);
+        run.error = `restart recovery budget exhausted (${MAX_RUN_RESUMES})`;
+        touch(run);
+        return;
+      }
+      if (decision === 'iteration_budget_exhausted') {
+        finalizeRun(run);
+        return;
+      }
+    }
+    await driveRun(app, run.id, teams, run.projectDir, decomposers, resume);
+  })().catch((err) => {
+    const current = RUNS.get(run.id);
+    if (current) {
+      current.status = 'failed';
+      current.error = err instanceof Error ? err.message : String(err);
+      current.updatedAt = new Date().toISOString();
+      // 저장소 장애가 원인이라면 다시 throw하지 않고 마지막 best-effort 기록만
+      // 시도한다. 실행 드라이버는 이미 중단되어 추가 외부 작업은 진행하지 않는다.
+      persistRun(current);
+    }
+    log.error({
+      err: err instanceof Error ? err.message : String(err),
+      runId: run.id,
+      resume,
+    }, 'company run drive failed');
+  }).finally(() => {
+    ACTIVE_RUN_DRIVERS.delete(run.id);
+  });
+}
+
+async function reconcilePersistedStages(run: CompanyRun): Promise<void> {
+  for (let index = 0; index < run.stages.length; index++) {
+    const stage = run.stages[index];
+    if (!stage.taskId || !['running', 'pending'].includes(stage.status)) continue;
+    const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS);
+    stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
+    stage.outputChars = (result.response ?? '').length;
+    const acceptable = result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
+      isLastStage: index === run.stages.length - 1,
+      requireProtocolPrefix: result.requireProtocolPrefix,
+    });
+    stage.status = acceptable ? 'completed' : (result.status as StageStatus);
+    if (!acceptable) {
+      stage.error = result.status === 'completed'
+        ? `insufficient output (${stage.outputChars}자)`
+        : `recovered task ${result.status}`;
+    }
+    touch(run);
+  }
+}
+
+/**
+ * 부팅 시 DB에 남은 비종결 회사 실행을 복원한다.
+ * 동일 프로세스에서 이미 구동 중인 run은 ACTIVE_RUN_DRIVERS로 중복 실행을 막는다.
+ */
+export function resumeCompanyRuns(app: FastifyInstance): number {
+  let rows: Array<{ run_json: string }> = [];
+  try {
+    rows = getDb().prepare(`
+      SELECT run_json
+      FROM company_runs
+      WHERE status IN ('pending','decomposing','dispatching','running','dispatched')
+      ORDER BY created_at ASC
+    `).all() as Array<{ run_json: string }>;
+  } catch (error) {
+    throw new Error(
+      `company run resume store unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  let resumed = 0;
+  for (const row of rows) {
+    const run = parsePersistedRun(row.run_json);
+    if (!run || ACTIVE_RUN_DRIVERS.has(run.id)) continue;
+    try {
+      const org = loadOrg(run.orgId);
+      const teams = orderTeams(loadTeams(org.id));
+      validateCompanyPolicy(org, run.mode, teams);
+      const known = new Set(agentManager.listEnabledIds());
+      const decomposers = resolveCompanyDecomposers(
+        run.orgSlug,
+        org.manager,
+        known,
+        liveAvailability(known),
+      );
+      putRun(run, true);
+      launchRunDriver(app, run, teams, decomposers, true);
+      resumed++;
+    } catch (error) {
+      if (error instanceof OrchestrationError && error.code === 503) {
+        throw error;
+      }
+      run.status = 'failed';
+      run.error = `resume failed: ${error instanceof Error ? error.message : String(error)}`;
+      putRun(run, true);
+    }
+  }
+  return resumed;
+}
+
+async function driveRun(
+  app: FastifyInstance,
+  runId: string,
+  teams: TeamRow[],
+  projectDir: string,
+  decomposers: string[],
+  resume = false,
+): Promise<void> {
   const run = RUNS.get(runId);
   if (!run) return;
   if (run.orgSlug === 'computer-use' && !run.dryRun) {
@@ -823,7 +1064,7 @@ async function driveRun(app: FastifyInstance, runId: string, teams: TeamRow[], p
 
     let driveError: unknown;
     try {
-      await driveRunBody(app, runId, teams, projectDir, decomposers);
+      await driveRunBody(app, runId, teams, projectDir, decomposers, resume);
     } catch (error) {
       driveError = error;
     } finally {
@@ -858,10 +1099,17 @@ async function driveRun(app: FastifyInstance, runId: string, teams: TeamRow[], p
     if (driveError) throw driveError;
     return;
   }
-  await driveRunBody(app, runId, teams, projectDir, decomposers);
+  await driveRunBody(app, runId, teams, projectDir, decomposers, resume);
 }
 
-async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[], projectDir: string, decomposers: string[]): Promise<void> {
+async function driveRunBody(
+  app: FastifyInstance,
+  runId: string,
+  teams: TeamRow[],
+  projectDir: string,
+  decomposers: string[],
+  resume = false,
+): Promise<void> {
   const run = RUNS.get(runId);
   if (!run) return;
   const teamBySlug = new Map(teams.map((t) => [t.slug, t]));
@@ -869,39 +1117,41 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
   // 1) 분해(LLM 매니저) — 후보 프로바이더를 순서대로 시도, 첫 파싱성공 채택.
   //    각 시도 직전 서킷 재확인(그 사이 리밋 걸린 provider 즉시 스킵) + 하드 타임아웃 race
   //    (executeTask 내부 abort 가 늦어도 후보 넘어가도록).
-  run.status = 'decomposing'; touch(run);
-  let decomposition: Record<string, string> | null = null;
-  const prompt = buildDecompositionPrompt(run.orgName, run.goal, teams);
-  const known = new Set(agentManager.listEnabledIds());
-  const avail = liveAvailability(known);
-  let attempts = 0;
-  for (const cand of decomposers) {
-    if (!avail(cand)) { log.warn({ runId, cand }, 'decomposer circuit open/unavailable, skipping'); continue; }
-    if (attempts >= MAX_DECOMPOSE_ATTEMPTS) { log.warn({ runId, attempts }, 'decompose attempt cap reached, falling back to template'); break; }
-    attempts++;
-    try {
-      run.decomposer = cand; touch(run);
-      const res = await withHardTimeout(
-        agentManager.executeTask(cand, prompt, { projectDir, timeoutMs: DECOMPOSE_TIMEOUT_MS }),
-        DECOMPOSE_TIMEOUT_MS + 5000,
-      );
-      if (res && res.success && res.output) {
-        const parsed = parseDecomposition(res.output, teams);
-        if (parsed) { decomposition = parsed; run.decomposer = cand; break; }
+  if (!resume || run.stages.some((stage) => !stage.subtask)) {
+    run.status = 'decomposing'; touch(run);
+    let decomposition: Record<string, string> | null = null;
+    const prompt = buildDecompositionPrompt(run.orgName, run.goal, teams);
+    const known = new Set(agentManager.listEnabledIds());
+    const avail = liveAvailability(known);
+    let attempts = 0;
+    for (const cand of decomposers) {
+      if (!avail(cand)) { log.warn({ runId, cand }, 'decomposer circuit open/unavailable, skipping'); continue; }
+      if (attempts >= MAX_DECOMPOSE_ATTEMPTS) { log.warn({ runId, attempts }, 'decompose attempt cap reached, falling back to template'); break; }
+      attempts++;
+      try {
+        run.decomposer = cand; touch(run);
+        const res = await withHardTimeout(
+          agentManager.executeTask(cand, prompt, { projectDir, timeoutMs: DECOMPOSE_TIMEOUT_MS }),
+          DECOMPOSE_TIMEOUT_MS + 5000,
+        );
+        if (res && res.success && res.output) {
+          const parsed = parseDecomposition(res.output, teams);
+          if (parsed) { decomposition = parsed; run.decomposer = cand; break; }
+        }
+        log.warn({ runId, cand, success: res?.success }, 'decomposer produced no parseable JSON, trying next');
+      } catch (err) {
+        log.warn({ err: err instanceof Error ? err.message : String(err), runId, cand }, 'decomposer threw/timed out, trying next');
       }
-      log.warn({ runId, cand, success: res?.success }, 'decomposer produced no parseable JSON, trying next');
-    } catch (err) {
-      log.warn({ err: err instanceof Error ? err.message : String(err), runId, cand }, 'decomposer threw/timed out, trying next');
     }
-  }
-  run.decomposeSource = decomposition ? 'llm' : 'template';
+    run.decomposeSource = decomposition ? 'llm' : 'template';
 
-  // 2) 각 단계 하위작업 확정(분해 결과 우선, 없으면 템플릿)
-  for (const stage of run.stages) {
-    const team = teamBySlug.get(stage.teamSlug)!;
-    stage.subtask = scopeDecomposedSubtask(team, run.goal, decomposition?.[stage.teamSlug]);
+    // 2) 각 단계 하위작업 확정(분해 결과 우선, 없으면 템플릿)
+    for (const stage of run.stages) {
+      const team = teamBySlug.get(stage.teamSlug)!;
+      stage.subtask = scopeDecomposedSubtask(team, run.goal, decomposition?.[stage.teamSlug]);
+    }
+    touch(run);
   }
-  touch(run);
 
   // 2.5) 역량 기반 실행자 재선정 — subtask 확정 후 dispatch 전, 깨진/제거 lead 를 무시하고
   //      subtask 유형(inferTaskType)으로 현재 가용 프로바이더 중 최적 실행자 재배정.
@@ -926,9 +1176,12 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
   // ── 루프 앤진(닫힌 자기교정 루프): EXECUTE → VERIFY → (fail) REFINE → EXECUTE, 완벽 완료까지 반복 ──
   // 미완료 단계를 매 반복 fresh 가용성으로 실행자 재선정(REFINE) 후 재실행. 전 단계 completed 또는 MAX 반복까지.
   const baseSubtasks = new Map(run.stages.map((s) => [s.teamSlug, s.subtask ?? '']));
-  for (run.iteration = 1; run.iteration <= MAX_RUN_ITERATIONS; run.iteration++) {
+  const firstIteration = Math.min(run.maxIterations, Math.max(1, run.completedIterations + 1));
+  for (let iteration = firstIteration; iteration <= run.maxIterations; iteration++) {
+    run.iteration = iteration;
+    touch(run);
     // REFINE: 2회차부터 미완료 단계 실행자 재선정(서킷/리밋 회복 반영) + 상태 초기화
-    if (run.iteration > 1) {
+    if (iteration > 1) {
       const k = new Set(agentManager.listEnabledIds());
       const a = liveAvailability(k);
       for (const stage of run.stages) {
@@ -956,6 +1209,8 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
     }
 
     // VERIFY: 전 단계 완료면 성공 확정하고 루프 종료
+    run.completedIterations = iteration;
+    touch(run);
     const safelyRejected = run.orgSlug === 'technology-porting' && run.portDecision === 'reject';
     if (run.stages.every((s) => s.status === 'completed' || (safelyRejected && s.status === 'skipped'))) {
       run.status = 'completed';
@@ -965,9 +1220,9 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
     }
 
     // 미완료 → 다음 반복(서킷 회복 대기). 마지막 반복이면 루프 탈출.
-    if (run.iteration < MAX_RUN_ITERATIONS) {
+    if (iteration < run.maxIterations) {
       run.status = 'running'; touch(run);
-      log.warn({ runId, iteration: run.iteration,
+      log.warn({ runId, iteration,
         incomplete: run.stages.filter((s) => s.status !== 'completed').map((s) => s.teamSlug) },
         'loop-engine: iteration incomplete — refining executors and retrying');
       await sleep(LOOP_BACKOFF_MS);
@@ -975,6 +1230,7 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
   }
 
   // MAX 반복 후에도 미완료 → partial/failed 확정
+  run.iteration = run.maxIterations;
   finalizeRun(run);
 }
 
@@ -1068,7 +1324,7 @@ function finalizeRun(run: CompanyRun): void {
   const failed = run.summary.failed;
   run.status = failed === 0 ? 'completed' : run.summary.succeeded > 0 ? 'partial' : 'failed';
   if (failed > 0) {
-    run.error = `루프 ${run.iteration ?? MAX_RUN_ITERATIONS}회 후 ${failed}/${run.summary.total} 미완료: ` +
+    run.error = `루프 ${run.iteration ?? run.maxIterations}회 후 ${failed}/${run.summary.total} 미완료: ` +
       run.stages.filter((s) => s.status !== 'completed')
                 .map((s) => `${s.teamSlug}(${s.executor})`).join(', ');
   }
@@ -1226,6 +1482,8 @@ const MAX_STAGE_ATTEMPTS = 3;            // 순차 단계 failover: 초기 1 + �
 const PARALLEL_STAGE_TIMEOUT_MS = 15 * 60 * 1000; // 병렬 단계당 완료 대기 상한
 const PARALLEL_STAGGER_MS = 400;         // dispatch 스태거(로컬 단일스레드 보호)
 const MAX_RUN_ITERATIONS = 5;            // 루프 앤진: 완료-루프 최대 반복(닫힌 자기교정)
+const ABSOLUTE_MAX_RUN_ITERATIONS = 10;   // 외부 입력으로 무한 루프를 만들 수 없게 하는 절대 상한
+const MAX_RUN_RESUMES = 3;                // 반복 예산과 별도인 프로세스 재시작 복구 절대 상한
 const LOOP_BACKOFF_MS = 15 * 1000;       // 반복 사이 대기(서킷/리밋 회복 여유)
 const PIPELINE_HANDOFF_CHARS = 4000;
 const POLL_MS = 2000;
@@ -1250,22 +1508,22 @@ async function waitForTask(taskId: string, timeoutMs: number): Promise<{
   const db = getDb();
   const deadline = Date.now() + timeoutMs;
   for (;;) {
-    const row = db.prepare(`SELECT status, response, verifier_json FROM tasks WHERE id=?`).get(taskId) as
-      { status: string | null; response: string | null; verifier_json: string | null } | undefined;
+    const row = db.prepare(`SELECT status, response, prompt FROM tasks WHERE id=?`).get(taskId) as
+      { status: string | null; response: string | null; prompt: string | null } | undefined;
     const status = row?.status ?? 'failed';
     if (!row) return { status: 'failed', response: null, requireProtocolPrefix: false };
     if (TERMINAL.has(status)) {
       return {
         status,
         response: row.response ?? null,
-        requireProtocolPrefix: Boolean(row.verifier_json),
+        requireProtocolPrefix: hasResponseContract(row.prompt),
       };
     }
     if (Date.now() >= deadline) {
       return {
         status: 'timed_out',
         response: row.response ?? null,
-        requireProtocolPrefix: Boolean(row.verifier_json),
+        requireProtocolPrefix: hasResponseContract(row.prompt),
       };
     }
     await sleep(POLL_MS);

@@ -18,6 +18,7 @@ import {
   type PromptGateInfo,
   validateProjectDirMetadata,
 } from './task-intake.js';
+import { hasResponseContract } from '../core/response-contract.js';
 import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
 import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
@@ -46,6 +47,8 @@ import {
 import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
 import { registerTriadRoutes } from './routes/triad.js';
+import { markTaskQualityRejected } from './task-quality-state.js';
+import { reserveRetry, rollbackRetryReservation } from './retry-budget.js';
 
 type TaskFailureContext = {
   mode?: string | null;
@@ -333,7 +336,9 @@ import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { registerTeamsRoutes } from './routes/teams.js';
 import { registerGoalsRoutes } from './routes/goals.js';
 import { registerPerformanceRoutes } from './routes/performance.js';
+import { registerPerformanceFlowRoutes } from './routes/performance-flow.js';
 import { registerWorkReportRoutes } from './routes/work-reports.js';
+import { registerHarnessRoutes } from './routes/harness.js';
 import { registerAuditRoutes } from './routes/audit.js';
 import { registerTeamScoreRoutes } from './routes/team-scores.js';
 import { registerWebScrapingRoutes } from './routes/web-scraping.js';
@@ -536,31 +541,6 @@ async function listActiveLocks(): Promise<ActiveLock[]> {
 
 let cachedCommGraph: CommGraphConfig | null = null;
 let cachedCommGraphWarning: string | null = null;
-
-const readRetryCount = (db: ReturnType<typeof getDb>, taskId: string) => db.prepare(`
-  SELECT count
-  FROM retry_counts
-  WHERE task_id=?
-`).get(taskId) as { count: number } | undefined;
-
-const reserveRetry = (db: ReturnType<typeof getDb>, taskId: string) => db.transaction((sourceTaskId: string) => {
-  const row = readRetryCount(db, sourceTaskId);
-  const count = row?.count ?? 0;
-  if (count >= 3) {
-    return { allowed: false as const, count };
-  }
-  db.prepare(`
-    INSERT INTO retry_counts (task_id, count)
-    VALUES (?, 1)
-    ON CONFLICT(task_id) DO UPDATE SET count = retry_counts.count + 1
-  `).run(sourceTaskId);
-  const updated = readRetryCount(db, sourceTaskId) as { count: number };
-  return { allowed: true as const, count: updated.count };
-});
-
-const rollbackRetryReservation = (db: ReturnType<typeof getDb>, taskId: string) => {
-  db.prepare('UPDATE retry_counts SET count = MAX(count - 1, 0) WHERE task_id=?').run(taskId);
-};
 
 const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
   const taskLineage = db.prepare(`
@@ -1073,9 +1053,18 @@ export async function createGateway() {
         projectDir: resolveInternalProjectDir(),
       },
     };
-    const retryReservation = reserveRetry(db, sourceTaskId)(sourceTaskId);
+    const retryReservation = reserveRetry(db, sourceTaskId);
     if (!retryReservation.allowed) {
-      return { ok: false, statusCode: 429, body: { error: 'retry limit exceeded', count: retryReservation.count } };
+      return {
+        ok: false,
+        statusCode: 429,
+        body: {
+          error: 'retry limit exceeded',
+          reason: retryReservation.reason,
+          count: retryReservation.count,
+          totalCount: retryReservation.totalCount,
+        },
+      };
     }
 
     const created = await app.inject({ method: 'POST', url: '/api/task', payload: finalPayload });
@@ -1099,11 +1088,50 @@ export async function createGateway() {
     taskId: string,
     failure: { status?: string | null; error?: string | null; response?: string | null },
   ): Promise<void> => {
-    if ((process.env.NCO_AUTO_FAILOVER ?? 'on').toLowerCase() === 'off') return;
-    if (!isRetryableFailoverFailure(failure)) return;
+    const recordSkip = (reason: string, deadLetter = false): void => {
+      logDecision({
+        taskId,
+        phase: 'failover',
+        decision: 'skip',
+        reason,
+        evidenceTier: 'T1',
+      });
+      log.warn({ taskId, reason, deadLetter }, 'Automatic task failover skipped');
+      if (!deadLetter) return;
+      try {
+        const db = getDb();
+        db.prepare(`
+          INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
+          SELECT id, assigned_to, prompt, ?
+          FROM tasks
+          WHERE id=?
+            AND NOT EXISTS (
+              SELECT 1 FROM dead_letter_tasks
+              WHERE task_id=? AND reason=?
+            )
+        `).run(reason, taskId, taskId, reason);
+      } catch (error) {
+        log.warn({
+          taskId,
+          error: error instanceof Error ? error.message : String(error),
+        }, 'Failed to persist failover dead-letter evidence');
+      }
+    };
+
+    if ((process.env.NCO_AUTO_FAILOVER ?? 'on').toLowerCase() === 'off') {
+      recordSkip('auto_failover_disabled');
+      return;
+    }
+    if (!isRetryableFailoverFailure(failure)) {
+      recordSkip('non_retryable_policy_or_non_failure');
+      return;
+    }
 
     const chains = loadFailoverChainsConfig();
-    if (!chains) return;
+    if (!chains) {
+      recordSkip('failover_config_unavailable', true);
+      return;
+    }
 
     const db = getDb();
     const taskRow = db.prepare(`
@@ -1116,13 +1144,25 @@ export async function createGateway() {
       parent_task_id: string | null;
       assigned_to: string | null;
     } | undefined;
-    if (!taskRow || !taskRow.assigned_to || taskRow.status === 'cancelled') {
+    if (!taskRow) {
+      recordSkip('source_task_missing');
+      return;
+    }
+    if (!taskRow.assigned_to) {
+      recordSkip('source_agent_missing', true);
+      return;
+    }
+    if (taskRow.status === 'cancelled') {
+      recordSkip('source_task_cancelled');
       return;
     }
     if (TERMINAL_STATES.has(taskRow.status)
       && taskRow.status !== 'failed'
       && taskRow.status !== 'timed_out'
-      && taskRow.status !== 'lease_expired') return;
+      && taskRow.status !== 'lease_expired') {
+      recordSkip(`source_terminal:${taskRow.status}`);
+      return;
+    }
 
     const sourceTaskId = taskRow.parent_task_id ?? taskRow.id;
     const attemptedAgents = (db.prepare(`
@@ -1134,18 +1174,29 @@ export async function createGateway() {
       .map(row => row.assigned_to)
       .filter((value): value is string => Boolean(value));
     const toAgent = selectFailoverCandidate({
-      chain: chains[taskRow.assigned_to],
+      chain: chains[taskRow.assigned_to] ?? chains.default,
       attemptedAgents,
       isAvailable: (candidate) => {
         if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
         return circuitBreakerRegistry.getAvailability(candidate).available;
       },
     });
-    if (!toAgent) return;
+    if (!toAgent) {
+      recordSkip('failover_exhausted:no_available_unattempted_candidate', true);
+      return;
+    }
 
     const created = await createRetryTask(taskId, { overrideAi: toAgent });
     if (!created.ok) {
-      log.info({ taskId, toAgent, statusCode: created.statusCode, body: created.body }, 'Automatic task failover skipped');
+      const failureReason = typeof created.body.reason === 'string'
+        ? created.body.reason
+        : typeof created.body.error === 'string'
+          ? created.body.error
+          : `http_${created.statusCode}`;
+      recordSkip(
+        `failover_dispatch_rejected:${failureReason}`,
+        created.statusCode === 429 || created.statusCode === 404,
+      );
       return;
     }
 
@@ -1176,7 +1227,7 @@ export async function createGateway() {
   const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
     const db = getDb();
     const taskRow = db.prepare(`
-      SELECT assigned_to, verifier_json, parent_task_id, metadata_json
+      SELECT assigned_to, verifier_json, parent_task_id, metadata_json, prompt
       FROM tasks
       WHERE id=?
     `).get(taskId) as {
@@ -1184,12 +1235,13 @@ export async function createGateway() {
       verifier_json: string | null;
       parent_task_id: string | null;
       metadata_json: string | null;
+      prompt: string;
     } | undefined;
     if (!taskRow) return;
 
     const companyOwnsRetry = isCompanyOrchestratorQualityRetryOwner(taskRow.metadata_json);
     const quality = checkResponseQuality(response, {
-      requireProtocolPrefix: Boolean(taskRow.verifier_json),
+      requireProtocolPrefix: hasResponseContract(taskRow.prompt),
       rejectToolEchoes: companyOwnsRetry,
     });
     if (quality.pass) {
@@ -1213,6 +1265,14 @@ export async function createGateway() {
       return;
     }
 
+    const demoted = markTaskQualityRejected(db, taskId, quality.heuristics);
+    if (!demoted) {
+      log.warn(
+        { taskId, heuristics: quality.heuristics },
+        'Quality-rejected task was no longer completed; retry still evaluated from current state',
+      );
+    }
+
     // 같은 프로바이더 재시도는 quota/고장 상태에서 cap 3을 전소시킴 (E2E 실측 2026-07-03:
     // codex quota 중 ERROR_MARKER reject가 codex로 3연속 재배정) — 실패 failover와 동일한
     // 체인 선택기를 재사용해 미시도·가용 에이전트로 라우팅. 후보 없으면 기존대로 같은 ai 재시도.
@@ -1230,7 +1290,7 @@ export async function createGateway() {
           .map(row => row.assigned_to)
           .filter((value): value is string => Boolean(value));
         toAgent = selectFailoverCandidate({
-          chain: chains[taskRow.assigned_to],
+          chain: chains[taskRow.assigned_to] ?? chains.default,
           attemptedAgents,
           isAvailable: (candidate) => {
             if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
@@ -3655,9 +3715,11 @@ export async function createGateway() {
   await registerTriadRoutes(app);
   registerGoalsRoutes(app);
   registerPerformanceRoutes(app);
+  registerPerformanceFlowRoutes(app);
   await registerTeamScoreRoutes(app);
   await registerWebScrapingRoutes(app);
   await registerWorkReportRoutes(app);
+  await registerHarnessRoutes(app);
   await registerMathRoutes(app);
   // audit.ts는 구현만 있고 미마운트였음(emergency-stop이 compat 스텁으로 응답 — claude-1 T1 제보 2026-07-08)
   await registerAuditRoutes(app);
