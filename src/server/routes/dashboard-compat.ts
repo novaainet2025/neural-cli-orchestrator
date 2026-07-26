@@ -290,9 +290,11 @@ async function startCbAutoHeal() {
   cbAutoHealTimer = setInterval(async () => {
     try {
       for (const [id] of (agentManager as any).providers as Map<string, any>) {
-        const sandbox = agentManager.getSandbox(id);
-        if (!sandbox) continue;
-        sandbox.circuitBreaker.canExecute();
+        // P0-1: canExecute()는 조회가 아니라 상태 변이 함수(half-open 전이 + 유일한 프로브
+        // 슬롯 점유)라 여기서 호출하면 실행 없이 슬롯만 소각한다. getSnapshot()은 내부적으로
+        // recoverIfExpired()를 거쳐 만료된 open을 closed로 되돌리므로 복구 효과는 동일하되
+        // 프로브 슬롯은 건드리지 않는다 (work-report-scheduler.ts:580 동일 원칙).
+        circuitBreakerRegistry.getSnapshot(id);
       }
     } catch { /* 예외 무시 */ }
   }, 2 * 60 * 1000); // 2분

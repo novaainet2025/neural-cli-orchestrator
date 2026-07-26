@@ -61,6 +61,10 @@ const BASE_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 30 * 60_000;
 const QUOTA_FALLBACK_COOLDOWN_MS = 60 * 60_000;
 const FAILURE_THRESHOLD = 3;
+// P0-2: half-open은 자가복구 분기가 없어 프로브가 영영 실행되지 않으면(예: 태스크 유입 없음)
+// 영구 고착된다(DB 실측: copilot|half-open|2026-07-21, 5일째). 5분 이상 half-open에 머물면
+// closed로 되돌려 다음 canExecute() 호출이 새 프로브를 시도할 수 있게 한다.
+const HALF_OPEN_TTL_MS = 5 * 60_000;
 
 function normalizePositiveInteger(value: number | undefined, fallback: number): number {
   return Number.isFinite(value) && value! > 0 ? Math.floor(value!) : fallback;
@@ -169,6 +173,10 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
 
 class CircuitBreakerRegistry {
   private states = new Map<string, CircuitSnapshot>();
+  // P0-3: half-open 프로브 슬롯의 in-flight 세마포어 (max halfOpenMaxAttempts, 기본 1).
+  // canExecute()가 half-open 분기에서 슬롯을 획득(+1)하면 그 실행을 끝까지 마친 호출자가
+  // 반드시 releaseProbeSlot()으로 반납(-1)해야 한다 — 반납 누락 시 유일한 슬롯이 영구
+  // 소진되어 half-open이 고착된다(P0-1/P0-2가 다루는 증상의 근본 원인).
   private halfOpenAttempts = new Map<string, number>();
 
   async restore(agentIds: string[]): Promise<void> {
@@ -305,20 +313,46 @@ class CircuitBreakerRegistry {
   }
 
   /**
+   * P0-3: half-open 프로브 슬롯 반납. canExecute()가 half-open 분기에서 슬롯을 실제로
+   * 획득했을 때만(호출측 slotHeld 가드) 호출해야 한다 — 획득하지 않은 경로에서 호출하면
+   * 카운터가 0 미만으로 내려가 이후 canExecute()가 항상 true를 반환(무제한 동시 실행)하게
+   * 되므로, 여기서는 0 이하로 내려가지 않도록 방어하고 그 이하면 엔트리를 제거한다.
+   */
+  releaseProbeSlot(agentId: string): void {
+    const attempts = this.halfOpenAttempts.get(agentId);
+    if (attempts == null) return;
+    const next = attempts - 1;
+    if (next <= 0) {
+      this.halfOpenAttempts.delete(agentId);
+    } else {
+      this.halfOpenAttempts.set(agentId, next);
+    }
+  }
+
+  /**
    * cooldown이 만료된 open 회로(비-auth)를 closed로 자가복구한다.
    * 상태 전이는 canExecute()에서만 lazy하게 일어나므로, 태스크 유입이 없는 idle
    * 프로바이더는 cooldown이 하루 전에 지나도 'open'에 영구 고착 → 대시보드가 'error'/
    * '해제 대기'로 잘못 표시되던 버그(2026-07-26 nova-macstudio 실측: 6개 프로바이더가
    * 만료 17~27h 경과 후에도 available=false)를 수정한다. 리포팅 메서드에서 호출.
    * auth는 cooldownUntil=null이라 대상 아님(키 수정 전까지 유지가 정상).
+   *
+   * P0-2: half-open도 자가복구 분기가 없으면 영구 고착될 수 있다(DB 실측:
+   * copilot|half-open|2026-07-21, 5일째 — 유일한 프로브 슬롯을 점유한 태스크가 결과를
+   * 기록하지 않고 사라진 경우). HALF_OPEN_TTL_MS(5분) 초과 시 closed로 되돌려 다음
+   * canExecute() 호출이 새 프로브를 시도할 수 있게 하는 사후 안전망이다
+   * (구조적 해결은 P0-3의 프로브 슬롯 세마포어).
    */
   private recoverIfExpired(agentId: string): CircuitSnapshot {
     const current = this.ensure(agentId);
     if (
-      current.state === 'open' &&
-      current.reason !== 'auth' &&
-      current.cooldownUntil != null &&
-      Date.now() >= current.cooldownUntil
+      (current.state === 'open' &&
+        current.reason !== 'auth' &&
+        current.cooldownUntil != null &&
+        Date.now() >= current.cooldownUntil) ||
+      (current.state === 'half-open' &&
+        current.openedAt != null &&
+        Date.now() - current.openedAt > HALF_OPEN_TTL_MS)
     ) {
       const next: CircuitSnapshot = {
         agentId,

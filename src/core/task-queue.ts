@@ -888,9 +888,13 @@ class TaskQueueManager {
         failedAgentId,
         failureReason,
         attemptedAgents,
+        // P0-4: 원시 state 비교는 half-open을 배제하지 못해(half-open은 'open'이 아니므로
+        // 통과) 고착 좀비가 에스컬레이션으로 흘러 실패를 증폭시켰다(CB 실패의 79.1%가 이 경로).
+        // getAvailability().available로 half-open/probe까지 일관되게 판정한다
+        // (코드베이스 나머지 20곳과 동일한 기준 — 이 줄이 유일한 이탈 지점이었다).
         circuitOpenAgents: circuitBreakerRegistry
           .listSnapshots()
-          .filter(snapshot => snapshot.state === 'open')
+          .filter(snapshot => !circuitBreakerRegistry.getAvailability(snapshot.agentId).available)
           .map(snapshot => snapshot.agentId),
         // 런타임 등록 에이전트로 후보 제한 — 정적 tier의 미등록 항목(remote-mlx 등)
         // 에스컬레이션 방지 (2026-07-10 T1: Unknown agent 연쇄 실패 4건)

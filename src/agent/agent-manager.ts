@@ -146,6 +146,12 @@ class AgentManager {
       };
     }
 
+    // P0-3: canExecute()가 true를 반환한 직후 상태가 여전히 half-open이면 이 호출이 유일한
+    // 프로브 슬롯을 실제로 획득한 것이다(closed 경로는 슬롯을 소모하지 않으므로 반납 대상이
+    // 아니다). slotHeld로 가드해 finally에서 실제 획득한 경로에서만 반납 — 가드 없이 무조건
+    // 반납하면 카운터가 음수로 내려가 이후 half-open 프로브 제한이 무력화된다.
+    const slotHeld = circuitBreakerRegistry.getSnapshot(agentId).state === 'half-open';
+
     // Publish task start
     await eventBus.publish({
       type: 'task:started', taskId, agentId,
@@ -379,6 +385,10 @@ class AgentManager {
         error: errorMessage,
         durationMs,
       };
+    } finally {
+      // P0-3: 실제로 획득한 half-open 프로브 슬롯만 반납(slotHeld 가드) — 성공/실패/throw
+      // 어느 경로로 끝나든 반드시 실행되어야 다음 canExecute() 호출이 새 프로브를 시도할 수 있다.
+      if (slotHeld) circuitBreakerRegistry.releaseProbeSlot(agentId);
     }
   }
 

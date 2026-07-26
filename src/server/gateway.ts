@@ -267,7 +267,10 @@ function buildProviderGatedBody(requestedProvider: string) {
 
 function selectTaskProvider(requestedProvider: string, allowProviderFailover: boolean) {
   const availability = circuitBreakerRegistry.getAvailability(requestedProvider);
-  if (availability.status === 'available' || availability.status === 'probe') {
+  // P0-5: 'probe'(half-open)를 available과 동일 취급하면 인테이크가 유일한 프로브 슬롯을
+  // 실제 실행과 무관하게 소모해버려(hermes 등 450건 실측) same-role 폴백/409 경로를 우회한다.
+  // 프로브 여부 판단은 canExecute()/executeTask 내부에서만 하도록 여기서는 순수 available만 통과.
+  if (availability.status === 'available') {
     return { agentId: requestedProvider };
   }
 

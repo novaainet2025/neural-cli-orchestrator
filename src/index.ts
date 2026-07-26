@@ -54,8 +54,10 @@ const MAX_ORPHAN_REQUEUE = 2;
 function pickHealthyProvider(preferredId: string): string | null {
   const isUp = (id: string): boolean => {
     if (!agentManager.listEnabledIds().includes(id)) return false;
-    const s = circuitBreakerRegistry.getAvailability(id).status;
-    return s === 'available' || s === 'probe';
+    // P0-6: 'probe'(half-open)를 건강하다고 오판하면 부팅 재큐잉이 아직 검증되지 않은
+    // 프로바이더로 orphan을 재배정해 poison이 재생산된다(401건 중 상당수 실측).
+    // getAvailability().available만 신뢰한다.
+    return circuitBreakerRegistry.getAvailability(id).available;
   };
   if (isUp(preferredId)) return preferredId;
   const preferredRole = agentManager.getProvider(preferredId)?.role;
