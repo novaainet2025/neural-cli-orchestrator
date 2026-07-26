@@ -315,6 +315,26 @@ export function reselectExecutor(
   return { executor: cap.executor, taskType: cap.taskType, note };
 }
 
+export function selectCompanyStageExecutor(
+  orgSlug: string,
+  team: TeamRow,
+  subtask: string,
+  knownAgents: Set<string>,
+  isAvailable: AvailabilityFn = (id) => knownAgents.has(id),
+): { executor: string; taskType: TaskType; note?: string } {
+  if (allowQueueProviderFailover(orgSlug)) {
+    return reselectExecutor(team, subtask, knownAgents, 'ollama', isAvailable);
+  }
+  const executor = resolveExecutor(team, knownAgents, '', isAvailable);
+  const taskType = smartRouter.inferTaskType(subtask);
+  if (executor === team.lead) return { executor, taskType };
+  return {
+    executor,
+    taskType,
+    note: `헌정/안전 회사 team-only 정책 → 등록 팀원 '${executor}' 재선정`,
+  };
+}
+
 // 분해 담당 LLM 후보(우선순위 순). 앞에서부터 시도해 처음으로 파싱가능 JSON 을
 // 내는 프로바이더를 채택한다(프로바이더 서킷트립·CLI실패에 견디도록 체인화).
 // 순서: org.manager 토큰(등록 시) → 설계/구조에 강한 provider → 로컬 폴백.
@@ -339,6 +359,22 @@ export function resolveDecomposers(
     if (anyKnown) out.push(anyKnown);
   }
   return out;
+}
+
+// 헌정 5개 회사의 분해 권한은 창설 계약의 manager에게만 있다.
+// 지정 manager가 불가용하면 다른 회사의 manager가 지휘권을 대행하지 않고,
+// 빈 후보를 반환해 driveRunBody의 결정론적 template 분해로 fail-closed 한다.
+export function resolveCompanyDecomposers(
+  orgSlug: string,
+  orgManager: string | null,
+  knownAgents: Set<string>,
+  isAvailable: AvailabilityFn = (id) => knownAgents.has(id),
+): string[] {
+  const policy = NCO_FOUNDATION_COMPANY_POLICIES[orgSlug];
+  if (!policy) return resolveDecomposers(orgManager, knownAgents, isAvailable);
+  return knownAgents.has(policy.manager) && isAvailable(policy.manager)
+    ? [policy.manager]
+    : [];
 }
 
 // 하위호환/단일선택용 — 후보 중 첫 번째.
@@ -516,6 +552,10 @@ export function allowQueueProviderFailover(orgSlug: string): boolean {
     && NCO_FOUNDATION_COMPANY_POLICIES[orgSlug] === undefined;
 }
 
+function isDeclaredTeamExecutor(team: TeamRow, executor: string): boolean {
+  return executor === team.lead || team.members.includes(executor);
+}
+
 // ── 실행 상태 저장소(인메모리, LRU 상한) ───────────────────────────────
 const RUNS = new Map<string, CompanyRun>();
 const MAX_RUNS = 200;
@@ -685,7 +725,8 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
   const avail = liveAvailability(known);
   const now = new Date().toISOString();
 
-  const decomposerCandidates = resolveDecomposers(org.manager, known, avail);
+  const decomposerCandidates = resolveCompanyDecomposers(org.slug, org.manager, known, avail);
+  const executorFallback = allowQueueProviderFailover(org.slug) ? 'ollama' : '';
   const run: CompanyRun = {
     id: createId('corun'),
     orgId: org.id,
@@ -700,7 +741,7 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
     decomposer: decomposerCandidates[0] ?? null,
     decomposeSource: null,
     stages: ordered.map((t) => {
-      const executor = resolveExecutor(t, known, 'ollama', avail);
+      const executor = resolveExecutor(t, known, executorFallback, avail);
       // 배정 경고 가시화: lead 가 미등록이거나 실행자와 다르면 이유를 stage 에 기록.
       let executorNote: string | undefined;
       if (t.lead && !known.has(t.lead)) {
@@ -870,7 +911,7 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
   for (const stage of run.stages) {
     const team = teamBySlug.get(stage.teamSlug)!;
     const before = stage.executor;
-    const sel = reselectExecutor(team, stage.subtask ?? '', knownNow, 'ollama', availNow);
+    const sel = selectCompanyStageExecutor(run.orgSlug, team, stage.subtask ?? '', knownNow, availNow);
     stage.executor = sel.executor;
     if (sel.note) stage.executorNote = sel.note;
     if (sel.executor !== before) {
@@ -893,7 +934,13 @@ async function driveRunBody(app: FastifyInstance, runId: string, teams: TeamRow[
       for (const stage of run.stages) {
         if (stage.status === 'completed') continue;
         const team = teamBySlug.get(stage.teamSlug)!;
-        const sel = reselectExecutor(team, baseSubtasks.get(stage.teamSlug) ?? '', k, 'ollama', a);
+        const sel = selectCompanyStageExecutor(
+          run.orgSlug,
+          team,
+          baseSubtasks.get(stage.teamSlug) ?? '',
+          k,
+          a,
+        );
         stage.executor = sel.executor;
         if (sel.note) stage.executorNote = sel.note;
         stage.status = 'pending'; stage.taskId = null; stage.error = undefined; stage.attempt = undefined;
@@ -986,12 +1033,16 @@ async function executeParallelOnce(
   run.status = 'dispatching'; touch(run);
   const pKnown = new Set(agentManager.listEnabledIds());
   const pAvail = liveAvailability(pKnown);
+  const allowOutsideTeam = allowQueueProviderFailover(run.orgSlug);
+  const executorFallback = allowOutsideTeam ? 'ollama' : '';
   const pending = run.stages.filter((s) => s.status !== 'completed');
   for (const stage of pending) {
     stage.subtask = baseSubtasks.get(stage.teamSlug) ?? stage.subtask;
     const team = teamBySlug.get(stage.teamSlug)!;
-    const chain = resolveExecutorChain(team, pKnown, 'ollama', pAvail);
-    const seeded = stage.executor && pKnown.has(stage.executor)
+    const chain = resolveExecutorChain(team, pKnown, executorFallback, pAvail);
+    const seeded = stage.executor
+      && pKnown.has(stage.executor)
+      && (allowOutsideTeam || isDeclaredTeamExecutor(team, stage.executor))
       ? [stage.executor, ...chain.filter((x) => x !== stage.executor)]
       : chain;
     for (const c of seeded) { if (await providerModelDispatchable(c)) { stage.executor = c; break; } }
@@ -1031,9 +1082,13 @@ async function runStageWithFailover(
 ): Promise<boolean> {
   const known = new Set(agentManager.listEnabledIds());
   const avail = liveAvailability(known);
-  const roleChain = resolveExecutorChain(team, known, 'ollama', avail);
+  const allowOutsideTeam = allowQueueProviderFailover(run.orgSlug);
+  const executorFallback = allowOutsideTeam ? 'ollama' : '';
+  const roleChain = resolveExecutorChain(team, known, executorFallback, avail);
   // cap-3 역량 재선정으로 세팅된 stage.executor 를 attempt#1 로 seed(등록된 경우).
-  const seeded = stage.executor && known.has(stage.executor)
+  const seeded = stage.executor
+    && known.has(stage.executor)
+    && (allowOutsideTeam || isDeclaredTeamExecutor(team, stage.executor))
     ? [stage.executor, ...roleChain.filter((x) => x !== stage.executor)]
     : roleChain;
   // R3 모델검증 통과 후보만, 최대 MAX_STAGE_ATTEMPTS
@@ -1041,6 +1096,12 @@ async function runStageWithFailover(
   for (const id of seeded) {
     if (await providerModelDispatchable(id)) chain.push(id);
     if (chain.length >= MAX_STAGE_ATTEMPTS) break;
+  }
+  if (chain.length === 0 && !allowOutsideTeam) {
+    stage.status = 'failed';
+    stage.error = '헌정/안전 회사의 선언된 팀원 중 실행 가능한 프로바이더가 없습니다';
+    touch(run);
+    return false;
   }
   const candidates = chain.length ? chain : [stage.executor];
   const baseSubtask = stage.subtask ?? '';
@@ -1242,10 +1303,11 @@ async function retryFailedStagesParallel(
   if (failed.length === 0) return;
   const known = new Set(agentManager.listEnabledIds());
   const avail = liveAvailability(known);
+  const executorFallback = allowQueueProviderFailover(run.orgSlug) ? 'ollama' : '';
   await Promise.all(failed.map(async (stage) => {
     const team = teamBySlug.get(stage.teamSlug);
     if (!team) return;
-    const chain = resolveExecutorChain(team, known, 'ollama', avail);
+    const chain = resolveExecutorChain(team, known, executorFallback, avail);
     let alt: string | null = null;
     for (const c of chain) {
       if (c === stage.executor) continue;

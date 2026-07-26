@@ -3,8 +3,10 @@ import {
   rankTeam,
   orderTeams,
   resolveExecutor,
+  selectCompanyStageExecutor,
   resolveDecomposer,
   resolveDecomposers,
+  resolveCompanyDecomposers,
   parseDecomposition,
   parsePortDecision,
   buildDecompositionPrompt,
@@ -275,6 +277,54 @@ describe('resolveExecutor', () => {
   });
 });
 
+describe('selectCompanyStageExecutor (team-only failover)', () => {
+  const known = new Set(['cursor-agent', 'nvidia', 'ollama']);
+  const assuranceTeam = team({
+    slug: 'gov-assurance-verification',
+    name: '독립검증팀',
+    lead: 'cursor-agent',
+    members: ['cursor-agent', 'nvidia'],
+  });
+
+  it('헌정 회사 lead 불가용 시 등록 팀원만 선택하고 외부 fallback을 사용하지 않음', () => {
+    const available = (id: string) => id !== 'cursor-agent' && known.has(id);
+    const selected = selectCompanyStageExecutor(
+      'nco-assurance',
+      assuranceTeam,
+      '검증 결과를 독립적으로 리뷰한다',
+      known,
+      available,
+    );
+    expect(selected.executor).toBe('nvidia');
+    expect(assuranceTeam.members).toContain(selected.executor);
+  });
+
+  it('선언 팀원 전원이 불가용이어도 외부 ollama로 권력분립을 우회하지 않음', () => {
+    const available = (id: string) => id === 'ollama';
+    const selected = selectCompanyStageExecutor(
+      'nco-assurance',
+      assuranceTeam,
+      '검증 결과를 독립적으로 리뷰한다',
+      known,
+      available,
+    );
+    expect(selected.executor).toBe('cursor-agent');
+    expect(selected.executor).not.toBe('ollama');
+  });
+
+  it('일반 회사는 기존 역량 기반 외부 fallback을 유지', () => {
+    const available = (id: string) => id !== 'cursor-agent' && known.has(id);
+    const selected = selectCompanyStageExecutor(
+      'research',
+      assuranceTeam,
+      '검증 결과를 독립적으로 리뷰한다',
+      known,
+      available,
+    );
+    expect(selected.executor).toBe('ollama');
+  });
+});
+
 describe('resolveDecomposer', () => {
   const known = new Set(['opencode', 'claude-code', 'codex']);
   it('manager 토큰이 등록 프로바이더면 사용', () => {
@@ -314,6 +364,28 @@ describe('resolveDecomposers (후보 체인)', () => {
     const known = new Set(['opencode', 'ollama']);
     const avail = (_id: string) => false;
     expect(resolveDecomposers('opencode', known, avail).length).toBe(1);
+  });
+});
+
+describe('resolveCompanyDecomposers (헌정 manager 권한)', () => {
+  const known = new Set(['claude-code', 'opencode', 'codex', 'cursor-agent', 'nvidia', 'ollama']);
+
+  it('5개 헌정 회사는 각자 지정 manager만 분해자로 사용', () => {
+    for (const company of foundationCases) {
+      expect(resolveCompanyDecomposers(company.slug, company.manager, known))
+        .toEqual([company.manager]);
+    }
+  });
+
+  it('지정 manager 불가용 시 다른 manager에게 권한을 넘기지 않고 template 경로로 닫힘', () => {
+    const available = (id: string) => id !== 'cursor-agent' && known.has(id);
+    expect(resolveCompanyDecomposers('nco-assurance', 'cursor-agent', known, available))
+      .toEqual([]);
+  });
+
+  it('일반 회사는 기존 manager 우선 후보 체인과 failover를 유지', () => {
+    expect(resolveCompanyDecomposers('research', 'nvidia', known))
+      .toEqual(['nvidia', 'opencode', 'claude-code', 'codex', 'ollama']);
   });
 });
 

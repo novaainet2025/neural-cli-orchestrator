@@ -94,6 +94,25 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 - 인간은 최종주권자이며 언제든 중단·수정·이의제기를 요구할 수 있다.
 - 자연어 합의나 완료 보고는 T1 증거를 대체하지 않는다.
 
+### 실행 불변조건
+
+`src/core/company-orchestrator.ts`는 위 헌장을 다음 런타임 게이트로 강제한다.
+
+- 5개 회사는 `pipeline` 모드만 허용한다. `parallel` 요청은 HTTP 400으로 거부한다.
+- 회사별 manager가 창설 계약과 다르면 실행을 HTTP 409로 거부한다.
+- 목표 분해 권한은 회사별 지정 manager에게만 있다. 지정 manager가 불가용하면 타 회사 manager로 권한을 넘기지 않고 결정론적 template 분해로 닫는다.
+- 회사별 활성 팀은 승인된 5개와 정확히 일치해야 한다. 누락팀과 미승인 추가팀 모두 HTTP 409 대상이다.
+- DB의 이름·생성순서와 관계없이 회사별 헌정 stage 순서를 고정한다.
+- 일반 태스크 큐가 회사 밖 프로바이더로 자동 재위임하는 경로를 차단한다. 단계 failover는 선언된 팀 구성 안에서 처리한다.
+
+| 회사 | 강제 stage 순서 |
+|---|---|
+| 지휘 | strategic → intake → routing → collaboration → incident |
+| 학습·진화 | learning → memory → evaluation → improvement → skills |
+| 전문기술 | experts → architecture → build → release → reliability |
+| 독립감사·안전 | safety → red-team → verification → resilience → audit |
+| AI정부·공공행정 | constitution → rights → HR → treasury → transparency |
+
 ## 자기개선 폐루프
 
 `관찰 → 학습 → 평가 → 개선안 → 지휘 승인 → 전문 구현 → 독립검증 → 단계 릴리스 → 감사 → 지식 승격`

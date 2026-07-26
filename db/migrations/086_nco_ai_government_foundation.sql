@@ -10,8 +10,7 @@
 
 INSERT INTO organizations (
   id, name, slug, graph_type, manager, parent_id, is_always_on, is_active
-) VALUES
-
+)
 VALUES
   (
     'org_nco-command',
