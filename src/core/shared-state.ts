@@ -230,6 +230,17 @@ export class SharedState {
           JSON.stringify(p.persona), p.concurrency, p.rateLimitRpm, p.cost
         );
       }
+      // [비활성 전파 2026-07-26] config에서 disabled/제거된 프로바이더가 DB에
+      // enabled=1로 잔존 → sync-engine(`WHERE enabled=1`)이 유령 에이전트를
+      // Redis로 계속 동기화(감사에서 aider/gemini/openclaw 등 4건 확인). config를
+      // 단일 진실원으로: 시드 목록에 없는 행은 enabled=0으로 내린다(행 삭제는
+      // FK/이력 보존 위해 하지 않음).
+      const ids = provs.map(p => p.id);
+      const ph = ids.map(() => '?').join(',');
+      db.prepare(
+        `UPDATE agents SET enabled=0, updated_at=datetime('now')
+         WHERE enabled=1 AND id NOT IN (${ph})`
+      ).run(...ids);
     });
 
     seedTx(providers);

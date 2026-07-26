@@ -11,12 +11,35 @@ import {
 import { runHourlyRoleAudit } from '../../core/hourly-role-oversight.js';
 import { getDb } from '../../storage/database.js';
 
+// [이벤트루프 보호 2026-07-26] computeTeamScores는 호출당 ~340-450ms 동기 CPU(73팀,
+// tasks 27k 조인 6중 CASE 집계). 대시보드 다중 클라이언트 폴링이 겹치면 호출이 적체되어
+// 이벤트 루프가 재포화됨(CDP 프로파일 82% 점유 실측). 점수는 48h/7d 윈도 집계라
+// 15초 staleness는 무해 → 라우트 레벨 TTL 캐시. cron/lifecycle 등 내부 호출은 비캐시 유지.
+const SCORE_CACHE_TTL_MS = 15_000;
+
 export async function registerTeamScoreRoutes(
   app: FastifyInstance,
   database: Database.Database = getDb(),
 ): Promise<void> {
-  app.get('/api/teams/scores', async () => computeTeamScores(database));
-  app.get('/api/org/scores', async () => computeOrganizationScores(database));
+  let teamScoresCache: { at: number; data: unknown } | null = null;
+  let orgScoresCache: { at: number; data: unknown } | null = null;
+
+  app.get('/api/teams/scores', async () => {
+    if (teamScoresCache && Date.now() - teamScoresCache.at < SCORE_CACHE_TTL_MS) {
+      return teamScoresCache.data;
+    }
+    const data = computeTeamScores(database);
+    teamScoresCache = { at: Date.now(), data };
+    return data;
+  });
+  app.get('/api/org/scores', async () => {
+    if (orgScoresCache && Date.now() - orgScoresCache.at < SCORE_CACHE_TTL_MS) {
+      return orgScoresCache.data;
+    }
+    const data = computeOrganizationScores(database);
+    orgScoresCache = { at: Date.now(), data };
+    return data;
+  });
 
   app.get('/api/hr/lifecycle', async (request) => {
     const rawLimit = Number((request.query as { eventLimit?: string }).eventLimit ?? 100);

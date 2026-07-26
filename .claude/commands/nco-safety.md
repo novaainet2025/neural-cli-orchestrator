@@ -8,5 +8,5 @@ curl -s http://localhost:6200/api/safety/backups | python3 -m json.tool
 if [ -n "$ARGUMENTS" ]; then
   echo ""
   echo "=== Validation Gates: $ARGUMENTS ==="
-  curl -s "http://localhost:6200/api/safety/gates?taskId=$ARGUMENTS" | python3 -m json.tool
+  curl -s "http://localhost:6200/api/safety/verifications/$ARGUMENTS" | python3 -m json.tool
 fi
