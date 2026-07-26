@@ -83,6 +83,59 @@ export const requireDiscussionOutput = (
   return output;
 };
 
+export function selectDiscussionConclusion(
+  rounds: DiscussionRoundResult[],
+  participants: string[],
+): { adoptedAgent: string; adoptedProposal: string } {
+  const firstRound = rounds[0];
+  const proposals = Object.entries(firstRound?.responses ?? {})
+    .filter(([, content]) => content.trim().length > 0);
+  if (proposals.length === 0) {
+    throw new Error('discussion_no_valid_proposals');
+  }
+
+  // 최종 synthesis가 성공했다면 이것이 토론 전체의 산출물이다. 기존 구현은 마지막
+  // synthesis round에서 evaluations가 없다는 이유로 participants[0]의 R1을 되돌려,
+  // higgsfield UUID 같은 무효 제안을 최종 응답으로 저장했다.
+  const synthesis = rounds.slice(1).reverse()
+    .map(round => round.responses['claude-code']?.trim())
+    .find(output => Boolean(output));
+  if (synthesis) {
+    return { adoptedAgent: 'claude-code', adoptedProposal: synthesis };
+  }
+
+  const evaluationRound = [...rounds].reverse().find(round => round.evaluations);
+  let adoptedAgent = proposals[0][0];
+  let maxVotes = 0;
+  if (evaluationRound?.evaluations) {
+    const voteCounts: Record<string, number> = {};
+    for (const evalScores of Object.values(evaluationRound.evaluations)) {
+      let best = '';
+      let bestScore = Number.NEGATIVE_INFINITY;
+      for (const [target, score] of Object.entries(evalScores)) {
+        if (score > bestScore) {
+          bestScore = score;
+          best = target;
+        }
+      }
+      if (best && firstRound.responses[best]) {
+        voteCounts[best] = (voteCounts[best] ?? 0) + 1;
+      }
+    }
+    for (const [agent, count] of Object.entries(voteCounts)) {
+      if (count > maxVotes) {
+        maxVotes = count;
+        adoptedAgent = agent;
+      }
+    }
+  }
+
+  return {
+    adoptedAgent,
+    adoptedProposal: firstRound.responses[adoptedAgent] ?? proposals[0][1],
+  };
+}
+
 // ─── PID Controller (동적 consensus threshold 조정) ──
 class PIDController {
   private integral = 0;
@@ -227,6 +280,15 @@ class DiscussionEngine {
     });
 
     const proposals = await this.collectResponses(sessionId, 1, 'proposal', participants, options.topic);
+    if (Object.keys(proposals).length === 0) {
+      db.prepare(`
+        UPDATE discussions
+        SET status='failed', report='discussion_no_valid_proposals', ended_at=datetime('now')
+        WHERE id=?
+      `).run(sessionId);
+      this.cleanupSessionState(sessionId);
+      throw new Error('discussion_no_valid_proposals');
+    }
     rounds.push({ round: 1, responses: proposals, consensusRate: 0 });
 
     this.saveRound(sessionId, 1, 'proposal', proposals);
@@ -938,26 +1000,7 @@ class DiscussionEngine {
     const firstRound = rounds[0];
     const proposals = Object.entries(firstRound?.responses || {});
 
-    // Find adopted proposal (highest consensus)
-    let adoptedAgent = participants[0];
-    let maxVotes = 0;
-    const lastRound = rounds[rounds.length - 1];
-    if (lastRound?.evaluations) {
-      const voteCounts: Record<string, number> = {};
-      for (const evalScores of Object.values(lastRound.evaluations)) {
-        let best = '';
-        let bestScore = 0;
-        for (const [target, score] of Object.entries(evalScores)) {
-          if (score > bestScore) { bestScore = score; best = target; }
-        }
-        if (best) voteCounts[best] = (voteCounts[best] || 0) + 1;
-      }
-      for (const [agent, count] of Object.entries(voteCounts)) {
-        if (count > maxVotes) { maxVotes = count; adoptedAgent = agent; }
-      }
-    }
-
-    const adoptedProposal = firstRound?.responses[adoptedAgent] || 'No proposal adopted';
+    const { adoptedAgent, adoptedProposal } = selectDiscussionConclusion(rounds, participants);
     const dissentingOpinions = proposals
       .filter(([pid]) => pid !== adoptedAgent)
       .map(([pid, content]) => `${pid}: ${content.slice(0, 200)}`);

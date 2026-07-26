@@ -27,6 +27,7 @@ import { appendAttemptedAgent, decideFinalEscalation, getAttemptedAgents } from 
 import { resolveExecutorChain, providerModelDispatchable, type TeamRow, type AvailabilityFn } from './company-orchestrator.js';
 import { listActivelyRateLimited } from './rate-limit-state.js';
 import { logDecision } from './decision-log.js';
+import { recordLearningEvent } from './failure-learning.js';
 import { transitionTask, TERMINAL_STATES } from './task-state.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
@@ -1084,6 +1085,17 @@ class TaskQueueManager {
           escalation.nextAgentId,
           escalation.metadataPatch,
         );
+        recordLearningEvent({
+          agentId: escalation.nextAgentId,
+          eventType: 'escalation',
+          pattern: escalation.reason,
+          context: {
+            taskId: task.taskId,
+            fromAgent: failedAgentId,
+            toAgent: escalation.nextAgentId,
+            context,
+          },
+        });
         log.info({
           taskId: task.taskId,
           from: failedAgentId,
@@ -1553,6 +1565,15 @@ class TaskQueueManager {
       const duplicateError = terminalDuplicateExecutionError(task.taskId, started.prev);
       if (duplicateError) {
         this.runtimes.delete(task.taskId);
+        recordLearningEvent({
+          agentId: task.agentId,
+          eventType: 'duplicate_execution',
+          pattern: started.prev,
+          context: {
+            taskId: task.taskId,
+            error: duplicateError.message,
+          },
+        });
         log.warn(
           { taskId: task.taskId, prev: started.prev },
           'Duplicate execution blocked — task already in terminal state',

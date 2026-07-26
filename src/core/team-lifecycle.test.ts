@@ -166,8 +166,8 @@ describe('HR team lifecycle policy', () => {
 
   afterEach(() => db.close());
 
-  it('treats score 90 as low, records the HR directive, and starts nco-self once', async () => {
-    const triggerImprovement = vi.fn(async () => ({ ok: true, runId: 'run-1' }));
+  it('treats score 90 as healthy (at or above HR target)', async () => {
+    const triggerImprovement = vi.fn();
     const result = await runTeamLifecycleReview({
       database: db,
       now: new Date('2026-07-23T00:00:00Z'),
@@ -183,16 +183,18 @@ describe('HR team lifecycle policy', () => {
       triggerImprovement,
     });
 
-    expect(result.belowOrEqualTarget).toBe(1);
-    expect(result.improvementsStarted).toBe(1);
-    expect(triggerImprovement).toHaveBeenCalledOnce();
+    expect(result.healthy).toBe(1);
+    expect(result.belowOrEqualTarget).toBe(0);
+    expect(result.improvementsStarted).toBe(0);
+    expect(triggerImprovement).not.toHaveBeenCalled();
     expect(db.prepare(`
-      SELECT improvement_count, status, active_run_id
+      SELECT improvement_count, status, active_run_id, consecutive_low_checks
       FROM team_lifecycle_profiles WHERE team_id = 'team_low'
     `).get()).toEqual({
-      improvement_count: 1,
-      status: 'improving',
-      active_run_id: 'run-1',
+      improvement_count: 0,
+      status: 'active',
+      active_run_id: null,
+      consecutive_low_checks: 0,
     });
     expect(db.prepare(`
       SELECT event_type FROM team_lifecycle_events
@@ -200,9 +202,104 @@ describe('HR team lifecycle policy', () => {
       ORDER BY rowid
     `).all()).toEqual([
       { event_type: 'score_checked' },
-      { event_type: 'hr_directive' },
-      { event_type: 'improvement_started' },
     ]);
+  });
+
+  it('defers lifecycle action when only one terminal task is available', async () => {
+    const triggerImprovement = vi.fn();
+    const result = await runTeamLifecycleReview({
+      database: db,
+      now: new Date('2026-07-23T00:00:00Z'),
+      source: 'event',
+      scores: [score({
+        teamId: 'team_low',
+        slug: 'low',
+        name: 'Low',
+        score: 90,
+        grade: 'A',
+        completion: 100,
+        n: 1,
+        maxN: 10,
+        sample: 'all',
+      })],
+      triggerImprovement,
+    });
+
+    expect(result).toMatchObject({
+      evaluated: 1,
+      insufficientSample: 1,
+      belowOrEqualTarget: 0,
+      improvementsStarted: 0,
+    });
+    expect(triggerImprovement).not.toHaveBeenCalled();
+    expect(db.prepare(`
+      SELECT improvement_count, unresolved_improvement_count, consecutive_low_checks,
+             last_score, last_sample_size
+      FROM team_lifecycle_profiles WHERE team_id = 'team_low'
+    `).get()).toEqual({
+      improvement_count: 0,
+      unresolved_improvement_count: 0,
+      consecutive_low_checks: 0,
+      last_score: 90,
+      last_sample_size: 1,
+    });
+    expect(db.prepare(`
+      SELECT event_type, reason
+      FROM team_lifecycle_events
+      WHERE team_id = 'team_low'
+    `).get()).toEqual({
+      event_type: 'score_checked',
+      reason: 'terminal task sample 1 is below minimum 2; lifecycle action deferred',
+    });
+  });
+
+  it('does not mark a completed improvement unresolved from a one-task sample', async () => {
+    const runId = 'run-insufficient-sample-regression';
+    db.prepare(`
+      INSERT INTO team_lifecycle_profiles (
+        team_id, status, improvement_count, active_run_id
+      ) VALUES ('team_low', 'improving', 1, ?)
+    `).run(runId);
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, metadata_json, created_at)
+      VALUES ('improvement-task', 'team_self-improvement', 'completed', ?, ?)
+    `).run(
+      JSON.stringify({ companyRunId: runId }),
+      '2026-07-23T00:00:00Z',
+    );
+
+    const result = await runTeamLifecycleReview({
+      database: db,
+      now: new Date('2026-07-23T00:10:00Z'),
+      scores: [score({
+        teamId: 'team_low',
+        slug: 'low',
+        name: 'Low',
+        score: 90,
+        grade: 'A',
+        completion: 100,
+        n: 1,
+        maxN: 10,
+        sample: 'all',
+      })],
+      triggerImprovement: vi.fn(),
+    });
+
+    expect(result.insufficientSample).toBe(1);
+    expect(db.prepare(`
+      SELECT active_run_id, successful_improvement_count, unresolved_improvement_count
+      FROM team_lifecycle_profiles WHERE team_id = 'team_low'
+    `).get()).toEqual({
+      active_run_id: null,
+      successful_improvement_count: 1,
+      unresolved_improvement_count: 0,
+    });
+    expect(db.prepare(`
+      SELECT reason FROM team_lifecycle_events
+      WHERE team_id = 'team_low' AND event_type = 'improvement_completed'
+    `).get()).toEqual({
+      reason: 'improvement run completed; score evaluation deferred with sample 1/2',
+    });
   });
 
   it('does not exceed five active nco-self improvement company runs across review cycles', async () => {
@@ -348,6 +445,7 @@ describe('HR team lifecycle policy', () => {
         grade: 'F',
         completion: 20,
         n: 10,
+        sample: 'all',
       })],
       triggerImprovement,
     });

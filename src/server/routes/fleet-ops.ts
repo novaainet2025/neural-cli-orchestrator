@@ -420,10 +420,13 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
   const central = (process.env.FLEET_CENTRAL_URL ?? '').replace(/\/$/, '');
   if (central) {
     const myHost = hostname().toLowerCase().replace(/\.local$/, '');
+    let activePushController: AbortController | null = null;
+    let activePushDeadline: ReturnType<typeof setTimeout> | null = null;
+    let activePush: Promise<void> | null = null;
     // 자기 자신의 activityStore(GET /api/activity)를 세션 요약으로 변환 — push에 동봉
-    const collectLocalSessions = async (): Promise<FleetReportSession[]> => {
+    const collectLocalSessions = async (signal: AbortSignal): Promise<FleetReportSession[]> => {
       try {
-        const res = await fetch('http://localhost:6200/api/activity', { signal: AbortSignal.timeout(3000) });
+        const res = await fetch('http://localhost:6200/api/activity', { signal });
         if (!res.ok) return [];
         const data = await res.json() as {
           activities?: Record<string, Array<{ tool?: unknown; ts?: unknown; done?: unknown }>>;
@@ -449,20 +452,35 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
         return [];
       }
     };
-    const pushOnce = async () => {
+    const executePush = async () => {
+      const controller = new AbortController();
+      activePushController = controller;
+      activePushDeadline = setTimeout(() => controller.abort(new Error('fleet push timeout')), 5000);
+      activePushDeadline.unref();
       try {
         const agents = await collectAgentSnapshots();
         const activity = collectRecentActivitySummary();
-        const sessions = await collectLocalSessions();
+        const sessions = await collectLocalSessions(controller.signal);
         await fetch(`${central}/api/fleet/report`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ host: myHost, agents, activity, sessions, from: `${myHost}-nco-push` }),
-          signal: AbortSignal.timeout(5000),
+          signal: controller.signal,
         });
       } catch (err) {
-        log.debug({ err: String(err) }, 'fleet push failed (central unreachable)');
+        if (!controller.signal.aborted) {
+          log.debug({ err: String(err) }, 'fleet push failed (central unreachable)');
+        }
+      } finally {
+        if (activePushDeadline) clearTimeout(activePushDeadline);
+        activePushDeadline = null;
+        activePushController = null;
       }
+    };
+    const pushOnce = () => {
+      if (activePush) return activePush;
+      activePush = executePush().finally(() => { activePush = null; });
+      return activePush;
     };
     let pushDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     let firstPendingAt = 0; // 기아 방지: 이벤트 폭주로 디바운스가 계속 리셋돼도 최대 지연 보장
@@ -500,6 +518,12 @@ export async function registerFleetOpsRoutes(app: FastifyInstance) {
         pushDebounceTimer = null;
       }
       clearInterval(pushInterval);
+      activePushController?.abort(new Error('fleet push shutdown'));
+      if (activePushDeadline) {
+        clearTimeout(activePushDeadline);
+        activePushDeadline = null;
+      }
+      await activePush;
       eventBus.off('task:created', handleFleetRelevantEvent);
       eventBus.off('task:completed', handleFleetRelevantEvent);
       eventBus.off('task:failed', handleFleetRelevantEvent);

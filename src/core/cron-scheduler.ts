@@ -10,7 +10,12 @@ import { getDb } from '../storage/database.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
-import { computeTeamScores, TEAM_SCORE_TARGET, type TeamScore } from './team-scorer.js';
+import {
+  computeTeamScores,
+  TEAM_SCORE_MIN_ACTIONABLE_SAMPLE,
+  TEAM_SCORE_TARGET,
+  type TeamScore,
+} from './team-scorer.js';
 import {
   runTeamLifecycleReview,
   runWeeklyWorkforcePlanning,
@@ -22,6 +27,8 @@ import {
   HR_HOURLY_ROLE_AUDIT_SCHEDULE,
   runHourlyRoleAudit,
 } from './hourly-role-oversight.js';
+import { runPerformanceGovernance } from './performance-governance.js';
+import { runCommanderOperationAudit } from './commander-operation-audit.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -102,7 +109,7 @@ export interface TeamDiagnosticRunOptions {
 }
 
 function buildDiagnosticPrompt(team: TeamScore): string {
-  return `[자동 품질진단] 팀 ${team.name}(${team.slug})가 ${team.score}점(<90)이다. 이 팀의 최근 태스크 실패/상태 패턴을 실데이터로 분석해 (1)저점수 근본원인 (2)구체 개선안 또는 실제 수정(가능하면 도구로 tsc-검증된 소범위 패치)을 산출하라. 지어내기 금지.\n\n[진단 태그] target-team:${team.slug}; target-team-id:${team.teamId}\n최종 산출은 기존 improvement_notes 기록 경로에 남겨라.`;
+  return `[자동 품질진단] 팀 ${team.name}(${team.slug})가 ${team.score}점(목표 ${TEAM_SCORE_TARGET} 이하)이다. 이 팀의 최근 태스크 실패/상태 패턴을 실데이터로 분석해 (1)저점수 근본원인 (2)구체 개선안 또는 실제 수정(가능하면 도구로 tsc-검증된 소범위 패치)을 산출하라. 지어내기 금지.\n\n[진단 태그] target-team:${team.slug}; target-team-id:${team.teamId}\n최종 산출은 기존 improvement_notes 기록 경로에 남겨라.`;
 }
 
 async function submitDiagnosticTask(payload: DiagnosticTaskPayload): Promise<DiagnosticSubmitResult> {
@@ -134,7 +141,10 @@ export async function runTeamScoreDiagnostics(
   const database = options.database ?? getDb();
   const scores = options.scores ?? computeTeamScores(database);
   const candidates = scores
-    .filter((team) => team.n > 0 && team.score <= TEAM_SCORE_TARGET)
+    .filter((team) => (
+      team.n >= TEAM_SCORE_MIN_ACTIONABLE_SAMPLE
+      && team.score < TEAM_SCORE_TARGET
+    ))
     .sort((left, right) => left.score - right.score || left.teamId.localeCompare(right.teamId));
   const result: TeamDiagnosticRunResult = {
     evaluated: scores.length,
@@ -383,6 +393,10 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
         result = JSON.stringify(await runWeeklyWorkforcePlanning());
       } else if (action === 'hr-hourly-role-audit') {
         result = JSON.stringify(runHourlyRoleAudit({ source: 'scheduled' }));
+      } else if (action === 'pg-hourly-progress-refresh' || action === 'pg-daily-rollup' || action === 'pg-weekly-rollup' || action === 'pg-monthly-rollup') {
+        result = JSON.stringify(runPerformanceGovernance());
+      } else if (action === 'pg-hourly-commander-audit') {
+        result = JSON.stringify(runCommanderOperationAudit());
       } else {
         throw new Error(`Unknown internal cron action: ${String(action)}`);
       }
@@ -495,6 +509,76 @@ function ensureDefaultInternalJobs(): void {
       taskType: 'internal',
       payload: { action: 'hr-hourly-role-audit' },
       timezone: getDefaultTimezone(),
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('pg-hourly-progress-refresh')) {
+    scheduleCronJob({
+      id: 'pg-hourly-progress-refresh',
+      description: 'Performance Governance: hourly progress refresh',
+      schedule: '0 * * * *',
+      taskType: 'internal',
+      payload: { action: 'pg-hourly-progress-refresh' },
+      timezone: 'Asia/Seoul',
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('pg-daily-rollup')) {
+    scheduleCronJob({
+      id: 'pg-daily-rollup',
+      description: 'Performance Governance: finalize previous KST day and open the new day',
+      schedule: '10 0 * * *',
+      taskType: 'internal',
+      payload: { action: 'pg-daily-rollup' },
+      timezone: 'Asia/Seoul',
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('pg-weekly-rollup')) {
+    scheduleCronJob({
+      id: 'pg-weekly-rollup',
+      description: 'Performance Governance: finalize previous ISO week and open the new week',
+      schedule: '15 0 * * 1',
+      taskType: 'internal',
+      payload: { action: 'pg-weekly-rollup' },
+      timezone: 'Asia/Seoul',
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('pg-monthly-rollup')) {
+    scheduleCronJob({
+      id: 'pg-monthly-rollup',
+      description: 'Performance Governance: finalize previous KST month and open the new month',
+      schedule: '20 0 1 * *',
+      taskType: 'internal',
+      payload: { action: 'pg-monthly-rollup' },
+      timezone: 'Asia/Seoul',
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob('pg-hourly-commander-audit')) {
+    scheduleCronJob({
+      id: 'pg-hourly-commander-audit',
+      description: 'Commander Operation Audit: hourly checks',
+      schedule: '5 * * * *',
+      taskType: 'internal',
+      payload: { action: 'pg-hourly-commander-audit' },
+      timezone: 'Asia/Seoul',
       maxRetries: 1,
       backoffMs: 60_000,
       enabled: true,

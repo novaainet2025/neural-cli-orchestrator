@@ -2,6 +2,8 @@ import type Database from 'better-sqlite3';
 import { getDb } from '../storage/database.js';
 
 export const TEAM_SCORE_TARGET = 90;
+// Automated remediation needs repeat evidence; one terminal task is only an initial signal.
+export const TEAM_SCORE_MIN_ACTIONABLE_SAMPLE = 2;
 
 export type TeamScoreGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 export type TeamScoreSample = '48h' | '7d' | 'all';
@@ -173,7 +175,7 @@ function computeVolume(n: number, maxN: number): number {
 //  서비스 연결에 실패한 태스크까지 잘못 빠지므로 반드시 error·status·NCO 포트를 함께 건다.
 // 롤백: 아래 3개 terminal CASE에서 INFRA_EXCLUSION 조건을 제거하면 정확히 이전 동작.
 //  게이트웨이-다운 절만 되돌리려면 아래 `AND NOT ( … )` 블록만 삭제한다.
-const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'queue_wait_timeout:%'))
+const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'provider_unavailable:%' AND k.error NOT LIKE 'queue_wait_timeout:%'))
     AND NOT (
       k.status <> 'completed'
       AND COALESCE(k.error, '') LIKE 'unknown: failure pattern in output%'
@@ -431,7 +433,7 @@ export function computeOrganizationScores(
       grade: gradeTeamScore(score),
       teams: scores.length,
       belowTarget: scores
-        .filter((team) => team.score <= TEAM_SCORE_TARGET)
+        .filter((team) => team.score < TEAM_SCORE_TARGET)
         .map(({ teamId, slug, name, score: teamScore, grade }) => ({
           teamId,
           slug,

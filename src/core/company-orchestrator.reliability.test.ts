@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  resolveExecutorChain, selectCapabilityExecutor, reselectExecutor, type TeamRow,
+  decideCompanyRunResume, resolveExecutorChain, selectCapabilityExecutor, reselectExecutor, type TeamRow,
 } from './company-orchestrator.js';
 
 const team = (p: Partial<TeamRow> & { slug: string; name: string }): TeamRow =>
@@ -42,5 +42,32 @@ describe('reselectExecutor', () => {
   it('제거 lead → 역량 재선정 + note', () => {
     const r = reselectExecutor(team({ slug:'a', name:'A', lead:'mlx-instruct' }), '아키텍처 설계', known);
     expect(r.executor).toBe('opencode'); expect(r.note).toMatch(/제거\/미등록/);
+  });
+});
+
+describe('durable company resume budget', () => {
+  it('does not consume a loop iteration merely because the process restarted mid-iteration', () => {
+    expect(decideCompanyRunResume({
+      incomplete: true,
+      resumeCount: 1,
+      completedIterations: 4,
+      maxIterations: 5,
+    })).toBe('continue');
+  });
+
+  it('terminates on completed loop budget or repeated restart recovery budget', () => {
+    expect(decideCompanyRunResume({
+      incomplete: true,
+      resumeCount: 1,
+      completedIterations: 5,
+      maxIterations: 5,
+    })).toBe('iteration_budget_exhausted');
+    expect(decideCompanyRunResume({
+      incomplete: true,
+      resumeCount: 4,
+      completedIterations: 1,
+      maxIterations: 5,
+      maxResumes: 3,
+    })).toBe('recovery_budget_exhausted');
   });
 });

@@ -97,10 +97,10 @@ describe('team score diagnostic cron', () => {
 
     expect(result).toEqual({
       evaluated: 9,
-      belowTarget: 8,
+      belowTarget: 7,
       created: TEAM_DIAGNOSTIC_MAX_PER_RUN,
       deduped: 1,
-      capped: 2,
+      capped: 1,
       failed: 0,
     });
     expect(submitted).toHaveLength(5);
@@ -126,5 +126,55 @@ describe('team score diagnostic cron', () => {
       fix: 'verified diagnostic output',
       agent: 'codex',
     });
+  });
+
+  it('does not treat score exactly at target as below target regardless of sample size', async () => {
+    const scores: TeamScore[] = [
+      {
+        teamId: 'team_single',
+        slug: 'single',
+        name: 'Single',
+        organizationId: 'org_product',
+        score: 90,
+        grade: 'A',
+        completion: 100,
+        n: 1,
+        maxN: 10,
+        sample: 'all',
+      },
+      {
+        teamId: 'team_two',
+        slug: 'two',
+        name: 'Two',
+        organizationId: 'org_product',
+        score: 90,
+        grade: 'A',
+        completion: 100,
+        n: 2,
+        maxN: 10,
+        sample: '48h',
+      },
+    ];
+    const submitted: Parameters<NonNullable<TeamDiagnosticRunOptions['submitTask']>>[0][] = [];
+
+    const result = await runTeamScoreDiagnostics({
+      database: db,
+      scores,
+      projectDir: '/workspace/nco',
+      submitTask: async (payload) => {
+        submitted.push(payload);
+        return { ok: true, taskId: 'created-team-two' };
+      },
+    });
+
+    expect(result).toEqual({
+      evaluated: 2,
+      belowTarget: 0,
+      created: 0,
+      deduped: 0,
+      capped: 0,
+      failed: 0,
+    });
+    expect(submitted).toHaveLength(0);
   });
 });

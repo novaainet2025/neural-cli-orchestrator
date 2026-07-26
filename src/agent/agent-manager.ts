@@ -26,6 +26,13 @@ function getTaskTimeoutMs(): number {
   return Number.isFinite(v) && v >= 60_000 ? v : 1_200_000;
 }
 
+export function formatProviderUnavailableError(
+  agentId: string,
+  snapshot: { state: string; reason: string | null },
+): string {
+  return `provider_unavailable: ${agentId} (${snapshot.state}/${snapshot.reason ?? 'generic'})`;
+}
+
 function killProcessGroup(pid: number | undefined): void {
   if (!pid) return;
   if (process.platform === 'win32') return;
@@ -141,7 +148,7 @@ class AgentManager {
         iterations: 0,
         toolCalls: 0,
         success: false,
-        error: `Circuit breaker open for agent ${agentId} (${snapshot.reason ?? 'generic'})`,
+        error: formatProviderUnavailableError(agentId, snapshot),
         durationMs: 0,
       };
     }

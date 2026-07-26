@@ -92,7 +92,7 @@ vi.mock('../utils/logger.js', () => ({
   }),
 }));
 
-import { agentManager } from './agent-manager.js';
+import { agentManager, formatProviderUnavailableError } from './agent-manager.js';
 
 describe('AgentManager', () => {
   beforeEach(async () => {
@@ -111,6 +111,13 @@ describe('AgentManager', () => {
     
     delete process.env.OPENROUTER_API_KEYS;
     agentManager.destroy();
+  });
+
+  it('reports provider unavailability with state and reason', () => {
+    expect(formatProviderUnavailableError('codex', {
+      state: 'open',
+      reason: 'quota',
+    })).toBe('provider_unavailable: codex (open/quota)');
   });
 
   it('injects NCO_HOOK_DISABLED environment variable when spawning claude-code subprocess', async () => {

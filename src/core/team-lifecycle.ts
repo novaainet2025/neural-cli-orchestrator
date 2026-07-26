@@ -1,7 +1,12 @@
 import type Database from 'better-sqlite3';
 import { eventBus, type NCOEvent } from './event-bus.js';
 import { getCompanyRun } from './company-orchestrator.js';
-import { computeTeamScores, TEAM_SCORE_TARGET, type TeamScore } from './team-scorer.js';
+import {
+  computeTeamScores,
+  TEAM_SCORE_MIN_ACTIONABLE_SAMPLE,
+  TEAM_SCORE_TARGET,
+  type TeamScore,
+} from './team-scorer.js';
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
@@ -105,6 +110,7 @@ export interface TeamLifecycleReviewOptions {
 export interface TeamLifecycleReviewResult {
   evaluated: number;
   unscored: number;
+  insufficientSample: number;
   healthy: number;
   belowOrEqualTarget: number;
   improvementsStarted: number;
@@ -462,7 +468,8 @@ function reconcileImprovementRun(
     outcome = 'failed';
   }
 
-  const remainsLow = team.n > 0 && team.score <= TEAM_SCORE_TARGET;
+  const hasActionableSample = team.n >= TEAM_SCORE_MIN_ACTIONABLE_SAMPLE;
+  const remainsLow = hasActionableSample && team.score < TEAM_SCORE_TARGET;
   const changes = database.prepare(`
     UPDATE team_lifecycle_profiles
     SET
@@ -489,9 +496,12 @@ function reconcileImprovementRun(
     score: team.score,
     improvementCount: profile.improvementCount,
     companyRunId: profile.activeRunId,
-    reason: remainsLow
-      ? `improvement run ${outcome}, but score remains ${team.score}`
-      : `improvement run ${outcome}; score recovered to ${team.score}`,
+    reason: !hasActionableSample
+      ? `improvement run ${outcome}; score evaluation deferred with sample `
+        + `${team.n}/${TEAM_SCORE_MIN_ACTIONABLE_SAMPLE}`
+      : remainsLow
+        ? `improvement run ${outcome}, but score remains ${team.score}`
+        : `improvement run ${outcome}; score recovered to ${team.score}`,
     source,
   });
 }
@@ -548,6 +558,7 @@ function initialReviewResult(): TeamLifecycleReviewResult {
   return {
     evaluated: 0,
     unscored: 0,
+    insufficientSample: 0,
     healthy: 0,
     belowOrEqualTarget: 0,
     improvementsStarted: 0,
@@ -613,7 +624,28 @@ async function executeTeamLifecycleReview(
       continue;
     }
 
-    if (team.score > TEAM_SCORE_TARGET) {
+    if (team.n < TEAM_SCORE_MIN_ACTIONABLE_SAMPLE) {
+      result.insufficientSample += 1;
+      database.prepare(`
+        UPDATE team_lifecycle_profiles
+        SET last_score = ?, last_sample_size = ?, last_checked_at = ?, updated_at = datetime('now')
+        WHERE team_id = ?
+      `).run(team.score, team.n, now.toISOString(), team.teamId);
+      recordLifecycleEvent(database, {
+        teamId: team.teamId,
+        teamSlug: team.slug,
+        eventType: 'score_checked',
+        score: team.score,
+        improvementCount: profile.improvementCount,
+        reason: `terminal task sample ${team.n} is below minimum `
+          + `${TEAM_SCORE_MIN_ACTIONABLE_SAMPLE}; lifecycle action deferred`,
+        source,
+        metadata: { sample: team.sample, n: team.n, maxN: team.maxN },
+      });
+      continue;
+    }
+
+    if (team.score >= TEAM_SCORE_TARGET) {
       result.healthy += 1;
       const recovered = profile.consecutiveLowChecks > 0 || profile.status !== 'active';
       database.prepare(`
@@ -670,7 +702,7 @@ async function executeTeamLifecycleReview(
       eventType: 'score_checked',
       score: team.score,
       improvementCount: profile.improvementCount,
-      reason: `score ${team.score} is at or below HR target ${TEAM_SCORE_TARGET}`,
+      reason: `score ${team.score} is below HR target ${TEAM_SCORE_TARGET}`,
       source,
       metadata: {
         sample: team.sample,

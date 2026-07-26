@@ -4,6 +4,8 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../storage/database.js';
+import { listActivelyRateLimited } from '../../core/rate-limit-state.js';
+import { getFailureDigest } from '../../core/failure-learning.js';
 import { getRedis } from '../../storage/redis.js';
 import { sharedState } from '../../core/shared-state.js';
 import { agentManager } from '../../agent/agent-manager.js';
@@ -22,6 +24,7 @@ import { randomUUID } from 'node:crypto';
 import WebSocket from 'ws';
 import { promisify } from 'node:util';
 import { stripEchoLines } from '../../utils/echo-filter.js';
+import { isProviderUnavailableFailureText } from '../task-failover.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -433,9 +436,12 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const providers: Record<string, any> = {};
     for (const r of rows) providers[r.agent_id] = r;
 
+    // Align with smart-router / task-queue: only reset_at > now counts as limited.
+    const activelyLimited = listActivelyRateLimited(db);
+
     const allIds = agentManager.listEnabledIds();
-    const available = allIds.filter(id => !providers[id]?.is_limited);
-    const limited = allIds.filter(id => providers[id]?.is_limited);
+    const available = allIds.filter(id => !activelyLimited.has(id));
+    const limited = allIds.filter(id => activelyLimited.has(id));
 
     return {
       success: true,
@@ -569,12 +575,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   });
 
   app.get('/api/learning', async () => {
+    const failureDigest = getFailureDigest();
     try {
       const { knowledgeBase } = await import('../../core/knowledge-base.js');
       const entries = knowledgeBase.getContext(process.cwd(), 20);
-      return { data: entries };
+      return { data: entries, failureDigest };
     } catch {
-      return { data: [] };
+      return { data: [], failureDigest };
     }
   });
 
@@ -815,6 +822,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         circuitState,
         consecutiveFailures: cb.failureCount,
         lastError,
+        providerUnavailable: isProviderUnavailableFailureText(rawLastError),
       };
 
       // CB=OPEN 시 status를 'error'로 오버라이드 (kangnote-claude-1 버그 보고 반영)

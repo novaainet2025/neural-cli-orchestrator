@@ -1,4 +1,24 @@
 {
+  "default": [
+    "codex",
+    "cursor-agent",
+    "opencode",
+    "hermes"
+  ],
+  "claude-code": [
+    "codex",
+    "cursor-agent",
+    "opencode"
+  ],
+  "mlx": [
+    "ollama",
+    "hermes"
+  ],
+  "higgsfield": [
+    "agy",
+    "codex",
+    "cursor-agent"
+  ],
   "codex": [
     "opencode",
     "cursor-agent"

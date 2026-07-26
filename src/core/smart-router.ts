@@ -6,6 +6,7 @@ import { createLogger } from '../utils/logger.js';
 import type { TaskType } from './quality-gate.js';
 import { classifyTier, orderByTier, LAYER_TIER_AGENTS, type Tier } from './tier-policy.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
+import { isAgentActivelyRateLimited } from './rate-limit-state.js';
 
 const log = createLogger('smart-router');
 
@@ -68,6 +69,14 @@ export function sortProvidersByCostOrder(ids: string[]): string[] {
     const sb = ib === -1 ? 999 : ib;
     return sa - sb;
   });
+}
+
+export function isTaskCompatibleProvider(agentId: string, taskType: TaskType): boolean {
+  // Higgsfield의 Type-C 출력은 이미지 job UUID다. code/verify 토론에 섞이면 UUID가
+  // 정상 제안처럼 채택될 수 있으므로 media 요청 외에는 후보가 될 수 없다.
+  if (agentId === 'higgsfield') return taskType === 'media';
+  if (taskType === 'media') return agentId === 'agy';
+  return true;
 }
 
 class SmartRouter {
@@ -135,7 +144,7 @@ class SmartRouter {
     // Filter out rate-limited agents
     const available: string[] = [];
     for (const id of allProviders) {
-      if (await this.isAvailable(id)) {
+      if (isTaskCompatibleProvider(id, taskType) && await this.isAvailable(id)) {
         available.push(id);
       }
     }
@@ -186,14 +195,11 @@ class SmartRouter {
    * Get provider availability (not rate-limited, circuit not open).
    */
   private async isAvailable(agentId: string): Promise<boolean> {
-    // Check rate limit state in DB
+    // Check rate limit state in DB — only active while reset_at is still in the future.
+    // Expired is_limited=1 rows must not permanently exclude providers (matches task-queue failover).
     try {
       const db = getDb();
-      const state = db.prepare(
-        'SELECT is_limited FROM rate_limit_state WHERE agent_id = ?'
-      ).get(agentId) as any;
-
-      if (state?.is_limited) return false;
+      if (isAgentActivelyRateLimited(db, agentId)) return false;
     } catch { /* ignore */ }
 
     // Check circuit breaker via shared state
@@ -242,13 +248,15 @@ class SmartRouter {
    * Infer a TaskType from a prompt for quality gate evaluation.
    */
   inferTaskType(prompt: string): TaskType {
+    // 구현 요청은 부수적으로 "test/vitest/검증"을 거의 항상 포함한다. 실행 동사가 있으면
+    // 코드 작업으로 먼저 분류하고, 순수 검사 요청만 verify로 보낸다.
+    if (/(?:code|fix|bug|implement|add|create|refactor|수정|구현|패치|추가)/i.test(prompt)) return 'code';
     if (/test|spec|검증|verify/i.test(prompt)) return 'verify';
     if (/review|audit|검토/i.test(prompt)) return 'review';
     if (/design|architect|구조|설계/i.test(prompt)) return 'design';
     if (/research|찾아|조사/i.test(prompt)) return 'research';
     if (/ui|frontend|화면|스타일/i.test(prompt)) return 'ui';
     if (/image|video|영상|이미지/i.test(prompt)) return 'media';
-    if (/code|fix|bug|implement|add|create|refactor|수정|구현/i.test(prompt)) return 'code';
     return 'general';
   }
 

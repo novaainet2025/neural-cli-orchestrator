@@ -364,7 +364,7 @@ class WorkflowPipeline {
       case 'company':
         return { prompt, projectDir: PROJECT_ROOT };
       case 'harness':
-        return { requirement: prompt, maxIterations: 3, scoreThreshold: 80 };
+        return { requirement: prompt, maxIterations: 5 };
       default:
         return { ai: providers[0] ?? 'codex', prompt, mode: 'task' };
     }
@@ -400,7 +400,7 @@ class WorkflowPipeline {
     return this.pollResult(pollTarget, pollId);
   }
 
-  private pollTargetForMode(mode: string): 'task' | 'discussion' | null {
+  private pollTargetForMode(mode: string): 'task' | 'discussion' | 'harness' | null {
     switch (mode) {
       case 'discussion':
       case 'consensus':
@@ -409,15 +409,19 @@ class WorkflowPipeline {
       case 'commander':
         return null;
       case 'harness':
-        return 'task';
+        return 'harness';
       default:
         return 'task';
     }
   }
 
-  private async pollResult(kind: 'task' | 'discussion', id: string): Promise<string> {
+  private async pollResult(kind: 'task' | 'discussion' | 'harness', id: string): Promise<string> {
     const deadline = Date.now() + WORKFLOW_DEFAULTS.POLL_TIMEOUT_MS;
-    const path = kind === 'discussion' ? `/api/discussions/${id}` : `/api/tasks/${id}`;
+    const path = kind === 'discussion'
+      ? `/api/discussions/${id}`
+      : kind === 'harness'
+        ? `/api/harness/${id}`
+        : `/api/tasks/${id}`;
 
     while (Date.now() < deadline) {
       const res = await fetch(`${NCO_API}${path}`);
@@ -428,10 +432,12 @@ class WorkflowPipeline {
       const task = data.task as Record<string, unknown> | undefined;
       const status = (data.status ?? discussion?.status ?? task?.status) as string | undefined;
       if (status === 'completed' || status === 'done') {
-        const output = data.output ?? data.result ?? discussion?.report ?? task?.output ?? task?.response;
+        const output = kind === 'harness'
+          ? data
+          : data.output ?? data.result ?? discussion?.report ?? task?.output ?? task?.response;
         return typeof output === 'string' ? output : JSON.stringify(data, null, 2);
       }
-      if (status === 'failed' || status === 'error') {
+      if (status === 'failed' || status === 'partial' || status === 'error') {
         throw new Error(`Execution failed: ${JSON.stringify(data).slice(0, 500)}`);
       }
 

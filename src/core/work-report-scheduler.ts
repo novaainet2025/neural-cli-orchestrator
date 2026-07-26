@@ -8,6 +8,7 @@ import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+import { resolveExecutor } from './company-orchestrator.js';
 
 const log = createLogger('work-report-scheduler');
 const KST_OFFSET_HOURS = 9;
@@ -18,6 +19,13 @@ const MISSED_GRACE_MS = 30 * 60 * 1000;
 const TASK_DISPATCH_STAGGER_MS = 5_000;
 // 링크 해제(실패)·미발행 보고의 태스크 재발행 상한 (틱당)
 const REDISPATCH_LIMIT = 20;
+// P0-7: 보고 1건당 재발행 시도 상한 + 지수 백오프 — CB 실패 2,077행이 단 149개 업무보고에서
+// 나옴(평균 13.9배, 최다 89회)을 실측. 상한 없이 매 틱 재발행하면 같은 근본원인이 반복
+// 카운트되어 실패 통계가 오염된다. attempts>=5면 더 이상 재발행하지 않고(자연스럽게 finalize
+// 단계에서 missed로 확정), 시도할 때마다 5분→최대 2시간까지 지수 백오프한다.
+const MAX_REDISPATCH_ATTEMPTS = 5;
+const REDISPATCH_BACKOFF_BASE_MS = 5 * 60_000;
+const REDISPATCH_BACKOFF_MAX_MS = 2 * 60 * 60_000;
 
 export type WorkReportSlot = 'am' | 'pm';
 export type WorkReportStatus = 'pending' | 'submitted' | 'late' | 'missed' | 'waived';
@@ -563,34 +571,74 @@ export function buildReportPrompt(
 }
 
 /**
- * 팀 리드의 회로차단기(circuit breaker) 상태로 발행 가능 여부를 캐시하며 판정한다.
- * 초기 dispatch·redispatch 양 경로에서 공용으로 쓰여, breaker가 열린 리드에게 work-report를
- * 발행해 즉시 "Circuit breaker open"으로 실패시키고 매 틱 새 실패 태스크를 양산하던 무한 루프를 차단한다.
+ * 업무보고 발행 실행자(executor)를 가용성 기반으로 해석한다.
  *
- * ※ non-mutating 판정: 기존 redispatch 가드는 circuitBreakerRegistry.canExecute()를 썼으나,
- *    canExecute()는 cooldown 만료 시 회로를 half-open으로 전이시키고 true를 반환한다. 그 결과 매 틱
- *    실제 work-report 1건이 프로브로 흘러 들어가 실패→재개방을 반복하는 누수가 생겼다(2026-07-26 실측:
- *    가드 도입 후에도 오늘 50여 건 잔여 실패). getAvailability()는 만료된 회로를 자가복구(closed)하거나
- *    아직 open이면 available=false로 스킵하므로 프로브 누수가 없다. 회로가 복구되면 자동으로 재개된다.
+ * 기존엔 team.lead 로 직행 발행했다. 그런데 파운데이션 정책(company-orchestrator
+ * NCO_FOUNDATION_COMPANY_POLICIES)이 gov-command→claude-code, gov-evolution→opencode 처럼
+ * 세션·리밋에 취약한 provider를 팀 lead(=manager)로 박아두고, 팀 재생성 때마다 되살아난다.
+ * 그 lead의 회로차단기가 열려 있으면 발행 태스크가 즉시 "Circuit breaker open"으로 실패하고
+ * 매 틱 새 실패를 양산했다(2026-07-25 실측 성공률 8.9% 붕괴의 직접 원인).
+ *
+ * 여기서는 company-orchestrator의 resolveExecutor(가용 lead→가용 member→fallback)를 재사용해
+ * 리드가 불가용이면 팀의 가용 멤버/fallback으로 라우팅한다. 조직 설계(누가 지휘 manager인지)는
+ * 그대로 두고 "보고 작성 실행자"만 건강한 provider로 넘긴다. 전원 불가용이면 null → 스킵(보고는
+ * pending 유지, 회로 복구 후 redispatch가 재개).
+ *
+ * ※ 가용성은 circuitBreakerRegistry.getAvailability()(non-mutating)로 본다. canExecute()는
+ *    cooldown 만료 시 half-open 전이+true 반환으로 매 틱 프로브 1건을 흘리는 누수가 있었다.
  */
-function makeLeadDispatchGuard(): { dispatchable: (lead: string) => boolean; tripped: () => string[] } {
-  const cache = new Map<string, boolean>();
-  const tripped = new Set<string>();
-  return {
-    dispatchable: (lead: string): boolean => {
-      let decision = cache.get(lead);
-      if (decision === undefined) {
-        try {
-          decision = circuitBreakerRegistry.getAvailability(lead).available;
-        } catch {
-          decision = true; // 판정 실패 시 보수적으로 발행 허용(기존 동작 유지)
-        }
-        cache.set(lead, decision);
-        if (!decision) tripped.add(lead);
+function makeReportExecutorResolver(knownAgents: Set<string>): {
+  resolve: (teamId: string, lead: string | null) => string | null;
+  rerouted: () => Array<{ from: string; to: string }>;
+  skipped: () => string[];
+} {
+  const db = getDb();
+  const availCache = new Map<string, boolean>();
+  const memberCache = new Map<string, string[]>();
+  const rerouted: Array<{ from: string; to: string }> = [];
+  const skipped = new Set<string>();
+
+  const isAvailable = (id: string): boolean => {
+    if (!knownAgents.has(id)) return false;
+    let a = availCache.get(id);
+    if (a === undefined) {
+      try {
+        a = circuitBreakerRegistry.getAvailability(id).available;
+      } catch {
+        a = true; // 판정 실패 시 보수적으로 허용
       }
-      return decision;
+      availCache.set(id, a);
+    }
+    return a;
+  };
+
+  const loadMembers = (teamId: string): string[] => {
+    let m = memberCache.get(teamId);
+    if (m === undefined) {
+      m = (db.prepare(
+        `SELECT member_ref FROM team_members WHERE team_id=? ORDER BY created_at ASC, id ASC`,
+      ).all(teamId) as Array<{ member_ref: string }>).map((r) => r.member_ref);
+      memberCache.set(teamId, m);
+    }
+    return m;
+  };
+
+  return {
+    resolve: (teamId, lead) => {
+      const members = loadMembers(teamId);
+      const teamRow = { id: teamId, name: '', slug: '', lead, charter: null, description: null, members };
+      const exec = resolveExecutor(teamRow, knownAgents, 'ollama', isAvailable);
+      // resolveExecutor는 전원 불가용 시 불가용 lead/member라도 last-resort로 반환한다.
+      // 실제 가용 실행자만 통과시키고, 아니면 null(스킵) — 홍수 방지.
+      if (!exec || !isAvailable(exec)) {
+        if (lead) skipped.add(lead);
+        return null;
+      }
+      if (lead && exec !== lead) rerouted.push({ from: lead, to: exec });
+      return exec;
     },
-    tripped: () => [...tripped],
+    rerouted: () => rerouted,
+    skipped: () => [...skipped],
   };
 }
 
@@ -683,13 +731,14 @@ export async function issueWorkReports(
   let pending = 0;
   let waived = 0;
 
-  // breaker 열린 리드로의 초기 발행을 사전 차단(트랜잭션 밖에서 판정 — getAvailability의
-  // 자가복구 커밋이 work_reports 트랜잭션에 섞이지 않게 함). report 행은 'pending'으로 남고
-  // 회로 복구 후 redispatchUnlinkedTeamReports가 자동 발행한다.
-  const dispatchGuard = makeLeadDispatchGuard();
+  // 발행 실행자를 가용성 기반으로 사전 해석(트랜잭션 밖 — getAvailability의 자가복구 커밋이
+  // work_reports 트랜잭션에 섞이지 않게 함). lead 불가용이면 가용 member/fallback으로 라우팅,
+  // 전원 불가용이면 null → 발행 스킵(보고는 'pending' 유지, 회로 복구 후 redispatch가 재개).
+  const executorResolver = makeReportExecutorResolver(new Set(agentManager.listEnabledIds()));
+  const resolvedExecutor = new Map<string, string | null>();
   for (const team of teams) {
     const lead = team.lead?.trim();
-    if (lead) dispatchGuard.dispatchable(lead);
+    if (lead) resolvedExecutor.set(team.id, executorResolver.resolve(team.id, lead));
   }
 
   const insert = db.prepare(`
@@ -752,12 +801,15 @@ export async function issueWorkReports(
         created += 1;
         if (status === 'pending') pending += 1;
         if (status === 'waived') waived += 1;
-        if (status === 'pending' && team.lead?.trim() && dispatchGuard.dispatchable(team.lead.trim())) {
+        const executor = status === 'pending' && team.lead?.trim()
+          ? resolvedExecutor.get(team.id) ?? null
+          : null;
+        if (executor) {
           taskCandidates.push({
             reportId,
             teamId: team.id,
             organizationId: snapshot.organizationId,
-            lead: team.lead.trim(),
+            lead: executor,
             prompt: buildReportPrompt(team, reportDate, reportSlot, snapshot),
           });
         }
@@ -767,10 +819,15 @@ export async function issueWorkReports(
 
   tx();
 
-  const breakerTripped = dispatchGuard.tripped();
-  if (breakerTripped.length > 0) {
-    log.warn({ reportDate, reportSlot, tripped: breakerTripped },
-      'Initial dispatch skipped for leads with open circuit breaker — reports stay pending for redispatch');
+  const rerouted = executorResolver.rerouted();
+  if (rerouted.length > 0) {
+    log.info({ reportDate, reportSlot, rerouted },
+      'Initial dispatch rerouted work-reports from unavailable lead to healthy executor');
+  }
+  const skippedLeads = executorResolver.skipped();
+  if (skippedLeads.length > 0) {
+    log.warn({ reportDate, reportSlot, skipped: skippedLeads },
+      'Initial dispatch skipped — no available executor (reports stay pending for redispatch)');
   }
 
   const taskResult = await createTeamReportTasks(app, taskCandidates);
@@ -913,18 +970,21 @@ function ingestCompletedReportTasks(reportDate: string): { ingested: number; unl
 async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: string): Promise<void> {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT wr.id AS report_id, wr.report_slot, wr.organization_id, wr.org_path,
+    SELECT wr.id AS report_id, wr.report_slot, wr.organization_id, wr.org_path, wr.redispatch_attempts,
            tm.id AS team_id, tm.name, tm.slug, tm.lead, tm.charter, tm.organization_id AS team_org_id, tm.is_active
     FROM work_reports wr
     JOIN teams tm ON tm.id = wr.team_id
     WHERE wr.report_date=? AND wr.subject_kind='team' AND wr.status='pending' AND wr.source_task_id IS NULL
       AND tm.lead IS NOT NULL AND TRIM(tm.lead) != ''
+      AND wr.redispatch_attempts < ?
+      AND (wr.next_redispatch_at IS NULL OR wr.next_redispatch_at <= datetime('now'))
     ORDER BY wr.due_at ASC, wr.rowid ASC
-  `).all(reportDate) as Array<{
+  `).all(reportDate, MAX_REDISPATCH_ATTEMPTS) as Array<{
     report_id: string;
     report_slot: WorkReportSlot;
     organization_id: string | null;
     org_path: string;
+    redispatch_attempts: number;
     team_id: string;
     name: string;
     slug: string;
@@ -934,6 +994,18 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
     is_active: number;
   }>;
   if (rows.length === 0) return;
+
+  // 상한(5)에 걸려 이번 틱 대상에서 제외된 보고 수 — 관측용(측정 오염 제거 검증 지표).
+  const cappedOut = (db.prepare(`
+    SELECT COUNT(*) AS n
+    FROM work_reports wr
+    JOIN teams tm ON tm.id = wr.team_id
+    WHERE wr.report_date=? AND wr.subject_kind='team' AND wr.status='pending' AND wr.source_task_id IS NULL
+      AND tm.lead IS NOT NULL AND TRIM(tm.lead) != '' AND wr.redispatch_attempts >= ?
+  `).get(reportDate, MAX_REDISPATCH_ATTEMPTS) as { n: number }).n;
+  if (cappedOut > 0) {
+    log.warn({ reportDate, cappedOut, maxAttempts: MAX_REDISPATCH_ATTEMPTS }, 'Redispatch attempts capped — reports left pending for finalize to mark missed');
+  }
 
   // 미등록 리드는 발행 불가(400 Unknown agent) — 매 틱 반복 실패 루프 방지 가드 (2026-07-08 실측).
   // 등록 복구(재시작) 시 자동으로 다시 발행된다.
@@ -950,13 +1022,23 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
   // 실패한 보고는 다음 틱에서 다시 unlink→재발행되어 매 틱 새 실패 태스크를 양산하는 무한 루프가 된다
   // (2026-07-25 실측: '[업무보고 작성]' 태스크가 opencode/claude-code로 매 틱 재투입되어 분당 ~20건
   //  "Circuit breaker open" 실패 대량 생성 → 대시보드 실패 토스트 폭주). 회로가 닫혀 있거나 cooldown
-  //  경과로 회로가 자가복구된 리드에게만 발행한다. 회로 회복 시 자동으로 재개된다.
-  //  (초기 dispatch와 동일한 non-mutating 가드 사용 — half-open 프로브 누수 제거)
-  const dispatchGuard = makeLeadDispatchGuard();
-  const dispatchable = eligible.filter((row) => dispatchGuard.dispatchable(row.lead.trim()));
+  //  경과로 회로가 자가복구된 리드/실행자에게만 발행한다. 회로 회복 시 자동으로 재개된다.
+  //  (초기 dispatch와 동일한 resolveExecutor 라우팅 — lead 불가용이면 가용 member/fallback으로,
+  //   전원 불가용이면 스킵. half-open 프로브 누수 없는 non-mutating 판정.)
+  const executorResolver = makeReportExecutorResolver(knownAgents);
+  const rowExecutor = new Map<string, string>(); // report_id → 해석된 실행자
+  const dispatchable = eligible.filter((row) => {
+    const exec = executorResolver.resolve(row.team_id, row.lead.trim());
+    if (exec) { rowExecutor.set(row.report_id, exec); return true; }
+    return false;
+  });
+  const rerouted = executorResolver.rerouted();
+  if (rerouted.length > 0) {
+    log.info({ reportDate, rerouted }, 'Redispatch rerouted work-reports to healthy executor');
+  }
   const breakerSkipped = eligible.length - dispatchable.length;
   if (breakerSkipped > 0) {
-    log.warn({ reportDate, skipped: breakerSkipped, tripped: dispatchGuard.tripped() }, 'Redispatch skipped for leads with open circuit breaker');
+    log.warn({ reportDate, skipped: breakerSkipped, skippedLeads: executorResolver.skipped() }, 'Redispatch skipped — no available executor');
   }
   if (dispatchable.length === 0) return;
 
@@ -1000,13 +1082,31 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
       reportId: row.report_id,
       teamId: row.team_id,
       organizationId: row.organization_id,
-      lead: row.lead.trim(),
+      lead: rowExecutor.get(row.report_id) ?? row.lead.trim(),
       prompt: buildReportPrompt(team, reportDate, row.report_slot, snapshot),
     };
   });
 
   const result = await createTeamReportTasks(app, candidates);
   log.info({ reportDate, redispatched: result.created, failed: result.failed }, 'Unlinked work-report tasks redispatched');
+
+  // P0-7: 이번 틱에 실제로 재발행을 시도한 보고(batch)만 attempts+1 + 지수 백오프 적용.
+  // 발행 자체가 202를 반환해도(생성된 태스크가 나중에 CB open으로 실패) 다음 틱에 다시
+  // unlink→여기로 돌아오므로, 시도 횟수는 "재발행을 시도했는가"를 기준으로 센다.
+  const backoffStmt = db.prepare(`
+    UPDATE work_reports
+    SET redispatch_attempts = redispatch_attempts + 1,
+        next_redispatch_at = datetime('now', ?),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  for (const row of batch) {
+    const backoffMs = Math.min(
+      REDISPATCH_BACKOFF_BASE_MS * 2 ** row.redispatch_attempts,
+      REDISPATCH_BACKOFF_MAX_MS,
+    );
+    backoffStmt.run(`+${Math.round(backoffMs / 1000)} seconds`, row.report_id);
+  }
 }
 
 function hasAnyReports(reportDate: string, reportSlot: WorkReportSlot): boolean {

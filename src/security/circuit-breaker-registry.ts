@@ -2,6 +2,12 @@ import { getDb } from '../storage/database.js';
 import { sharedState } from '../core/shared-state.js';
 import { eventBus } from '../core/event-bus.js';
 import { logDecision } from '../core/decision-log.js';
+import {
+  matchLearnedCircuitPattern,
+  normalizeCircuitSignature,
+  recordLearnedCircuitPatternApplication,
+  recordLearningEvent,
+} from '../core/failure-learning.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('circuit-breaker-registry');
@@ -23,6 +29,7 @@ export interface ClassifiedCircuitError {
   immediateOpen: boolean;
   resetTime: number | null;
   matchedText: string;
+  learnedSignature?: string;
 }
 
 export interface CircuitBreakerPolicy {
@@ -168,6 +175,17 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
     }
   }
 
+  const learned = matchLearnedCircuitPattern(message);
+  if (learned) {
+    return {
+      reason: 'quota',
+      immediateOpen: true,
+      resetTime,
+      matchedText: learned.signature,
+      learnedSignature: learned.signature,
+    };
+  }
+
   return null;
 }
 
@@ -227,6 +245,8 @@ class CircuitBreakerRegistry {
       ...current,
       state: 'half-open',
       failureCount: 0,
+      // half-open 체류 TTL은 최초 open 시각이 아니라 실제 probe 진입 시각부터 잰다.
+      openedAt: Date.now(),
     };
     this.commit(next, 'Circuit moved to half-open');
     this.halfOpenAttempts.set(agentId, 1);
@@ -262,6 +282,23 @@ class CircuitBreakerRegistry {
     const current = this.ensure(agentId);
     const classified = classifyCircuitError(rawError);
     const failureThreshold = normalizePositiveInteger(policy.failureThreshold, FAILURE_THRESHOLD);
+
+    if (classified?.learnedSignature) {
+      const learned = matchLearnedCircuitPattern(classified.learnedSignature);
+      if (learned) {
+        recordLearnedCircuitPatternApplication(agentId, learned);
+      }
+    } else if (!classified) {
+      const signature = normalizeCircuitSignature(rawError);
+      if (signature) {
+        recordLearningEvent({
+          agentId,
+          eventType: 'circuit_unclassified',
+          pattern: signature,
+          context: { failureCountBefore: current.failureCount },
+        });
+      }
+    }
 
     if (classified?.reason === 'auth') {
       const next: CircuitSnapshot = {
@@ -465,6 +502,16 @@ class CircuitBreakerRegistry {
     this.states.set(snapshot.agentId, snapshot);
     this.persist(snapshot);
     logDecision({ phase: 'circuit-breaker', decision: `circuit:${snapshot.state}`, reason: message, actor: snapshot.agentId });
+    recordLearningEvent({
+      agentId: snapshot.agentId,
+      eventType: 'circuit_commit',
+      pattern: `${snapshot.state}:${snapshot.reason ?? 'none'}`,
+      context: {
+        message,
+        failureCount: snapshot.failureCount,
+        cooldownUntil: snapshot.cooldownUntil,
+      },
+    });
     void this.syncSharedState(snapshot.agentId);
     log.info({
       agentId: snapshot.agentId,

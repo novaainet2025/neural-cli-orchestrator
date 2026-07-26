@@ -9,8 +9,9 @@ const { listEnabledIds, getAgentState, dbGet } = vi.hoisted(() => ({
     return { health: { circuitState: 'closed' } };
   }),
   dbGet: vi.fn((agentId: string) => {
+    // Active rate limit: SQL filters is_limited=1 AND reset_at > datetime('now')
     if (agentId === 'openrouter') {
-      return { is_limited: 1 };
+      return { active: 1 };
     }
     return null;
   }),
@@ -42,13 +43,24 @@ vi.mock('../utils/logger.js', () => ({
   }),
 }));
 
-import { ProviderSelectionError, smartRouter, sortProvidersByCostOrder } from './smart-router.js';
+import {
+  isTaskCompatibleProvider,
+  ProviderSelectionError,
+  smartRouter,
+  sortProvidersByCostOrder,
+} from './smart-router.js';
 
 describe('SmartRouter', () => {
   beforeEach(() => {
     listEnabledIds.mockClear();
     getAgentState.mockClear();
-    dbGet.mockClear();
+    dbGet.mockReset();
+    dbGet.mockImplementation((agentId: string) => {
+      if (agentId === 'openrouter') {
+        return { active: 1 };
+      }
+      return null;
+    });
   });
 
   describe('sortProvidersByCostOrder', () => {
@@ -104,7 +116,7 @@ describe('SmartRouter', () => {
   describe('selectProviders', () => {
     it('filters out rate-limited or circuit-broken providers and sorts by cost', async () => {
       // Available providers from mock: ['openrouter', 'ollama', 'vllm', 'claude-code', 'unknown-provider']
-      // openrouter: rate-limited (db returning is_limited: 1)
+      // openrouter: actively rate-limited (reset_at still in the future → SQL match)
       // vllm: circuit-broken (sharedState returning circuitState: 'open')
       // Available for routing should be: ['ollama', 'claude-code', 'unknown-provider']
       // Sorted by cost order: ['ollama', 'claude-code', 'unknown-provider']
@@ -113,10 +125,40 @@ describe('SmartRouter', () => {
       expect(providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
     });
 
+    it('does not exclude providers when rate_limit_state row has expired', async () => {
+      // Expired row: is_limited may still be 1, but reset_at <= now → SQL returns no row
+      dbGet.mockImplementation(() => null);
+
+      const providers = await smartRouter.selectProviders('task', 5);
+      expect(providers).toContain('openrouter');
+      expect(providers[0]).toBe('ollama');
+      expect(providers).toContain('claude-code');
+      // vllm still circuit-open
+      expect(providers).not.toContain('vllm');
+    });
+
+    it('does not exclude providers when rate_limit_state row has no reset_at (null)', async () => {
+      // Missing reset_at (NULL): reset_at > now is false → SQL returns no row
+      dbGet.mockImplementation(() => null);
+
+      const providers = await smartRouter.selectProviders('task', 5);
+      expect(providers).toContain('openrouter');
+      expect(providers[0]).toBe('ollama');
+    });
+
     it('fails explicitly when available providers do not meet the mode minimum', async () => {
       // openrouter is rate-limited, vllm is circuit-open → only ollama remains (1 < discussion minimum 3)
       listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'ollama']);
       await expect(smartRouter.selectProviders('discussion', 3)).rejects.toBeInstanceOf(ProviderSelectionError);
+    });
+  });
+
+  describe('provider capability gate', () => {
+    it('keeps media UUID providers out of code and verification work', () => {
+      expect(isTaskCompatibleProvider('higgsfield', 'code')).toBe(false);
+      expect(isTaskCompatibleProvider('higgsfield', 'verify')).toBe(false);
+      expect(isTaskCompatibleProvider('higgsfield', 'media')).toBe(true);
+      expect(isTaskCompatibleProvider('codex', 'code')).toBe(true);
     });
   });
 
@@ -127,6 +169,13 @@ describe('SmartRouter', () => {
       // Available: 'ollama', 'claude-code', 'unknown-provider'
       expect(decision.mode).toBe('parallel');
       expect(decision.providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
+    });
+  });
+
+  describe('inferTaskType', () => {
+    it('classifies implementation with vitest as code, not pure verification', () => {
+      expect(smartRouter.inferTaskType('TypeScript 버그를 수정하고 vitest를 실행하라')).toBe('code');
+      expect(smartRouter.inferTaskType('기존 결과를 검증만 하라')).toBe('verify');
     });
   });
 });

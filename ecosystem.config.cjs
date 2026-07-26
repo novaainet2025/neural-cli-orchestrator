@@ -17,6 +17,8 @@ module.exports = {
       restart_delay: 5000,
       max_restarts: 10,
       min_uptime: '15s',
+      // src/index.ts의 15초 drain + orphan/lock 영속화가 끝날 시간을 보장한다.
+      kill_timeout: 20000,
       env: {
         PORT: 6200,
         WS_PORT: 6201,

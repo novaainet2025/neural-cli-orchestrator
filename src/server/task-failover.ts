@@ -14,22 +14,73 @@ export type FailoverChainsConfig = z.infer<typeof FailoverChainsSchema>;
 let cachedFailoverChains: FailoverChainsConfig | null = null;
 let cachedFailoverChainsWarning: string | null = null;
 
-const RETRYABLE_FAILOVER_PATTERNS = [
-  /empty completion from provider/i,
-  /no final response — process aborted \(timeout\)/i,
-  /timeout waiting/i,
-  /queue_wait_timeout/i,
-  // executor 레벨 AbortSignal 타임아웃 — status=failed로 귀결되는 실전 최다 패턴 (E2E task_Iu1JtUsJR6tf8auo에서 실측)
-  /aborted due to timeout/i,
-  // 로컬 LLM(ollama) 백엔드 다운/미기동 시 OpenAI SDK가 던지는 연결 실패 —
-  // 이게 retryable로 안 잡히면 로컬 primary → CLI 폴백이 발화하지 않는다 (2026-07-03 실측: hermes 로컬화)
-  /connection error/i,
-  /fetch failed/i,
-  /ECONNREFUSED/i,
-  /socket hang up/i,
-  /stream disconnected/i,
-  /error sending request/i,
+export type FailureClass =
+  | 'provider_unavailable'
+  | 'provider_limit'
+  | 'transient'
+  | 'verifier'
+  | 'silent_output'
+  | 'orphan'
+  | 'policy';
+
+const POLICY_FAILURE_PATTERNS = [
+  /\bquality_rejected\b/i,
+  /\bevidence_gate_blocked\b/i,
+  /\b(?:user|operator)[ _-]?cancelled\b/i,
 ];
+
+const PROVIDER_UNAVAILABLE_PATTERN =
+  /\b(?:circuit breaker open|provider[_ -]unavailable|connection error|ECONNREFUSED|fetch failed|socket hang up|stream disconnected|error sending request)\b/i;
+
+export function isProviderUnavailableFailureText(
+  value: string | null | undefined,
+): boolean {
+  return typeof value === 'string' && PROVIDER_UNAVAILABLE_PATTERN.test(value);
+}
+
+/**
+ * 실패를 단일 분류기로 정규화한다. 과거의 retryable 정규식 화이트리스트는 실측 실패의
+ * 90% 이상을 조용히 탈락시켰다. 사용자/품질 정책에 의한 명시적 종결만 non-retryable로
+ * 두고, 나머지 실행 실패는 bounded retry/failover 체인이 판단하게 한다.
+ */
+export function classifyFailure(input: {
+  status?: string | null;
+  error?: string | null;
+  response?: string | null;
+}): FailureClass | null {
+  const status = input.status?.toLowerCase() ?? '';
+  const haystack = [input.error, input.response]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n');
+
+  if (status === 'cancelled' || POLICY_FAILURE_PATTERNS.some(pattern => pattern.test(haystack))) {
+    return 'policy';
+  }
+  // Check the explicit availability envelope before its trailing reason
+  // (for example "(open/quota)") can be mistaken for a raw quota failure.
+  if (isProviderUnavailableFailureText(haystack)) {
+    return 'provider_unavailable';
+  }
+  if (/\b(?:rate[ -]?limit|quota|usage limit|weekly limit|monthly limit|429)\b/i.test(haystack)) {
+    return 'provider_limit';
+  }
+  if (/\bverifier failed\b/i.test(haystack)) return 'verifier';
+  if (/\b(?:silent-failure|empty completion|no final response)\b/i.test(haystack)) return 'silent_output';
+  if (status === 'lease_expired' || /\b(?:orphaned|lease_expired)\b/i.test(haystack)) return 'orphan';
+  if (
+    status === 'failed'
+    || status === 'timed_out'
+    || /\b(?:timeout|timed out|aborted|queue_wait_timeout|unknown: failure)\b/i.test(haystack)
+  ) {
+    return 'transient';
+  }
+  // 이 함수는 실패 종결 경로에서 호출된다. 명시적 성공 상태가 아닌데 status/error가
+  // 존재하면 알 수 없는 실행 실패로 fail-open retry하여 조용한 탈락을 막는다.
+  if (!['completed', 'done', 'success'].includes(status) && (status || haystack)) {
+    return 'transient';
+  }
+  return null;
+}
 
 export function loadFailoverChainsConfig(): FailoverChainsConfig | null {
   if (cachedFailoverChains) return cachedFailoverChains;
@@ -61,9 +112,8 @@ export function isRetryableFailoverFailure(input: {
   error?: string | null;
   response?: string | null;
 }): boolean {
-  if (input.status === 'timed_out' || input.status === 'lease_expired') return true;
-  const haystack = [input.error, input.response].filter((value): value is string => typeof value === 'string' && value.length > 0).join('\n');
-  return RETRYABLE_FAILOVER_PATTERNS.some(pattern => pattern.test(haystack));
+  const failureClass = classifyFailure(input);
+  return failureClass !== null && failureClass !== 'policy';
 }
 
 export function selectFailoverCandidate(options: {

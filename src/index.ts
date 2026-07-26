@@ -21,6 +21,13 @@ import { getTopologyHTML } from './server/topology.js';
 import { providerProber } from './core/provider-prober.js';
 import { startTeamLifecycleEventMonitor } from './core/team-lifecycle.js';
 import { runHourlyRoleAudit } from './core/hourly-role-oversight.js';
+import { resumeCompanyRuns } from './core/company-orchestrator.js';
+import { resumeHarnessRuns } from './server/routes/harness.js';
+import { recordLearningEvent } from './core/failure-learning.js';
+import {
+  decideOrphanRecovery,
+  type RecoverableTaskStatus,
+} from './core/orphan-recovery-policy.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
@@ -68,7 +75,7 @@ function pickHealthyProvider(preferredId: string): string | null {
 }
 
 /**
- * 부팅 시 in-flight(queued/assigned/running/streaming) 태스크 복구.
+ * 부팅 시 queued/in-flight 태스크 복구.
  * 기존: 전부 failed+dead-letter로 종결(재시작마다 대량 실패 발생 — task 실패 근본원인 A).
  * 변경: 재큐잉 카운트 < MAX면 status='queued'로 되돌리고 재큐잉 목록에 담아 반환한다.
  *       (부팅 후 taskQueue.enqueue로 실제 재실행). agent 없음/poison(상한 초과)만 dead-letter.
@@ -76,12 +83,12 @@ function pickHealthyProvider(preferredId: string): string | null {
 function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: number } {
   const db = getDb();
   const orphans = db.prepare(`
-    SELECT id, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
+    SELECT id, status, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
            , metadata_json
     FROM tasks
-    WHERE status IN ('queued', 'assigned', 'running', 'streaming')
+    WHERE status IN ('queued', 'assigned', 'in_progress', 'running', 'streaming')
   `).all() as Array<{
-    id: string; assigned_to: string | null; prompt: string;
+    id: string; status: RecoverableTaskStatus; assigned_to: string | null; prompt: string;
     system_prompt: string | null; verifier_json: string | null; orphan_requeue_count: number;
     metadata_json: string | null;
   }>;
@@ -90,29 +97,51 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
     INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
     VALUES (?, ?, ?, ?)
   `);
-  const requeueStmt = db.prepare(`
+  const requeueInterruptedStmt = db.prepare(`
     UPDATE tasks
     SET status='queued', orphan_requeue_count = orphan_requeue_count + 1,
         error=NULL, updated_at=datetime('now')
     WHERE id=?
+  `);
+  const restoreQueuedStmt = db.prepare(`
+    UPDATE tasks
+    SET error=NULL, updated_at=datetime('now')
+    WHERE id=? AND status='queued'
   `);
 
   const requeued: OrphanRequeue[] = [];
   let deadLettered = 0;
 
   const handleOne = db.transaction((task: typeof orphans[number]): OrphanRequeue | null => {
-    // agent 미지정 or poison(재큐잉 상한 초과) → dead-letter (기존 동작 유지)
-    if (!task.assigned_to || (task.orphan_requeue_count ?? 0) >= MAX_ORPHAN_REQUEUE) {
-      const reason = !task.assigned_to
+    const decision = decideOrphanRecovery({
+      status: task.status,
+      assignedTo: task.assigned_to,
+      recoveryCount: task.orphan_requeue_count ?? 0,
+      maxRecoveryCount: MAX_ORPHAN_REQUEUE,
+    });
+    if (decision.action === 'dead_letter') {
+      const reason = decision.reason === 'no_agent'
         ? 'orphaned: server restart (no agent)'
         : `orphaned: server restart (poison — requeued ${task.orphan_requeue_count}x)`;
       const moved = transitionTask(db, task.id, 'failed', { error: reason, completedAt: true });
       if (moved.ok) insertDeadLetter.run(task.id, task.assigned_to, task.prompt, reason);
+      if (decision.reason === 'poison') {
+        recordLearningEvent({
+          agentId: task.assigned_to ?? 'system',
+          eventType: 'orphan_poison',
+          pattern: reason,
+          context: {
+            taskId: task.id,
+            orphanRequeueCount: task.orphan_requeue_count,
+          },
+        }, db);
+      }
       deadLettered++;
       return null;
     }
-    // 재큐잉: status를 queued로 되돌리고 카운트 증가. 실제 enqueue는 부팅 후.
-    requeueStmt.run(task.id);
+    // 미실행 queued는 poison budget을 소비하지 않고, 실행 중단 건만 횟수를 올린다.
+    if (decision.incrementRecoveryCount) requeueInterruptedStmt.run(task.id);
+    else restoreQueuedStmt.run(task.id);
     let model: string | undefined;
     if (task.metadata_json) {
       try {
@@ -126,7 +155,7 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
     }
     return {
       taskId: task.id,
-      agentId: task.assigned_to,
+      agentId: task.assigned_to!,
       prompt: task.prompt,
       model,
       systemPrompt: task.system_prompt ?? undefined,
@@ -328,6 +357,14 @@ async function boot(): Promise<void> {
   // 0.0.0.0 바인드 (HOST env로 재정의 가능 — 되돌리려면 HOST=127.0.0.1)
   await gateway.listen({ port: env.PORT, host: process.env.HOST ?? '0.0.0.0' });
   log.info({ port: env.PORT }, 'API Gateway listening');
+  const resumedCompanyRuns = resumeCompanyRuns(gateway);
+  const resumedHarnessRuns = resumeHarnessRuns();
+  if (resumedCompanyRuns > 0 || resumedHarnessRuns > 0) {
+    log.warn({
+      companyRuns: resumedCompanyRuns,
+      harnessRuns: resumedHarnessRuns,
+    }, 'Durable orchestration runs resumed after startup');
+  }
   stopTeamLifecycleEventMonitor = startTeamLifecycleEventMonitor(db);
   try {
     const hourlyAudit = runHourlyRoleAudit({ database: db, source: 'startup' });
@@ -340,6 +377,23 @@ async function boot(): Promise<void> {
     log.warn({
       error: error instanceof Error ? error.message : String(error),
     }, 'Startup HR role and goal coverage audit failed');
+  }
+
+  try {
+    const { runPerformanceGovernance } = await import('./core/performance-governance.js');
+    const { runCommanderOperationAudit } = await import('./core/commander-operation-audit.js');
+
+    const govResult = runPerformanceGovernance({ database: db });
+    const auditResult = runCommanderOperationAudit({
+      database: db,
+      source: 'startup',
+    });
+
+    log.info({ govResult, auditResult }, 'Startup performance governance and commander audit completed');
+  } catch (error) {
+    log.warn({
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Startup performance governance and commander audit failed');
   }
 
   // 9. WebSocket Bridge (:6201)
@@ -363,42 +417,43 @@ async function boot(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
-  log.info({ signal }, 'Shutting down...');
-  if (gateway) {
-    await gateway.close();
-    log.info('API Gateway closed to new requests');
-  }
-  if (stopWorkReportScheduler) {
-    stopWorkReportScheduler();
-    stopWorkReportScheduler = null;
-  }
-  if (stopTeamLifecycleEventMonitor) {
-    stopTeamLifecycleEventMonitor();
-    stopTeamLifecycleEventMonitor = null;
-  }
+    taskQueue.beginShutdown(signal);
+    log.info({ signal }, 'Shutting down...');
+    if (gateway) {
+      await gateway.close();
+      log.info('API Gateway closed to new requests');
+    }
+    if (stopWorkReportScheduler) {
+      stopWorkReportScheduler();
+      stopWorkReportScheduler = null;
+    }
+    if (stopTeamLifecycleEventMonitor) {
+      stopTeamLifecycleEventMonitor();
+      stopTeamLifecycleEventMonitor = null;
+    }
 
-  const drainResult = await waitForInFlightDrain(SHUTDOWN_DRAIN_TIMEOUT_MS);
-  if (drainResult.drained) {
-    log.info('In-flight task drain completed before shutdown timeout');
-  } else {
-    const orphaned = markInFlightTasksAsOrphaned(drainResult.remaining);
-    log.warn({
-      timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS,
-      remaining: drainResult.remaining.length,
-      orphaned,
-      taskIds: drainResult.remaining.map(task => task.id),
-    }, 'Shutdown drain timed out; remaining in-flight tasks marked orphaned');
-  }
+    const drainResult = await waitForInFlightDrain(SHUTDOWN_DRAIN_TIMEOUT_MS);
+    if (drainResult.drained) {
+      log.info('In-flight task drain completed before shutdown timeout');
+    } else {
+      const orphaned = markInFlightTasksAsOrphaned(drainResult.remaining);
+      log.warn({
+        timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS,
+        remaining: drainResult.remaining.length,
+        orphaned,
+        taskIds: drainResult.remaining.map(task => task.id),
+      }, 'Shutdown drain timed out; remaining in-flight tasks marked orphaned');
+    }
 
-  await wsBridge.stop(signal);
-  sessionManager.destroy();
-  agentManager.destroy();
-  await taskQueue.close();
-  syncEngine.stop();
-  eventBus.destroy();
-  await closeRedis();
-  closeDb();
-  process.exit(0);
+    await wsBridge.stop(signal);
+    sessionManager.destroy();
+    agentManager.destroy();
+    await taskQueue.close();
+    syncEngine.stop();
+    eventBus.destroy();
+    await closeRedis();
+    closeDb();
+    process.exit(0);
   })();
   return shutdownPromise;
 }

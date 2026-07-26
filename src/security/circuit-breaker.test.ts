@@ -91,4 +91,18 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.canExecute()).toBe(true); // 여전히 정확히 1개 슬롯만 허용
     expect(breaker.canExecute()).toBe(false); // 한도 초과 — 무제한 동시 실행 아님
   });
+
+  it('starts the half-open TTL when the probe state begins, not when the circuit first opened', () => {
+    const breaker = new CircuitBreaker('probe-ttl-start-test', {
+      failureThreshold: 1,
+      resetTimeoutMs: 10 * 60_000,
+      halfOpenMaxAttempts: 1,
+    });
+    breaker.reset();
+
+    breaker.recordFailure('boom');
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(breaker.canExecute()).toBe(true);
+    expect(breaker.getState()).toBe('half-open');
+  });
 });

@@ -75,15 +75,19 @@ describe('registerFleetOpsRoutes resource cleanup', () => {
       ([eventType]) => eventType === 'task:created',
     )?.[1] as (() => void) | undefined;
     expect(createdHandler).toBeTypeOf('function');
-    expect(vi.getTimerCount()).toBe(1);
+    const initialTimerCount = vi.getTimerCount();
+    expect(initialTimerCount).toBeGreaterThanOrEqual(1);
 
     createdHandler?.();
-    expect(vi.getTimerCount()).toBe(2);
+    expect(vi.getTimerCount()).toBe(initialTimerCount + 1);
 
     expect(closeHooks).toHaveLength(1);
     await closeHooks[0]();
+    await vi.runAllTicks();
 
-    expect(vi.getTimerCount()).toBe(0);
+    const fetchCallsAfterClose = vi.mocked(fetch).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(vi.mocked(fetch).mock.calls.length).toBe(fetchCallsAfterClose);
     for (const eventType of ['task:created', 'task:completed', 'task:failed']) {
       const handler = mocks.eventOn.mock.calls.find(([type]) => type === eventType)?.[1];
       expect(mocks.eventOff).toHaveBeenCalledWith(eventType, handler);

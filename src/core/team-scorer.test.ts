@@ -65,6 +65,11 @@ describe('team score aggregation', () => {
       'a-circuit', 'team_alpha', 'failed',
       'Circuit breaker open for agent claude-code (generic)', '-2 hours',
     );
+    // P2-4의 정직한 신규 문자열도 기존 문자열과 동일한 인프라 이벤트로 제외한다.
+    insertWithError.run(
+      'a-provider-unavailable', 'team_alpha', 'failed',
+      'provider_unavailable: claude-code (open/quota)', '-2 hours',
+    );
 
     insert.run('b1', 'team_beta', 'completed', '-1 hour');
     insert.run('b2', 'team_beta', 'failed', '-3 days');

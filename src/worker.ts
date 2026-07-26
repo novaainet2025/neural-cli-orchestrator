@@ -48,6 +48,7 @@ async function boot(): Promise<void> {
 }
 
 async function shutdown(signal: string): Promise<void> {
+  taskQueue.beginShutdown(signal);
   log.info({ signal }, 'Shutting down worker');
   await taskQueue.close();
   syncEngine.stop();

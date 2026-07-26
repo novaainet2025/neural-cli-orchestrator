@@ -3,6 +3,16 @@ import { resolve } from 'path';
 import type Database from 'better-sqlite3';
 import type { CreateTaskInputType } from '../utils/validation.js';
 import { analyzePrompt, enrichPrompt } from './prompt-gate.js';
+import {
+  hasResponseContract,
+  IMPROVEMENT_DEBATE_RESPONSE_CONTRACT,
+  QUALITY_AUDIT_RESPONSE_CONTRACT,
+  RESEARCH_STRATEGY_RESPONSE_CONTRACT,
+  SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT,
+  SOURCE_DISCOVERY_RESPONSE_CONTRACT,
+} from '../core/response-contract.js';
+
+export { hasResponseContract } from '../core/response-contract.js';
 
 export type PromptGateInfo =
   | {
@@ -29,19 +39,14 @@ const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
 const WORK_REPORT_PATTERN = /^\s*\[업무보고 작성\]/;
 const PERFORMANCE_GOAL_INPUT_PATTERN = /^\s*\[성과보고·목표설정 입력 지시\]/;
 const SOURCE_DISCOVERY_TEAM_ID = 'team_tech-port-01-source-discovery';
-const SOURCE_DISCOVERY_RESPONSE_CONTRACT = '[01 Source Discovery 응답 계약]';
 const IMPROVEMENT_DEBATE_TEAM_ID = 'team_tech-port-06-improvement-debate';
-const IMPROVEMENT_DEBATE_RESPONSE_CONTRACT = '[06 Improvement Debate 응답 계약]';
 const SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS = new Set([
   'team_self-learning',
   'team_self-improvement',
   'team_error-prevention',
 ]);
-const SELF_IMPROVEMENT_DIAGNOSTIC_RESPONSE_CONTRACT = '[Self-Improvement Diagnostic 응답·증거 계약]';
 const RESEARCH_STRATEGY_TEAM_ID = 'team_research-strategy';
-const RESEARCH_STRATEGY_RESPONSE_CONTRACT = '[Research Strategy 응답 계약]';
 const QUALITY_AUDIT_TEAM_ID = 'team_quality-audit';
-const QUALITY_AUDIT_RESPONSE_CONTRACT = '[Quality Audit 응답 계약]';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -195,11 +200,16 @@ export function applyPromptGate(prompt: string, metadata?: Record<string, unknow
 } {
   const analysis = analyzePrompt(prompt);
   if (analysis.score < 60) {
+    const skipBuildVerification = isWorkReportPrompt(prompt)
+      || isTextOnlyPrompt(prompt)
+      || isStructuredOutputPrompt(prompt)
+      || isPerformanceGoalInputPrompt(prompt);
     return {
       prompt: applyTeamResponseContract(
         enrichPrompt(prompt, {
           projectDir: typeof metadata?.projectDir === 'string' ? metadata.projectDir : undefined,
           taskType: inferTaskType(prompt),
+          skipBuildVerification,
         }),
         metadata,
       ),

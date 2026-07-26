@@ -25,6 +25,10 @@ import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.j
 import { requireEvidence } from '../security/evidence-gate.js';
 import { compressPlan, MAX_PLAN_CHARS } from '../core/context-budget.js';
 import { logDecision } from '../core/decision-log.js';
+import {
+  invalidateLearnedCircuitPattern,
+  recordLearningEvent,
+} from '../core/failure-learning.js';
 import { computeTrustScores } from '../core/trust-scorer.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { sharedState, type AgentState } from '../core/shared-state.js';
@@ -1096,6 +1100,12 @@ export async function createGateway() {
         reason,
         evidenceTier: 'T1',
       });
+      recordLearningEvent({
+        agentId: 'system',
+        eventType: 'failover_skip',
+        pattern: reason,
+        context: { taskId, deadLetter },
+      });
       log.warn({ taskId, reason, deadLetter }, 'Automatic task failover skipped');
       if (!deadLetter) return;
       try {
@@ -1109,7 +1119,7 @@ export async function createGateway() {
               SELECT 1 FROM dead_letter_tasks
               WHERE task_id=? AND reason=?
             )
-        `).run(reason, taskId, taskId, reason);
+        `).run('failover_exhausted', taskId, taskId, 'failover_exhausted');
       } catch (error) {
         log.warn({
           taskId,
@@ -1145,7 +1155,7 @@ export async function createGateway() {
       assigned_to: string | null;
     } | undefined;
     if (!taskRow) {
-      recordSkip('source_task_missing');
+      recordSkip('source_task_missing', true);
       return;
     }
     if (!taskRow.assigned_to) {
@@ -1195,11 +1205,23 @@ export async function createGateway() {
           : `http_${created.statusCode}`;
       recordSkip(
         `failover_dispatch_rejected:${failureReason}`,
-        created.statusCode === 429 || created.statusCode === 404,
+        true,
       );
       return;
     }
 
+    recordLearningEvent({
+      agentId: toAgent,
+      eventType: 'failover_dispatch',
+      pattern: failure.error ?? failure.status ?? 'retryable_failure',
+      context: {
+        taskId: created.newTaskId,
+        sourceTaskId,
+        fromAgent: taskRow.assigned_to,
+        toAgent,
+        retryCount: created.retryCount,
+      },
+    });
     await eventBus.publish({
       type: 'task:failover',
       taskId: created.newTaskId,
@@ -1257,6 +1279,12 @@ export async function createGateway() {
     }
 
     updateTaskQualityMetadata(db, taskId, quality.heuristics);
+    recordLearningEvent({
+      agentId: taskRow.assigned_to ?? 'system',
+      eventType: 'quality_reject',
+      pattern: quality.heuristics.join(','),
+      context: { taskId, companyOwnsRetry },
+    });
     if (companyOwnsRetry) {
       log.info(
         { taskId, heuristics: quality.heuristics },
@@ -1328,6 +1356,35 @@ export async function createGateway() {
       'http://localhost:3000', 'http://127.0.0.1:3000',
       /^http:\/\/localhost:\d+$/,
     ],
+  });
+
+  app.post('/api/learning/patterns/invalidate', async (request, reply) => {
+    const parsed = z.object({
+      pattern: z.string().min(1).max(500),
+      actor: z.string().min(1).max(100).optional(),
+      reason: z.string().min(1).max(500).optional(),
+    }).safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: 'pattern is required',
+        details: parsed.error.issues,
+      };
+    }
+
+    const invalidated = invalidateLearnedCircuitPattern(parsed.data.pattern, {
+      actor: parsed.data.actor,
+      reason: parsed.data.reason,
+    });
+    if (!invalidated) {
+      reply.code(404);
+      return { error: 'learned circuit pattern not found' };
+    }
+    return {
+      ok: true,
+      pattern: parsed.data.pattern.trim(),
+      invalidated: true,
+    };
   });
 
   // ═══ Rate Limiting ═══════════════════════════════════

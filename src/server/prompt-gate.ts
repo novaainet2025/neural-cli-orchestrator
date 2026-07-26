@@ -24,6 +24,10 @@ interface SectionSpec {
 export interface EnrichDefaults {
   projectDir?: string;
   taskType?: string;
+  /** 텍스트 전용/업무보고 프롬프트는 파일 변경이 없어 빌드·타입체크 지시가 무의미하다.
+   *  (실측 2026-07-26: team_gov-engineering-reliability 업무보고 태스크가 이 지시를
+   *  문자 그대로 따라 npm run build를 실행하다 lease 만료로 실패·재큐잉됨) */
+  skipBuildVerification?: boolean;
 }
 
 const SECTIONS: readonly SectionSpec[] = [
@@ -57,7 +61,9 @@ const SECTIONS: readonly SectionSpec[] = [
     pattern: /\[(검증기준|Validation|Verification)\]|(?:^|\n)\s*(검증기준|Validation|Verification)\s*:/i,
     suggestion: '[검증기준]에 기계 판정 가능한 통과 조건(빌드/테스트)을 명시하세요.',
     defaultTemplate: d =>
-      `[검증기준] (자동 보강) ${d.projectDir ? `cd ${d.projectDir} && ` : ''}빌드/타입체크 통과.`,
+      d.skipBuildVerification
+        ? '[검증기준] (자동 보강) 본문 서술이 제공된 실데이터 수치·사실과 일치하는지 대조 확인 (파일 변경 없음 — 빌드/타입체크 불필요).'
+        : `[검증기준] (자동 보강) ${d.projectDir ? `cd ${d.projectDir} && ` : ''}빌드/타입체크 통과.`,
   },
 ];
 

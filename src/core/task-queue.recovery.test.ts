@@ -1,6 +1,10 @@
 import Database from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import { persistRecoveredTaskResult } from './task-queue.js';
+import {
+  GRACEFUL_SHUTDOWN_INTERRUPTION,
+  normalizeGracefulShutdownInterruption,
+  persistRecoveredTaskResult,
+} from './task-queue.js';
 
 let db: Database.Database | null = null;
 
@@ -87,6 +91,28 @@ describe('persistRecoveredTaskResult', () => {
     ).get()).toEqual({
       status: 'timed_out',
       error: 'timeout(idle)',
+    });
+  });
+
+  it('persists a shutdown SIGINT as cancellation without a completion timestamp', () => {
+    const database = createTask();
+    const normalized = normalizeGracefulShutdownInterruption({
+      success: false,
+      output: '',
+      error: 'opencode: CLI failed exit=unknown — Command was killed with SIGINT',
+      status: 'failed',
+    }, 'SIGINT');
+
+    const moved = persistRecoveredTaskResult(database, 'recovered-task', normalized);
+
+    expect(moved).toEqual({ ok: true });
+    expect(database.prepare(`
+      SELECT status, error, completed_at IS NOT NULL AS completed
+      FROM tasks WHERE id='recovered-task'
+    `).get()).toEqual({
+      status: 'cancelled',
+      error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (SIGINT)`,
+      completed: 0,
     });
   });
 });

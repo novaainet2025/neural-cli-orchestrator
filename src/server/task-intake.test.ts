@@ -7,6 +7,7 @@ import {
   buildDefaultVerifierWithFs,
   findActiveWorkReportTask,
   getWorkReportId,
+  hasResponseContract,
   inferTaskType,
   isCodeWorkPrompt,
   isPerformanceGoalInputPrompt,
@@ -34,6 +35,25 @@ describe('task-intake helpers', () => {
     });
     expect(result.prompt).toContain('--- 자동 보강 ---');
     expect(result.prompt).toContain('[컨텍스트] 프로젝트: /repo / 작업 유형: bugfix');
+  });
+
+  it('does not tell work-report agents to run a build (2026-07-26 gov-engineering-reliability incident)', () => {
+    const prompt = '[업무보고 작성] 2026-07-26 오후 보고서를 작성하라.\n[실데이터] ...';
+
+    const result = applyPromptGate(prompt, { projectDir: '/repo' });
+
+    expect(result.prompt).not.toContain('빌드/타입체크 통과');
+    expect(result.prompt).toContain('파일 변경 없음 — 빌드/타입체크 불필요');
+  });
+
+  it('does not inject build instructions into JSON-only structured output tasks', () => {
+    const result = applyPromptGate(
+      '[목표] 문서 메타데이터를 수정하고 오직 JSON 배열만 출력하라.',
+      { projectDir: '/repo' },
+    );
+
+    expect(result.prompt).not.toContain('빌드/타입체크 통과');
+    expect(result.prompt).toContain('파일 변경 없음 — 빌드/타입체크 불필요');
   });
 
   it('keeps prompts that already satisfy the gate', () => {
@@ -190,6 +210,13 @@ describe('task-intake helpers', () => {
       pass: true,
       heuristics: [],
     });
+  });
+
+  it('requires protocol prefixes only when the prompt contains an explicit response contract', () => {
+    expect(hasResponseContract('[목표] 코드 구현\n[Quality Audit 응답 계약]')).toBe(true);
+    expect(hasResponseContract('[05 Upgrade Regression 응답 계약]\n첫 줄 done:')).toBe(true);
+    expect(hasResponseContract('[목표] 코드 구현\n[검증기준] npm run build')).toBe(false);
+    expect(hasResponseContract(null)).toBe(false);
   });
 
   it('assigns the default verifier for code work with package.json', () => {
