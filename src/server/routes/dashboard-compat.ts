@@ -729,12 +729,20 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     // [sticky lastError 수정 2026-07-19] 마지막 실패가 마지막 '성공'보다 나중일 때만 lastError 노출.
     // 기존엔 이후 성공을 무시하고 "가장 최근 실패"를 영구 표시 → codex가 4일 전 실패(07-15)를
     // 07-19까지 계속 unhealthy로 보이던 버그. 성공으로 회복했으면 실패는 stale → 제외.
+    // [이벤트루프 스톨 수정 2026-07-26] 기존 상관 서브쿼리는 failed 행마다 재실행되어
+    // (failed 6k행 × completed 스캔) 단일 호출 8.6초 → 대시보드 폴링으로 요청 적체 →
+    // 이벤트 루프 영구 포화(모든 HTTP 타임아웃). CTE로 agent별 MAX를 1회만 계산: 0.04초(동일 결과 diff 검증).
     const lastFailRows = db.prepare(
-      `SELECT assigned_to, error, response FROM tasks f
-       WHERE status='failed' AND (error IS NOT NULL OR response IS NOT NULL)
-         AND created_at > COALESCE(
-           (SELECT MAX(created_at) FROM tasks s WHERE s.assigned_to = f.assigned_to AND s.status='completed'), '')
-       GROUP BY assigned_to HAVING MAX(created_at)`
+      `WITH last_completed AS (
+         SELECT assigned_to, MAX(created_at) AS max_c
+         FROM tasks WHERE status='completed' GROUP BY assigned_to
+       )
+       SELECT f.assigned_to, f.error, f.response, MAX(f.created_at)
+       FROM tasks f
+       LEFT JOIN last_completed lc ON lc.assigned_to = f.assigned_to
+       WHERE f.status='failed' AND (f.error IS NOT NULL OR f.response IS NOT NULL)
+         AND f.created_at > COALESCE(lc.max_c, '')
+       GROUP BY f.assigned_to`
     ).all() as any[];
     const lastFailMap = new Map(lastFailRows.map((r: any) => {
       const source = (r.error as string | null) || (r.response as string | null) || '';
