@@ -72,7 +72,7 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 | Treasury and Resource Stewardship | `hermes` | 요청 시 | 컴퓨트, 모델 호출, 예산, 쿼터, 용량 |
 | Transparency Appeals and Public Record | `cursor-agent` | 예 | 결정기록, 정정 이력, 독립 재심, 이의제기 |
 
-각 팀은 Lead를 포함한 활성 프로바이더 3명으로 구성된다. 상세 member 목록과 완전한 상시임무는 실행 원본 마이그레이션이 단일 진실 원천이다.
+각 팀은 Lead를 포함한 등록 프로바이더 3명으로 구성된다. 프로바이더의 런타임 가용성은 로컬 정책·회로·쿼터에 따라 바뀔 수 있으며, 비가용 시에도 해당 팀에 선언된 다른 member 안에서만 failover하고 실행 가능한 member가 없으면 닫힌 상태로 실패한다. 상세 member 목록과 완전한 상시임무는 실행 원본 마이그레이션이 단일 진실 원천이다.
 
 ## 권력분립과 실행 흐름
 
