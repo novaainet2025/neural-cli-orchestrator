@@ -8,7 +8,15 @@ Claude Code 안에서 `/nco-task`, `/nco-discussion`, `/nco-opus` 등의 슬래�
 
 ## 1클릭 설치
 
-### macOS / Linux / WSL2
+```bash
+curl -fsSL https://raw.githubusercontent.com/novaainet2025/neural-cli-orchestrator/main/bootstrap.sh | bash
+```
+
+저장소 설치/갱신, `npm ci`, 빌드, PM2 배포, `/health` 검증까지
+비대화식으로 완료합니다. 기본 설치 경로는 `$HOME/nco`이며 `.env`와 로컬
+변경은 덮어쓰지 않습니다.
+
+### macOS / Linux / WSL2 (전체)
 
 ```bash
 git clone https://github.com/novaainet2025/neural-cli-orchestrator.git
@@ -88,16 +96,14 @@ Claude Code (Commander)
 # 1. 설치 후 shell 설정 반영
 source ~/.bashrc
 
-# 2. Claude Code 실행
+# 2. 이미 배포된 NCO 상태 확인
+curl -fsS http://127.0.0.1:6200/health
+
+# 3. Claude Code 실행 후 상태 확인
 claude
-
-# 3. NCO 시작
-/nco-start
-
-# 4. 상태 확인
 /nco-status
 
-# 5. 첫 번째 작업 위임
+# 4. 첫 번째 작업 위임
 /nco-task codex "hello world 함수를 Python으로 작성해줘"
 ```
 
@@ -118,6 +124,7 @@ Ollama(로컬 AI)은 선택사항 — RTX 3090+ 필요.
 
 ```
 neural-cli-orchestrator/
+├── bootstrap.sh          # 한 줄 설치·갱신 진입점
 ├── setup.sh              # Mac/Linux/WSL 설치
 ├── setup.ps1             # Windows 설치
 ├── INSTALL.md            # 상세 설치 가이드

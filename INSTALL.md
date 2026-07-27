@@ -6,7 +6,28 @@ NCO(Neural CLI Orchestrator)를 처음 설치하거나 새 머신에 환경을 �
 
 ## 빠른 시작 (1클릭 설치)
 
-### macOS / Linux / WSL2
+### 한 줄 부트스트랩
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/novaainet2025/neural-cli-orchestrator/main/bootstrap.sh | bash
+```
+
+위 명령은 `$HOME/nco` 에 클론/업데이트 후 자동으로:
+`npm ci` → 빌드 → PM2 시작 → `/health` 응답 대기까지 수행합니다.
+기존 `.env`는 덮어쓰지 않으며, checkout에 로컬 변경이 있으면 Git 갱신만
+건너뛰고 현재 코드를 다시 배포합니다.
+
+```bash
+# 설치 경로 변경
+curl -fsSL https://raw.githubusercontent.com/novaainet2025/neural-cli-orchestrator/main/bootstrap.sh \
+  | NCO_INSTALL_DIR="$HOME/apps/nco" bash
+
+# 선택 AI CLI 9종까지 함께 설치
+curl -fsSL https://raw.githubusercontent.com/novaainet2025/neural-cli-orchestrator/main/bootstrap.sh \
+  | NCO_INSTALL_AGENTS=1 bash
+```
+
+### macOS / Linux / WSL2 (전체 설치)
 
 ```bash
 git clone https://github.com/novaainet2025/neural-cli-orchestrator.git
@@ -37,7 +58,9 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 |------|------|
 | (없음) | 대화형 설치 — API 키 입력 프롬프트 표시 |
 | `--no-interactive` | 자동 설치 — 프롬프트 없이 기본값으로 진행 |
+| `--skip-agents` | 선택 AI CLI 9종 설치 스킵 |
 | `--skip-ollama` | Ollama 안내 메시지 스킵 |
+| `--skip-pm2` | PM2 배포와 health 대기 스킵 |
 | `--dev` | 개발 모드 |
 
 ```bash
@@ -72,7 +95,7 @@ bash setup.sh --no-interactive --skip-ollama
 | 2 | Node.js 22+ | nvm으로 설치 및 관리 |
 | 3 | Redis | 플랫폼별 설치 + 자동 시작 |
 | 4 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` |
-| 5 | NCO 빌드 | `npm install && npm run build` |
+| 5 | NCO 빌드 | `npm ci && npm run build` |
 | 6 | `.env` 생성 | API 키 대화형 입력 |
 | 7 | 슬래시 커맨드 | `~/.claude/commands/nco-*.md` 설치 |
 | 8 | 훅 설치 | `~/.claude/hooks/*.sh` 설치 |
@@ -80,6 +103,12 @@ bash setup.sh --no-interactive --skip-ollama
 | 10 | MCP 등록 | `nco-commands` MCP 서버 등록 |
 | 11 | 실행 스크립트 | `~/.local/bin` 에 Ollama 래퍼 설치 |
 | 12 | Shell RC | PATH, nvm, alias 등록 |
+| 13 | AI 에이전트 | 선택 AI CLI 설치 (`--skip-agents` 가능) |
+| 14 | PM2 배포 | 기존 작업 drain 후 `startOrReload`, `pm2 save` |
+| 15 | Health 검증 | `/health`가 `status: healthy`인지 실측 |
+
+`pm2 save`는 프로세스 목록을 저장합니다. OS 재부팅 후에도 자동 복원하려면
+머신별 권한 안내에 따라 `pm2 startup`을 한 번 실행해야 합니다.
 
 ---
 
@@ -107,12 +136,12 @@ bash setup.sh --no-interactive --skip-ollama
 
 ## API 키 설정
 
-설치 후 `.env` 파일에서 API 키를 설정합니다:
+설치 후 설치 경로의 `.env` 파일에서 API 키를 설정합니다:
 
 ```bash
-nano ~/projects/neural-cli-orchestrator/.env
+nano ~/nco/.env
 # 또는
-code ~/projects/neural-cli-orchestrator/.env
+code ~/nco/.env
 ```
 
 ### 필수 API 키
@@ -235,13 +264,11 @@ nano ~/.bashrc
 # 1. Shell 설정 반영
 source ~/.bashrc
 
-# 2. Claude Code 실행
+# 2. setup.sh가 배포한 백엔드 확인
+curl -fsS http://127.0.0.1:6200/health
+
+# 3. Claude Code 실행 후 상태 확인
 claude --dangerously-skip-permissions
-
-# 3. NCO 시작 (Claude Code 내에서)
-/nco-start
-
-# 4. 상태 확인
 /nco-status
 
 # 5. 테스트

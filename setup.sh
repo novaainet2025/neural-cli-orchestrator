@@ -10,6 +10,12 @@
 # ║    bash setup.sh --no-interactive         # 자동 전체 설치               ║
 # ║    bash setup.sh --skip-agents            # 에이전트 설치 스킵            ║
 # ║    bash setup.sh --skip-ollama           # Ollama 안내 스킵              ║
+# ║    bash setup.sh --skip-pm2              # PM2 기동/헬스대기 스킵        ║
+# ║                                                                          ║
+# ║  원클릭 (clone/update 포함):                                              ║
+# ║    curl -fsSL .../bootstrap.sh | bash                                     ║
+# ║                                                                          ║
+# ║  불변식: npm ci (legacy-peer-deps 금지) · .env 보존 · 재실행 멱등        ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 set -euo pipefail
 IFS=$'\n\t'
@@ -23,17 +29,29 @@ warn() { echo -e "${YELLOW}  ⚠${NC} $*"; }
 err()  { echo -e "${RED}  ✗${NC} $*" >&2; }
 hdr()  { echo -e "\n${BOLD}${CYAN}━━ $* ━━${NC}"; }
 step() { echo -e "\n${BOLD}[${1}/${TOTAL}] ${2}${NC}"; }
-TOTAL=13
+TOTAL=15
+HEALTH_URL="${NCO_HEALTH_URL:-http://127.0.0.1:${PORT:-6200}/health}"
+HEALTH_TIMEOUT_SEC="${NCO_HEALTH_TIMEOUT_SEC:-90}"
+DRAIN_TIMEOUT_SEC="${NCO_DRAIN_TIMEOUT_SEC:-120}"
 
 # ── 인수 ──────────────────────────────────────────────────────────────────
-INTERACTIVE=true; SKIP_OLLAMA=false; DEV_MODE=false; SKIP_AGENTS=false
-for arg in "${@:-}"; do
+INTERACTIVE=true; SKIP_OLLAMA=false; DEV_MODE=false; SKIP_AGENTS=false; SKIP_PM2=false
+for arg in "$@"; do
   case "$arg" in
     --no-interactive) INTERACTIVE=false ;;
     --skip-ollama)    SKIP_OLLAMA=true ;;
     --skip-vllm)      SKIP_OLLAMA=true ;;
     --skip-agents)    SKIP_AGENTS=true ;;
+    --skip-pm2)       SKIP_PM2=true ;;
     --dev)            DEV_MODE=true ;;
+    -h|--help)
+      sed -n '2,20p' "$0"
+      exit 0
+      ;;
+    *)
+      err "알 수 없는 옵션: $arg"
+      exit 2
+      ;;
   esac
 done
 
@@ -152,15 +170,34 @@ install_claude_code() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-# 5. NCO 백엔드 빌드
+# 5. NCO 백엔드 빌드 (npm ci — legacy-peer-deps 금지)
 # ══════════════════════════════════════════════════════════════════════════
 build_nco() {
-  step 5 "NCO 백엔드 빌드"
+  step 5 "NCO 백엔드 빌드 (npm ci)"
   cd "$NCO_DIR"
-  info "npm install..."
-  npm install --silent
+
+  if [[ ! -f package-lock.json ]]; then
+    err "package-lock.json 없음 — npm ci 불가"
+    exit 1
+  fi
+
+  # Guard the merged npm config (project, user, global, and environment).
+  local legacy_peer_deps
+  legacy_peer_deps="$(npm config get legacy-peer-deps 2>/dev/null || printf 'false')"
+  if [[ "$legacy_peer_deps" == "true" ]] || [[ "$legacy_peer_deps" == "1" ]]; then
+    err "npm legacy-peer-deps가 활성화되어 있습니다. 비활성화 후 재실행하세요."
+    exit 1
+  fi
+
+  info "npm ci (lockfile 고정, peer 충돌 시 ERESOLVE로 실패)..."
+  if ! npm ci; then
+    err "npm ci 실패 (ERESOLVE 등). legacy-peer-deps 없이 package.json/lock을 수정하세요."
+    exit 1
+  fi
+
   info "TypeScript 빌드..."
   npm run build
+  [[ -f "$NCO_DIR/dist/index.js" ]] || { err "dist/index.js 생성 실패"; exit 1; }
   ok "NCO 빌드 완료 → dist/"
 }
 
@@ -207,7 +244,7 @@ setup_commands() {
   CMD_DST="$CLAUDE_DIR/commands"
 
   # 이미 설치된 경우 (현재 머신이 소스)
-  EXISTING=$(ls "$CMD_DST"/nco-*.md 2>/dev/null | wc -l || echo 0)
+  EXISTING="$(find "$CMD_DST" -maxdepth 1 -type f -name 'nco-*.md' | wc -l | tr -d ' ')"
   if [[ "$EXISTING" -gt 50 ]]; then
     ok "${EXISTING}개 커맨드 이미 설치됨"
     return
@@ -235,7 +272,7 @@ if curl -sf http://localhost:6200/health > /dev/null 2>&1; then
   curl -s http://localhost:6200/health | python3 -m json.tool
   exit 0
 fi
-cd "$HOME/projects/neural-cli-orchestrator" 2>/dev/null || { echo "NCO 디렉토리 없음"; exit 1; }
+cd "${NCO_DIR:-$HOME/nco}" 2>/dev/null || { echo "NCO 디렉토리 없음"; exit 1; }
 node dist/index.js &
 echo "NCO 시작 중... (PID: $!)"
 sleep 3
@@ -271,7 +308,7 @@ setup_hooks() {
   HOOKS_SRC="$NCO_DIR/hooks"
   HOOKS_DST="$CLAUDE_DIR/hooks"
 
-  EXISTING=$(ls "$HOOKS_DST"/*.sh 2>/dev/null | wc -l || echo 0)
+  EXISTING="$(find "$HOOKS_DST" -maxdepth 1 -type f -name '*.sh' | wc -l | tr -d ' ')"
   if [[ "$EXISTING" -gt 5 ]]; then
     ok "${EXISTING}개 훅 이미 설치됨"
     return
@@ -481,6 +518,120 @@ setup_agents() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
+# 14. PM2 startOrReload (기존 작업 drain 후 안전 교체)
+# ══════════════════════════════════════════════════════════════════════════
+start_or_reload_nco() {
+  [[ "$SKIP_PM2" == "false" ]] || return
+  step 14 "PM2 서비스 배포"
+  cd "$NCO_DIR"
+
+  if ! [[ "$HEALTH_TIMEOUT_SEC" =~ ^[0-9]+$ ]] \
+    || ! [[ "$DRAIN_TIMEOUT_SEC" =~ ^[0-9]+$ ]]; then
+    err "health/drain timeout은 0 이상의 정수여야 합니다."
+    return 2
+  fi
+
+  local pm2_bin="${NCO_PM2_BIN:-}"
+  [[ -n "$pm2_bin" ]] || pm2_bin="$(command -v pm2 || true)"
+  if [[ -z "$pm2_bin" ]]; then
+    info "PM2 설치 중..."
+    npm install --global pm2@^6.0.0
+    pm2_bin="$(command -v pm2 || true)"
+  fi
+  [[ -n "$pm2_bin" ]] && [[ -x "$pm2_bin" ]] \
+    || { err "PM2 실행 파일을 찾을 수 없습니다."; return 1; }
+
+  local drain_url="${NCO_ADMIN_DRAIN_URL:-${HEALTH_URL%/health}/api/admin/drain}"
+  local drain_body=""
+  local drain_enabled=false
+
+  # NCO 관리 API가 확인될 때만 drain을 사용한다. 다른 서비스에는 POST하지 않는다.
+  if drain_body="$(curl -fsS --max-time 3 "$drain_url" 2>/dev/null)" \
+    && printf '%s' "$drain_body" | node -e '
+      let s = "";
+      process.stdin.on("data", c => s += c);
+      process.stdin.on("end", () => {
+        try {
+          const d = JSON.parse(s);
+          process.exit(typeof d.draining === "boolean" && Number.isFinite(d.inFlight) ? 0 : 1);
+        } catch { process.exit(1); }
+      });
+    '; then
+    info "기존 NCO 신규 작업 차단 및 drain..."
+    curl -fsS --max-time 5 -H 'content-type: application/json' \
+      --data '{"enabled":true}' "$drain_url" >/dev/null
+    drain_enabled=true
+
+    local drain_deadline=$((SECONDS + DRAIN_TIMEOUT_SEC))
+    while (( SECONDS <= drain_deadline )); do
+      drain_body="$(curl -fsS --max-time 3 "$drain_url" 2>/dev/null || true)"
+      if printf '%s' "$drain_body" | node -e '
+        let s = "";
+        process.stdin.on("data", c => s += c);
+        process.stdin.on("end", () => {
+          try { process.exit(JSON.parse(s).inFlight === 0 ? 0 : 1); }
+          catch { process.exit(1); }
+        });
+      '; then
+        ok "기존 작업 drain 완료"
+        break
+      fi
+      if (( SECONDS >= drain_deadline )); then
+        warn "drain 시간 초과 — 기존 서비스를 유지합니다."
+        curl -fsS --max-time 5 -H 'content-type: application/json' \
+          --data '{"enabled":false}' "$drain_url" >/dev/null 2>&1 || true
+        return 1
+      fi
+      sleep 2
+    done
+  fi
+
+  info "PM2 startOrReload..."
+  if ! "$pm2_bin" startOrReload ecosystem.config.cjs \
+    --only nco-backend --update-env; then
+    if [[ "$drain_enabled" == "true" ]]; then
+      curl -fsS --max-time 5 -H 'content-type: application/json' \
+        --data '{"enabled":false}' "$drain_url" >/dev/null 2>&1 || true
+    fi
+    err "PM2 배포 실패 — 기존 NCO drain을 해제했습니다."
+    return 1
+  fi
+  "$pm2_bin" save
+  ok "PM2 프로세스 배포 및 저장 완료"
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# 15. HTTP health 실측
+# ══════════════════════════════════════════════════════════════════════════
+wait_for_nco_health() {
+  [[ "$SKIP_PM2" == "false" ]] || return
+  step 15 "NCO health 검증"
+
+  local health_deadline=$((SECONDS + HEALTH_TIMEOUT_SEC))
+  local health_body=""
+  while (( SECONDS <= health_deadline )); do
+    health_body="$(curl -fsS --max-time 3 "$HEALTH_URL" 2>/dev/null || true)"
+    if printf '%s' "$health_body" | node -e '
+      let s = "";
+      process.stdin.on("data", c => s += c);
+      process.stdin.on("end", () => {
+        try { process.exit(JSON.parse(s).status === "healthy" ? 0 : 1); }
+        catch { process.exit(1); }
+      });
+    '; then
+      ok "NCO 서비스 healthy: $HEALTH_URL"
+      return
+    fi
+    sleep 1
+  done
+
+  err "NCO health 검증 실패: $HEALTH_URL"
+  local pm2_bin="${NCO_PM2_BIN:-$(command -v pm2 || true)}"
+  [[ -z "$pm2_bin" ]] || "$pm2_bin" logs nco-backend --lines 30 --nostream >&2 || true
+  return 1
+}
+
+# ══════════════════════════════════════════════════════════════════════════
 # Ollama 로컬 LLM 안내
 # ══════════════════════════════════════════════════════════════════════════
 ollama_notice() {
@@ -502,6 +653,8 @@ ollama_notice() {
 verify() {
   hdr "설치 검증"
   echo ""
+  local installed_commands
+  installed_commands="$(find "$CLAUDE_DIR/commands" -maxdepth 1 -type f -name 'nco-*.md' | wc -l | tr -d ' ')"
 
   _check() {
     local label="$1" cmd="$2" pass="$3"
@@ -519,10 +672,13 @@ verify() {
   _check ".env"             "[ -f '$NCO_DIR/.env' ]"                      "존재"
   _check "Redis"            "redis-cli ping"                               "PONG"
   _check "Claude Code"      "command -v claude"                            "$(claude --version 2>/dev/null | head -1)"
-  _check "슬래시 커맨드"    "ls '$CLAUDE_DIR/commands/nco-start.md'"       "$(ls "$CLAUDE_DIR/commands/nco-*.md" 2>/dev/null | wc -l)개"
+  _check "슬래시 커맨드"    "ls '$CLAUDE_DIR/commands/nco-start.md'"       "${installed_commands}개"
   _check "settings.json"   "grep -q mesh-register '$CLAUDE_DIR/settings.json'" "훅 등록됨"
   _check "MCP nco-commands" "python3 -c \"import json; d=json.load(open('$CLAUDE_DIR/claude_desktop_config.json')); exit(0 if 'nco-commands' in d.get('mcpServers',{}) else 1)\"" "등록됨"
   _check "nco 래퍼"         "[ -x '$LOCAL_BIN/nco' ]"                     "$LOCAL_BIN/nco"
+  if [[ "$SKIP_PM2" == "false" ]]; then
+    _check "NCO health"     "curl -fsS --max-time 3 '$HEALTH_URL' | grep -q '\"status\":\"healthy\"'" "$HEALTH_URL"
+  fi
 
   # 에이전트 설치 여부
   echo ""
@@ -545,9 +701,15 @@ print_done() {
   echo ""
   echo -e "  ${BOLD}다음 단계:${NC}"
   echo -e "  ${CYAN}1.${NC} source $SHELL_RC"
-  echo -e "  ${CYAN}2.${NC} claude  (Claude Code 실행)"
-  echo -e "  ${CYAN}3.${NC} /nco-start  (NCO 백엔드 시작)"
-  echo -e "  ${CYAN}4.${NC} /nco-status (상태 확인)"
+  if [[ "$SKIP_PM2" == "false" ]]; then
+    echo -e "  ${CYAN}2.${NC} curl -fsS $HEALTH_URL  (배포 상태 확인)"
+    echo -e "  ${CYAN}3.${NC} claude  (Claude Code 실행)"
+    echo -e "  ${CYAN}4.${NC} /nco-status"
+  else
+    echo -e "  ${CYAN}2.${NC} claude  (Claude Code 실행)"
+    echo -e "  ${CYAN}3.${NC} /nco-start  (NCO 백엔드 시작)"
+    echo -e "  ${CYAN}4.${NC} /nco-status"
+  fi
   echo ""
   echo -e "  ${BOLD}Ollama 사용 시:${NC}"
   echo -e "  ${CYAN}5.${NC} ollama pull gemma4:26b"
@@ -575,6 +737,8 @@ main() {
   setup_bin_scripts
   setup_shell_rc
   setup_agents
+  start_or_reload_nco
+  wait_for_nco_health
   ollama_notice
   verify
   print_done

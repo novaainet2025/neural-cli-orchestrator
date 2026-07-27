@@ -20,8 +20,9 @@ module.exports = {
       // src/index.ts의 15초 drain + orphan/lock 영속화가 끝날 시간을 보장한다.
       kill_timeout: 20000,
       env: {
-        PORT: 6200,
-        WS_PORT: 6201,
+        // 환경 변수 override를 허용해 격리 검증·다중 인스턴스 배포가 가능하다.
+        PORT: Number(process.env.PORT || 6200),
+        WS_PORT: Number(process.env.WS_PORT || 6201),
         NODE_ENV: 'production',
       },
     },

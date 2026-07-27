@@ -15,7 +15,7 @@ export interface Mem0Entry {
 /**
  * mem0 service — in-process SQLite-backed memory layer.
  * Provides add/search/list operations used by agent-manager hooks.
- * BM25 keyword search (semantic embed optional via mem0ai SDK).
+ * BM25 keyword search; semantic embedding is implemented by NCO's local mem0 bridge.
  */
 class Mem0Service {
   private ensureTable(): void {
