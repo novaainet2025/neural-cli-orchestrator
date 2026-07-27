@@ -392,7 +392,8 @@ export function buildZeroOutputCompletedExclusion(
     : ZERO_OUTPUT_COMPLETED_EXCLUSION_SQL;
 }
 
-// provider CLI가 자격증명 거부(HTTP 401 authentication_error)만 내고 종료한 실패는 팀 산출물
+// provider CLI가 자격증명 거부(HTTP 401 authentication_error 또는 평문 Invalid API key)만
+// 내고 종료한 실패는 팀 산출물
 // 품질이 아니라 'provider_unavailable'·서킷브레이커와 동일한 에이전트 가용성 이벤트다.
 //  - CLI 프로세스는 떴지만 모델 API가 인증을 거부해 에이전트 턴이 한 번도 성립하지 않는다.
 //    opencode는 이때 stdout에 오직 구조화된 오류 봉투 하나만 쓴다:
@@ -410,14 +411,18 @@ export function buildZeroOutputCompletedExclusion(
 //     이 태스크의 escalationHistory 첫 항목은 'provider_unavailable: claude-code (open/auth)'로
 //     이미 제외 클래스였고, opencode 재배정 후의 response(978바이트)는 위 401 봉투 그 자체다.
 //     제외 시 48h completion 7/9=77.8% → 7/8=87.5%로 실제 팀 품질을 반영한다.
-//   - DB 전체에서 이 조건에 걸리는 행은 7건뿐이며 전부 위 10분 장애 창의 opencode 실패다.
-//     team_id가 붙은 것은 3건(gov-command-collaboration·self-learning·gov-evolution-learning)
-//     으로 팀당 1행 → 특정 팀 편향이 없는 team-agnostic 인프라 이벤트다.
+//   - team_hr-incubator-2026-w30의 유일한 48h 계상 실패(task_VnTZtkgkcpgPwPhy)는
+//     claude-code subprocess가 error='subprocess exited with code 1: Invalid API key ·
+//     Fix external API key', response='Invalid API key · Fix external API key\\n',
+//     result_json=NULL, progress=0으로 종료한 인증 거부다. 기존 401 봉투 절은 이 평문 형식을
+//     놓쳐 completion을 6/7=85.7%로 낮췄다.
+//   - 구조화 401 조건은 DB 전체 7건(팀 귀속 3건)에 한정되고, 평문 조건은 위 HR 태스크
+//     1건에만 추가로 매칭된다. 두 형식 모두 같은 장애 창의 provider 인증 거부다.
 // 안전 불변식: (a) status<>'completed' 가드, (b) error가 provider CLI 프로세스 실패
-//  ('CLI failed exit=')일 것, (c) response가 오류 봉투로 *시작*할 것(LIKE '{"type":"error"%')
-//  3중 가드. (c)는 팀 보고서 본문이 앞에 조금이라도 있으면 매칭되지 않게 해, 401 문자열을
-//  인용한 보고서(이 팀은 프로토콜·오류규약이 charter라 인용 가능성이 높다)가 잘못 빠지는 것을
-//  막는다. 실측상 status 가드를 빼도 매칭되는 completed 행은 0건이므로 completed⊆terminal이
+//  ('CLI failed exit=' 또는 실측 평문 오류와 완전 일치)일 것, (c) response가 구조화 오류
+//  봉투로 *시작*하거나 평문 오류와 정확히 같을 것, (d) 평문 형식은 result_json도 비었을 것.
+//  이 가드는 팀 보고서가 인증 오류를 인용하거나 부분 산출물을 낸 경우, 미관측 exit code·
+//  오류 접미사가 있는 경우까지 잘못 빠지는 것을 막는다. status 가드로 completed⊆terminal이
 //  유지되어 completion>100% 회귀가 없다.
 // 롤백: 런타임 즉시 → NCO_SCORER_PROVIDER_AUTH_EXCLUSION=off (재빌드 불필요).
 //  코드 → 아래 상수와 buildProviderAuthExclusion() 및 3개 terminal CASE의 삽입부를 제거.
@@ -425,12 +430,22 @@ const PROVIDER_AUTH_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
 
 const PROVIDER_AUTH_EXCLUSION_SQL = `AND NOT (
       k.status <> 'completed'
-      AND COALESCE(k.error, '') LIKE '%CLI failed exit=%'
-      AND COALESCE(k.response, '') LIKE '{"type":"error"%'
       AND (
-        COALESCE(k.response, '') LIKE '%"statusCode":401%'
-        OR COALESCE(k.response, '') LIKE '%authentication_error%'
-        OR COALESCE(k.response, '') LIKE '%invalid x-api-key%'
+        (
+          COALESCE(k.error, '') LIKE '%CLI failed exit=%'
+          AND COALESCE(k.response, '') LIKE '{"type":"error"%'
+          AND (
+            COALESCE(k.response, '') LIKE '%"statusCode":401%'
+            OR COALESCE(k.response, '') LIKE '%authentication_error%'
+            OR COALESCE(k.response, '') LIKE '%invalid x-api-key%'
+          )
+        )
+        OR (
+          COALESCE(k.error, '') = 'subprocess exited with code 1: Invalid API key · Fix external API key'
+          AND RTRIM(COALESCE(k.response, ''), char(9) || char(10) || char(13) || ' ')
+            = 'Invalid API key · Fix external API key'
+          AND COALESCE(k.result_json, '') = ''
+        )
       )
     )`;
 

@@ -36,4 +36,23 @@ describe('createMeshEnqueueReceipt', () => {
       meshAvailable: true,
     }).reason).toBe('recipient_unavailable');
   });
+
+  it('preserves an explicit collaboration-loop block reason', () => {
+    expect(createMeshEnqueueReceipt({
+      messageId: 'msg_4',
+      targetSessionId: 'target',
+      queuedRecipients: 0,
+      historyRecorded: false,
+      meshAvailable: true,
+      failureReason: 'collaboration_loop_blocked',
+    })).toEqual({
+      messageId: 'msg_4',
+      targetSessionId: 'target',
+      status: 'not_queued',
+      queuedRecipients: 0,
+      historyRecorded: false,
+      acknowledged: false,
+      reason: 'collaboration_loop_blocked',
+    });
+  });
 });

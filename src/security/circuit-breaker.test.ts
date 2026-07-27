@@ -41,7 +41,11 @@ vi.mock('../utils/logger.js', () => ({
 }));
 
 import { CircuitBreaker } from './circuit-breaker.js';
-import { circuitBreakerRegistry } from './circuit-breaker-registry.js';
+import {
+  circuitBreakerRegistry,
+  classifyCircuitError,
+  classifyProviderErrorEnvelope,
+} from './circuit-breaker-registry.js';
 
 describe('CircuitBreaker configuration', () => {
   beforeEach(() => {

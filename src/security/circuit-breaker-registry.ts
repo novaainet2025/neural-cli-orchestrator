@@ -194,6 +194,107 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
   return null;
 }
 
+// ─── provider 오류 봉투(error envelope) 분류 ──────────────────────────────────
+//
+// 문제(2026-07-28 실측, db/nco.db): CLI 프로바이더가 HTTP 401을 받고 죽으면 인증 신호는
+// **stdout의 구조화된 오류 봉투**에만 남는다. 반면 agent-manager가 서킷에 넘기는
+// `errorMessage`는 execa의 shortMessage — 즉 `Command failed with exit code 1: opencode run
+// --format json '<프롬프트 전문>'`이라는 **명령 에코**다. 그래서 분류기는 인증 실패를 보지
+// 못하고 generic 임계치(3연속) 경로로 떨어진다.
+//  실측: 2026-07-27 17:19~17:30 UTC 자격증명 장애 창에서 error가 'CLI failed exit=' 이고
+//   response가 '{"type":"error"…' 로 시작하는 행 8건 전수에 대해
+//   classifyCircuitError(error) = null (전부), classifyCircuitError(response) = auth 7건.
+//   그 사이 circuit_states.opencode의 reason은 'generic'이었고(실측 스냅샷), 60초 쿨다운마다
+//   half-open 프로브가 **실제 팀 태스크**를 소모하며 같은 401을 반복했다
+//   (task_KkeE7Ly_A5hC1K2n 17:29:09 → task_p2V_WOaQg3z-gdGx 17:29:59, 후자는
+//   team_gov-evolution-learning의 48h 계상 실패 1건).
+//
+// 의도적으로 reason은 'auth'가 아니라 'generic'으로 승격한다:
+//  reason='auth'는 cooldownUntil=null + recoverIfExpired 제외 + getAvailability='gated:auth'라
+//  헬스 프로브의 recordSuccess 경로에도 걸리지 않아 **수동 reset 전까지 영구 개방**이다
+//  (실측: circuit_states.openai = open/auth/failure_count=1860, opened_at 이후 자가복구 0회).
+//  fleet 전역 자격증명 장애는 claude-code·cursor-agent·opencode에 동시 발생했으므로,
+//  봉투 하나로 영구 개방을 걸면 장애 복구 후에도 fleet이 스스로 못 돌아온다. 따라서
+//  '즉시 개방 + 기존 지수 백오프(60s→120s→…) + half-open 자가복구'라는 유계 동작만 취한다.
+//  기대 효과는 임계치 3 대기 없이 첫 하드-401에서 바로 게이팅되는 것 = 반복 소모 차단.
+// 롤백: 런타임 즉시 → NCO_CB_ERROR_ENVELOPE=off (재빌드 불필요). 코드 → 이 절과
+//  recordFailure의 providerOutput 인자·분기를 제거하면 정확히 이전 동작.
+const ERROR_ENVELOPE_DISABLED = new Set(['0', 'false', 'off']);
+
+/** 이 길이를 넘는 출력은 프로바이더 오류 봉투가 아니라 팀 산출물로 보고 파싱하지 않는다. */
+const ERROR_ENVELOPE_MAX_CHARS = 8_192;
+
+/** 봉투 안에서 분류 신호로 인정하는 키 — 임의 문자열(요약·본문)을 신호로 쓰지 않기 위한 화이트리스트. */
+const ENVELOPE_SIGNAL_KEYS = new Set(['message', 'type', 'name', 'code', 'detail', 'responseBody']);
+const ENVELOPE_STATUS_KEYS = new Set(['statusCode', 'status', 'status_code']);
+const ENVELOPE_MAX_DEPTH = 6;
+
+export function isProviderErrorEnvelopeGateEnabled(
+  toggle: string | undefined = process.env.NCO_CB_ERROR_ENVELOPE,
+): boolean {
+  return !ERROR_ENVELOPE_DISABLED.has(toggle?.trim().toLowerCase() ?? '');
+}
+
+function collectEnvelopeSignal(value: unknown, depth = 0, out: string[] = []): string[] {
+  if (depth > ENVELOPE_MAX_DEPTH || out.length > 64) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectEnvelopeSignal(item, depth + 1, out);
+    return out;
+  }
+  if (!value || typeof value !== 'object') return out;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof child === 'string' && ENVELOPE_SIGNAL_KEYS.has(key)) {
+      out.push(child.slice(0, 500));
+    } else if (typeof child === 'number' && ENVELOPE_STATUS_KEYS.has(key)) {
+      out.push(`HTTP ${child}`);
+    } else if (child && typeof child === 'object') {
+      collectEnvelopeSignal(child, depth + 1, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * 프로바이더 stdout이 **오직** 구조화된 오류 봉투 하나일 때만 인증 실패로 분류한다.
+ * 3중 가드: (a) trim 후 '{'로 시작하고 '}'로 끝날 것, (b) JSON.parse 전체 성공 + type==='error',
+ * (c) 화이트리스트 키에서 모은 신호가 AUTH_PATTERNS에 걸릴 것. (a)+(b) 때문에 401 문자열을
+ * *인용*한 팀 보고서 본문은 절대 매칭되지 않는다(오탐 차단 — 이 fleet의 학습·프로토콜 팀은
+ * 오류 문자열을 본문에 인용하는 일이 잦다).
+ * 반환 reason은 의도적으로 'generic'이다(위 주석의 영구 개방 회피 근거 참조).
+ */
+export function classifyProviderErrorEnvelope(
+  rawOutput: string | null | undefined,
+  toggle: string | undefined = process.env.NCO_CB_ERROR_ENVELOPE,
+): ClassifiedCircuitError | null {
+  if (!isProviderErrorEnvelopeGateEnabled(toggle)) return null;
+
+  const text = rawOutput?.trim();
+  if (!text || text.length > ERROR_ENVELOPE_MAX_CHARS) return null;
+  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  if ((parsed as { type?: unknown }).type !== 'error') return null;
+
+  const signal = collectEnvelopeSignal(parsed).join(' | ');
+  const classified = classifyCircuitError(signal);
+  // 관측된 사례(하드 401)만 대상으로 좁힌다. quota/rate-limit 봉투는 48h 표본에 없었고
+  // 각각 1시간·resetTime 쿨다운이라 오탐 비용이 커서 이번 범위에서 제외한다.
+  if (!classified || classified.reason !== 'auth') return null;
+
+  return {
+    reason: 'generic',
+    immediateOpen: true,
+    resetTime: null,
+    matchedText: `provider error envelope: ${classified.matchedText}`,
+  };
+}
+
 class CircuitBreakerRegistry {
   private states = new Map<string, CircuitSnapshot>();
   // P0-3: half-open 프로브 슬롯의 in-flight 세마포어 (max halfOpenMaxAttempts, 기본 1).
@@ -287,9 +388,19 @@ class CircuitBreakerRegistry {
     }
   }
 
-  recordFailure(agentId: string, rawError?: string, policy: CircuitBreakerPolicy = {}): void {
+  /**
+   * @param providerOutput 실행이 남긴 terminal 출력(= tasks.response로 저장되는 값).
+   *   rawError가 분류되지 않을 때만 오류 봉투 분류에 쓰인다(기존 동작 보존).
+   */
+  recordFailure(
+    agentId: string,
+    rawError?: string,
+    policy: CircuitBreakerPolicy = {},
+    providerOutput?: string,
+  ): void {
     const current = this.ensure(agentId);
     const classified = classifyCircuitError(rawError);
+    const envelope = classified ? null : classifyProviderErrorEnvelope(providerOutput);
     const configuredFailureThreshold = normalizePositiveInteger(policy.failureThreshold, FAILURE_THRESHOLD);
     const failureThreshold = classified?.learnedFailureThreshold == null
       ? configuredFailureThreshold
@@ -303,7 +414,7 @@ class CircuitBreakerRegistry {
       if (learned) {
         recordLearnedCircuitPatternApplication(agentId, learned);
       }
-    } else if (!classified) {
+    } else if (!classified && !envelope) {
       const signature = normalizeCircuitSignature(rawError);
       if (signature) {
         recordLearningEvent({
@@ -331,6 +442,13 @@ class CircuitBreakerRegistry {
     if (classified?.immediateOpen) {
       const next = this.openSnapshot(current, classified.reason, classified.resetTime, policy.resetTimeoutMs);
       this.commit(next, 'Circuit opened on classified provider failure');
+      return;
+    }
+
+    if (envelope) {
+      const next = this.openSnapshot(current, 'generic', null, policy.resetTimeoutMs);
+      next.failureCount = Math.max(1, current.failureCount + 1);
+      this.commit(next, `Circuit opened on provider error envelope (${envelope.matchedText})`);
       return;
     }
 

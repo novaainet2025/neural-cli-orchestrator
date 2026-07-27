@@ -19,6 +19,7 @@ vi.mock('../storage/database.js', () => ({
 vi.mock('./event-bus.js', () => ({ eventBus: { publish: dependencies.publish } }));
 
 import { cliMesh } from './cli-mesh.js';
+import { collaborationLoopGuard } from '../security/collaboration-loop-guard.js';
 
 const existingMessage: MeshMessage = {
   id: 'existing',
@@ -101,6 +102,8 @@ describe('CliMesh message queue', () => {
     dependencies.getRedis.mockReset();
     dependencies.publish.mockClear();
     dependencies.persistRun.mockClear();
+    collaborationLoopGuard.reset();
+    delete process.env.NCO_MESH_COLLAB_LOOP_GUARD;
   });
 
   it('retries a concurrent direct enqueue without losing either message', async () => {
@@ -159,6 +162,44 @@ describe('CliMesh message queue', () => {
       historyRecorded: true,
       acknowledged: false,
     }));
+  });
+
+  it('blocks identical collaboration echoes before Redis enqueue or DB history', async () => {
+    const fake = createRedisDouble(['ok', 'ok', 'ok', 'ok']);
+    dependencies.getRedis.mockResolvedValue(fake.redis);
+    const body = 'done: protocol handoff echo';
+
+    expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
+    expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
+    expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
+
+    const blocked = await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body);
+    expect(blocked).toEqual(expect.objectContaining({
+      status: 'not_queued',
+      queuedRecipients: 0,
+      historyRecorded: false,
+      acknowledged: false,
+      reason: 'collaboration_loop_blocked',
+    }));
+    expect(dependencies.persistRun).toHaveBeenCalledTimes(3);
+    expect(dependencies.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'mesh:delivery_failed',
+      delivery: expect.objectContaining({ reason: 'collaboration_loop_blocked' }),
+      loop: expect.objectContaining({ rule: 'echo-loop' }),
+    }));
+  });
+
+  it('skips the collaboration loop guard when the kill switch is off', async () => {
+    process.env.NCO_MESH_COLLAB_LOOP_GUARD = 'off';
+    const fake = createRedisDouble(Array.from({ length: 5 }, () => 'ok' as const));
+    dependencies.getRedis.mockResolvedValue(fake.redis);
+    const body = 'done: kill-switch bypass';
+
+    for (let i = 0; i < 5; i++) {
+      const receipt = await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body);
+      expect(receipt.status).toBe('queued');
+    }
+    expect(dependencies.persistRun).toHaveBeenCalledTimes(5);
   });
 
   it('propagates an exhausted enqueue conflict without silently losing the message', async () => {

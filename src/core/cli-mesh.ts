@@ -9,6 +9,11 @@ import {
   createMeshEnqueueReceipt,
   type MeshEnqueueReceipt,
 } from '../mesh/delivery.js';
+import {
+  collaborationChannelKey,
+  collaborationLoopGuard,
+  isCollaborationLoopGuardEnabled,
+} from '../security/collaboration-loop-guard.js';
 
 const log = createLogger('cli-mesh');
 
@@ -392,8 +397,51 @@ class CliMesh {
     content: string,
     type: MeshMessage['type'] = 'info',
   ): Promise<MeshEnqueueReceipt> {
+    const messageId = createId('msg');
+
+    // Cycle-1 Gap close: CollaborationLoopGuard existed but was never called.
+    // Block echo-loop / channel-burst before Redis enqueue or DB history insert so
+    // identical protocol lines (done:/status:) cannot saturate mesh queues.
+    // Kill switch: NCO_MESH_COLLAB_LOOP_GUARD=off
+    if (isCollaborationLoopGuardEnabled()) {
+      const loop = collaborationLoopGuard.check(
+        collaborationChannelKey(fromSessionId, toSessionId),
+        content,
+      );
+      if (!loop.allowed) {
+        const receipt = createMeshEnqueueReceipt({
+          messageId,
+          targetSessionId: toSessionId,
+          queuedRecipients: 0,
+          historyRecorded: false,
+          meshAvailable: isRedisConnected(),
+          failureReason: 'collaboration_loop_blocked',
+        });
+        await eventBus.publish({
+          type: 'mesh:delivery_failed',
+          from: fromSessionId,
+          fromAgent,
+          to: toSessionId,
+          delivery: receipt,
+          loop: {
+            rule: loop.rule,
+            reason: loop.reason,
+            channel: loop.channel,
+            repeats: loop.repeats,
+            windowCount: loop.windowCount,
+            cooldownUntil: loop.cooldownUntil,
+          },
+        } as any);
+        log.warn(
+          { from: fromAgent, to: toSessionId, type, delivery: receipt, loop },
+          'Mesh message blocked by collaboration-msg-loop guard',
+        );
+        return receipt;
+      }
+    }
+
     const message: MeshMessage = {
-      id: createId('msg'),
+      id: messageId,
       from: fromSessionId,
       fromAgent,
       to: toSessionId,

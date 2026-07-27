@@ -6,11 +6,13 @@ import { circuitBreakerRegistry, classifyCircuitError } from '../security/circui
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
+import { getDb } from '../storage/database.js';
 import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { createTaskId } from '../utils/id.js';
 import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { buildProviderProcessEnv } from './provider-process-env.js';
+import { mergeMemoryContextEntries, resolveTeamMemoryScope } from '../core/task-memory-scope.js';
 
 const log = createLogger('agent-manager');
 
@@ -25,6 +27,17 @@ function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null
 function getTaskTimeoutMs(): number {
   const v = Number(process.env.NCO_TASK_TIMEOUT_MS);
   return Number.isFinite(v) && v >= 60_000 ? v : 1_200_000;
+}
+
+function resolveTaskTeamMemoryScope(taskId: string): string | null {
+  try {
+    const row = getDb().prepare('SELECT team_id FROM tasks WHERE id = ?').get(taskId) as
+      | { team_id: string | null }
+      | undefined;
+    return resolveTeamMemoryScope(row?.team_id);
+  } catch {
+    return null;
+  }
 }
 
 export function formatProviderUnavailableError(
@@ -133,6 +146,7 @@ class AgentManager {
 
     const sandbox = this.sandboxes.get(agentId)!;
     const taskId = options?.taskId || createTaskId();
+    const teamMemoryScope = resolveTaskTeamMemoryScope(taskId);
     const startTime = Date.now();
 
     // [projectDir 백스톱] 내부 호출부(discussion/parallel/hive/message 등)가 projectDir 를 빠뜨려도
@@ -183,13 +197,23 @@ class AgentManager {
       // ── HNSW Vector Memory: Pre-task semantic recall ─────
       try {
         const { vectorMemory } = await import('../core/vector-memory.js');
-        const memories = await vectorMemory.search(agentId, prompt, 5);
+        const personalMemories = await vectorMemory.search(agentId, prompt, 5);
+        const teamMemories = teamMemoryScope
+          ? await vectorMemory.search(teamMemoryScope, prompt, 5)
+          : [];
+        const memories = mergeMemoryContextEntries(
+          [personalMemories, teamMemories],
+          5,
+        );
         if (memories.length > 0) {
           const ctx = memories
             .map(m => `- [score:${m.score.toFixed(2)}${m.semantic ? ',sem' : ',bm25'}] ${m.content.slice(0, 300)}`)
             .join('\n');
           prompt = prompt + `\n\n[장기 기억 컨텍스트 (자동 검색됨)]\n${ctx}\n`;
-          log.debug({ agentId, memCount: memories.length, semantic: memories[0]?.semantic }, 'memory context injected');
+          log.debug(
+            { agentId, teamMemoryScope, memCount: memories.length, semantic: memories[0]?.semantic },
+            'memory context injected',
+          );
         }
       } catch { /* non-critical */ }
 
@@ -344,7 +368,11 @@ class AgentManager {
         const promptSnippet = prompt.slice(0, 200).replace(/\[장기 기억 컨텍스트[\s\S]*?\]/m, '').trim();
         const outputSummary = output.replace(/\s+/g, ' ').trim().slice(0, 400);
         if (promptSummary(promptSnippet)) {
-          await vectorMemory.add(agentId, `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`, 1.0);
+          const memory = `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`;
+          await vectorMemory.add(agentId, memory, 1.0);
+          if (teamMemoryScope) {
+            await vectorMemory.add(teamMemoryScope, memory, 1.0);
+          }
         }
       } catch { /* non-critical */ }
 
@@ -363,7 +391,11 @@ class AgentManager {
       const errorMessage = abortReason || err?.message || 'unknown: execution failed';
       const terminalOutput = partialOutput || (err as { partialOutput?: string } | undefined)?.partialOutput || '';
       if (abortReason !== 'cancelled') {
-        circuitBreakerRegistry.recordFailure(agentId, errorMessage);
+        // terminalOutput(= tasks.response로 저장되는 값)을 함께 넘긴다. CLI 프로바이더의
+        // HTTP 401 신호는 errorMessage(execa shortMessage = 명령 에코)에 없고 stdout 오류
+        // 봉투에만 있어, 이 인자가 없으면 인증 실패가 generic 3연속 임계치로 떨어진다.
+        // 분류 규칙·근거·롤백(NCO_CB_ERROR_ENVELOPE=off)은 circuit-breaker-registry.ts 참조.
+        circuitBreakerRegistry.recordFailure(agentId, errorMessage, undefined, terminalOutput);
       }
 
       // 상태 복구 — 실패/타임아웃 시 idle로 복원

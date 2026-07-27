@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// circuit-breaker.ts는 registry를 통해 DB/Redis/이벤트버스를 끌어오므로,
-// 순수 인메모리 룰만 검증하기 위해 부작용 경로를 전부 스텁한다.
+// CircuitBreaker 편의 API 테스트만 registry 부작용을 스텁한다.
 vi.mock('../storage/database.js', () => ({
   getDb: () => { throw new Error('database unavailable in unit test'); },
 }));
@@ -16,13 +15,14 @@ vi.mock('../utils/logger.js', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
 }));
 
+import { CircuitBreaker } from './circuit-breaker.js';
 import {
-  CircuitBreaker,
   CollaborationLoopGuard,
   collaborationChannelKey,
   collaborationLoopGuard,
   DEFAULT_COLLABORATION_LOOP_CONFIG,
-} from './circuit-breaker.js';
+  isCollaborationLoopGuardEnabled,
+} from './collaboration-loop-guard.js';
 
 describe('collaboration-msg-loop rule', () => {
   let guard: CollaborationLoopGuard;
@@ -31,11 +31,13 @@ describe('collaboration-msg-loop rule', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     guard = new CollaborationLoopGuard();
+    delete process.env.NCO_MESH_COLLAB_LOOP_GUARD;
   });
 
   afterEach(() => {
     vi.useRealTimers();
     collaborationLoopGuard.reset();
+    delete process.env.NCO_MESH_COLLAB_LOOP_GUARD;
   });
 
   const channel = collaborationChannelKey('team-a', 'team-b');
@@ -153,6 +155,14 @@ describe('collaboration-msg-loop rule', () => {
       expect(guard.check(channel, 'body', bad).allowed).toBe(true);
     }
     expect(guard.check(channel, 'body', bad).allowed).toBe(false);
+  });
+
+  it('exposes an env kill switch for mesh wiring rollback', () => {
+    expect(isCollaborationLoopGuardEnabled(undefined)).toBe(true);
+    expect(isCollaborationLoopGuardEnabled('off')).toBe(false);
+    expect(isCollaborationLoopGuardEnabled('false')).toBe(false);
+    expect(isCollaborationLoopGuardEnabled('0')).toBe(false);
+    expect(isCollaborationLoopGuardEnabled('on')).toBe(true);
   });
 
   it('exposes the rule through CircuitBreaker without touching provider circuit state', () => {

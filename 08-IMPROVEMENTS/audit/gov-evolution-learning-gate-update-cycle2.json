@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "team": "team_gov-evolution-learning",
+    "slug": "gov-evolution-learning",
+    "generated": "2026-07-28",
+    "author": "중복에러방지팀 (Code Reviewer)",
+    "cycle": "2/3",
+    "evidence_source": "db/nco.db via /tmp/nco-gov-learning-audit-r3.db (T1) + src/security/circuit-breaker-registry.ts + src/agent/agent-manager.ts + .cb-classify-probe.mts output",
+    "hr_directive_snapshot": {
+      "score": 79,
+      "completion": 83.3,
+      "sample": "48h/6",
+      "note": "stale — T1 lifecycle last_score=83.4 n=8 at 2026-07-27T19:20:00Z"
+    }
+  },
+  "failure_pattern_analysis_48h": {
+    "team_tasks_total": 10,
+    "completed": 7,
+    "failed": 3,
+    "signatures": [
+      {"error_class": "silent-failure: empty output", "count": 1, "infra_excluded": false, "duplicate_within_team": false},
+      {"error_class": "provider_unavailable: claude-code", "count": 1, "infra_excluded": true, "fleet_burst_same_second_teams": 4},
+      {"error_class": "opencode CLI auth error envelope (invalid x-api-key in response JSON)", "count": 1, "infra_excluded_via_provider_auth_sql": "candidate", "fleet_envelope_window_rows": 8}
+    ],
+    "within_team_duplicate_burst": false,
+    "verdict": "No team-local duplicate burst; fleet-wide auth-envelope probe consumption is the actionable repeat pattern for cycle 2"
+  },
+  "rules": [
+    {
+      "id": "GATE-LEARN-R0",
+      "type": "unchanged",
+      "status": "ALREADY_LANDED",
+      "layer": "scoring",
+      "location": "src/core/team-scorer.ts:178 INFRA_EXCLUSION",
+      "rule": "Exclude orphaned, circuit breaker open, provider_unavailable, queue_wait_timeout from quality terminal set.",
+      "rollback": "Remove INFRA_EXCLUSION from terminal CASE blocks"
+    },
+    {
+      "id": "GATE-LEARN-R1",
+      "type": "new",
+      "status": "IN_WORKING_TREE",
+      "layer": "circuit-breaker classification",
+      "location": "src/security/circuit-breaker-registry.ts classifyProviderErrorEnvelope + recordFailure providerOutput branch; src/agent/agent-manager.ts:370",
+      "env_flag": "NCO_CB_ERROR_ENVELOPE",
+      "default": "on",
+      "rollback": "NCO_CB_ERROR_ENVELOPE=off (runtime, no rebuild)",
+      "rule": "When rawError is unclassified AND providerOutput is a single JSON object with type=error AND whitelisted keys contain auth signal (401/invalid api key), open circuit immediately with reason=generic (NOT auth) to avoid permanent open while stopping repeated half-open probe task consumption.",
+      "guards": ["startsWith { endsWith }", "JSON.parse whole value", "type===error", "max 8192 chars", "signal key whitelist", "auth reason only (not quota/rate-limit in this cycle)"],
+      "evidence_task_ids": ["task_p2V_WOaQg3z-gdGx", "task_KkeE7Ly_A5hC1K2n"],
+      "evidence_probe": "8 rows 2026-07-27 17:19-17:30: classifyCircuitError(error)=null for all; classifyCircuitError(response)=auth for 7/8"
+    },
+    {
+      "id": "GATE-LEARN-R2",
+      "type": "unchanged",
+      "status": "NO_CHANGE",
+      "layer": "command-gate",
+      "location": "src/security/command-gate.ts",
+      "rule": "No rule change — failures are provider auth envelopes, not shell command policy violations."
+    },
+    {
+      "id": "GATE-LEARN-R3",
+      "type": "related",
+      "status": "LANDED_BY_SELF_IMPROVE",
+      "layer": "work-report prompt",
+      "location": "src/core/work-report-scheduler.ts refreshWorkReportPromptSnapshot; src/server/gateway.ts createRetryTask",
+      "env_flag": "NCO_WORK_REPORT_SNAPSHOT_REFRESH",
+      "rule": "On work-report failover retry, refresh [실데이터] block from live DB to prevent FAILURE_UNDERCOUNT in submitted reports.",
+      "not_a_cb_gate": true
+    }
+  ],
+  "cross_verification_self_improve": {
+    "false_reports_table_count": 0,
+    "false_complete_claims": 0,
+    "structural_undercount_confirmed": true,
+    "undercount_not_agent_fabrication": true,
+    "snapshot_refresh_patch_matches_root_cause": true,
+    "envelope_gate_matches_auth_probe_pattern": true,
+    "verdict": "Self-improve patches did NOT introduce false completion claims; they address structural metric staleness and classification blind spot."
+  },
+  "review_findings": [
+    {"severity": "medium", "item": "classifyProviderErrorEnvelope imported in circuit-breaker.test.ts but no dedicated unit tests"},
+    {"severity": "low", "item": "reason=generic for envelope auth is intentional — document in ops runbook"}
+  ],
+  "unverified_items": [
+    "Runtime E2E: auth failure → envelope gate → circuit open → no duplicate probe tasks",
+    "computeTeamScores() at current HEAD for this team",
+    "NCO :6200 process running updated dist"
+  ]
+}

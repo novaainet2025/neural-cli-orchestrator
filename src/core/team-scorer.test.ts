@@ -437,6 +437,93 @@ describe('team score aggregation', () => {
     }
   });
 
+  it('excludes plaintext provider credential rejection without team output, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_plain_auth', 'Plain Provider Auth', 'plain-provider-auth');
+
+    for (let index = 1; index <= 6; index += 1) {
+      insert.run(
+        `plain-auth-ok-${index}`,
+        'team_plain_auth',
+        'completed',
+        null,
+        'report body',
+        null,
+        `-${index} hours`,
+      );
+    }
+
+    const authError = 'Invalid API key · Fix external API key';
+    // HR Incubator 실측 회귀(2026-07-27 17:18:57 UTC, task_VnTZtkgkcpgPwPhy):
+    // claude-code subprocess가 인증 오류 한 줄만 내고 에이전트 턴 전에 종료했다.
+    insert.run(
+      'plain-auth-rejected',
+      'team_plain_auth',
+      'failed',
+      `subprocess exited with code 1: ${authError}`,
+      `${authError}\n`,
+      null,
+      '-7 hours',
+    );
+    // 과잉 제외 방지 가드 (1): provider subprocess 실패가 아니면 같은 본문도 품질 실패로 남긴다.
+    insert.run(
+      'plain-auth-quality-gate',
+      'team_plain_auth',
+      'failed',
+      'quality_rejected: FORMAT_MISMATCH',
+      authError,
+      null,
+      '-8 hours',
+    );
+    // 과잉 제외 방지 가드 (2): 부분 산출물이 있으면 인증 문자열을 인용해도 실패로 남긴다.
+    insert.run(
+      'plain-auth-partial-output',
+      'team_plain_auth',
+      'failed',
+      `subprocess exited with code 1: ${authError}`,
+      `status: 부분 진단을 작성했습니다.\n${authError}`,
+      null,
+      '-9 hours',
+    );
+    // 과잉 제외 방지 가드 (3): 실측하지 않은 exit code는 같은 오류 본문이어도 실패로 남긴다.
+    insert.run(
+      'plain-auth-unobserved-exit',
+      'team_plain_auth',
+      'failed',
+      `subprocess exited with code 2: ${authError}`,
+      `${authError}\n`,
+      null,
+      '-10 hours',
+    );
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_plain_auth')).toMatchObject({
+      completion: 66.7,
+      n: 9,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+    process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = 'off';
+    try {
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_plain_auth')).toMatchObject({
+        completion: 60,
+        n: 10,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+      else process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = previous;
+    }
+  });
+
   afterEach(() => db.close());
 
   it('aggregates scores and serves the live team and organization arrays', async () => {

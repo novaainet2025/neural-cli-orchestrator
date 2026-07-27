@@ -1,5 +1,8 @@
 export type MeshQueueStatus = 'queued' | 'not_queued';
-export type MeshQueueFailureReason = 'mesh_unavailable' | 'recipient_unavailable';
+export type MeshQueueFailureReason =
+  | 'mesh_unavailable'
+  | 'recipient_unavailable'
+  | 'collaboration_loop_blocked';
 
 /**
  * Evidence returned by the queueing layer.
@@ -23,6 +26,8 @@ export function createMeshEnqueueReceipt(params: {
   queuedRecipients: number;
   historyRecorded: boolean;
   meshAvailable: boolean;
+  /** When set with zero recipients, overrides mesh/recipient inference (e.g. echo-loop). */
+  failureReason?: MeshQueueFailureReason;
 }): MeshEnqueueReceipt {
   const queuedRecipients = Number.isFinite(params.queuedRecipients)
     ? Math.max(0, Math.trunc(params.queuedRecipients))
@@ -45,6 +50,7 @@ export function createMeshEnqueueReceipt(params: {
     queuedRecipients: 0,
     historyRecorded: params.historyRecorded,
     acknowledged: false,
-    reason: params.meshAvailable ? 'recipient_unavailable' : 'mesh_unavailable',
+    reason: params.failureReason
+      ?? (params.meshAvailable ? 'recipient_unavailable' : 'mesh_unavailable'),
   };
 }
