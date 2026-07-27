@@ -38,6 +38,9 @@ describe('NCO one-click install', () => {
     expect(help).toContain('--skip-pm2');
     expect(setup).not.toContain('wc -l || echo 0');
     expect(setup).not.toContain('$HOME/projects/neural-cli-orchestrator');
+    expect(setup).toContain('PM2 실행 경로 변경 감지');
+    expect(setup).toContain('"$pm2_bin" delete nco-backend');
+    expect(setup).toContain('PM2 실행 경로 검증 실패');
   });
 
   test('lockfile is reproducible without the unused mem0ai SDK', () => {

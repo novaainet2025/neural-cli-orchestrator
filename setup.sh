@@ -518,7 +518,7 @@ setup_agents() {
 }
 
 # ══════════════════════════════════════════════════════════════════════════
-# 14. PM2 startOrReload (기존 작업 drain 후 안전 교체)
+# 14. PM2 배포 (기존 작업 drain 후 안전 교체)
 # ══════════════════════════════════════════════════════════════════════════
 start_or_reload_nco() {
   [[ "$SKIP_PM2" == "false" ]] || return
@@ -544,6 +544,25 @@ start_or_reload_nco() {
   local drain_url="${NCO_ADMIN_DRAIN_URL:-${HEALTH_URL%/health}/api/admin/drain}"
   local drain_body=""
   local drain_enabled=false
+  local previous_cwd=""
+  local previous_cwd_resolved=""
+  local target_cwd
+  target_cwd="$(pwd -P)"
+
+  previous_cwd="$("$pm2_bin" jlist 2>/dev/null | node -e '
+    let input = "";
+    process.stdin.on("data", chunk => input += chunk);
+    process.stdin.on("end", () => {
+      try {
+        const app = JSON.parse(input).find(item => item.name === "nco-backend");
+        if (typeof app?.pm2_env?.pm_cwd === "string") process.stdout.write(app.pm2_env.pm_cwd);
+      } catch {}
+    });
+  ' 2>/dev/null || true)"
+  if [[ -n "$previous_cwd" ]]; then
+    previous_cwd_resolved="$(cd "$previous_cwd" 2>/dev/null && pwd -P || true)"
+    [[ -n "$previous_cwd_resolved" ]] || previous_cwd_resolved="$previous_cwd"
+  fi
 
   # NCO 관리 API가 확인될 때만 drain을 사용한다. 다른 서비스에는 POST하지 않는다.
   if drain_body="$(curl -fsS --max-time 3 "$drain_url" 2>/dev/null)" \
@@ -586,9 +605,34 @@ start_or_reload_nco() {
     done
   fi
 
-  info "PM2 startOrReload..."
-  if ! "$pm2_bin" startOrReload ecosystem.config.cjs \
+  local pm2_action="startOrReload"
+  if [[ -n "$previous_cwd_resolved" ]] && [[ "$previous_cwd_resolved" != "$target_cwd" ]]; then
+    # PM2 startOrReload는 동일한 앱 이름의 cwd를 바꾸지 않는다. 설치 경로가 바뀐
+    # 배포에서는 기존 프로세스를 drain한 뒤 다시 만들어야 새 복제본이 실행된다.
+    info "PM2 실행 경로 변경 감지: $previous_cwd_resolved → $target_cwd"
+    if ! "$pm2_bin" delete nco-backend; then
+      if [[ "$drain_enabled" == "true" ]]; then
+        curl -fsS --max-time 5 -H 'content-type: application/json' \
+          --data '{"enabled":false}' "$drain_url" >/dev/null 2>&1 || true
+      fi
+      err "기존 PM2 프로세스 제거 실패 — 기존 NCO drain을 해제했습니다."
+      return 1
+    fi
+    pm2_action="start"
+  fi
+
+  info "PM2 $pm2_action..."
+  if ! "$pm2_bin" "$pm2_action" ecosystem.config.cjs \
     --only nco-backend --update-env; then
+    if [[ "$pm2_action" == "start" ]] \
+      && [[ -n "$previous_cwd_resolved" ]] \
+      && [[ -f "$previous_cwd_resolved/ecosystem.config.cjs" ]]; then
+      warn "새 배포 실패 — 이전 PM2 실행 경로 복구를 시도합니다."
+      (
+        cd "$previous_cwd_resolved"
+        "$pm2_bin" start ecosystem.config.cjs --only nco-backend --update-env
+      ) || true
+    fi
     if [[ "$drain_enabled" == "true" ]]; then
       curl -fsS --max-time 5 -H 'content-type: application/json' \
         --data '{"enabled":false}' "$drain_url" >/dev/null 2>&1 || true
@@ -596,8 +640,33 @@ start_or_reload_nco() {
     err "PM2 배포 실패 — 기존 NCO drain을 해제했습니다."
     return 1
   fi
+
+  local deployed_cwd=""
+  local deployed_cwd_resolved=""
+  deployed_cwd="$("$pm2_bin" jlist 2>/dev/null | node -e '
+    let input = "";
+    process.stdin.on("data", chunk => input += chunk);
+    process.stdin.on("end", () => {
+      try {
+        const app = JSON.parse(input).find(item => item.name === "nco-backend");
+        if (typeof app?.pm2_env?.pm_cwd === "string") process.stdout.write(app.pm2_env.pm_cwd);
+      } catch {}
+    });
+  ' 2>/dev/null || true)"
+  if [[ -n "$deployed_cwd" ]]; then
+    deployed_cwd_resolved="$(cd "$deployed_cwd" 2>/dev/null && pwd -P || true)"
+  fi
+  if [[ "$deployed_cwd_resolved" != "$target_cwd" ]]; then
+    if [[ "$drain_enabled" == "true" ]]; then
+      curl -fsS --max-time 5 -H 'content-type: application/json' \
+        --data '{"enabled":false}' "$drain_url" >/dev/null 2>&1 || true
+    fi
+    err "PM2 실행 경로 검증 실패: expected=$target_cwd actual=${deployed_cwd_resolved:-unknown}"
+    return 1
+  fi
+
   "$pm2_bin" save
-  ok "PM2 프로세스 배포 및 저장 완료"
+  ok "PM2 프로세스 배포 및 저장 완료: $deployed_cwd_resolved"
 }
 
 # ══════════════════════════════════════════════════════════════════════════
