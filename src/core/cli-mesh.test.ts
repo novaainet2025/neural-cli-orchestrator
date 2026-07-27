@@ -6,6 +6,7 @@ const dependencies = vi.hoisted(() => ({
   connected: true,
   getRedis: vi.fn(),
   publish: vi.fn(async () => undefined),
+  persistRun: vi.fn(() => ({ changes: 1 })),
 }));
 
 vi.mock('../storage/redis.js', () => ({
@@ -13,7 +14,7 @@ vi.mock('../storage/redis.js', () => ({
   isRedisConnected: () => dependencies.connected,
 }));
 vi.mock('../storage/database.js', () => ({
-  getDb: () => ({ prepare: () => ({ run: vi.fn() }) }),
+  getDb: () => ({ prepare: () => ({ run: dependencies.persistRun }) }),
 }));
 vi.mock('./event-bus.js', () => ({ eventBus: { publish: dependencies.publish } }));
 
@@ -99,6 +100,7 @@ describe('CliMesh message queue', () => {
     dependencies.connected = true;
     dependencies.getRedis.mockReset();
     dependencies.publish.mockClear();
+    dependencies.persistRun.mockClear();
   });
 
   it('retries a concurrent direct enqueue without losing either message', async () => {
@@ -128,6 +130,35 @@ describe('CliMesh message queue', () => {
 
     expect(await cliMesh.sendMessage('sender', 'agent', 'target', 'message')).toBe(0);
     expect(dependencies.getRedis).not.toHaveBeenCalled();
+    expect(dependencies.persistRun).toHaveBeenCalledTimes(1);
+    expect(dependencies.publish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'mesh:delivery_failed',
+      delivery: expect.objectContaining({
+        status: 'not_queued',
+        reason: 'mesh_unavailable',
+        historyRecorded: true,
+        acknowledged: false,
+      }),
+    }));
+  });
+
+  it('returns queue evidence without claiming recipient acknowledgement', async () => {
+    const fake = createRedisDouble(['ok']);
+    dependencies.getRedis.mockResolvedValue(fake.redis);
+
+    const receipt = await cliMesh.sendMessageWithReceipt(
+      'sender-b',
+      'b',
+      'target-session',
+      'new message',
+    );
+
+    expect(receipt).toEqual(expect.objectContaining({
+      status: 'queued',
+      queuedRecipients: 1,
+      historyRecorded: true,
+      acknowledged: false,
+    }));
   });
 
   it('propagates an exhausted enqueue conflict without silently losing the message', async () => {

@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-27T13:20:00+0900",
+  "checked_at": "2026-07-28T00:20:00+0900",
   "mode": "propose",
   "total": 233,
   "pass": 232,
@@ -98,14 +98,11 @@
       "meets": true
     }
   },
-  "provider_anomaly": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)",
+  "provider_anomaly": null,
   "failures": [],
   "dispatch": {
     "mode": "propose",
-    "dispatched": {
-      "id": "provider:registry",
-      "taskId": "task_CawrTmHZfcRBh2K6"
-    },
-    "skipped_reason": null
+    "dispatched": null,
+    "skipped_reason": "nova-local-llm.lock 사용 중 (team-runner 등) — 이번 회차 디스패치 보류, 점검은 완료"
   }
 }

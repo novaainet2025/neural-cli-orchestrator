@@ -81,6 +81,8 @@ const SUBSTANTIVE_TASK_SLUGS = new Set([
   'quality-audit',
   'self-improvement',
 ]);
+const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
+const EVOLUTION_LEARNING_CONTEXT_FLAG = 'NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT';
 const SNS_TEAM_SLUGS = new Set(['content-planning', 'sns', 'quality-audit']);
 
 function formatMetric(value: number): string {
@@ -90,6 +92,20 @@ function formatMetric(value: number): string {
 function compactContextText(value: string, maxLength: number): string {
   const compacted = value.replace(/\s+/g, ' ').trim();
   return compacted.length <= maxLength ? compacted : `${compacted.slice(0, maxLength)}…`;
+}
+
+function compactNullableContextText(
+  value: string | null,
+  maxLength: number,
+): string {
+  if (value == null) return '없음';
+  const compacted = compactContextText(value, maxLength);
+  return compacted || '공백';
+}
+
+function evolutionLearningContextEnabled(): boolean {
+  const configured = process.env[EVOLUTION_LEARNING_CONTEXT_FLAG]?.trim().toLowerCase();
+  return configured !== '0' && configured !== 'false' && configured !== 'off';
 }
 
 function loadRepositoryGitContext(): string[] {
@@ -233,6 +249,103 @@ export function buildTeamDataContext(
         `[recent_team_task] id=${compactContextText(row.id, 100)}, 상태=${compactContextText(row.status, 50)}, 생성=${compactContextText(row.created_at, 50)}, 지시=${compactContextText(row.prompt, 240)}`,
       );
     });
+  }
+
+  if (
+    team.slug === EVOLUTION_LEARNING_TEAM_SLUG
+    && evolutionLearningContextEnabled()
+  ) {
+    let sourceTaskIds: string[] = [];
+    collect('evolution_learning_tasks', () => {
+      const rows = database.prepare(`
+        SELECT
+          id,
+          status,
+          created_at,
+          completed_at,
+          prompt,
+          response,
+          error,
+          result_json,
+          evidence_json,
+          CASE
+            WHEN json_valid(metadata_json)
+            THEN json_extract(metadata_json, '$.workReportId')
+            ELSE NULL
+          END AS work_report_id
+        FROM tasks
+        WHERE team_id=?
+          AND status IN ('completed','failed','timed_out','lease_expired','cancelled')
+          AND created_at >= datetime('now','-48 hours')
+        ORDER BY COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC
+        LIMIT 5
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        created_at: string;
+        completed_at: string | null;
+        prompt: string;
+        response: string | null;
+        error: string | null;
+        result_json: string | null;
+        evidence_json: string | null;
+        work_report_id: string | null;
+      }>;
+      sourceTaskIds = rows.map((row) => row.id);
+      return rows.map((row) =>
+        [
+          '[learning_task_evidence] source_tier=T1(SQLite tasks row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `완료=${compactNullableContextText(row.completed_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `지시=${compactContextText(row.prompt, 240)}`,
+          `응답(T4-natural-language)=${compactNullableContextText(row.response, 400)}`,
+          `result_json=${compactNullableContextText(row.result_json, 300)}`,
+          `evidence_json=${compactNullableContextText(row.evidence_json, 300)}`,
+          `workReportId=${compactNullableContextText(row.work_report_id, 100)}`,
+        ].join(', '),
+      );
+    });
+
+    if (sourceTaskIds.length > 0) {
+      collect('evolution_learning_events', () => {
+        const placeholders = sourceTaskIds.map(() => '?').join(',');
+        const rows = database.prepare(`
+          SELECT id, agent_id, event_type, pattern, context, auto_applied, created_at
+          FROM learning_events
+          WHERE created_at >= datetime('now','-48 hours')
+            AND json_valid(context)
+            AND (
+              json_extract(context, '$.taskId') IN (${placeholders})
+              OR json_extract(context, '$.sourceTaskId') IN (${placeholders})
+            )
+          ORDER BY created_at DESC, id DESC
+          LIMIT 10
+        `).all(...sourceTaskIds, ...sourceTaskIds) as Array<{
+          id: number;
+          agent_id: string;
+          event_type: string | null;
+          pattern: string | null;
+          context: string;
+          auto_applied: number;
+          created_at: string;
+        }>;
+        return rows.map((row) =>
+          [
+            '[learning_event_evidence] source_tier=T1(SQLite learning_events row)',
+            `id=${row.id}`,
+            `agent=${compactContextText(row.agent_id, 100)}`,
+            `event=${compactNullableContextText(row.event_type, 100)}`,
+            `created=${compactContextText(row.created_at, 50)}`,
+            `auto_applied=${row.auto_applied === 1 ? '1' : '0'}`,
+            `pattern=${compactNullableContextText(row.pattern, 240)}`,
+            `context=${compactContextText(row.context, 400)}`,
+          ].join(', '),
+        );
+      });
+    }
   }
 
   const agentIds = new Set<string>();

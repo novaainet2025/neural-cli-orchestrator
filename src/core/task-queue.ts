@@ -336,14 +336,16 @@ export function classifyResult(result: TaskExecutionResult): TaskExecutionResult
 }
 
 // ── P11: 단일 팀 위임 transient 재시도 지원 ──────────────────────────────
-// 정상완료·사용자취소·rate-limit은 제외. transient(프로바이더 무응답/idle/abort)만 true.
+// 정상완료·사용자취소·rate-limit은 제외. 일시적 무응답/idle/abort와 현재 실행자를
+// 사용할 수 없는 circuit/provider availability 실패만 true.
 export function isTransientFailure(result: TaskExecutionResult): boolean {
   if (result.success) return false;                 // 정상완료는 절대 재시도 안 함(오탐 방지)
   if (result.status === 'cancelled') return false;  // 사용자 취소 재시도 금지
   const err = result.error ?? '';
   return err.startsWith('silent-failure:')            // classifyResult: 빈출력/무응답/limit메시지
       || err === 'timeout(idle)'                      // idle 타임아웃(활동 없음)
-      || /aborting operation|aborted by (the )?provider/i.test(err); // 프로바이더측 abort
+      || /aborting operation|aborted by (the )?provider/i.test(err) // 프로바이더측 abort
+      || /\b(?:circuit breaker open|provider[_ -]unavailable)\b/i.test(err);
   // 주의: isRateLimitError(err)는 여기 포함 안 함 — rate-limit은 기존 backoff 루프가 처리(중복금지).
 }
 
@@ -1114,11 +1116,14 @@ class TaskQueueManager {
     let attemptedAgents = getAttemptedAgents(currentMetadata, task.agentId);
     let stallRetried = false;
     let teamRetried = false;   // P11: 팀 transient failover는 태스크당 1회만
+    let retryAfterRateLimit = false;
     const allowStallRetry = process.env.NCO_STALL_RETRY !== '0';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      // Mark rate-limited in DB if this is a retry
-      if (attempt > 0) {
+      // 팀 failover/idle retry의 continue도 attempt를 증가시킨다. 직전 실패가 실제
+      // rate-limit일 때만 backoff와 제한 마킹을 적용해 새 가용 후보를 오염시키지 않는다.
+      if (attempt > 0 && retryAfterRateLimit) {
+        retryAfterRateLimit = false;
         const backoffMs = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
         log.info({ taskId: task.taskId, agentId: currentAgentId, attempt, backoffMs }, 'Rate limit retry');
         this.markRateLimited(currentAgentId);
@@ -1197,6 +1202,7 @@ class TaskQueueManager {
       }
 
       lastError = errMsg;
+      retryAfterRateLimit = true;
       log.warn({ taskId: task.taskId, agentId: currentAgentId, attempt }, 'Rate limit hit — will retry');
     }
 

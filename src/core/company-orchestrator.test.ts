@@ -481,6 +481,18 @@ describe('isCompanyStageOutputAcceptable (중복 품질 재시도 게이트)', (
       requireProtocolPrefix: true,
     })).toBe(true);
   });
+
+  it('completed task라도 status/error protocol은 완료 산출물로 승인하지 않음', () => {
+    const details = '실행을 시도했으나 필요한 권한이 없어 결과를 검증하지 못했습니다. '.repeat(8);
+    expect(isCompanyStageOutputAcceptable(`status: ${details}`, {
+      isLastStage: true,
+      requireProtocolPrefix: true,
+    })).toBe(false);
+    expect(isCompanyStageOutputAcceptable(`error: ${details}`, {
+      isLastStage: true,
+      requireProtocolPrefix: true,
+    })).toBe(false);
+  });
 });
 
 describe('templateSubtask', () => {
@@ -546,13 +558,17 @@ describe('buildPipelineHandoffSubtask', () => {
     expect(prompt).toContain('직접 측정하지 않은 수치나 완료 상태를 만들지 마세요.');
   });
 
-  it('다른 단계의 기존 handoff 형식은 유지', () => {
-    expect(buildPipelineHandoffSubtask(
+  it('다른 단계도 현재 지시를 먼저 두고 protocol 응답을 상태로 분리', () => {
+    const prompt = buildPipelineHandoffSubtask(
       'tech-port-06-improvement-debate',
       '현재 작업',
       '05 Upgrade Regression',
-      '이전 결과',
-    )).toBe("[이전 단계 '05 Upgrade Regression' 산출물]\n이전 결과\n\n---\n현재 작업");
+      'done: 기준선 측정 완료\n이전 결과',
+    );
+    expect(prompt).toMatch(/^\[현재 단계 실행 지시 — 최우선\]/);
+    expect(prompt).toContain('kind="done"');
+    expect(prompt).not.toContain('done: 기준선 측정 완료');
+    expect(prompt.indexOf('현재 작업')).toBeLessThan(prompt.indexOf('이전 결과'));
   });
 
   it('상류 산출물이 없으면 현재 하위작업을 그대로 반환', () => {

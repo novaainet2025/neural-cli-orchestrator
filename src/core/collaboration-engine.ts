@@ -3,6 +3,10 @@ import { createId } from '../utils/id.js';
 import { cliMesh } from './cli-mesh.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  summarizeCollaborationDeliveries,
+  type CollaborationDeliveryOutcome,
+} from './collaboration.js';
 
 const log = createLogger('collaboration-engine');
 
@@ -201,19 +205,29 @@ export class CollaborationEngine {
 
     // Send COLLAB_INVITE to each invited session
     const inviteIds = params.inviteSessionIds ?? [];
+    const inviteDeliveries: CollaborationDeliveryOutcome[] = [];
     for (const targetSessionId of inviteIds) {
       try {
-        await cliMesh.sendMessage(
+        const receipt = await cliMesh.sendMessageWithReceipt(
           params.creatorSessionId,
           params.creatorAgentId,
           targetSessionId,
           `COLLAB_INVITE:${id}:${params.title}`,
           'request',
         );
+        inviteDeliveries.push({ targetSessionId, receipt });
+        if (receipt.status !== 'queued') {
+          log.warn({ id, targetSessionId, delivery: receipt }, 'COLLAB_INVITE was not queued');
+        }
       } catch (err) {
+        inviteDeliveries.push({
+          targetSessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
         log.warn({ err, id, targetSessionId }, 'Failed to send COLLAB_INVITE');
       }
     }
+    const inviteDelivery = summarizeCollaborationDeliveries(inviteDeliveries);
 
     await eventBus.publish({
       type: 'collab:created',
@@ -225,6 +239,7 @@ export class CollaborationEngine {
       creatorAgentId: params.creatorAgentId,
       participantCount: initialParticipants.length,
       inviteCount: inviteIds.length,
+      inviteDelivery,
       minParticipants,
       maxParticipants: params.maxParticipants ?? null,
     });
@@ -291,20 +306,30 @@ export class CollaborationEngine {
     log.info({ id, collaborationId: params.collaborationId, agentId: params.agentId, contentType }, 'Contribution submitted');
 
     // Broadcast COLLAB_CONTRIBUTION to all participants
+    const contributionDeliveries: CollaborationDeliveryOutcome[] = [];
     for (const participantSessionId of result.participants) {
       if (participantSessionId === params.sessionId) continue;
       try {
-        await cliMesh.sendMessage(
+        const receipt = await cliMesh.sendMessageWithReceipt(
           params.sessionId,
           params.agentId,
           participantSessionId,
           `COLLAB_CONTRIBUTION:${params.collaborationId}:${id}`,
           'info',
         );
+        contributionDeliveries.push({ targetSessionId: participantSessionId, receipt });
+        if (receipt.status !== 'queued') {
+          log.warn({ id, participantSessionId, delivery: receipt }, 'COLLAB_CONTRIBUTION was not queued');
+        }
       } catch (err) {
+        contributionDeliveries.push({
+          targetSessionId: participantSessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
         log.warn({ err, id, participantSessionId }, 'Failed to send COLLAB_CONTRIBUTION');
       }
     }
+    const contributionDelivery = summarizeCollaborationDeliveries(contributionDeliveries);
 
     await eventBus.publish({
       type: 'collab:contributed',
@@ -316,6 +341,7 @@ export class CollaborationEngine {
       contentType,
       contentPreview: params.content.slice(0, 200),
       participantCount: result.participants.length,
+      contributionDelivery,
     });
 
     return { contributionId: id };

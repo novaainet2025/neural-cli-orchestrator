@@ -4,8 +4,11 @@ import { buildReportPrompt, buildTeamDataContext } from './work-report-scheduler
 
 describe('work report real-data context', () => {
   let db: Database.Database;
+  const originalEvolutionLearningContextFlag =
+    process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
 
   beforeEach(() => {
+    delete process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
     db = new Database(':memory:');
     db.exec(`
       CREATE TABLE teams (id TEXT PRIMARY KEY, slug TEXT NOT NULL, lead TEXT);
@@ -15,7 +18,14 @@ describe('work report real-data context', () => {
       );
       CREATE TABLE tasks (
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
-        prompt TEXT NOT NULL DEFAULT '', created_at TEXT DEFAULT (datetime('now'))
+        prompt TEXT NOT NULL DEFAULT '', response TEXT, error TEXT,
+        result_json TEXT, evidence_json TEXT, metadata_json TEXT,
+        created_at TEXT DEFAULT (datetime('now')), completed_at TEXT
+      );
+      CREATE TABLE learning_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, agent_id TEXT NOT NULL,
+        event_type TEXT, pattern TEXT, context TEXT,
+        auto_applied INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE work_reports (
         id TEXT PRIMARY KEY, team_id TEXT, report_date TEXT NOT NULL, status TEXT NOT NULL
@@ -41,7 +51,15 @@ describe('work report real-data context', () => {
     `);
   });
 
-  afterEach(() => db.close());
+  afterEach(() => {
+    db.close();
+    if (originalEvolutionLearningContextFlag === undefined) {
+      delete process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
+    } else {
+      process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT =
+        originalEvolutionLearningContextFlag;
+    }
+  });
 
   it('reads team tasks, reports, agent performance, and metrics from SQLite', () => {
     db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, ?)')
@@ -134,6 +152,103 @@ describe('work report real-data context', () => {
 
     expect(context).toContain('[improvement_notes] 전체=0, 최근 7일=0, 최근기록=없음');
     expect(context).not.toContain('[improvement_note]');
+  });
+
+  it('injects bounded task and linked event evidence for evolution learning', () => {
+    process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT = '1';
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_learning', 'gov-evolution-learning');
+    const insertTask = db.prepare(`
+      INSERT INTO tasks (
+        id, team_id, status, prompt, response, error, result_json,
+        evidence_json, metadata_json, created_at, completed_at
+      )
+      VALUES (
+        ?, 'team_learning', ?, ?, ?, ?, ?, ?, ?,
+        datetime('now', ?), datetime('now', ?)
+      )
+    `);
+    insertTask.run(
+      'task-newest', 'completed', '최신 지시', '검증됐다고 주장',
+      null, '{"outcome":"saved"}', '[{"tier":"T1"}]', '{"workReportId":"wr-1"}',
+      '-1 hour', '-30 minutes',
+    );
+    insertTask.run(
+      'task-empty', 'failed', '공백 실패', ' \n ', 'silent-failure: empty output',
+      null, null, null, '-2 hours', '-90 minutes',
+    );
+    for (let index = 3; index <= 6; index += 1) {
+      insertTask.run(
+        `task-${index}`, 'completed', `지시 ${index}`, `응답 ${index}`,
+        null, null, null, null, `-${index} hours`, `-${index} hours`,
+      );
+    }
+    insertTask.run(
+      'task-too-old', 'failed', '오래된 지시', null, 'old failure',
+      null, null, null, '-49 hours', '-49 hours',
+    );
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, prompt, created_at)
+      VALUES ('task-running', 'team_learning', 'running', '진행 중', datetime('now'))
+    `).run();
+
+    db.prepare(`
+      INSERT INTO learning_events
+        (agent_id, event_type, pattern, context, auto_applied)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      'codex',
+      'failover_dispatch',
+      null,
+      '{"taskId":"retry-1","sourceTaskId":"task-empty","retryCount":1}',
+      0,
+    );
+    db.prepare(`
+      INSERT INTO learning_events
+        (agent_id, event_type, pattern, context, auto_applied)
+      VALUES (?, ?, ?, ?, ?)
+    `).run('codex', 'escalation', null, '{"taskId":"unrelated"}', 0);
+
+    const context = buildTeamDataContext('team_learning', db, () => []);
+
+    expect(context.match(/\[learning_task_evidence\]/g)).toHaveLength(5);
+    expect(context).toContain('id=task-newest');
+    expect(context).toContain('응답(T4-natural-language)=검증됐다고 주장');
+    expect(context).toContain('result_json={"outcome":"saved"}');
+    expect(context).toContain('evidence_json=[{"tier":"T1"}]');
+    expect(context).toContain('workReportId=wr-1');
+    expect(context).toContain('id=task-empty');
+    expect(context).toContain('오류=silent-failure: empty output');
+    expect(context).toContain('응답(T4-natural-language)=공백');
+    expect(context).not.toContain('id=task-6,');
+    expect(context).not.toContain('task-too-old');
+    expect(context).not.toContain('task-running');
+    expect(context).toContain('[learning_event_evidence]');
+    expect(context).toContain('"sourceTaskId":"task-empty"');
+    expect(context).not.toContain('"taskId":"unrelated"');
+  });
+
+  it('keeps evolution learning evidence reversible and other team context unchanged', () => {
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_learning', 'gov-evolution-learning');
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_other', 'analytics');
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, prompt, response)
+      VALUES (?, ?, 'completed', '실제 지시', '내부 자연어 주장')
+    `);
+    insert.run('learning-task', 'team_learning');
+    insert.run('other-task', 'team_other');
+
+    process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT = '0';
+    const disabledContext = buildTeamDataContext('team_learning', db, () => []);
+    process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT = '1';
+    const otherContext = buildTeamDataContext('team_other', db, () => []);
+
+    expect(disabledContext).not.toContain('[learning_task_evidence]');
+    expect(disabledContext).not.toContain('내부 자연어 주장');
+    expect(otherContext).not.toContain('[learning_task_evidence]');
+    expect(otherContext).not.toContain('내부 자연어 주장');
   });
 
   it('states the honest fallback when a team has no available data', () => {

@@ -1,0 +1,276 @@
+/**
+ * Learning-Stage Verification Gate — 제안 패치 초안 (DRAFT, 미배선).
+ *
+ * 이 모듈은 아직 어떤 실행 경로에도 연결되어 있지 않다(import 0곳). 중복에러방지팀의
+ * 감사 결과를 코드로 고정한 "제안 패치"이며, 배선 여부는 HR/오케스트레이터 결정 사항이다.
+ * 되돌리기: 이 파일과 learning-stage-gate.test.ts 두 개를 삭제하면 정확히 이전 상태.
+ *
+ * ── 감사 근거 (2026-07-27, team_gov-evolution-learning, 48h 표본) ──────────────
+ *
+ * 1) 프롬프트 스냅샷 동결(STALE_DATA_CONTEXT)
+ *    work-report task는 실패 시 provider failover로 복제되는데, 복제본은 부모의 prompt를
+ *    바이트 단위로 그대로 물려받는다. 실측: wr_wcXz4AG_W0eFppWp의 3개 태스크
+ *    (task_3eejRUftHpUXmdOH → task_IjCXiEO-3LT65aIS → task_TF-0pwR0YBvnvs0b, 모두
+ *    parent_task_id=task_3eejRUftHpUXmdOH) prompt SHA-1이 de1a9425…로 전부 동일했다.
+ *    그 결과 07:11에 제출된 보고서가 05:29 시점의 `[tasks] 최근 7일: 전체=4, 완료=4,
+ *    실패성=0, 완료율=100.0%`를 그대로 서술했다. 같은 시각 DB에는 이 팀의 실패 태스크가
+ *    2건(task_3eejRUftHpUXmdOH·task_IjCXiEO-3LT65aIS) 존재했다.
+ *    → 에이전트의 날조가 아니라 주입 데이터의 구조적 지연이다. 지시문 5번("[실데이터]에
+ *      있는 값만 사용")을 성실히 지킬수록 오히려 실패가 은폐된다.
+ *
+ * 2) 중복 실패 버스트(DUPLICATE_FAILURE_BURST)
+ *    에스컬레이션 대상 선정(escalation-policy.decideEscalation)은 결정 시점에
+ *    circuitOpenAgents를 걸러내지만, 선정과 실제 실행 사이에 큐 대기가 끼면 그 사이에
+ *    회로가 열린다. 실행 시점 agent-manager.executeTask의 `sandbox.canExecute()`는
+ *    재라우팅 없이 즉시 종결 실패시킨다(provider_unavailable).
+ *    실측: 2026-07-27 06:53:25 단 1초에 claude-code로 4건이 동시 종결 실패했고
+ *    (task_SgIYb63gYzON8zWQ·task_TDsq55NUhMScwcCQ·task_IjCXiEO-3LT65aIS·
+ *     task_CmAsfvFiSfqBnsHY), 서로 다른 4개 팀에 각각 1건씩 품질 실패로 계상됐다.
+ *    큐 대기 시간은 48.2~48.8분으로 균일했다 = 단일 회로 개방 이벤트의 팬아웃이다.
+ *
+ * 설계 원칙
+ *  - 순수 함수. Date.now()/Math.random() 미사용(호출자가 nowIso를 주입) → 결정론적.
+ *  - DB·네트워크 접근 없음. 호출자가 이미 읽은 행을 넘긴다.
+ *  - fail-closed가 아니라 fail-flag: 위반을 반환할 뿐 예외를 던지지 않는다. 보고 파이프라인을
+ *    끊으면 missed가 늘어 오히려 completion이 나빠지므로, 차단이 아닌 표시를 기본값으로 둔다.
+ */
+
+/** `[tasks] 최근 7일: …` 한 줄에서 뽑아낸 주입 지표. */
+export interface InjectedTaskMetrics {
+  total: number;
+  completed: number;
+  failed: number;
+  active: number;
+}
+
+/** 게이트 평가 시점의 실제 DB 카운터(호출자가 조회해 넘긴다). */
+export interface LiveTaskCounters {
+  total: number;
+  completed: number;
+  failed: number;
+  active: number;
+}
+
+export type LearningStageViolationCode =
+  /** 주입된 [실데이터]가 현재 DB와 불일치 — 스냅샷이 오래됐다. */
+  | 'STALE_DATA_CONTEXT'
+  /** 주입 스냅샷이 실패 건수를 실제보다 적게 보고한다(은폐 방향). */
+  | 'FAILURE_UNDERCOUNT'
+  /** failover 복제본이 부모의 프롬프트를 그대로 물려받았다. */
+  | 'CLONED_PROMPT_SNAPSHOT'
+  /** 프롬프트에 [실데이터] 블록의 [tasks] 줄이 아예 없다. */
+  | 'MISSING_TASK_METRICS';
+
+export interface LearningStageViolation {
+  code: LearningStageViolationCode;
+  /** 사람이 읽는 한 줄 설명. 로그·보고서 각주용. */
+  detail: string;
+}
+
+export interface LearningStageGateResult {
+  /** 위반이 하나도 없을 때만 true. */
+  allowed: boolean;
+  /** 결정론적 순서(아래 평가 순서 그대로). */
+  violations: LearningStageViolation[];
+  /** 프롬프트에서 파싱된 지표. 파싱 실패 시 null. */
+  injected: InjectedTaskMetrics | null;
+}
+
+export interface LearningStageGateInput {
+  /** 검사 대상 태스크의 prompt 전문. */
+  prompt: string;
+  /** 게이트 평가 시점의 실제 DB 카운터. 없으면 비교 검사를 건너뛴다. */
+  live?: LiveTaskCounters | null;
+  /**
+   * 같은 workReportId 계보에서 이미 관찰된 프롬프트 SHA-1(또는 임의의 안정 해시).
+   * 현재 프롬프트 해시가 여기 이미 있으면 복제본이다.
+   */
+  seenPromptHashes?: readonly string[];
+  /** 현재 프롬프트의 해시. seenPromptHashes와 함께 줄 때만 의미가 있다. */
+  promptHash?: string;
+}
+
+const TASK_METRICS_PATTERN =
+  /\[tasks\][^\n]*?전체=(\d+)[^\n]*?완료=(\d+)[^\n]*?실패성=(\d+)[^\n]*?진행=(\d+)/;
+
+/**
+ * 업무보고 프롬프트의 `[실데이터]` 블록에서 `[tasks] 최근 7일: …` 줄을 파싱한다.
+ * 해당 줄이 없거나 형식이 다르면 null(= 주입 자체가 없었던 경우와 구분되지 않음).
+ */
+export function parseInjectedTaskMetrics(prompt: string): InjectedTaskMetrics | null {
+  const match = TASK_METRICS_PATTERN.exec(prompt);
+  if (!match) return null;
+  return {
+    total: Number(match[1]),
+    completed: Number(match[2]),
+    failed: Number(match[3]),
+    active: Number(match[4]),
+  };
+}
+
+/**
+ * 학습 단계(업무보고 작성) 태스크가 신뢰할 수 있는 근거 위에 서 있는지 판정한다.
+ *
+ * 차단이 아니라 표시가 목적이다. 호출자는 violations를 (a) 보고서 하단 각주로 주입하거나
+ * (b) 스코어러 제외 사유로 기록하거나 (c) 프롬프트 재빌드 트리거로 쓸 수 있다.
+ */
+export function evaluateLearningStageGate(
+  input: LearningStageGateInput,
+): LearningStageGateResult {
+  const violations: LearningStageViolation[] = [];
+  const injected = parseInjectedTaskMetrics(input.prompt);
+
+  const live = input.live ?? null;
+
+  if (!injected) {
+    // buildTeamDataContext는 팀 태스크가 0건이면 [tasks] 줄 자체를 넣지 않는다(설계상 정상).
+    // 실측 오탐: task_53abN7hMCQcH5SrT는 팀 최초 태스크라 이전 표본이 0건이었다.
+    // 따라서 '대조할 실데이터가 실제로 존재하는데도 누락된' 경우에만 위반으로 본다.
+    if (live && live.total === 0) {
+      return { allowed: true, violations, injected: null };
+    }
+    violations.push({
+      code: 'MISSING_TASK_METRICS',
+      detail: '프롬프트에 [tasks] 지표 줄이 없어 보고 수치를 대조할 근거가 없다.',
+    });
+    return { allowed: false, violations, injected: null };
+  }
+
+  if (live) {
+    if (
+      injected.total !== live.total
+      || injected.completed !== live.completed
+      || injected.failed !== live.failed
+      || injected.active !== live.active
+    ) {
+      violations.push({
+        code: 'STALE_DATA_CONTEXT',
+        detail:
+          `주입 스냅샷(전체=${injected.total}, 완료=${injected.completed}, 실패성=${injected.failed}, 진행=${injected.active})이 `
+          + `현재 DB(전체=${live.total}, 완료=${live.completed}, 실패성=${live.failed}, 진행=${live.active})와 다르다.`,
+      });
+    }
+    // 실패 은폐 방향은 별도 코드로 승격한다. 실패를 과다 계상한 스냅샷은 보고 품질을
+    // 떨어뜨리긴 해도 "완료 주장 vs DB 실패 기록" 유형의 허위 보고를 만들지는 않는다.
+    if (injected.failed < live.failed) {
+      violations.push({
+        code: 'FAILURE_UNDERCOUNT',
+        detail:
+          `주입 스냅샷의 실패성=${injected.failed}이 실제 DB 실패 ${live.failed}건보다 적다 — `
+          + '이 프롬프트로 작성된 보고서는 실패를 구조적으로 은폐한다.',
+      });
+    }
+  }
+
+  const seen = input.seenPromptHashes ?? [];
+  if (input.promptHash && seen.includes(input.promptHash)) {
+    violations.push({
+      code: 'CLONED_PROMPT_SNAPSHOT',
+      detail:
+        `프롬프트 해시 ${input.promptHash}가 같은 계보에서 이미 관찰됐다 — `
+        + 'failover 복제본이 부모의 [실데이터] 스냅샷을 그대로 물려받았다.',
+    });
+  }
+
+  return { allowed: violations.length === 0, violations, injected };
+}
+
+/** 중복 실패 버스트 판정에 필요한 최소 태스크 필드. */
+export interface FailureRow {
+  taskId: string;
+  teamId: string | null;
+  agentId: string | null;
+  /** ISO 또는 'YYYY-MM-DD HH:MM:SS' — 초 단위까지 일치하는지만 본다. */
+  completedAt: string | null;
+  error: string | null;
+}
+
+export interface DuplicateFailureBurst {
+  /** 버스트 식별자: `${agentId}|${errorSignature}|${second}`. */
+  key: string;
+  agentId: string;
+  /** 숫자·식별자를 제거한 정규화 에러 시그니처. */
+  errorSignature: string;
+  /** 초 단위로 잘라낸 종결 시각. */
+  second: string;
+  taskIds: string[];
+  /** 이 버스트가 실패를 계상시킨 서로 다른 팀 수. */
+  distinctTeams: number;
+}
+
+export interface DuplicateFailureBurstOptions {
+  /** 버스트로 인정할 최소 태스크 수. 기본 2. */
+  minSize?: number;
+  /** 버스트로 인정할 최소 팀 수. 기본 2(단일 팀 반복은 팀 품질 문제일 수 있으므로 제외). */
+  minDistinctTeams?: number;
+}
+
+/**
+ * 에러 시그니처 정규화: 숫자, 따옴표 문자열, 괄호 안 상세를 제거해
+ * `provider_unavailable: claude-code (open/generic)`와
+ * `provider_unavailable: claude-code (open/quota)`를 같은 계열로 묶는다.
+ */
+export function normalizeErrorSignature(error: string | null): string {
+  if (!error) return '';
+  return error
+    .replace(/\([^)]*\)/g, '()')
+    // 단어경계(\b)를 쓰면 '1800000ms'처럼 숫자에 단위가 붙은 형태를 놓친다(실측).
+    .replace(/\d+/g, 'N')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function truncateToSecond(value: string | null): string {
+  if (!value) return '';
+  // 'YYYY-MM-DD HH:MM:SS' / 'YYYY-MM-DDTHH:MM:SS.sssZ' 양쪽을 초까지만 남긴다.
+  return value.replace('T', ' ').slice(0, 19);
+}
+
+/**
+ * 하나의 인프라 이벤트(회로 개방·게이트웨이 다운 등)가 여러 팀에 동시 실패를 뿌린
+ * 버스트를 찾아낸다. 팀 품질 실패와 인프라 실패를 분리하는 데 쓴다.
+ *
+ * 판정 기준: 같은 에이전트 + 같은 정규화 에러 + 같은 초에 종결 + 서로 다른 팀 N개 이상.
+ * 시각이 없는 행(completedAt=null)은 버스트로 묶지 않는다(오탐 방지).
+ */
+export function detectDuplicateFailureBursts(
+  rows: readonly FailureRow[],
+  options: DuplicateFailureBurstOptions = {},
+): DuplicateFailureBurst[] {
+  const minSize = options.minSize ?? 2;
+  const minDistinctTeams = options.minDistinctTeams ?? 2;
+  const groups = new Map<string, { agentId: string; errorSignature: string; second: string; rows: FailureRow[] }>();
+
+  for (const row of rows) {
+    const second = truncateToSecond(row.completedAt);
+    const signature = normalizeErrorSignature(row.error);
+    if (!second || !signature || !row.agentId) continue;
+    const key = `${row.agentId}|${signature}|${second}`;
+    let group = groups.get(key);
+    if (!group) {
+      group = { agentId: row.agentId, errorSignature: signature, second, rows: [] };
+      groups.set(key, group);
+    }
+    group.rows.push(row);
+  }
+
+  const bursts: DuplicateFailureBurst[] = [];
+  for (const [key, group] of groups) {
+    if (group.rows.length < minSize) continue;
+    const teams = new Set(group.rows.map(row => row.teamId).filter((id): id is string => Boolean(id)));
+    if (teams.size < minDistinctTeams) continue;
+    bursts.push({
+      key,
+      agentId: group.agentId,
+      errorSignature: group.errorSignature,
+      second: group.second,
+      taskIds: group.rows.map(row => row.taskId).sort(),
+      distinctTeams: teams.size,
+    });
+  }
+
+  // 결정론적 정렬: 시각 → 에이전트 → 시그니처.
+  bursts.sort((a, b) => a.second.localeCompare(b.second) || a.agentId.localeCompare(b.agentId) || a.errorSignature.localeCompare(b.errorSignature));
+  return bursts;
+}

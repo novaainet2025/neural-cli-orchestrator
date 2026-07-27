@@ -1,0 +1,605 @@
+{
+  "generated_for": "team_gov-evolution-learning",
+  "sample_window": "48h",
+  "db_snapshot": "/tmp/nco-audit.db (copy of db/nco.db)",
+  "scorer_at_head": {
+    "score": 93.7,
+    "grade": "A",
+    "completion": 100,
+    "n": 5,
+    "note": "computeTeamScores() 실행 결과"
+  },
+  "hr_directive_snapshot": {
+    "score": 75.7,
+    "completion": 80,
+    "n": 5,
+    "note": "stale — 아래 재계산과 불일치"
+  },
+  "false_report_summary": {
+    "checked": 7,
+    "artifact_missing": 0,
+    "work_report_row_missing": 0,
+    "clean": 7
+  },
+  "gate_summary": {
+    "evaluated": 7,
+    "blocked": 2,
+    "by_code": {
+      "STALE_DATA_CONTEXT": 2,
+      "FAILURE_UNDERCOUNT": 2,
+      "CLONED_PROMPT_SNAPSHOT": 2
+    }
+  },
+  "duplicate_failure_bursts": [
+    {
+      "key": "opencode|circuit breaker open for agent opencode ()|2026-07-26 00:03:36",
+      "agentId": "opencode",
+      "errorSignature": "circuit breaker open for agent opencode ()",
+      "second": "2026-07-26 00:03:36",
+      "taskIds": [
+        "task_NqNyOjvawOFdHHBn",
+        "task_gudqikH8LkuQ6-Cy"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|circuit breaker open for agent claude-code ()|2026-07-26 00:04:29",
+      "agentId": "claude-code",
+      "errorSignature": "circuit breaker open for agent claude-code ()",
+      "second": "2026-07-26 00:04:29",
+      "taskIds": [
+        "task_CvZD2lPx5VzPBVyW",
+        "task_UBaSubh3lbOwRf_L",
+        "task_cNqZxiDJCb4wUFAd"
+      ],
+      "distinctTeams": 3
+    },
+    {
+      "key": "claude-code|circuit breaker open for agent claude-code ()|2026-07-26 00:21:46",
+      "agentId": "claude-code",
+      "errorSignature": "circuit breaker open for agent claude-code ()",
+      "second": "2026-07-26 00:21:46",
+      "taskIds": [
+        "task_AWi1XPtlNI3odoIp",
+        "task_N9YkLudv8FTEsfnh"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|circuit breaker open for agent claude-code ()|2026-07-26 00:39:54",
+      "agentId": "claude-code",
+      "errorSignature": "circuit breaker open for agent claude-code ()",
+      "second": "2026-07-26 00:39:54",
+      "taskIds": [
+        "task_43V2YHdjqNaeEdDB",
+        "task_AioXY_G0LwFmnzFB"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|circuit breaker open for agent claude-code ()|2026-07-26 00:57:53",
+      "agentId": "claude-code",
+      "errorSignature": "circuit breaker open for agent claude-code ()",
+      "second": "2026-07-26 00:57:53",
+      "taskIds": [
+        "task_HATKH-B8WzngDD1P",
+        "task_kv8LVCC3dItqy3Il"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "ollama|circuit breaker open for agent ollama ()|2026-07-26 01:55:04",
+      "agentId": "ollama",
+      "errorSignature": "circuit breaker open for agent ollama ()",
+      "second": "2026-07-26 01:55:04",
+      "taskIds": [
+        "task_6t_HPa9MCXXzibrG",
+        "task_89rRd1xI6W84Xtnu",
+        "task_U6FLidrPh4u7F8Ao"
+      ],
+      "distinctTeams": 3
+    },
+    {
+      "key": "claude-code|circuit breaker open for agent claude-code ()|2026-07-26 01:56:12",
+      "agentId": "claude-code",
+      "errorSignature": "circuit breaker open for agent claude-code ()",
+      "second": "2026-07-26 01:56:12",
+      "taskIds": [
+        "task_HbWzFaUYUzayz7Rz",
+        "task_ICIK9mTNcuvKmNcL"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "nvidia|circuit breaker open for agent nvidia ()|2026-07-26 01:56:12",
+      "agentId": "nvidia",
+      "errorSignature": "circuit breaker open for agent nvidia ()",
+      "second": "2026-07-26 01:56:12",
+      "taskIds": [
+        "task_CG4T280YDVt0MDso",
+        "task_N7Cho7dySMpqa93Q"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "nvidia|circuit breaker open for agent nvidia ()|2026-07-26 02:42:45",
+      "agentId": "nvidia",
+      "errorSignature": "circuit breaker open for agent nvidia ()",
+      "second": "2026-07-26 02:42:45",
+      "taskIds": [
+        "task_-7_YfHPY4J7O6Xox",
+        "task_RT-u-RCY4J7zh7Qg",
+        "task_Xdr2SzC7g5L8W3ps",
+        "task_cRqW2L-TmRX2LQtP",
+        "task_mFapzot3p98nPOk9"
+      ],
+      "distinctTeams": 4
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 04:14:11",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 04:14:11",
+      "taskIds": [
+        "task__Eb4pMoM_F2ljuIw",
+        "task_h5YgDxqOo4gqpmta",
+        "task_pbAEKnttXfF9UmJX"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:04:25",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:04:25",
+      "taskIds": [
+        "task_5haHHm2aC-thFgs5",
+        "task_B9ZqWgGFQKGeSnET",
+        "task_TK-4761WGjh024_q",
+        "task_URV2QVG6lQBSirna",
+        "task_fUMTq9o5awqsZLdu",
+        "task_goRJa5zCSk2Er7BV",
+        "task_mFgx2vMsIAf-TDrW",
+        "task_o9NReX1Lm6Fxb5fr",
+        "task_sFk6Gq8IPMXlV3-4"
+      ],
+      "distinctTeams": 9
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:07:55",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:07:55",
+      "taskIds": [
+        "task_0vqb-Gs4uOgxBIcc",
+        "task_CRzIjhUrYifOnCm4",
+        "task_HWpdcTG_CFcl1VRW",
+        "task_QH771w4Kw2HkqooG",
+        "task_X0SnQbbJZvjUPvJB",
+        "task_cxKZNrq1g9KHzBy1",
+        "task_gt69k6eu7CfPiD-X",
+        "task_iM4XQIHNVWw6yn2L"
+      ],
+      "distinctTeams": 7
+    },
+    {
+      "key": "codex|orphaned: server restart ()|2026-07-26 06:07:55",
+      "agentId": "codex",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:07:55",
+      "taskIds": [
+        "task_4_rpe8_AtQuMTEQ3",
+        "task_hnPUELdTOjUQx0yj",
+        "task_r2xWGO-9-5_peHG7",
+        "task_ykycJqwQzibi4G-E"
+      ],
+      "distinctTeams": 4
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:18:47",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:18:47",
+      "taskIds": [
+        "task_GPOxUPicAbpK4M7b",
+        "task_X1iC_tFypw1TLSeb"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:18:59",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:18:59",
+      "taskIds": [
+        "task_4Jpg7jXzp5S-pKpL",
+        "task_81CByQfSS5Hgs1-P",
+        "task_EkCyiDcf29-ONf7y",
+        "task_MPgxqjsfFmkRmS34",
+        "task_TAlr9C_MJIhF2fm_",
+        "task_ZVkN5KCH9Rx6_car"
+      ],
+      "distinctTeams": 5
+    },
+    {
+      "key": "codex|orphaned: server restart ()|2026-07-26 06:18:59",
+      "agentId": "codex",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:18:59",
+      "taskIds": [
+        "task_Ca0jv2PWFd6HGIVf",
+        "task_DkrBg27pG0OWLJ0A"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:28:17",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:28:17",
+      "taskIds": [
+        "task_Et44JBvftW6U5kUL",
+        "task_WT-T_Xf2_OVVLRU0"
+      ],
+      "distinctTeams": 2
+    },
+    {
+      "key": "claude-code|orphaned: server restart ()|2026-07-26 06:43:54",
+      "agentId": "claude-code",
+      "errorSignature": "orphaned: server restart ()",
+      "second": "2026-07-26 06:43:54",
+      "taskIds": [
+        "task_ErN0CzppZeVeAb4a",
+        "task_FN8oAqo-kk_KyTVq",
+        "task_LJ_9snHAi3qPbsPQ",
+        "task_OnNQJPucDxiCwfUc",
+        "task_Qxl6eGblWQKvNoRJ",
+        "task_cmKxtuUL5YbR0EHx",
+        "task_wZmxzCSMrwRtM924"
+      ],
+      "distinctTeams": 5
+    },
+    {
+      "key": "claude-code|queue_wait_timeout: provider claude-code busy for nms|2026-07-27 01:15:43",
+      "agentId": "claude-code",
+      "errorSignature": "queue_wait_timeout: provider claude-code busy for nms",
+      "second": "2026-07-27 01:15:43",
+      "taskIds": [
+        "task_2tnRQnQV4-wyNmjB",
+        "task_6KtPok8yLtnuEkZO",
+        "task_BbikpX1_5zmv3q7C",
+        "task_DVUH-oXt1TtFuIdM",
+        "task_FagxTX_VomD7kBJW",
+        "task_JB3w0DwCsMu36qfY",
+        "task_M1oarauVapWavbxn",
+        "task_M_Jjq4Tyda2JNwyo",
+        "task_QUrTCfBqu6KnQDLa",
+        "task_R99d4E1kIFvOiA6p",
+        "task_ZnKOFuTY-Rajph4o",
+        "task_dPluiM6mYO0_TShj",
+        "task_fz7kWFdxGQLdWoK7",
+        "task_h1pSlogJ_dIuBctw",
+        "task_igbXLNlaqqd1CP37",
+        "task_inWBURa7IRI-17BL",
+        "task_qEgAQMFp736BMLWd",
+        "task_reMGSF3VBr-cA46P",
+        "task_rpdWC5iXqcyGnIZO",
+        "task_um-bE1xBfYdl_yx8",
+        "task_vhqMhiqB5_-iHzEr",
+        "task_wxOu1Ku3dI32rQqi",
+        "task_yxm3WGqUBYSrCCP-"
+      ],
+      "distinctTeams": 23
+    },
+    {
+      "key": "claude-code|queue_wait_timeout: provider claude-code busy for nms|2026-07-27 01:52:41",
+      "agentId": "claude-code",
+      "errorSignature": "queue_wait_timeout: provider claude-code busy for nms",
+      "second": "2026-07-27 01:52:41",
+      "taskIds": [
+        "task_-AcZCQV-pI6So6lg",
+        "task_0VCvCCPdkRADiuwH",
+        "task_11TccsSSwoCC_9yy",
+        "task_2LNk-sOLHj4KNIUC",
+        "task_3qY-kWdsiQZFV6TU",
+        "task_CAeelekcuxt9rFO-",
+        "task_E8IJMxYohH4W0N_m",
+        "task_HVI7AK_Kc9zLb89K",
+        "task_JY5X5srX_ZTwt42K",
+        "task_K0WzIJ30V7g4XqNi",
+        "task_LWocTfAMYEW4juI0",
+        "task_NGENePFnXKMcZcjl",
+        "task_O2i4VNNBucOv6isb",
+        "task_OiE8s42UuMDZY4cB",
+        "task_SjWypXxJXw7MoRdb",
+        "task_ZoruseVGD2s-fAsv",
+        "task__K2NwqlLmHoswx6i",
+        "task__MWoa1v_19N_msrZ",
+        "task_bHc3VigSbnYLXJTD",
+        "task_d9acWimSvKB6loox",
+        "task_dpBGgL55eBO9ggxd",
+        "task_e10r3rmr6xZfMdFX",
+        "task_eO-HajyyJoy4oA4n",
+        "task_gRJaTkTjVoFUN8Qo",
+        "task_h5pRneycb-7THvbn",
+        "task_jHc7gnPwZyrxlXWU",
+        "task_l20JHMjAHridtBry",
+        "task_mlpbq5PybHq1JVao",
+        "task_mtf5283jVEZq5L_b",
+        "task_n8JjLcSY7bUDETi-",
+        "task_oaUW3OdYG3bV_qpq",
+        "task_tG8r7E1asaL9m9G7",
+        "task_wBsvF-b68TcXCib_"
+      ],
+      "distinctTeams": 31
+    },
+    {
+      "key": "claude-code|queue_wait_timeout: provider claude-code busy for nms|2026-07-27 06:04:34",
+      "agentId": "claude-code",
+      "errorSignature": "queue_wait_timeout: provider claude-code busy for nms",
+      "second": "2026-07-27 06:04:34",
+      "taskIds": [
+        "task_A5JBYVv4p8tcsSa_",
+        "task_KN1N9vGEgxbby-Fa",
+        "task_XUoTEPi98TlIh7yg",
+        "task_Xwgz7hEcNURtBWFZ",
+        "task_dN_jGj4_fD9v3f44"
+      ],
+      "distinctTeams": 5
+    },
+    {
+      "key": "claude-code|provider_unavailable: claude-code ()|2026-07-27 06:53:25",
+      "agentId": "claude-code",
+      "errorSignature": "provider_unavailable: claude-code ()",
+      "second": "2026-07-27 06:53:25",
+      "taskIds": [
+        "task_CmAsfvFiSfqBnsHY",
+        "task_IjCXiEO-3LT65aIS",
+        "task_SgIYb63gYzON8zWQ",
+        "task_TDsq55NUhMScwcCQ"
+      ],
+      "distinctTeams": 4
+    }
+  ],
+  "fleet_failure_rows_scanned": 326,
+  "tasks": [
+    {
+      "task_id": "task_53abN7hMCQcH5SrT",
+      "agent": "ollama",
+      "db_status": "completed",
+      "spawned_by_cli": "work-report-scheduler",
+      "parent_task_id": null,
+      "work_report_id": "wr_bBF2I0obDvf5VY7V",
+      "created_at": "2026-07-26 05:54:01",
+      "completed_at": "2026-07-26 05:56:52",
+      "error": "",
+      "response_len": 699,
+      "prompt_sha1": "90e7b83043fc82beac9a452cf582d57e63c52e31",
+      "injected_task_metrics": null,
+      "live_task_counters_at_creation": {
+        "total": 0,
+        "completed": 0,
+        "failed": 0,
+        "active": 0
+      },
+      "gate_allowed": true,
+      "gate_violations": [],
+      "claimed_artifacts": [],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_RQlrDP4SNwpAZOEP",
+      "agent": "hermes",
+      "db_status": "completed",
+      "spawned_by_cli": "team-runner",
+      "parent_task_id": null,
+      "work_report_id": "",
+      "created_at": "2026-07-26 10:06:28",
+      "completed_at": "2026-07-26 10:06:59",
+      "error": "",
+      "response_len": 1450,
+      "prompt_sha1": "16fd6e52c76da794e7ac2681b3fe7b04b1a3ec26",
+      "injected_task_metrics": {
+        "total": 1,
+        "completed": 1,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 1,
+        "completed": 1,
+        "failed": 0,
+        "active": 0
+      },
+      "gate_allowed": true,
+      "gate_violations": [],
+      "claimed_artifacts": [],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_-0trMvKZRQtsf1k3",
+      "agent": "ollama",
+      "db_status": "completed",
+      "spawned_by_cli": "team-runner",
+      "parent_task_id": null,
+      "work_report_id": "",
+      "created_at": "2026-07-26 15:35:37",
+      "completed_at": "2026-07-26 15:36:07",
+      "error": "",
+      "response_len": 853,
+      "prompt_sha1": "0c8845fecf348600a029a9ee2e54b5fdc8e1161b",
+      "injected_task_metrics": {
+        "total": 2,
+        "completed": 2,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 2,
+        "completed": 2,
+        "failed": 0,
+        "active": 0
+      },
+      "gate_allowed": true,
+      "gate_violations": [],
+      "claimed_artifacts": [],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_f1CCNcEiOGMMpq-Z",
+      "agent": "opencode",
+      "db_status": "completed",
+      "spawned_by_cli": "work-report-scheduler",
+      "parent_task_id": null,
+      "work_report_id": "wr_uJW7nBcFvSRNMVNU",
+      "created_at": "2026-07-27 00:35:29",
+      "completed_at": "2026-07-27 01:16:48",
+      "error": "",
+      "response_len": 114,
+      "prompt_sha1": "4df3a3fd9993c2aa5d9c7a20618c6fa82fc03070",
+      "injected_task_metrics": {
+        "total": 3,
+        "completed": 3,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 3,
+        "completed": 3,
+        "failed": 0,
+        "active": 0
+      },
+      "gate_allowed": true,
+      "gate_violations": [],
+      "claimed_artifacts": [
+        {
+          "path": "REPORTS/2026-07-27-Continuous-Learning-오전.md",
+          "exists": true,
+          "lines": 51,
+          "bytes": 5425
+        }
+      ],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_3eejRUftHpUXmdOH",
+      "agent": "opencode",
+      "db_status": "failed",
+      "spawned_by_cli": "work-report-scheduler",
+      "parent_task_id": null,
+      "work_report_id": "wr_wcXz4AG_W0eFppWp",
+      "created_at": "2026-07-27 05:29:17",
+      "completed_at": "2026-07-27 06:04:57",
+      "error": "silent-failure: empty output",
+      "response_len": 8,
+      "prompt_sha1": "244ba0ac69772b888caa302755304e34660090ab",
+      "injected_task_metrics": {
+        "total": 4,
+        "completed": 4,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 4,
+        "completed": 4,
+        "failed": 0,
+        "active": 0
+      },
+      "gate_allowed": true,
+      "gate_violations": [],
+      "claimed_artifacts": [],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_IjCXiEO-3LT65aIS",
+      "agent": "claude-code",
+      "db_status": "failed",
+      "spawned_by_cli": "work-report-scheduler",
+      "parent_task_id": "task_3eejRUftHpUXmdOH",
+      "work_report_id": "wr_wcXz4AG_W0eFppWp",
+      "created_at": "2026-07-27 06:04:57",
+      "completed_at": "2026-07-27 06:53:25",
+      "error": "provider_unavailable: claude-code (open/generic)",
+      "response_len": 0,
+      "prompt_sha1": "244ba0ac69772b888caa302755304e34660090ab",
+      "injected_task_metrics": {
+        "total": 4,
+        "completed": 4,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 5,
+        "completed": 4,
+        "failed": 1,
+        "active": 0
+      },
+      "gate_allowed": false,
+      "gate_violations": [
+        {
+          "code": "STALE_DATA_CONTEXT",
+          "detail": "주입 스냅샷(전체=4, 완료=4, 실패성=0, 진행=0)이 현재 DB(전체=5, 완료=4, 실패성=1, 진행=0)와 다르다."
+        },
+        {
+          "code": "FAILURE_UNDERCOUNT",
+          "detail": "주입 스냅샷의 실패성=0이 실제 DB 실패 1건보다 적다 — 이 프롬프트로 작성된 보고서는 실패를 구조적으로 은폐한다."
+        },
+        {
+          "code": "CLONED_PROMPT_SNAPSHOT",
+          "detail": "프롬프트 해시 244ba0ac69772b888caa302755304e34660090ab가 같은 계보에서 이미 관찰됐다 — failover 복제본이 부모의 [실데이터] 스냅샷을 그대로 물려받았다."
+        }
+      ],
+      "claimed_artifacts": [],
+      "false_report": "none"
+    },
+    {
+      "task_id": "task_TF-0pwR0YBvnvs0b",
+      "agent": "codex",
+      "db_status": "completed",
+      "spawned_by_cli": "work-report-scheduler",
+      "parent_task_id": "task_3eejRUftHpUXmdOH",
+      "work_report_id": "wr_wcXz4AG_W0eFppWp",
+      "created_at": "2026-07-27 06:53:25",
+      "completed_at": "2026-07-27 07:11:49",
+      "error": "",
+      "response_len": 358,
+      "prompt_sha1": "244ba0ac69772b888caa302755304e34660090ab",
+      "injected_task_metrics": {
+        "total": 4,
+        "completed": 4,
+        "failed": 0,
+        "active": 0
+      },
+      "live_task_counters_at_creation": {
+        "total": 6,
+        "completed": 4,
+        "failed": 2,
+        "active": 0
+      },
+      "gate_allowed": false,
+      "gate_violations": [
+        {
+          "code": "STALE_DATA_CONTEXT",
+          "detail": "주입 스냅샷(전체=4, 완료=4, 실패성=0, 진행=0)이 현재 DB(전체=6, 완료=4, 실패성=2, 진행=0)와 다르다."
+        },
+        {
+          "code": "FAILURE_UNDERCOUNT",
+          "detail": "주입 스냅샷의 실패성=0이 실제 DB 실패 2건보다 적다 — 이 프롬프트로 작성된 보고서는 실패를 구조적으로 은폐한다."
+        },
+        {
+          "code": "CLONED_PROMPT_SNAPSHOT",
+          "detail": "프롬프트 해시 244ba0ac69772b888caa302755304e34660090ab가 같은 계보에서 이미 관찰됐다 — failover 복제본이 부모의 [실데이터] 스냅샷을 그대로 물려받았다."
+        }
+      ],
+      "claimed_artifacts": [
+        {
+          "path": "REPORTS/2026-07-27-Continuous-Learning-오후.md",
+          "exists": true,
+          "lines": 41,
+          "bytes": 3763
+        }
+      ],
+      "false_report": "none"
+    }
+  ]
+}

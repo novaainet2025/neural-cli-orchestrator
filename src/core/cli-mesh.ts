@@ -5,6 +5,10 @@ import { eventBus } from './event-bus.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { updateJsonWithWatch } from '../storage/optimistic-json.js';
+import {
+  createMeshEnqueueReceipt,
+  type MeshEnqueueReceipt,
+} from '../mesh/delivery.js';
 
 const log = createLogger('cli-mesh');
 
@@ -364,6 +368,30 @@ class CliMesh {
     content: string,
     type: MeshMessage['type'] = 'info',
   ): Promise<number> {
+    const receipt = await this.sendMessageWithReceipt(
+      fromSessionId,
+      fromAgent,
+      toSessionId,
+      content,
+      type,
+    );
+    return receipt.queuedRecipients;
+  }
+
+  /**
+   * Queue a message and return only evidence observed by this layer.
+   *
+   * A queued recipient is not an acknowledgement. Callers that need delivery
+   * guarantees must keep `acknowledged: false` visible until a receiver-side
+   * acknowledgement mechanism exists.
+   */
+  async sendMessageWithReceipt(
+    fromSessionId: string,
+    fromAgent: string,
+    toSessionId: string,
+    content: string,
+    type: MeshMessage['type'] = 'info',
+  ): Promise<MeshEnqueueReceipt> {
     const message: MeshMessage = {
       id: createId('msg'),
       from: fromSessionId,
@@ -376,61 +404,75 @@ class CliMesh {
     };
 
     let delivered = 0;
+    const meshAvailable = isRedisConnected();
 
-    if (!isRedisConnected()) return 0;
-    const redis = await getRedis();
+    if (meshAvailable) {
+      const redis = await getRedis();
 
-    if (toSessionId === '*') {
-      // Broadcast to all active sessions
-      // Skip-self uses BOTH sessionId AND agentId to avoid PPID/sessionId collision
-      // (PPID-derived sessionIds can accidentally match another session's pid)
-      const keys = await redis.keys(`${MESH_PREFIX}*`);
-      for (const key of keys) {
-        if (key.includes(':alias:')) continue; // skip alias keys
+      if (toSessionId === '*') {
+        // Broadcast to all active sessions
+        // Skip-self uses BOTH sessionId AND agentId to avoid PPID/sessionId collision
+        // (PPID-derived sessionIds can accidentally match another session's pid)
+        const keys = await redis.keys(`${MESH_PREFIX}*`);
+        for (const key of keys) {
+          if (key.includes(':alias:')) continue; // skip alias keys
+          const updated = await updateJsonWithWatch<MeshSession>(
+            redis,
+            key,
+            current => {
+              if (!current) return null;
+              // Only skip if BOTH sessionId AND agentId match (true self)
+              if (current.sessionId === fromSessionId && current.agentId === fromAgent) return null;
+              return {
+                ...current,
+                messageQueue: [...(current.messageQueue || []), message],
+              };
+            },
+            { ttlSeconds: MESH_TTL, operation: 'broadcastMeshMessage' },
+          );
+          if (updated) delivered++;
+        }
+      } else {
+        // Direct message — try exact key first, then resolve agentId alias
+        let resolvedId = toSessionId;
+        const aliasKey = `${MESH_PREFIX}alias:${toSessionId}`;
+        const aliasVal = await redis.get(aliasKey);
+        if (aliasVal) resolvedId = aliasVal;
+
+        const key = `${MESH_PREFIX}${resolvedId}`;
         const updated = await updateJsonWithWatch<MeshSession>(
           redis,
           key,
-          current => {
-            if (!current) return null;
-            // Only skip if BOTH sessionId AND agentId match (true self)
-            if (current.sessionId === fromSessionId && current.agentId === fromAgent) return null;
-            return {
-              ...current,
-              messageQueue: [...(current.messageQueue || []), message],
-            };
-          },
-          { ttlSeconds: MESH_TTL, operation: 'broadcastMeshMessage' },
+          current => current && ({
+            ...current,
+            messageQueue: [...(current.messageQueue || []), message],
+          }),
+          { ttlSeconds: MESH_TTL, operation: 'sendMeshMessage' },
         );
-        if (updated) delivered++;
+        if (updated) delivered = 1;
       }
-    } else {
-      // Direct message — try exact key first, then resolve agentId alias
-      let resolvedId = toSessionId;
-      const aliasKey = `${MESH_PREFIX}alias:${toSessionId}`;
-      const aliasVal = await redis.get(aliasKey);
-      if (aliasVal) resolvedId = aliasVal;
-
-      const key = `${MESH_PREFIX}${resolvedId}`;
-      const updated = await updateJsonWithWatch<MeshSession>(
-        redis,
-        key,
-        current => current && ({
-          ...current,
-          messageQueue: [...(current.messageQueue || []), message],
-        }),
-        { ttlSeconds: MESH_TTL, operation: 'sendMeshMessage' },
-      );
-      if (updated) delivered = 1;
     }
 
-    // Persist message
+    // Persist every attempt, including a non-queued attempt while Redis is down.
+    let historyRecorded = false;
     try {
       const db = getDb();
       db.prepare(`
         INSERT INTO mesh_messages (id, from_session, from_agent, to_session, content, type, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(message.id, fromSessionId, fromAgent, toSessionId, content, type, message.createdAt);
-    } catch { /* non-critical */ }
+      historyRecorded = true;
+    } catch (err) {
+      log.warn({ err, messageId: message.id }, 'Failed to persist mesh message attempt');
+    }
+
+    const receipt = createMeshEnqueueReceipt({
+      messageId: message.id,
+      targetSessionId: toSessionId,
+      queuedRecipients: delivered,
+      historyRecorded,
+      meshAvailable,
+    });
 
     await eventBus.publish({
       type: 'mesh:message',
@@ -442,11 +484,23 @@ class CliMesh {
         content,
         messageType: type,
         createdAt: message.createdAt,
+        delivery: receipt,
       },
     } as any);
 
-    log.info({ from: fromAgent, to: toSessionId, type, delivered }, 'Mesh message sent');
-    return delivered;
+    if (receipt.status === 'not_queued') {
+      await eventBus.publish({
+        type: 'mesh:delivery_failed',
+        from: fromSessionId,
+        fromAgent,
+        to: toSessionId,
+        delivery: receipt,
+      } as any);
+      log.warn({ from: fromAgent, to: toSessionId, type, delivery: receipt }, 'Mesh message not queued');
+    } else {
+      log.info({ from: fromAgent, to: toSessionId, type, delivery: receipt }, 'Mesh message queued');
+    }
+    return receipt;
   }
 
   /**

@@ -105,11 +105,19 @@ def check_item(it):
     if kind == "tsc-noemit":
         if not is_due("tsc", cfg.get("expensive_checks",{}).get("build",{}).get("every_hours",6)):
             return "defer","6h 주기 미도래"
-        rc, o = run(["/opt/homebrew/bin/npx","tsc","--noEmit"], cwd=nco, timeout=300)
+        tsc_bin = os.path.join(nco, "node_modules", ".bin", "tsc")
+        if not os.path.isfile(tsc_bin):
+            return "fail", "node_modules/.bin/tsc 없음 — npm ci 필요"
+        rc, o = run([tsc_bin, "--noEmit"], cwd=nco, timeout=300)
         stamp("tsc")
         if rc==0: return "pass",""
-        errs = [l for l in o.splitlines() if "tsc 비정상... (truncated" in l]
-        return "fail", f"tsc 오류 {len(errs)}건: " + " | ".join(errs[:3])
+        errs = [l for l in o.splitlines() if "error " in l.lower()]
+        summary = f"exit={rc}, errors={len(errs)}"
+        if errs:
+            detail = " | ".join(e.strip()[:200] for e in errs[:5])
+            return "fail", f"tsc 오류 {len(errs)}건: {detail}"
+        truncated = (o.strip() or "(empty)")[:600]
+        return "fail", f"tsc exit={rc} (파싱 불가): {truncated}"
     if kind == "http-health":
         try:
             with urllib.request.urlopen(ref, timeout=6) as r:
