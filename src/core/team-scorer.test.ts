@@ -524,6 +524,95 @@ describe('team score aggregation', () => {
     }
   });
 
+  it('excludes cursor-agent plaintext credential rejection without team output, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_cursor_auth', 'Cursor Provider Auth', 'cursor-provider-auth');
+
+    for (let index = 1; index <= 6; index += 1) {
+      insert.run(
+        `cursor-auth-ok-${index}`,
+        'team_cursor_auth',
+        'completed',
+        null,
+        'report body',
+        null,
+        `-${index} hours`,
+      );
+    }
+
+    const authText =
+      "Error: Authentication required. Please run 'agent login' first, or set CURSOR_API_KEY environment variable.";
+    // 실측 회귀(2026-07-27 17:21:41 UTC, task_IkKQEYErfegOFc6R·task_u_VTwDmVodFpsNDX):
+    // cursor-agent CLI가 평문 인증 거부 한 줄만 내고 종료했고, 직후 동일 provider의
+    // 서킷브레이커가 열려 후속 12건은 이미 INFRA_EXCLUSION으로 빠졌다.
+    insert.run(
+      'cursor-auth-rejected',
+      'team_cursor_auth',
+      'failed',
+      `cursor-agent: CLI failed exit=1 — ${authText}`,
+      `${authText}\n`,
+      null,
+      '-7 hours',
+    );
+    // 과잉 제외 방지 가드 (1): provider CLI 실패가 아니면 같은 본문도 품질 실패로 남긴다.
+    insert.run(
+      'cursor-auth-quality-gate',
+      'team_cursor_auth',
+      'failed',
+      'quality_rejected: FORMAT_MISMATCH',
+      `${authText}\n`,
+      null,
+      '-8 hours',
+    );
+    // 과잉 제외 방지 가드 (2): 부분 산출물이 있으면 인증 문구를 인용해도 실패로 남긴다.
+    insert.run(
+      'cursor-auth-partial-output',
+      'team_cursor_auth',
+      'failed',
+      `cursor-agent: CLI failed exit=1 — ${authText}`,
+      `status: 부분 진단을 작성했습니다.\n${authText}`,
+      null,
+      '-9 hours',
+    );
+    // 과잉 제외 방지 가드 (3): result_json이 남아 있으면 에이전트 턴이 성립한 것이므로 남긴다.
+    insert.run(
+      'cursor-auth-with-result',
+      'team_cursor_auth',
+      'failed',
+      `cursor-agent: CLI failed exit=1 — ${authText}`,
+      `${authText}\n`,
+      '{"artifacts":1}',
+      '-10 hours',
+    );
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_cursor_auth')).toMatchObject({
+      completion: 66.7,
+      n: 9,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+    process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = 'off';
+    try {
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_cursor_auth')).toMatchObject({
+        completion: 60,
+        n: 10,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+      else process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = previous;
+    }
+  });
+
   afterEach(() => db.close());
 
   it('aggregates scores and serves the live team and organization arrays', async () => {

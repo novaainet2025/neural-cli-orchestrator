@@ -5,6 +5,10 @@ import {
   type CollaborationLoopDecision,
   type CollaborationLoopRuleConfig,
 } from './collaboration-loop-guard.js';
+import {
+  isProtocolReconversionGateEnabled,
+  isProtocolReconversionPrompt,
+} from '../core/collaboration.js';
 
 export type {
   CollaborationLoopDecision,
@@ -17,7 +21,12 @@ export {
   collaborationChannelKey,
   collaborationLoopGuard,
   isCollaborationLoopGuardEnabled,
+  isProtocolPrefixedContent,
 } from './collaboration-loop-guard.js';
+export {
+  isProtocolReconversionGateEnabled,
+  isProtocolReconversionPrompt,
+} from '../core/collaboration.js';
 
 export interface CircuitBreakerConfig {
   failureThreshold: number;    // consecutive failures to open (default 3)
@@ -78,6 +87,14 @@ export class CircuitBreaker {
       content,
       config,
     );
+  }
+
+  /**
+   * Intake Gate: 프로토콜 응답(done:/status:/…)을 새 태스크로 재변환하는지 판정.
+   * 프로바이더 회로와 무관 — true면 호출자가 태스크 생성을 거절해야 한다.
+   */
+  isProtocolReconversion(prompt: string): boolean {
+    return isProtocolReconversionGateEnabled() && isProtocolReconversionPrompt(prompt);
   }
 
   toJSON() {

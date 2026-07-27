@@ -53,7 +53,7 @@ describe('collaboration-msg-loop rule', () => {
 
   // 48h 실측: 동일 (from,to) 채널에서 완전히 같은 본문이 60초 이내 최대 72회 재전송됨.
   it('blocks an identical message echoed past the repeat cap within the window', () => {
-    const body = 'done: collaboration invite';
+    const body = 'stage handoff payload without protocol prefix';
     expect(guard.check(channel, body, config).allowed).toBe(true);
     expect(guard.check(channel, body, config).allowed).toBe(true);
     expect(guard.check(channel, body, config).allowed).toBe(true);
@@ -65,12 +65,22 @@ describe('collaboration-msg-loop rule', () => {
     expect(blocked.cooldownUntil).toBe(Date.now() + config.cooldownMs);
   });
 
+  // cycle3: 프로토콜 상태선은 1회만 허용 — 두 번째 동일 done:/status: 는 protocol-echo.
+  it('blocks a repeated protocol status line on the second send (protocol-echo)', () => {
+    const body = 'done: collaboration invite';
+    expect(guard.check(channel, body, config).allowed).toBe(true);
+    const blocked = guard.check(channel, body, config);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.rule).toBe('protocol-echo');
+    expect(blocked.repeats).toBe(2);
+  });
+
   it('treats whitespace-only differences as the same message', () => {
     const config2 = { ...config, maxRepeatsPerWindow: 1 };
     expect(guard.check(channel, 'status: working', config2).allowed).toBe(true);
     const blocked = guard.check(channel, '  status:   working \n', config2);
     expect(blocked.allowed).toBe(false);
-    expect(blocked.rule).toBe('echo-loop');
+    expect(blocked.rule).toBe('protocol-echo');
   });
 
   // 48h 실측: 동일 채널 분당 최대 41건 (정상 협업 채널은 ≈1.3건/시간).
@@ -85,7 +95,7 @@ describe('collaboration-msg-loop rule', () => {
   });
 
   it('lets repeats through once they fall outside the sliding window', () => {
-    const body = 'status: still working';
+    const body = 'plain status update without protocol prefix';
     for (let i = 0; i < 3; i++) expect(guard.check(channel, body, config).allowed).toBe(true);
     expect(guard.check(channel, body, config).allowed).toBe(false);
 
@@ -100,9 +110,10 @@ describe('collaboration-msg-loop rule', () => {
   // 영구 봉쇄되므로, 쿨다운은 반드시 유한해야 한다.
   it('does not extend the cooldown when a looping sender keeps retrying', () => {
     const body = 'question: which path?';
-    for (let i = 0; i < 3; i++) guard.check(channel, body, config);
+    expect(guard.check(channel, body, config).allowed).toBe(true);
     const tripped = guard.check(channel, body, config);
     expect(tripped.allowed).toBe(false);
+    expect(tripped.rule).toBe('protocol-echo');
     const cooldownUntil = tripped.cooldownUntil!;
 
     for (let i = 0; i < 50; i++) {
@@ -121,7 +132,7 @@ describe('collaboration-msg-loop rule', () => {
     const quiet = collaborationChannelKey('team-a', 'team-c');
     const body = 'done: same body';
 
-    for (let i = 0; i < 3; i++) guard.check(noisy, body, config);
+    expect(guard.check(noisy, body, config).allowed).toBe(true);
     expect(guard.check(noisy, body, config).allowed).toBe(false);
     expect(guard.check(quiet, body, config).allowed).toBe(true);
   });
@@ -141,7 +152,7 @@ describe('collaboration-msg-loop rule', () => {
 
   it('reset clears a channel cooldown', () => {
     const body = 'error: repeated';
-    for (let i = 0; i < 3; i++) guard.check(channel, body, config);
+    expect(guard.check(channel, body, config).allowed).toBe(true);
     expect(guard.check(channel, body, config).allowed).toBe(false);
 
     guard.reset(channel);
@@ -170,16 +181,20 @@ describe('collaboration-msg-loop rule', () => {
     const breaker = new CircuitBreaker('collab-loop-agent');
     const body = 'done: handoff';
 
-    for (let i = 0; i < 3; i++) {
-      expect(breaker.checkCollaborationMessage('peer-session', body, config).allowed).toBe(true);
-    }
+    expect(breaker.checkCollaborationMessage('peer-session', body, config).allowed).toBe(true);
     const blocked = breaker.checkCollaborationMessage('peer-session', body, config);
     expect(blocked.allowed).toBe(false);
-    expect(blocked.rule).toBe('echo-loop');
+    expect(blocked.rule).toBe('protocol-echo');
     expect(blocked.channel).toBe('collab-loop-agent->peer-session');
 
     // 협업 루프는 프로바이더 장애가 아니다 — 회로는 닫힌 채로 유지되어야 한다.
     expect(breaker.getState()).toBe('closed');
     expect(breaker.getFailures()).toBe(0);
+  });
+
+  it('CircuitBreaker.isProtocolReconversion mirrors the intake gate', () => {
+    const breaker = new CircuitBreaker('intake-agent');
+    expect(breaker.isProtocolReconversion('done: prior stage only')).toBe(true);
+    expect(breaker.isProtocolReconversion('[현재 단계 실행 지시 — 최우선]\n검증한다.')).toBe(false);
   });
 });

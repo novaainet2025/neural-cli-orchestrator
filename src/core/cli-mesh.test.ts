@@ -165,12 +165,10 @@ describe('CliMesh message queue', () => {
   });
 
   it('blocks identical collaboration echoes before Redis enqueue or DB history', async () => {
-    const fake = createRedisDouble(['ok', 'ok', 'ok', 'ok']);
+    const fake = createRedisDouble(['ok', 'ok']);
     dependencies.getRedis.mockResolvedValue(fake.redis);
     const body = 'done: protocol handoff echo';
 
-    expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
-    expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
     expect((await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body)).status).toBe('queued');
 
     const blocked = await cliMesh.sendMessageWithReceipt('sender-a', 'a', 'target-session', body);
@@ -181,11 +179,11 @@ describe('CliMesh message queue', () => {
       acknowledged: false,
       reason: 'collaboration_loop_blocked',
     }));
-    expect(dependencies.persistRun).toHaveBeenCalledTimes(3);
+    expect(dependencies.persistRun).toHaveBeenCalledTimes(1);
     expect(dependencies.publish).toHaveBeenCalledWith(expect.objectContaining({
       type: 'mesh:delivery_failed',
       delivery: expect.objectContaining({ reason: 'collaboration_loop_blocked' }),
-      loop: expect.objectContaining({ rule: 'echo-loop' }),
+      loop: expect.objectContaining({ rule: 'protocol-echo' }),
     }));
   });
 

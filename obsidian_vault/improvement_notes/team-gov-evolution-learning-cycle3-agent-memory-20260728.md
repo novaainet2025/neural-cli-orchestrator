@@ -112,6 +112,21 @@ provider/auth 실패를 팀 품질과 분리하는 규칙, HR lifecycle 경계�
   재조회했다. 저장 행은 `embedded=1`, fallback `semantic=0`,
   `hnsw_label=0`, `importance=1.2`, 재조회 뒤 `access_count=1`이다.
 - `[Evidence Tier 1 — DB integrity]` seed 저장 뒤 `PRAGMA quick_check` → `ok`.
+- `[Evidence Tier 1 — typecheck/build]` npm wrapper는 `tsx`의
+  `listen EPERM .../tsx-501/*.pipe`로 TypeScript 실행 전에 실패했다. 같은 저장소
+  work-event wrapper를 IPC 없는 `node --import tsx`로 실행한
+  `tsc --noEmit`과 `tsc`는 각각 exit 0이었고 DB에
+  `regression:typecheck:passed`, `regression:build:passed` 행이 기록됐다.
+- `[Evidence Tier 1 — full regression]` IPC 없는 wrapper의 전체 Vitest는
+  test files `121 passed / 1 failed`, tests `705 passed / 1 failed`였다.
+  유일한 실패는 범위 밖 `tests/근거.test.ts:26`의 날짜 포인터가
+  `2026-07-27`이고 서울 현재일이 `2026-07-28`인 불일치다. 이 포인터는 임의로
+  수정하지 않았다.
+- `[Evidence Tier 1 — Git integration]` 작업 중 다른 프로세스가 `main`을
+  `a8c285a3d65340f27627d8f3327bd8fd5a091690`으로 전진시켰고, 해당 commit
+  tree에서 이 노트, 공유 HNSW index, 메모리 스코프 코드와 테스트가 직접
+  확인됐다. 누가 commit을 수행했는지는 unknown이며 이번 검증에서는 Git tree
+  내용만 근거로 사용한다.
 - `[미검증]` NCO `:6200`이 연결 거부 상태여서 운영 task E2E 주입은 미실행이다.
   외부 Obsidian 원본 vault 동기화와 다음 독립 cycle의 score/completion 향상도
   미검증이며 향상 수치를 주장하지 않는다.

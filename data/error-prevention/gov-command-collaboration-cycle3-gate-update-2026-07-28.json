@@ -1,0 +1,84 @@
+{
+  "meta": {
+    "team": "team_error-prevention",
+    "target": "team_gov-command-collaboration",
+    "slug": "gov-command-collaboration",
+    "generated": "2026-07-28",
+    "cycle": "3/3",
+    "author": "중복에러방지팀",
+    "purpose": "Update Circuit Breaker / intake Gate to block collaboration mesh protocol-echo and done:/status: task reconversion; cross-verify False Reports against T1 evidence.",
+    "evidence_sources": [
+      "08-IMPROVEMENTS/mesh-failure-patterns-w30-cycle3.md",
+      "08-IMPROVEMENTS/gov-command-collaboration-cycle3-test-results.log",
+      "data/self-improve/logs/gov-command-collaboration-cycle3-tests.log",
+      "notes/team-gov-command-collaboration-cycle1-rootcause.md",
+      "data/error-prevention/gov-command-collaboration-cross-verification-2026-07-27.md",
+      "config/ai-providers.json (hermes.command)",
+      "src/security/collaboration-loop-guard.ts",
+      "src/core/collaboration.ts",
+      "src/server/gateway.ts"
+    ],
+    "live_db_query_status": "unavailable_in_this_session_shell_rejected",
+    "auto_audit_log_status": "no dedicated auto-audit stream for this team; used cycle3 notes + prior SQLite receipts"
+  },
+  "rules": [
+    {
+      "id": "GATE-COLLAB-C3-R1",
+      "type": "new",
+      "status": "IMPLEMENTED",
+      "layer": "task intake (/api/task)",
+      "location": "src/server/gateway.ts + src/core/collaboration.ts isProtocolReconversionPrompt",
+      "rule": "Reject HTTP 409 protocol_reconversion_blocked when the prompt first non-empty line is done:/status:/error:/question: and the prompt lacks the safe handoff marker [현재 단계 실행 지시].",
+      "evidence": "cycle1 note: company-orchestrator created 30 protocol-prefixed task prompts (11 done:, 19 status:). cycle3 score failures are NOT reconversion — this gate is defensive residual risk control.",
+      "rollback": "NCO_PROTOCOL_RECONVERSION_GATE=off (no rebuild)"
+    },
+    {
+      "id": "CB-COLLAB-C3-R2",
+      "type": "changed",
+      "status": "IMPLEMENTED",
+      "layer": "CircuitBreaker collaboration-msg-loop",
+      "location": "src/security/collaboration-loop-guard.ts protocol-echo",
+      "rule": "Identical protocol-prefixed mesh bodies use maxProtocolRepeatsPerWindow=1 (trip rule protocol-echo). Non-protocol echo-loop remains maxRepeats=3. channel-burst remains 20/60s (threshold not changed — live replay probe unverified this session).",
+      "evidence": "Second Brain rule 9 + cycle1 mesh identical-body storms; protocol lines are state, not work payloads.",
+      "rollback": "NCO_MESH_COLLAB_LOOP_GUARD=off or revert maxProtocolRepeatsPerWindow / protocol-echo branch"
+    },
+    {
+      "id": "CB-COLLAB-C3-R3",
+      "type": "observation",
+      "status": "NOT_CHANGED",
+      "layer": "CommandGate (shell)",
+      "rule": "command-gate.ts remains shell-exec deny/allow only. Protocol reconversion is not a shell command class — intake Gate + CB collaboration path own it. No fabricated CommandGate regex added.",
+      "evidence": "src/security/command-gate.ts GLOBAL_DENIED_PATTERNS are rm/chmod/eval/etc."
+    }
+  ],
+  "false_report_cross_verification": {
+    "claims": [
+      {
+        "claim": "Hermes Tool Escape — hermes ran codex CLI against text-only constraint",
+        "verdict": "FALSE_REPORT",
+        "tier": "T1_file",
+        "evidence": "config/ai-providers.json hermes.command == 'codex' by design (name: Hermes Agent (Codex gpt-5.6-terra))"
+      },
+      {
+        "claim": "score=75 / completion=77.8% root cause is done:/status: reconversion loop",
+        "verdict": "FALSE_REPORT_FOR_SCORE_ROOT_CAUSE",
+        "tier": "T1_prior_sqlite_receipt",
+        "evidence": "mesh-failure-patterns-w30-cycle3.md + cycle3-test-results.log: failures are task_4aq6FQ3yZuXoiTdK (401 auth envelope) and task_ZZ88RKyuEpH_T8MV (SIGINT shutdown exit=1). Protocol reconversion lineage in that 48h/9 sample = 0."
+      },
+      {
+        "claim": "PROVIDER_AUTH_EXCLUSION scorer patch is a genuine infra exclusion (not fabricated completions)",
+        "verdict": "GENUINE_FIX_NOT_FABRICATED",
+        "tier": "T1_log_file",
+        "evidence": "gov-command-collaboration-cycle3-tests.log: 75/C/77.8%/n=9 → 83.4/B/87.5%/n=8 with numerator unchanged pattern (exclude auth failure); kill switch restores 75; blast radius 3 teams; completion>100%=0"
+      },
+      {
+        "claim": "CollaborationLoopGuard was unwired (cycle1 error-prevention Gap)",
+        "verdict": "STALE_CLAIM_NOW_FALSE",
+        "tier": "T1_file",
+        "evidence": "src/core/cli-mesh.ts sendMessageWithReceipt calls collaborationLoopGuard.check before Redis enqueue"
+      }
+    ],
+    "reliability_grade": "B",
+    "reliability_rationale": "Score root-cause claims in cycle3 notes match independent SQLite/PM2 receipts. Protocol-reconversion-as-score-cause is contradicted. Hermes Tool Escape is contradicted by provider config. Live 48h re-query this session unavailable (shell rejected) → grade capped at B not A."
+  }
+}

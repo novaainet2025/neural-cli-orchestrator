@@ -418,6 +418,20 @@ export function buildZeroOutputCompletedExclusion(
 //     놓쳐 completion을 6/7=85.7%로 낮췄다.
 //   - 구조화 401 조건은 DB 전체 7건(팀 귀속 3건)에 한정되고, 평문 조건은 위 HR 태스크
 //     1건에만 추가로 매칭된다. 두 형식 모두 같은 장애 창의 provider 인증 거부다.
+//   - [2026-07-28 중복에러방지팀 cycle2 감사 추가] 같은 장애 창의 **세 번째 표면형**이
+//     게이트에 빠져 있었다. cursor-agent는 stdout에 오직 평문 한 줄만 쓴다:
+//     error='cursor-agent: CLI failed exit=1 — Error: Authentication required. Please run
+//     ''agent login'' first, or set CURSOR_API_KEY environment variable.',
+//     response=그 문구+개행, result_json=NULL, 즉 산출물 0바이트다.
+//     실측(db/nco.db): task_IkKQEYErfegOFc6R·task_u_VTwDmVodFpsNDX(둘 다 team_self-learning,
+//     2026-07-27 17:21:41, 응답·에러 바이트 동일)이 이 형식의 DB 전체 매칭 2건이다.
+//     이 2건은 cursor-agent 서킷브레이커를 연 **원인** 행이고, 직후 17:21:52~17:22:32에
+//     발생한 'provider_unavailable: cursor-agent (open/generic)' 12건은 INFRA_EXCLUSION이
+//     이미 제외한다. 즉 게이트가 증상(12건)은 빼고 원인(2건)은 세는 비대칭 상태였다.
+//     cursor-agent는 17:40:01에 정상 completed로 복귀 → 팀 품질이 아닌 일시적 자격증명 장애.
+//     동일 근본원인이 provider마다 다른 문구로 재현되는 중복 에러이므로, 이미 승인된
+//     제외 클래스를 표면형 3종(opencode 401 봉투 / claude-code 평문 / cursor-agent 평문)에
+//     일관 적용한다. 이 절은 team_hr-incubator-2026-w30 점수에는 영향이 없다(매칭 0건).
 // 안전 불변식: (a) status<>'completed' 가드, (b) error가 provider CLI 프로세스 실패
 //  ('CLI failed exit=' 또는 실측 평문 오류와 완전 일치)일 것, (c) response가 구조화 오류
 //  봉투로 *시작*하거나 평문 오류와 정확히 같을 것, (d) 평문 형식은 result_json도 비었을 것.
@@ -444,6 +458,12 @@ const PROVIDER_AUTH_EXCLUSION_SQL = `AND NOT (
           COALESCE(k.error, '') = 'subprocess exited with code 1: Invalid API key · Fix external API key'
           AND RTRIM(COALESCE(k.response, ''), char(9) || char(10) || char(13) || ' ')
             = 'Invalid API key · Fix external API key'
+          AND COALESCE(k.result_json, '') = ''
+        )
+        OR (
+          COALESCE(k.error, '') LIKE '%CLI failed exit=%'
+          AND RTRIM(COALESCE(k.response, ''), char(9) || char(10) || char(13) || ' ')
+            = 'Error: Authentication required. Please run ''agent login'' first, or set CURSOR_API_KEY environment variable.'
           AND COALESCE(k.result_json, '') = ''
         )
       )

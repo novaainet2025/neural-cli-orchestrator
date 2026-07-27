@@ -19,6 +19,10 @@ import {
   validateProjectDirMetadata,
 } from './task-intake.js';
 import { hasResponseContract } from '../core/response-contract.js';
+import {
+  isProtocolReconversionGateEnabled,
+  isProtocolReconversionPrompt,
+} from '../core/collaboration.js';
 import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
 import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
@@ -1646,6 +1650,16 @@ export async function createGateway() {
       promptGate = promptGateApplied.promptGate;
     } catch (err) {
       log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Prompt gate failed during task intake');
+    }
+    // GATE-COLLAB-C3-R1: done:/status:/error:/question: 프로토콜 응답을 새 태스크로
+    // 재변환하지 않는다 (cycle1: company-orchestrator 30건 재변환 T1).
+    // 롤백: NCO_PROTOCOL_RECONVERSION_GATE=off
+    if (isProtocolReconversionGateEnabled() && isProtocolReconversionPrompt(input.prompt)) {
+      reply.code(409);
+      return {
+        error: 'protocol_reconversion_blocked',
+        detail: 'Protocol reply (done:/status:/error:/question:) cannot be converted into a new task. Use buildProtocolSafeHandoff or pass a current-stage instruction.',
+      };
     }
     try {
       const defaultVerifier = buildDefaultVerifier(input);

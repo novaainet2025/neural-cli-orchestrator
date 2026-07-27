@@ -5,17 +5,25 @@ import { createHash } from 'node:crypto';
 // 근거(48h 실측, db/nco.db mesh_messages — cycle1 T1):
 //   - 동일 (from,to) 채널에서 완전히 같은 본문이 60초 이내에 최대 72회 재전송됨
 //   - 동일 채널 분당 메시지 최대 41건 (정상 협업 채널은 48h 총 64건 ≈ 1.3건/시간)
+// cycle3 (2026-07-28): done:/status:/error:/question: 프로토콜 본문은 핸드오프 상태선이므로
+//   일반 echo-loop(3회)보다 엄격한 protocol-echo(기본 1회)로 재전송을 차단한다.
+//   점수 표본 실패(401/SIGINT)의 직접 원인은 아니나, mesh 프로토콜 에코 루프를 런타임에서 차단.
 // 프로바이더 circuit_states와 분리된 인메모리 가드(DB 쓰기 없음).
 // 롤백: NCO_MESH_COLLAB_LOOP_GUARD=off (재빌드 불필요) 또는 cli-mesh 배선 제거.
 
-/** 룰이 차단 사유로 보고하는 두 가지 루프 형태. */
-export type CollaborationLoopRule = 'echo-loop' | 'channel-burst';
+/** 룰이 차단 사유로 보고하는 루프 형태. */
+export type CollaborationLoopRule = 'echo-loop' | 'channel-burst' | 'protocol-echo';
 
 export interface CollaborationLoopRuleConfig {
   /** 슬라이딩 윈도 길이 (ms). */
   windowMs: number;
   /** 윈도 안에서 허용하는 동일 본문 재전송 횟수. 초과분이 echo-loop으로 차단된다. */
   maxRepeatsPerWindow: number;
+  /**
+   * 프로토콜 접두사(done:/status:/error:/question:) 본문의 동일 재전송 허용 횟수.
+   * 초과분은 protocol-echo로 차단된다. 기본 1 = 최초 1회만 허용.
+   */
+  maxProtocolRepeatsPerWindow: number;
   /** 윈도 안에서 허용하는 채널 전체 메시지 수. 초과분이 channel-burst로 차단된다. */
   maxMessagesPerWindow: number;
   /** 룰이 트립된 뒤 해당 채널을 차단해 두는 시간 (ms). */
@@ -27,10 +35,18 @@ export interface CollaborationLoopRuleConfig {
 export const DEFAULT_COLLABORATION_LOOP_CONFIG: CollaborationLoopRuleConfig = {
   windowMs: 60_000,
   maxRepeatsPerWindow: 3,
+  maxProtocolRepeatsPerWindow: 1,
   maxMessagesPerWindow: 20,
   cooldownMs: 60_000,
   maxTrackedChannels: 500,
 };
+
+const PROTOCOL_PREFIX = /^(done|status|error|question)\s*:/i;
+
+/** 공백 정규화 후 프로토콜 상태선인지 판정 (protocol-echo 임계값 선택용). */
+export function isProtocolPrefixedContent(content: string): boolean {
+  return PROTOCOL_PREFIX.test(content.replace(/\s+/g, ' ').trim());
+}
 
 export interface CollaborationLoopDecision {
   /** false이면 호출자는 해당 메시지를 전송하지 말아야 한다. */
@@ -108,6 +124,10 @@ export class CollaborationLoopGuard {
     const resolved: CollaborationLoopRuleConfig = {
       windowMs: normalizePositiveInteger(config?.windowMs, DEFAULT_COLLABORATION_LOOP_CONFIG.windowMs),
       maxRepeatsPerWindow: normalizePositiveInteger(config?.maxRepeatsPerWindow, DEFAULT_COLLABORATION_LOOP_CONFIG.maxRepeatsPerWindow),
+      maxProtocolRepeatsPerWindow: normalizePositiveInteger(
+        config?.maxProtocolRepeatsPerWindow,
+        DEFAULT_COLLABORATION_LOOP_CONFIG.maxProtocolRepeatsPerWindow,
+      ),
       maxMessagesPerWindow: normalizePositiveInteger(config?.maxMessagesPerWindow, DEFAULT_COLLABORATION_LOOP_CONFIG.maxMessagesPerWindow),
       cooldownMs: normalizePositiveInteger(config?.cooldownMs, DEFAULT_COLLABORATION_LOOP_CONFIG.cooldownMs),
       maxTrackedChannels: normalizePositiveInteger(config?.maxTrackedChannels, DEFAULT_COLLABORATION_LOOP_CONFIG.maxTrackedChannels),
@@ -141,10 +161,17 @@ export class CollaborationLoopGuard {
     const signature = contentSignature(content);
     const repeats = (entry.signatures.get(signature)?.length ?? 0) + 1;
     const windowCount = entry.timestamps.length + 1;
+    const protocolPrefixed = isProtocolPrefixedContent(content);
+    const repeatCap = protocolPrefixed
+      ? resolved.maxProtocolRepeatsPerWindow
+      : resolved.maxRepeatsPerWindow;
+    const echoRule: CollaborationLoopRule = protocolPrefixed ? 'protocol-echo' : 'echo-loop';
 
-    if (repeats > resolved.maxRepeatsPerWindow) {
-      return this.trip(entry, channel, 'echo-loop', now, resolved.cooldownMs, repeats, windowCount,
-        `identical collaboration message repeated ${repeats}x within ${resolved.windowMs}ms`);
+    if (repeats > repeatCap) {
+      return this.trip(entry, channel, echoRule, now, resolved.cooldownMs, repeats, windowCount,
+        protocolPrefixed
+          ? `identical protocol collaboration message repeated ${repeats}x within ${resolved.windowMs}ms`
+          : `identical collaboration message repeated ${repeats}x within ${resolved.windowMs}ms`);
     }
 
     if (windowCount > resolved.maxMessagesPerWindow) {

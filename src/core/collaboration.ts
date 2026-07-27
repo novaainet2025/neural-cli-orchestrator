@@ -23,6 +23,9 @@ export interface CollaborationDeliverySummary {
 
 const PROTOCOL_LINE = /^(done|status|error|question)\s*:\s*(.*)$/i;
 
+/** buildProtocolSafeHandoff가 붙이는 경계 마커 — 있으면 이미 명령으로 승격되지 않은 상태다. */
+const SAFE_HANDOFF_MARKER = '[현재 단계 실행 지시';
+
 export function parseCollaborationProtocol(
   response: string | null | undefined,
 ): CollaborationProtocolEnvelope | null {
@@ -39,6 +42,25 @@ export function parseCollaborationProtocol(
     summary: match[2].trim(),
     payload: lines.slice(firstContentIndex + 1).join('\n').trim(),
   };
+}
+
+/**
+ * 프로토콜 응답(done:/status:/error:/question:)을 새 태스크 prompt로 넣는 재변환인지 판정.
+ * cycle1 T1: company-orchestrator가 이전 단계 산출물 30건을 그대로 task prompt로 생성함.
+ * 안전 핸드오프 마커가 있으면 이미 분리된 메타데이터이므로 통과.
+ * 롤백: NCO_PROTOCOL_RECONVERSION_GATE=off
+ */
+export function isProtocolReconversionGateEnabled(
+  toggle: string | undefined = process.env.NCO_PROTOCOL_RECONVERSION_GATE,
+): boolean {
+  const normalized = toggle?.trim().toLowerCase() ?? '';
+  return !(normalized === '0' || normalized === 'false' || normalized === 'off');
+}
+
+export function isProtocolReconversionPrompt(prompt: string | null | undefined): boolean {
+  if (!prompt) return false;
+  if (prompt.includes(SAFE_HANDOFF_MARKER)) return false;
+  return parseCollaborationProtocol(prompt) != null;
 }
 
 function escapeXmlText(value: string): string {
