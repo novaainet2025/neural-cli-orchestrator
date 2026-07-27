@@ -1,0 +1,272 @@
+diff --git a/src/core/company-orchestrator.test.ts b/src/core/company-orchestrator.test.ts
+index b7b7c50..551e0f9 100644
+--- a/src/core/company-orchestrator.test.ts
++++ b/src/core/company-orchestrator.test.ts
+@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
+ import {
+   rankTeam,
+   orderTeams,
++  orderRecoveryMembers,
+   resolveExecutor,
++  resolveExecutorChain,
+   selectCompanyStageExecutor,
+   resolveDecomposer,
+   resolveDecomposers,
+@@ -282,6 +284,59 @@ describe('resolveExecutor', () => {
+       team({ slug: 'a', name: 'A', lead: 'codex', members: ['nvidia'] }), known, 'ollama', avail
+     )).toBe('codex');
+   });
++
++  it('Continuous Learning lead 불가용 시 선언된 로컬 ollama를 첫 복구자로 선택', () => {
++    const available = (id: string) => id !== 'opencode' && known.has(id);
++    expect(resolveExecutor(
++      team({
++        slug: 'gov-evolution-learning',
++        name: 'Continuous Learning',
++        lead: 'opencode',
++        members: ['codex', 'nvidia', 'ollama'],
++      }),
++      known,
++      'ollama',
++      available,
++    )).toBe('ollama');
++  });
++});
++
++describe('resolveExecutorChain', () => {
++  const known = new Set(['claude-code', 'codex', 'nvidia', 'ollama']);
++
++  it('전용 토글 off 시 Continuous Learning의 선언된 member 순서를 복원', () => {
++    expect(orderRecoveryMembers(
++      {
++        slug: 'gov-evolution-learning',
++        members: ['codex', 'nvidia', 'ollama'],
++      },
++      'off',
++    )).toEqual(['codex', 'nvidia', 'ollama']);
++  });
++
++  it('Continuous Learning lead는 유지하고 ollama를 첫 failover 후보로 둠', () => {
++    expect(resolveExecutorChain(
++      team({
++        slug: 'gov-evolution-learning',
++        name: 'Continuous Learning',
++        lead: 'claude-code',
++        members: ['codex', 'nvidia', 'ollama'],
++      }),
++      known,
++    )).toEqual(['claude-code', 'ollama', 'codex', 'nvidia']);
++  });
++
++  it('다른 팀의 선언된 member 순서는 바꾸지 않음', () => {
++    expect(resolveExecutorChain(
++      team({
++        slug: 'gov-evolution-memory',
++        name: 'Memory',
++        lead: 'claude-code',
++        members: ['codex', 'nvidia', 'ollama'],
++      }),
++      known,
++    )).toEqual(['claude-code', 'codex', 'nvidia', 'ollama']);
++  });
+ });
+ 
+ describe('selectCompanyStageExecutor (team-only failover)', () => {
+diff --git a/src/core/company-orchestrator.ts b/src/core/company-orchestrator.ts
+index 86c34b0..d49f7de 100644
+--- a/src/core/company-orchestrator.ts
++++ b/src/core/company-orchestrator.ts
+@@ -234,6 +234,30 @@ export function orderTeams(teams: TeamRow[]): TeamRow[] {
+     .map((x) => x.t);
+ }
+ 
++const EVOLUTION_LEARNING_LOCAL_RECOVERY_DISABLED = new Set(['0', 'false', 'off']);
++
++// Continuous Learning은 provider queue/session/auth 장애 자체를 학습해야 하므로,
++// 원격 provider를 연속으로 거친 뒤에야 로컬 복구자를 시도하면 같은 장애 표본을
++// 중복 생성한다. lead 우선순위는 유지하되, 팀에 명시적으로 등록된 ollama만 첫
++// 복구 member로 올린다. 다른 팀과 미등록 외부 provider에는 영향이 없다.
++// 런타임 롤백: NCO_EVOLUTION_LEARNING_LOCAL_RECOVERY=off.
++export function orderRecoveryMembers(
++  team: Pick<TeamRow, 'slug' | 'members'>,
++  toggle = process.env.NCO_EVOLUTION_LEARNING_LOCAL_RECOVERY,
++): string[] {
++  const disabled = EVOLUTION_LEARNING_LOCAL_RECOVERY_DISABLED.has(
++    toggle?.trim().toLowerCase() ?? '',
++  );
++  if (
++    disabled
++    || team.slug !== 'gov-evolution-learning'
++    || !team.members.includes('ollama')
++  ) {
++    return team.members;
++  }
++  return ['ollama', ...team.members.filter((member) => member !== 'ollama')];
++}
++
+ // 팀의 실행자 해석: (가용한) lead → (가용한) 첫 member → fallback.
+ // isAvailable 미지정 시 "등록 여부"만 본다(테스트 호환). 지정 시 리밋/차단된 provider 제외.
+ export function resolveExecutor(
+@@ -242,13 +266,14 @@ export function resolveExecutor(
+   fallback = 'ollama',
+   isAvailable: AvailabilityFn = (id) => knownAgents.has(id),
+ ): string {
++  const members = orderRecoveryMembers(team);
+   if (team.lead && isAvailable(team.lead)) return team.lead;
+-  const m = team.members.find((ref) => isAvailable(ref));
++  const m = members.find((ref) => isAvailable(ref));
+   if (m) return m;
+   if (isAvailable(fallback)) return fallback;
+   // 전원 차단 시: 등록된 lead/멤버라도 반환(디스패치는 /api/task failover 가 재시도).
+   if (team.lead && knownAgents.has(team.lead)) return team.lead;
+-  const km = team.members.find((ref) => knownAgents.has(ref));
++  const km = members.find((ref) => knownAgents.has(ref));
+   return km ?? team.lead ?? fallback;
+ }
+ 
+@@ -266,11 +291,12 @@ export function resolveExecutorChain(
+   const push = (id: string | null | undefined) => {
+     if (id && knownAgents.has(id) && !chain.includes(id)) chain.push(id);
+   };
++  const members = orderRecoveryMembers(team);
+   if (team.lead && isAvailable(team.lead)) push(team.lead);
+-  for (const ref of team.members) if (isAvailable(ref)) push(ref);
++  for (const ref of members) if (isAvailable(ref)) push(ref);
+   if (isAvailable(fallback)) push(fallback);
+   push(team.lead);
+-  for (const ref of team.members) push(ref);
++  for (const ref of members) push(ref);
+   push(fallback);
+   return chain;
+ }
+diff --git a/src/core/task-queue.p11.test.ts b/src/core/task-queue.p11.test.ts
+index 8614ffc..c9c5970 100644
+--- a/src/core/task-queue.p11.test.ts
++++ b/src/core/task-queue.p11.test.ts
+@@ -1,5 +1,8 @@
+ import { describe, it, expect } from 'vitest';
+-import { isTransientFailure } from './task-queue.js';
++import {
++  isEvolutionLearningRecoverableFailure,
++  isTransientFailure,
++} from './task-queue.js';
+ 
+ // P11: 일시적 실패와 provider unavailable만 재시도 대상. 정상완료·취소·rate-limit 제외.
+ describe('isTransientFailure (P11 진리표)', () => {
+@@ -37,3 +40,42 @@ describe('isTransientFailure (P11 진리표)', () => {
+     expect(isTransientFailure({ success: false, error: 'rate limit exceeded' } as any)).toBe(false);
+   });
+ });
++
++describe('isEvolutionLearningRecoverableFailure (bounded cycle-2 recovery)', () => {
++  it('실측 세션 한도와 401 출력은 Continuous Learning에서만 복구', () => {
++    const sessionLimit = {
++      success: false,
++      output: '',
++      error: "subprocess exited with code 1: You've hit your session limit",
++    };
++    const invalidKeyBody = {
++      success: false,
++      output: '{"error":{"type":"authentication_error","message":"invalid x-api-key"}}',
++      error: 'opencode: CLI failed exit=1',
++    };
++
++    expect(isEvolutionLearningRecoverableFailure(
++      'gov-evolution-learning',
++      sessionLimit,
++    )).toBe(true);
++    expect(isEvolutionLearningRecoverableFailure(
++      'gov-evolution-learning',
++      invalidKeyBody,
++    )).toBe(true);
++    expect(isEvolutionLearningRecoverableFailure(
++      'gov-evolution-memory',
++      sessionLimit,
++    )).toBe(false);
++  });
++
++  it('정상완료와 사용자 취소는 복구하지 않음', () => {
++    expect(isEvolutionLearningRecoverableFailure(
++      'gov-evolution-learning',
++      { success: true, output: 'done', error: 'session limit' },
++    )).toBe(false);
++    expect(isEvolutionLearningRecoverableFailure(
++      'gov-evolution-learning',
++      { success: false, status: 'cancelled', output: '', error: 'session limit' },
++    )).toBe(false);
++  });
++});
+diff --git a/src/core/task-queue.ts b/src/core/task-queue.ts
+index 447dd76..8912c12 100644
+--- a/src/core/task-queue.ts
++++ b/src/core/task-queue.ts
+@@ -354,6 +354,44 @@ export function isTransientFailure(result: TaskExecutionResult): boolean {
+   // 주의: isRateLimitError(err)는 여기 포함 안 함 — rate-limit은 기존 backoff 루프가 처리(중복금지).
+ }
+ 
++const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
++const EVOLUTION_LEARNING_RECOVERY_PATTERN =
++  /\b(?:queue_wait_timeout|session limit|invalid x-api-key|invalid api key|authentication_error|unauthorized|credential preflight failed|provider[_ -]unavailable)\b/i;
++
++/**
++ * Continuous Learning cycle-2 evidence showed a lead session-limit followed by
++ * a fallback 401 body. Keep the extra recovery classification team-scoped and
++ * accept evidence from either the normalized error or provider output.
++ */
++export function isEvolutionLearningRecoverableFailure(
++  teamSlug: string | null | undefined,
++  result: TaskExecutionResult,
++): boolean {
++  if (
++    teamSlug !== EVOLUTION_LEARNING_TEAM_SLUG
++    || result.success
++    || result.status === 'cancelled'
++  ) {
++    return false;
++  }
++  return EVOLUTION_LEARNING_RECOVERY_PATTERN.test(
++    `${result.error ?? ''}\n${result.output ?? ''}`,
++  );
++}
++
++function isEvolutionLearningTaskRecoverableFailure(
++  taskId: string,
++  result: TaskExecutionResult,
++): boolean {
++  const row = getDb().prepare(`
++    SELECT t.slug
++    FROM tasks k
++    JOIN teams t ON t.id = k.team_id
++    WHERE k.id=?
++  `).get(taskId) as { slug: string } | undefined;
++  return isEvolutionLearningRecoverableFailure(row?.slug, result);
++}
++
+ // team_id(태스크 DB 컬럼)로 TeamRow(lead+members) 로드. company-orchestrator.loadTeams와 동일 스키마.
+ function loadTeamRowById(teamId: string): TeamRow | null {
+   const db = getDb();
+@@ -1118,6 +1156,7 @@ class TaskQueueManager {
+     let teamRetried = false;   // P11: 팀 transient failover는 태스크당 1회만
+     let retryAfterRateLimit = false;
+     const allowStallRetry = process.env.NCO_STALL_RETRY !== '0';
++    const p11FailoverEnabled = process.env.NCO_P11_FAILOVER_ENABLED !== '0';
+ 
+     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+       // 팀 failover/idle retry의 continue도 attempt를 증가시킨다. 직전 실패가 실제
+@@ -1168,7 +1207,15 @@ class TaskQueueManager {
+       // ── P11: 팀 위임 transient 실패 → 팀 실행자 체인 다음 후보로 1회 재시도(team-aware) ──
+       // company-orchestrator 파이프라인의 stage-failover(P5)를 단일 팀 위임(/api/task 직행)에도 부여.
+       // 정상완료·사용자취소·rate-limit은 isTransientFailure에서 이미 배제 → 오탐 없음.
+-      if (!teamRetried && isTransientFailure(result)) {
++      // 비활성화: NCO_P11_FAILOVER_ENABLED=0
++      if (
++        p11FailoverEnabled
++        && !teamRetried
++        && (
++          isTransientFailure(result)
++          || isEvolutionLearningTaskRecoverableFailure(task.taskId, result)
++        )
++      ) {
+         const known = new Set(this.agents.keys());
+         const next = await nextTeamExecutor(task.taskId, known, attemptedAgents);
+         if (next && next !== currentAgentId) {

@@ -282,6 +282,118 @@ describe('team score aggregation', () => {
     });
   });
 
+  it('excludes provider spawn-failure (ENOENT) tasks that produced no output, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_spawn', 'Spawn Failure', 'spawn-failure');
+
+    // team_content-planning 실측 회귀(2026-07-27): 계상 실패 1건이 task_content_generation의
+    // 'cursor-agent: CLI failed exit=unknown — Command failed with ENOENT: cursor-agent …'
+    // (response 0바이트·result_json 0바이트 = CLI 프로세스 미기동)이었다.
+    for (let index = 1; index <= 7; index += 1) {
+      insert.run(`spawn-ok-${index}`, 'team_spawn', 'completed', null, 'report body', null, `-${index} hours`);
+    }
+    insert.run(
+      'spawn-enoent', 'team_spawn', 'failed',
+      'cursor-agent: CLI failed exit=unknown — Command failed with ENOENT: cursor-agent --print',
+      '', '', '-8 hours',
+    );
+    // 과잉 제외 방지 가드: 산출물을 낸 실패는 같은 error 문자열이어도 계속 카운트한다.
+    insert.run(
+      'spawn-enoent-with-output', 'team_spawn', 'failed',
+      'codex: CLI failed exit=unknown — Command failed with ENOENT: codex --print',
+      'partial output', null, '-9 hours',
+    );
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_spawn')).toMatchObject({
+      completion: 87.5,
+      n: 8,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION;
+    process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION = 'off';
+    try {
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_spawn')).toMatchObject({
+        completion: 77.8,
+        n: 9,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION;
+      else process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION = previous;
+    }
+  });
+
+  it('excludes provider credential-rejection (401) failures that produced only an error envelope, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_auth', 'Provider Auth', 'provider-auth');
+
+    // team_gov-command-collaboration 실측 회귀(2026-07-27 17:20:57 UTC, task_4aq6FQ3yZuXoiTdK):
+    // claude-code가 'provider_unavailable: claude-code (open/auth)'로 죽고 opencode로 재배정된 뒤,
+    // opencode도 api.anthropic.com 401을 받아 오류 봉투 하나만 남기고 종료했다. 재배정이 error를
+    // 덮어써 기존 'provider_unavailable:%' 절이 이 행을 놓쳤다.
+    const authEnvelope = '{"type":"error","timestamp":1785172857324,"sessionID":"ses_x","error":'
+      + '{"name":"APIError","data":{"message":"invalid x-api-key","statusCode":401,'
+      + '"isRetryable":false,"metadata":{"url":"https://api.anthropic.com/v1/messages"}}}}';
+
+    for (let index = 1; index <= 7; index += 1) {
+      insert.run(`auth-ok-${index}`, 'team_auth', 'completed', null, 'report body', null, `-${index} hours`);
+    }
+    insert.run(
+      'auth-401', 'team_auth', 'failed',
+      "opencode: CLI failed exit=1 — Command failed with exit code 1: opencode run --format json '[NCO",
+      authEnvelope, null, '-8 hours',
+    );
+    // 과잉 제외 방지 가드 (1): 팀 보고서 본문이 앞에 있고 401을 *인용*만 한 실패는 계속 카운트한다
+    // (이 팀은 오류규약이 charter라 인용 가능성이 높다 → response가 봉투로 시작할 때만 제외).
+    insert.run(
+      'auth-401-quoted', 'team_auth', 'failed',
+      'opencode: CLI failed exit=1 — Command failed with exit code 1',
+      `프로토콜 감사 보고서: 어제 관측된 실패는 ${authEnvelope} 형태였다.`, null, '-9 hours',
+    );
+    // 과잉 제외 방지 가드 (2): CLI 프로세스 실패가 아닌 품질게이트 실패는 계속 카운트한다.
+    insert.run(
+      'auth-401-quality-gate', 'team_auth', 'failed',
+      'quality_rejected: FORMAT_MISMATCH',
+      authEnvelope, null, '-10 hours',
+    );
+
+    const scores = computeTeamScores(db);
+    expect(scores.find((team) => team.teamId === 'team_auth')).toMatchObject({
+      completion: 77.8,
+      n: 9,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+    process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = 'off';
+    try {
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_auth')).toMatchObject({
+        completion: 70,
+        n: 10,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
+      else process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = previous;
+    }
+  });
+
   afterEach(() => db.close());
 
   it('aggregates scores and serves the live team and organization arrays', async () => {

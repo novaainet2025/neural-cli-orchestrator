@@ -26,6 +26,8 @@ import { resumeHarnessRuns } from './server/routes/harness.js';
 import { recordLearningEvent } from './core/failure-learning.js';
 import {
   decideOrphanRecovery,
+  isExternalInjectionGuardEnabled,
+  isExternallyInjectedOrphan,
   type RecoverableTaskStatus,
 } from './core/orphan-recovery-policy.js';
 
@@ -84,14 +86,17 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
   const db = getDb();
   const orphans = db.prepare(`
     SELECT id, status, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
-           , metadata_json
+           , metadata_json, team_id, spawned_by_cli
     FROM tasks
     WHERE status IN ('queued', 'assigned', 'in_progress', 'running', 'streaming')
   `).all() as Array<{
     id: string; status: RecoverableTaskStatus; assigned_to: string | null; prompt: string;
     system_prompt: string | null; verifier_json: string | null; orphan_requeue_count: number;
-    metadata_json: string | null;
+    metadata_json: string | null; team_id: string | null; spawned_by_cli: string | null;
   }>;
+
+  // 외부 cron이 raw sqlite3로 직접 넣은 행은 재큐잉하지 않는다(isExternallyInjectedOrphan 주석 참조).
+  const externalInjectionGuard = isExternalInjectionGuardEnabled();
 
   const insertDeadLetter = db.prepare(`
     INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
@@ -118,11 +123,22 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
       assignedTo: task.assigned_to,
       recoveryCount: task.orphan_requeue_count ?? 0,
       maxRecoveryCount: MAX_ORPHAN_REQUEUE,
+      externallyInjected: externalInjectionGuard && isExternallyInjectedOrphan({
+        teamId: task.team_id,
+        metadataJson: task.metadata_json,
+        systemPrompt: task.system_prompt,
+        spawnedByCli: task.spawned_by_cli,
+        orphanRequeueCount: task.orphan_requeue_count ?? 0,
+      }),
     });
     if (decision.action === 'dead_letter') {
+      // 세 reason 모두 'orphaned:' 접두사 — team-scorer의 INFRA_EXCLUSION이 이미 커버해
+      // 팀 완료율에 계상되지 않는다.
       const reason = decision.reason === 'no_agent'
         ? 'orphaned: server restart (no agent)'
-        : `orphaned: server restart (poison — requeued ${task.orphan_requeue_count}x)`;
+        : decision.reason === 'external_injection'
+          ? 'orphaned: external injection (not created by NCO — never dispatched)'
+          : `orphaned: server restart (poison — requeued ${task.orphan_requeue_count}x)`;
       const moved = transitionTask(db, task.id, 'failed', { error: reason, completedAt: true });
       if (moved.ok) insertDeadLetter.run(task.id, task.assigned_to, task.prompt, reason);
       if (decision.reason === 'poison') {

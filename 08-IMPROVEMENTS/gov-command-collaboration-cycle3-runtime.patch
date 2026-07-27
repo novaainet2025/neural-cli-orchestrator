@@ -1,0 +1,115 @@
+diff --git a/src/core/task-queue.shutdown.test.ts b/src/core/task-queue.shutdown.test.ts
+--- a/src/core/task-queue.shutdown.test.ts
++++ b/src/core/task-queue.shutdown.test.ts
+@@ -33,10 +33,42 @@ describe('normalizeGracefulShutdownInterruption', () => {
+     };
+ 
+     expect(normalizeGracefulShutdownInterruption(result, 'SIGTERM')).toBe(result);
+   });
+ 
++  it('classifies an exit=1 from a runtime that was active when shutdown began', () => {
++    expect(normalizeGracefulShutdownInterruption({
++      success: false,
++      output: 'Reading additional input from stdin...',
++      error: 'hermes: CLI failed exit=1 — Reading additional input from stdin...',
++      status: 'failed',
++    }, 'SIGINT', true)).toEqual({
++      success: false,
++      output: 'Reading additional input from stdin...',
++      error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (SIGINT)`,
++      status: 'cancelled',
++    });
++  });
++
++  it('marks runtimes that are active when shutdown begins', () => {
++    const manager = taskQueue as any;
++    const originalSignal = manager.shutdownSignal;
++    const originalRuntimes = manager.runtimes;
++    manager.shutdownSignal = null;
++    manager.runtimes = new Map([
++      ['active-task', { shutdownSignal: undefined }],
++    ]);
++
++    try {
++      manager.beginShutdown('SIGINT');
++      expect(manager.runtimes.get('active-task').shutdownSignal).toBe('SIGINT');
++    } finally {
++      manager.shutdownSignal = originalSignal;
++      manager.runtimes = originalRuntimes;
++    }
++  });
++
+   it('does not rewrite an interruption without an active shutdown', () => {
+     const result = {
+       success: false,
+       output: '',
+       error: 'cursor-agent: CLI failed exit=130 — Aborting operation...',
+diff --git a/src/core/task-queue.ts b/src/core/task-queue.ts
+--- a/src/core/task-queue.ts
++++ b/src/core/task-queue.ts
+@@ -137,22 +137,23 @@ type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecu
+ export const GRACEFUL_SHUTDOWN_INTERRUPTION = 'orphaned: graceful shutdown signal';
+ const PROCESS_INTERRUPT_PATTERN = /SIGINT|exit(?: code)?=130|exit 130|aborting operation/i;
+ 
+ /**
+  * PM2 sends SIGINT to the NCO process group during a restart, so active provider
+- * CLIs can report exit 130 before the shutdown drain observes them. Keep that
+- * infrastructure interruption out of team-quality failures without masking
+- * unrelated provider failures that merely finish while shutdown is in progress.
++ * CLIs can report exit 130 or a generic exit 1 before the shutdown drain observes
++ * them. The runtime marker covers only tasks that were active when shutdown began;
++ * the error pattern fallback preserves the legacy process-signal detection.
+  */
+ export function normalizeGracefulShutdownInterruption(
+   result: TaskExecutionResult,
+   shutdownSignal: string | null,
++  wasRunningAtShutdown = false,
+ ): TaskExecutionResult {
+   if (
+     !shutdownSignal
+     || result.success
+-    || !PROCESS_INTERRUPT_PATTERN.test(result.error ?? '')
++    || (!wasRunningAtShutdown && !PROCESS_INTERRUPT_PATTERN.test(result.error ?? ''))
+   ) {
+     return result;
+   }
+ 
+   return {
+@@ -867,10 +868,11 @@ interface TaskRuntimeEntry {
+   lastCpuSeconds: number | null;
+   processAlive: boolean;
+   liveness: LivenessState;
+   stalledSince: number | null;
+   lastHeartbeatFlushAt: number;
++  shutdownSignal?: string;
+   abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
+ }
+ 
+ // ─── TaskQueueManager ─────────────────────────────────
+ class TaskQueueManager {
+@@ -919,10 +921,13 @@ class TaskQueueManager {
+     this.executor = fn;
+   }
+ 
+   beginShutdown(signal: string): void {
+     this.shutdownSignal ??= signal;
++    for (const runtime of this.runtimes.values()) {
++      runtime.shutdownSignal ??= this.shutdownSignal;
++    }
+   }
+ 
+   /**
+    * Initialize queues for all enabled providers.
+    * Safe to call even if Redis is offline — falls back to semaphore mode.
+@@ -1778,10 +1783,11 @@ class TaskQueueManager {
+       ? (runtime.abortReason || result.error)
+       : (result.error || (!result.success ? 'unknown: execution failed' : undefined));
+     return normalizeGracefulShutdownInterruption(
+       { ...result, success, output, error, status },
+       this.shutdownSignal,
++      runtime.shutdownSignal != null,
+     );
+   }
+ 
+   private applyRuntimeMetadata(taskId: string, result: TaskExecutionResult, finalized: TaskExecutionResult): TaskExecutionResult {
+     const terminal = {

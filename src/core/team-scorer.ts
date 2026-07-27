@@ -328,7 +328,99 @@ const JOB_WAIT_DEAD_AGENT_EXCLUSION = `AND NOT (
       AND COALESCE(k.result_json, '') = ''
     )`;
 
+// provider CLI subprocess 자체가 뜨지 못한 실패(spawn ENOENT)는 팀 산출물 품질이 아니라
+// 서킷브레이커·provider_unavailable과 동일한 에이전트 가용성 이벤트다.
+//  - src/agent/orchestrated-loop.ts:325의 execa 호출이 바이너리/cwd를 열지 못하면 Node가
+//    ENOENT로 즉시 실패시킨다. 즉 CLI 프로세스가 한 번도 시작되지 않았고 루프 iteration은 0,
+//    response·result_json 모두 비어 있다 = 팀 작업이 단 한 줄도 실행되지 않았다.
+//  실측 근거(2026-07-27 UTC, db/nco.db):
+//   - team_content-planning 48h 원시 terminal 9건 중 계상 실패는 task_content_generation
+//     1건뿐이고, 그 error는 'cursor-agent: CLI failed exit=unknown — Command failed with
+//     ENOENT: cursor-agent …'였다(response 0바이트, result_json 0바이트, progress 0.0).
+//   - 이 태스크의 escalationHistory 첫 항목은 'provider_unavailable: opencode (open/generic)'
+//     로 이미 INFRA_EXCLUSION 대상 클래스였는데, cursor-agent 재배정이 error를 덮어써
+//     기존 제외 조건이 더 이상 매칭되지 않았다.
+//   - PATH/설치 문제는 아니다: 같은 NCO 프로세스가 같은 분(17:10:25·17:11:39·17:17:03)에
+//     실행한 다른 cursor-agent 태스크 4건은 모두 completed였고, cursor-agent 바이너리는
+//     /Users/nova-ai/.local/bin/cursor-agent에 존재해 --version이 2026.07.23-e383d2b를 낸다.
+//     따라서 이 ENOENT는 지속적 환경 결함이 아니라 일시적 spawn 실패(가용성 이벤트)다.
+//   - 전체 DB에서 이 error 클래스는 4건뿐이고 그중 team_id가 붙은 것은 위 1건이다
+//     (나머지 3건은 team_id NULL) → 제외 반경이 팀 스코어 1행으로 한정된다.
+// 안전 불변식: status<>'completed' + response·result_json 공백 3중 가드. 실측상 이 error를
+//  가진 completed 행은 0건이므로 completed⊆terminal이 유지되어 completion>100% 회귀가 없다.
+//  산출물을 낸 실패는 response/result_json이 비어 있지 않으므로 제외되지 않는다.
+// 롤백: 런타임 즉시 → NCO_SCORER_SPAWN_FAILURE_EXCLUSION=off (재빌드 불필요).
+//  코드 → 아래 상수와 buildSpawnFailureExclusion() 및 3개 terminal CASE의 삽입부를 제거.
+const SPAWN_FAILURE_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const SPAWN_FAILURE_EXCLUSION_SQL = `AND NOT (
+      k.status <> 'completed'
+      AND COALESCE(k.error, '') LIKE '%Command failed with ENOENT:%'
+      AND COALESCE(k.response, '') = ''
+      AND COALESCE(k.result_json, '') = ''
+    )`;
+
+export function buildSpawnFailureExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION,
+): string {
+  return SPAWN_FAILURE_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : SPAWN_FAILURE_EXCLUSION_SQL;
+}
+
+// provider CLI가 자격증명 거부(HTTP 401 authentication_error)만 내고 종료한 실패는 팀 산출물
+// 품질이 아니라 'provider_unavailable'·서킷브레이커와 동일한 에이전트 가용성 이벤트다.
+//  - CLI 프로세스는 떴지만 모델 API가 인증을 거부해 에이전트 턴이 한 번도 성립하지 않는다.
+//    opencode는 이때 stdout에 오직 구조화된 오류 봉투 하나만 쓴다:
+//    {"type":"error", … "error":{"name":"APIError","data":{"message":"invalid x-api-key",
+//    "statusCode":401, … "responseBody":"{\"type\":\"error\",\"error\":{\"type\":
+//    \"authentication_error\" …}"}}} — 즉 팀 산출물은 0바이트다.
+//  - 이미 제외 대상인 'provider_unavailable:%'와 같은 계열인데, escalation 재배정이 error를
+//    덮어써(SPAWN_FAILURE_EXCLUSION 주석의 cursor-agent ENOENT와 동일한 덮어쓰기 병리)
+//    최종 error가 'opencode: CLI failed exit=1 — …'가 되는 바람에 기존 절이 놓친다.
+//  실측 근거(2026-07-28 조회, db/nco.db):
+//   - 2026-07-27 17:19~17:30 UTC에 fleet 전역 자격증명 장애가 있었다. 같은 창에서 claude-code는
+//     'subprocess exited with code 1: Invalid API key', cursor-agent는 'Error: Authentication
+//     required', opencode는 401 봉투를 냈고 provider_unavailable 대량 발생이 겹쳤다.
+//   - team_gov-command-collaboration의 48h 계상 실패 2건 중 1건이 task_4aq6FQ3yZuXoiTdK다.
+//     이 태스크의 escalationHistory 첫 항목은 'provider_unavailable: claude-code (open/auth)'로
+//     이미 제외 클래스였고, opencode 재배정 후의 response(978바이트)는 위 401 봉투 그 자체다.
+//     제외 시 48h completion 7/9=77.8% → 7/8=87.5%로 실제 팀 품질을 반영한다.
+//   - DB 전체에서 이 조건에 걸리는 행은 7건뿐이며 전부 위 10분 장애 창의 opencode 실패다.
+//     team_id가 붙은 것은 3건(gov-command-collaboration·self-learning·gov-evolution-learning)
+//     으로 팀당 1행 → 특정 팀 편향이 없는 team-agnostic 인프라 이벤트다.
+// 안전 불변식: (a) status<>'completed' 가드, (b) error가 provider CLI 프로세스 실패
+//  ('CLI failed exit=')일 것, (c) response가 오류 봉투로 *시작*할 것(LIKE '{"type":"error"%')
+//  3중 가드. (c)는 팀 보고서 본문이 앞에 조금이라도 있으면 매칭되지 않게 해, 401 문자열을
+//  인용한 보고서(이 팀은 프로토콜·오류규약이 charter라 인용 가능성이 높다)가 잘못 빠지는 것을
+//  막는다. 실측상 status 가드를 빼도 매칭되는 completed 행은 0건이므로 completed⊆terminal이
+//  유지되어 completion>100% 회귀가 없다.
+// 롤백: 런타임 즉시 → NCO_SCORER_PROVIDER_AUTH_EXCLUSION=off (재빌드 불필요).
+//  코드 → 아래 상수와 buildProviderAuthExclusion() 및 3개 terminal CASE의 삽입부를 제거.
+const PROVIDER_AUTH_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const PROVIDER_AUTH_EXCLUSION_SQL = `AND NOT (
+      k.status <> 'completed'
+      AND COALESCE(k.error, '') LIKE '%CLI failed exit=%'
+      AND COALESCE(k.response, '') LIKE '{"type":"error"%'
+      AND (
+        COALESCE(k.response, '') LIKE '%"statusCode":401%'
+        OR COALESCE(k.response, '') LIKE '%authentication_error%'
+        OR COALESCE(k.response, '') LIKE '%invalid x-api-key%'
+      )
+    )`;
+
+export function buildProviderAuthExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION,
+): string {
+  return PROVIDER_AUTH_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : PROVIDER_AUTH_EXCLUSION_SQL;
+}
+
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
+  const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
+  const PROVIDER_AUTH_EXCLUSION = buildProviderAuthExclusion();
   const rows = database.prepare(`
     SELECT
       t.id AS team_id,
@@ -344,6 +436,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
+          ${SPAWN_FAILURE_EXCLUSION}
+          ${PROVIDER_AUTH_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -359,6 +453,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
+          ${SPAWN_FAILURE_EXCLUSION}
+          ${PROVIDER_AUTH_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
@@ -373,6 +469,8 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
+          ${SPAWN_FAILURE_EXCLUSION}
+          ${PROVIDER_AUTH_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'

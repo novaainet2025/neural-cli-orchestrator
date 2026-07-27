@@ -35,6 +35,38 @@ describe('normalizeGracefulShutdownInterruption', () => {
     expect(normalizeGracefulShutdownInterruption(result, 'SIGTERM')).toBe(result);
   });
 
+  it('classifies an exit=1 from a runtime that was active when shutdown began', () => {
+    expect(normalizeGracefulShutdownInterruption({
+      success: false,
+      output: 'Reading additional input from stdin...',
+      error: 'hermes: CLI failed exit=1 — Reading additional input from stdin...',
+      status: 'failed',
+    }, 'SIGINT', true)).toEqual({
+      success: false,
+      output: 'Reading additional input from stdin...',
+      error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (SIGINT)`,
+      status: 'cancelled',
+    });
+  });
+
+  it('marks runtimes that are active when shutdown begins', () => {
+    const manager = taskQueue as any;
+    const originalSignal = manager.shutdownSignal;
+    const originalRuntimes = manager.runtimes;
+    manager.shutdownSignal = null;
+    manager.runtimes = new Map([
+      ['active-task', { shutdownSignal: undefined }],
+    ]);
+
+    try {
+      manager.beginShutdown('SIGINT');
+      expect(manager.runtimes.get('active-task').shutdownSignal).toBe('SIGINT');
+    } finally {
+      manager.shutdownSignal = originalSignal;
+      manager.runtimes = originalRuntimes;
+    }
+  });
+
   it('does not rewrite an interruption without an active shutdown', () => {
     const result = {
       success: false,

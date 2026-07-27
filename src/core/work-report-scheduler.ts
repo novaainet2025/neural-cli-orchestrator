@@ -15,8 +15,8 @@ const KST_OFFSET_HOURS = 9;
 const KST_TIMEZONE = 'Asia/Seoul';
 const POLL_INTERVAL_MS = 60_000;
 const MISSED_GRACE_MS = 30 * 60 * 1000;
-// 태스크 발행 간 지연 — 일괄발사가 단일스레드 로컬 LLM 서버를 크래시시킨 실측(2026-07-08 ↺6) 완화
-const TASK_DISPATCH_STAGGER_MS = 5_000;
+// 태스크 발행 간 지연 — 일괄발사가 단일스레드 로컬 LLM 서버(mlx)를 크래시시킨 실측(2026-07-08 ↺6) 완화
+export const TASK_DISPATCH_STAGGER_MS = 5_000;
 // 링크 해제(실패)·미발행 보고의 태스크 재발행 상한 (틱당)
 const REDISPATCH_LIMIT = 20;
 // P0-7: 보고 1건당 재발행 시도 상한 + 지수 백오프 — CB 실패 2,077행이 단 149개 업무보고에서
@@ -26,15 +26,80 @@ const REDISPATCH_LIMIT = 20;
 const MAX_REDISPATCH_ATTEMPTS = 5;
 const REDISPATCH_BACKOFF_BASE_MS = 5 * 60_000;
 const REDISPATCH_BACKOFF_MAX_MS = 2 * 60 * 60_000;
+const NON_REPORT_EXECUTORS = new Set(['higgsfield', 'openclaw']);
+// 링크 해제 대상 태스크 상태: 이 상태로 끝난 태스크는 업무보고 결과로 수집되지 않고
+// source_task_id=NULL로 해제되어 다음 틱 재발행 대상이 된다.
+export const UNLINK_TASK_STATUSES = ['failed', 'cancelled', 'timed_out', 'lease_expired'] as const;
+
+// 직렬 발행 게이트: 업무보고 태스크 POST 각각을 순차화한다.
+// 최초발행(issueWorkReports), 팀재발행(redispatchUnlinkedTeamReports),
+// 회사재발행(redispatchUnlinkedOrgReports), 겹친 API 호출 모두 이 게이트를 통과하며
+// 시작 간격 TASK_DISPATCH_STAGGER_MS(5초)를 보장한다.
+export class WorkReportDispatchGate {
+  private tail: Promise<void> = Promise.resolve();
+  private lastStart = 0;
+  private hasStarted = false;
+
+  constructor(
+    private readonly staggerMs = TASK_DISPATCH_STAGGER_MS,
+    private readonly now: () => number = Date.now,
+    private readonly sleep: (ms: number) => Promise<void> =
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  ) {}
+
+  run<T>(fn: () => Promise<T>): Promise<T> {
+    const result = this.tail.then(async () => {
+      if (this.hasStarted) {
+        const waitMs = Math.max(0, this.staggerMs - (this.now() - this.lastStart));
+        if (waitMs > 0) await this.sleep(waitMs);
+      }
+      this.lastStart = this.now();
+      this.hasStarted = true;
+      return fn();
+    });
+    this.tail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+}
+
+const workReportDispatchGate = new WorkReportDispatchGate();
+
+export class WorkReportSchedulerRunGate {
+  private running = false;
+
+  async run(fn: () => Promise<void>): Promise<boolean> {
+    if (this.running) return false;
+    this.running = true;
+    try {
+      await fn();
+      return true;
+    } finally {
+      this.running = false;
+    }
+  }
+}
+// 회사 보고 fallback: 보고서 작성 가능한 등록 실행자만, 우선순위 순.
+// knownAgents 임의 순회는 media 전용(higgsfield 등)이나 비텍스트 실행자를 고를 수 있다.
+const REPORT_CAPABLE_FALLBACK_PRIORITY = [
+  'ollama',
+  'codex',
+  'opencode',
+  'claude-code',
+  'hermes',
+  'cursor-agent',
+  'agy',
+  'nvidia',
+] as const;
 
 export type WorkReportSlot = 'am' | 'pm';
 export type WorkReportStatus = 'pending' | 'submitted' | 'late' | 'missed' | 'waived';
 
-interface OrganizationRow {
+export interface OrganizationRow {
   id: string;
   name: string;
   slug: string;
   parent_id: string | null;
+  manager: string | null;
   is_active: number;
 }
 
@@ -48,7 +113,7 @@ interface TeamRow {
   is_active: number;
 }
 
-interface SubjectSnapshot {
+export interface SubjectSnapshot {
   organizationId: string | null;
   teamId: string | null;
   orgRootId: string | null;
@@ -59,9 +124,11 @@ interface SubjectSnapshot {
   active: boolean;
 }
 
-interface ReportTaskCandidate {
+export interface ReportTaskCandidate {
   reportId: string;
-  teamId: string;
+  subjectKind: 'team' | 'organization';
+  subjectId: string;
+  teamId: string | null;
   organizationId: string | null;
   lead: string;
   prompt: string;
@@ -478,6 +545,103 @@ export function buildTeamDataContext(
     : '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.';
 }
 
+function collectDescendantOrgIds(rootOrgId: string, database: ReportDataDb): string[] {
+  const allIds: string[] = [rootOrgId];
+  const queue = [rootOrgId];
+  const visited = new Set<string>([rootOrgId]);
+  while (queue.length > 0) {
+    const currentId = queue.shift()!;
+    const children = database.prepare(
+      `SELECT id FROM organizations WHERE parent_id=? AND is_active=1`,
+    ).all(currentId) as Array<{ id: string }>;
+    for (const child of children) {
+      if (!visited.has(child.id)) {
+        visited.add(child.id);
+        allIds.push(child.id);
+        queue.push(child.id);
+      }
+    }
+  }
+  return allIds;
+}
+
+export function buildOrganizationDataContext(
+  orgId: string,
+  database: ReportDataDb = getDb(),
+): string {
+  const sections: string[] = [];
+
+  const allOrgIds = collectDescendantOrgIds(orgId, database);
+  const placeholders = allOrgIds.map(() => '?').join(',');
+
+  const teams = database.prepare(`
+    SELECT id, name, slug, lead
+    FROM teams
+    WHERE organization_id IN (${placeholders}) AND is_active=1
+    ORDER BY created_at ASC, name ASC
+  `).all(...allOrgIds) as Array<{ id: string; name: string; slug: string; lead: string | null }>;
+
+  if (teams.length === 0) {
+    return '소속 팀 없음\n이 조직에 속한 활성 팀이 없습니다.';
+  }
+
+  sections.push(`[teams] 소속 팀(${teams.length}): ${teams.map((t) => t.name || t.slug).join(', ')}`);
+
+  for (const team of teams) {
+    const summary = database.prepare(`
+      SELECT COUNT(*) AS total,
+             COALESCE(SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END), 0) AS completed,
+             COALESCE(SUM(CASE WHEN status IN ('failed','timed_out','lease_expired','cancelled') THEN 1 ELSE 0 END), 0) AS failed,
+             COALESCE(SUM(CASE WHEN status IN ('pending','queued','assigned','running','streaming','reviewing') THEN 1 ELSE 0 END), 0) AS active
+      FROM tasks
+      WHERE team_id=? AND created_at >= datetime('now','-7 days')
+    `).get(team.id) as { total: number; completed: number; failed: number; active: number };
+    if (summary.total > 0) {
+      sections.push(`[tasks] ${team.name || team.slug} 최근 7일: 전체=${summary.total}, 완료=${summary.completed}, 실패=${summary.failed}, 진행=${summary.active}`);
+    }
+  }
+
+  const wrSummary = database.prepare(`
+    SELECT status, COUNT(*) AS count
+    FROM work_reports
+    WHERE organization_id IN (${placeholders}) AND report_date >= date('now','-7 days') AND status<>'pending'
+    GROUP BY status
+    ORDER BY status
+  `).all(...allOrgIds) as Array<{ status: string; count: number }>;
+  if (wrSummary.length > 0) {
+    sections.push(`[work_reports] 소속팀+하위조직 최근 7일 보고: ${wrSummary.map((r) => `${r.status}=${r.count}`).join(', ')}`);
+  }
+
+  return sections.length > 0
+    ? sections.join('\n')
+    : '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.';
+}
+
+export function buildOrganizationReportPrompt(
+  org: OrganizationRow,
+  reportDate: string,
+  reportSlot: WorkReportSlot,
+  snapshot: SubjectSnapshot,
+  dataContext: string,
+): string {
+  const slotLabel = reportSlot === 'am' ? '오전' : '오후';
+  return [
+    `[업무보고 작성] ${reportDate} ${slotLabel} 보고서를 작성하라.`,
+    `회사: ${org.name}`,
+    `조직 경로: ${snapshot.orgPath}`,
+    '[실데이터]',
+    dataContext,
+    '요구사항:',
+    '1. 오늘 회사 전체의 핵심 업무 현황을 간단히 정리한다.',
+    '2. 소속 팀별 진행 상황과 주요 이슈를 명시한다.',
+    '3. 다음 기간의 액션 플랜을 제시한다.',
+    '4. 결과를 markdown 본문으로 작성한다.',
+    '5. 본문 전체를 반드시 한국어로만 작성한다. 제목·소제목·불릿 포함 영어 문장 금지 (코드/파일명/고유명사 제외).',
+    '6. [실데이터]에 있는 값만 사실로 사용하고 없는 수치·사건·완료 상태를 지어내지 않는다.',
+    '7. 데이터가 없더라도 빈 응답을 내지 말고 데이터 가용성, 확인 불가 항목, 다음 수집 액션을 본문에 명시한다.',
+  ].join('\n');
+}
+
 export interface WorkReportIssueResult {
   reportDate: string;
   reportSlot: WorkReportSlot;
@@ -487,6 +651,8 @@ export interface WorkReportIssueResult {
   waived: number;
   teamTasksCreated: number;
   teamTasksFailed: number;
+  organizationTasksCreated: number;
+  organizationTasksFailed: number;
 }
 
 function getKstDateParts(date = new Date()): { year: number; month: number; day: number; hour: number; minute: number } {
@@ -741,8 +907,6 @@ function makeReportExecutorResolver(knownAgents: Set<string>): {
       const members = loadMembers(teamId);
       const teamRow = { id: teamId, name: '', slug: '', lead, charter: null, description: null, members };
       const exec = resolveExecutor(teamRow, knownAgents, 'ollama', isAvailable);
-      // resolveExecutor는 전원 불가용 시 불가용 lead/member라도 last-resort로 반환한다.
-      // 실제 가용 실행자만 통과시키고, 아니면 null(스킵) — 홍수 방지.
       if (!exec || !isAvailable(exec)) {
         if (lead) skipped.add(lead);
         return null;
@@ -755,19 +919,66 @@ function makeReportExecutorResolver(knownAgents: Set<string>): {
   };
 }
 
+function resolveOrgReportExecutor(
+  org: OrganizationRow,
+  knownAgents: Set<string>,
+  executorResolver: ReturnType<typeof makeReportExecutorResolver>,
+): string | null {
+  // media 전용 실행자는 보고서 작성 불가 — manager여도 대체 경로로 넘긴다
+  const mgr = org.manager?.trim();
+  if (
+    mgr
+    && knownAgents.has(mgr)
+    && !NON_REPORT_EXECUTORS.has(mgr)
+  ) {
+    try {
+      if (circuitBreakerRegistry.getAvailability(mgr).available) return mgr;
+    } catch { /* fall through to sub-org team fallback */ }
+  }
+
+  const db = getDb();
+  const allOrgIds = collectDescendantOrgIds(org.id, db);
+  const placeholders = allOrgIds.map(() => '?').join(',');
+  const childTeams = db.prepare(`
+    SELECT id, lead FROM teams WHERE organization_id IN (${placeholders}) AND is_active=1 AND lead IS NOT NULL AND TRIM(lead) != ''
+    ORDER BY created_at ASC, name ASC
+  `).all(...allOrgIds) as Array<{ id: string; lead: string }>;
+  for (const t of childTeams) {
+    const exec = executorResolver.resolve(t.id, t.lead.trim());
+    if (exec && !NON_REPORT_EXECUTORS.has(exec)) return exec;
+  }
+
+  // 보고서 작성 가능 등록 실행자만, 고정 우선순위 (media/임의 knownAgents 순회 금지)
+  for (const agentId of REPORT_CAPABLE_FALLBACK_PRIORITY) {
+    if (!knownAgents.has(agentId) || NON_REPORT_EXECUTORS.has(agentId)) continue;
+    try {
+      if (circuitBreakerRegistry.getAvailability(agentId).available) return agentId;
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
+export function buildReportTaskMetadata(candidate: ReportTaskCandidate): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    projectDir: resolveInternalProjectDir(),
+    allowProviderFailover: true,
+    workReportId: candidate.reportId,
+    subjectKind: candidate.subjectKind,
+    subjectId: candidate.subjectId,
+    organizationId: candidate.organizationId,
+  };
+  if (candidate.teamId) metadata.teamId = candidate.teamId;
+  return metadata;
+}
+
 async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTaskCandidate[]): Promise<{ created: number; failed: number }> {
   const db = getDb();
   let created = 0;
   let failed = 0;
 
-  let first = true;
   for (const candidate of candidates) {
-    // 스태거: 동시/연속 발사로 단일스레드 로컬 서버가 죽는 것 방지 (첫 건은 즉시)
-    if (!first) {
-      await new Promise<void>((resolve) => setTimeout(resolve, TASK_DISPATCH_STAGGER_MS));
-    }
-    first = false;
-    const response = await app.inject({
+    const metadata = buildReportTaskMetadata(candidate);
+    const response = await workReportDispatchGate.run(() => app.inject({
       method: 'POST',
       url: '/api/task',
       payload: {
@@ -775,32 +986,28 @@ async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTas
         prompt: candidate.prompt,
         mode: 'task',
         callerAgentId: 'work-report-scheduler',
-        metadata: {
-          projectDir: resolveInternalProjectDir(),
-          allowProviderFailover: true,
-          workReportId: candidate.reportId,
-          teamId: candidate.teamId,
-          organizationId: candidate.organizationId,
-        },
+        metadata,
       },
-    });
+    }));
 
     if (response.statusCode !== 202) {
       failed += 1;
       log.warn({
         reportId: candidate.reportId,
+        subjectKind: candidate.subjectKind,
+        subjectId: candidate.subjectId,
         teamId: candidate.teamId,
         lead: candidate.lead,
         statusCode: response.statusCode,
         payload: response.body,
-      }, 'Failed to create team work-report task');
+      }, 'Failed to create work-report task');
       continue;
     }
 
     const body = response.json() as { taskId?: string };
     if (!body.taskId) {
       failed += 1;
-      log.warn({ reportId: candidate.reportId, teamId: candidate.teamId }, 'Task route returned without taskId');
+      log.warn({ reportId: candidate.reportId, subjectKind: candidate.subjectKind, subjectId: candidate.subjectId }, 'Task route returned without taskId');
       continue;
     }
 
@@ -809,11 +1016,13 @@ async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTas
       SET source_task_id=?, updated_at=datetime('now')
       WHERE id=? AND source_task_id IS NULL
     `).run(body.taskId, candidate.reportId);
-    db.prepare(`
-      UPDATE tasks
-      SET team_id=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(candidate.teamId, body.taskId);
+    if (candidate.teamId) {
+      db.prepare(`
+        UPDATE tasks
+        SET team_id=?, updated_at=datetime('now')
+        WHERE id=?
+      `).run(candidate.teamId, body.taskId);
+    }
     created += 1;
   }
 
@@ -827,7 +1036,7 @@ export async function issueWorkReports(
 ): Promise<WorkReportIssueResult> {
   const db = getDb();
   const organizations = db.prepare(`
-    SELECT id, name, slug, parent_id, is_active
+    SELECT id, name, slug, parent_id, manager, is_active
     FROM organizations
     ORDER BY created_at ASC, name ASC
   `).all() as OrganizationRow[];
@@ -844,10 +1053,8 @@ export async function issueWorkReports(
   let pending = 0;
   let waived = 0;
 
-  // 발행 실행자를 가용성 기반으로 사전 해석(트랜잭션 밖 — getAvailability의 자가복구 커밋이
-  // work_reports 트랜잭션에 섞이지 않게 함). lead 불가용이면 가용 member/fallback으로 라우팅,
-  // 전원 불가용이면 null → 발행 스킵(보고는 'pending' 유지, 회로 복구 후 redispatch가 재개).
-  const executorResolver = makeReportExecutorResolver(new Set(agentManager.listEnabledIds()));
+  const knownAgents = new Set(agentManager.listEnabledIds());
+  const executorResolver = makeReportExecutorResolver(knownAgents);
   const resolvedExecutor = new Map<string, string | null>();
   for (const team of teams) {
     const lead = team.lead?.trim();
@@ -867,8 +1074,9 @@ export async function issueWorkReports(
       const snapshot = orgSnapshots.get(organization.id);
       if (!snapshot) continue;
       const status: WorkReportStatus = snapshot.active ? 'pending' : 'waived';
+      const reportId = createId('wr');
       const result = insert.run(
-        createId('wr'),
+        reportId,
         reportDate,
         reportSlot,
         'organization',
@@ -887,6 +1095,26 @@ export async function issueWorkReports(
         created += 1;
         if (status === 'pending') pending += 1;
         if (status === 'waived') waived += 1;
+        if (status === 'pending') {
+          const exec = resolveOrgReportExecutor(organization, knownAgents, executorResolver);
+          if (exec) {
+            taskCandidates.push({
+              reportId,
+              subjectKind: 'organization',
+              subjectId: organization.id,
+              teamId: null,
+              organizationId: organization.id,
+              lead: exec,
+              prompt: buildOrganizationReportPrompt(
+                organization,
+                reportDate,
+                reportSlot,
+                snapshot,
+                buildOrganizationDataContext(organization.id),
+              ),
+            });
+          }
+        }
       }
     }
 
@@ -920,6 +1148,8 @@ export async function issueWorkReports(
         if (executor) {
           taskCandidates.push({
             reportId,
+            subjectKind: 'team',
+            subjectId: team.id,
             teamId: team.id,
             organizationId: snapshot.organizationId,
             lead: executor,
@@ -943,7 +1173,12 @@ export async function issueWorkReports(
       'Initial dispatch skipped — no available executor (reports stay pending for redispatch)');
   }
 
-  const taskResult = await createTeamReportTasks(app, taskCandidates);
+  // 팀→회사 순차 발행. 각 POST는 공용 게이트를 통과하므로 배치 경계에서도
+  // TASK_DISPATCH_STAGGER_MS 간격이 유지된다.
+  const teamTaskCandidates = taskCandidates.filter(c => c.subjectKind === 'team');
+  const orgTaskCandidates = taskCandidates.filter(c => c.subjectKind === 'organization');
+  const teamTaskResult = await createTeamReportTasks(app, teamTaskCandidates);
+  const orgTaskResult = await createTeamReportTasks(app, orgTaskCandidates);
   const existing = organizations.length + teams.length - created;
   log.info({
     reportDate,
@@ -952,8 +1187,10 @@ export async function issueWorkReports(
     existing,
     pending,
     waived,
-    teamTasksCreated: taskResult.created,
-    teamTasksFailed: taskResult.failed,
+    teamTasksCreated: teamTaskResult.created,
+    teamTasksFailed: teamTaskResult.failed,
+    organizationTasksCreated: orgTaskResult.created,
+    organizationTasksFailed: orgTaskResult.failed,
   }, 'Work reports issued');
 
   return {
@@ -963,8 +1200,10 @@ export async function issueWorkReports(
     existing,
     pending,
     waived,
-    teamTasksCreated: taskResult.created,
-    teamTasksFailed: taskResult.failed,
+    teamTasksCreated: teamTaskResult.created,
+    teamTasksFailed: teamTaskResult.failed,
+    organizationTasksCreated: orgTaskResult.created,
+    organizationTasksFailed: orgTaskResult.failed,
   };
 }
 
@@ -1011,16 +1250,19 @@ function parseDbTimestamp(value: string | null): number {
 
 // 완료된 source task의 응답을 보고서로 수집(auto-submit) + 실패 태스크는 링크 해제해 재발행 대상화.
 // 태스크 성공 ≠ 제출이었던 갭(2026-07-08 Gap 분석)의 근본 해결 — 에이전트 협조 없이 결정론적으로 제출.
-function ingestCompletedReportTasks(reportDate: string): { ingested: number; unlinked: number } {
-  const db = getDb();
+export function ingestCompletedReportTasks(
+  reportDate: string,
+  db: ReportDataDb = getDb(),
+): { ingested: number; unlinked: number } {
   const rows = db.prepare(`
     SELECT wr.id, wr.due_at, wr.status, wr.summary_json, wr.source_task_id,
            t.status AS task_status, t.response AS task_response,
            COALESCE(t.completed_at, t.updated_at) AS task_finished_at
     FROM work_reports wr
     JOIN tasks t ON t.id = wr.source_task_id
-    WHERE wr.report_date=? AND wr.status IN ('pending','missed') AND wr.source_task_id IS NOT NULL
-  `).all(reportDate) as Array<{
+    WHERE wr.report_date BETWEEN date(?, '-2 days') AND ?
+      AND wr.status IN ('pending','missed') AND wr.source_task_id IS NOT NULL
+  `).all(reportDate, reportDate) as Array<{
     id: string;
     due_at: string;
     status: WorkReportStatus;
@@ -1066,7 +1308,7 @@ function ingestCompletedReportTasks(reportDate: string): { ingested: number; unl
       const title = responseText.split('\n')[0].replace(/^#+\s*/, '').slice(0, 120) || null;
       const result = submitStmt.run(title, responseText, JSON.stringify(summary), submittedAt, status, latenessMinutes, row.id);
       ingested += result.changes;
-    } else if (row.task_status && ['failed', 'cancelled', 'timed_out'].includes(row.task_status) && row.status === 'pending') {
+    } else if (row.task_status && (UNLINK_TASK_STATUSES as readonly string[]).includes(row.task_status) && row.status === 'pending') {
       const result = unlinkStmt.run(row.id);
       unlinked += result.changes;
     }
@@ -1193,6 +1435,8 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
     };
     return {
       reportId: row.report_id,
+      subjectKind: 'team' as const,
+      subjectId: row.team_id,
       teamId: row.team_id,
       organizationId: row.organization_id,
       lead: rowExecutor.get(row.report_id) ?? row.lead.trim(),
@@ -1206,6 +1450,111 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
   // P0-7: 이번 틱에 실제로 재발행을 시도한 보고(batch)만 attempts+1 + 지수 백오프 적용.
   // 발행 자체가 202를 반환해도(생성된 태스크가 나중에 CB open으로 실패) 다음 틱에 다시
   // unlink→여기로 돌아오므로, 시도 횟수는 "재발행을 시도했는가"를 기준으로 센다.
+  const backoffStmt = db.prepare(`
+    UPDATE work_reports
+    SET redispatch_attempts = redispatch_attempts + 1,
+        next_redispatch_at = datetime('now', ?),
+        updated_at = datetime('now')
+    WHERE id = ?
+  `);
+  for (const row of batch) {
+    const backoffMs = Math.min(
+      REDISPATCH_BACKOFF_BASE_MS * 2 ** row.redispatch_attempts,
+      REDISPATCH_BACKOFF_MAX_MS,
+    );
+    backoffStmt.run(`+${Math.round(backoffMs / 1000)} seconds`, row.report_id);
+  }
+}
+
+async function redispatchUnlinkedOrgReports(app: FastifyInstance, reportDate: string): Promise<void> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT wr.id AS report_id, wr.report_slot, wr.organization_id, wr.org_path, wr.redispatch_attempts,
+           o.id AS org_id, o.name, o.slug, o.manager, o.is_active
+    FROM work_reports wr
+    JOIN organizations o ON o.id = wr.subject_id
+    WHERE wr.report_date=? AND wr.subject_kind='organization' AND wr.status='pending' AND wr.source_task_id IS NULL
+      AND wr.redispatch_attempts < ?
+      AND (wr.next_redispatch_at IS NULL OR wr.next_redispatch_at <= datetime('now'))
+    ORDER BY wr.due_at ASC, wr.rowid ASC
+  `).all(reportDate, MAX_REDISPATCH_ATTEMPTS) as Array<{
+    report_id: string;
+    report_slot: WorkReportSlot;
+    organization_id: string;
+    org_path: string;
+    redispatch_attempts: number;
+    org_id: string;
+    name: string;
+    slug: string;
+    manager: string | null;
+    is_active: number;
+  }>;
+  if (rows.length === 0) return;
+
+  const cappedOut = (db.prepare(`
+    SELECT COUNT(*) AS n
+    FROM work_reports wr
+    JOIN organizations o ON o.id = wr.subject_id
+    WHERE wr.report_date=? AND wr.subject_kind='organization' AND wr.status='pending' AND wr.source_task_id IS NULL
+      AND wr.redispatch_attempts >= ?
+  `).get(reportDate, MAX_REDISPATCH_ATTEMPTS) as { n: number }).n;
+  if (cappedOut > 0) {
+    log.warn({ reportDate, cappedOut, maxAttempts: MAX_REDISPATCH_ATTEMPTS }, 'Org redispatch attempts capped — reports left pending for finalize');
+  }
+
+  const knownAgents = new Set(agentManager.listEnabledIds());
+  const executorResolver = makeReportExecutorResolver(knownAgents);
+  const snapshots = buildOrgSnapshots(
+    db.prepare(`SELECT id, name, slug, parent_id, manager, is_active FROM organizations`).all() as OrganizationRow[],
+  );
+  const dispatchable: typeof rows = [];
+  const rowExecutor = new Map<string, string>();
+  for (const row of rows) {
+    const org: OrganizationRow = {
+      id: row.org_id, name: row.name, slug: row.slug,
+      parent_id: null, manager: row.manager, is_active: row.is_active,
+    };
+    const exec = resolveOrgReportExecutor(org, knownAgents, executorResolver);
+    if (exec) {
+      rowExecutor.set(row.report_id, exec);
+      dispatchable.push(row);
+    }
+  }
+
+  const batch = dispatchable.slice(0, REDISPATCH_LIMIT);
+  if (batch.length < dispatchable.length) {
+    log.info(
+      { reportDate, dispatchable: dispatchable.length, deferred: dispatchable.length - batch.length },
+      'Org redispatch capped for this tick — remainder retried next tick',
+    );
+  }
+
+  const candidates: ReportTaskCandidate[] = batch.map((row) => {
+    const snapshot = snapshots.get(row.organization_id)!;
+    const org: OrganizationRow = {
+      id: row.org_id, name: row.name, slug: row.slug,
+      parent_id: null, manager: row.manager, is_active: row.is_active,
+    };
+    return {
+      reportId: row.report_id,
+      subjectKind: 'organization' as const,
+      subjectId: row.org_id,
+      teamId: null,
+      organizationId: row.organization_id,
+      lead: rowExecutor.get(row.report_id) ?? 'ollama',
+      prompt: buildOrganizationReportPrompt(
+        org,
+        reportDate,
+        row.report_slot,
+        snapshot,
+        buildOrganizationDataContext(row.org_id),
+      ),
+    };
+  });
+
+  const result = await createTeamReportTasks(app, candidates);
+  log.info({ reportDate, redispatched: result.created, failed: result.failed }, 'Unlinked org work-report tasks redispatched');
+
   const backoffStmt = db.prepare(`
     UPDATE work_reports
     SET redispatch_attempts = redispatch_attempts + 1,
@@ -1250,6 +1599,7 @@ async function reconcileScheduledRuns(app: FastifyInstance): Promise<void> {
   // 이미 도착한 결과가 missed로 오분류되지 않게 한다. 실패 태스크는 링크 해제 후 재발행.
   ingestCompletedReportTasks(reportDate);
   await redispatchUnlinkedTeamReports(app, reportDate);
+  await redispatchUnlinkedOrgReports(app, reportDate);
   if (now >= amFinalizeAt) {
     finalizeMissedWorkReports(reportDate, 'am', now);
   }
@@ -1260,22 +1610,30 @@ async function reconcileScheduledRuns(app: FastifyInstance): Promise<void> {
 
 // 중복 기동 가드 — start를 여러 번 호출해도 interval이 누적되지 않게 (리뷰 지적 2026-07-08)
 let schedulerCleanup: (() => void) | null = null;
+const schedulerRunGate = new WorkReportSchedulerRunGate();
 
 export function startWorkReportScheduler(app: FastifyInstance): () => void {
   if (schedulerCleanup) {
     log.warn('Work-report scheduler already running — reusing existing instance');
     return schedulerCleanup;
   }
-  void reconcileScheduledRuns(app).catch((error: unknown) => {
-    const message = error instanceof Error ? error.message : String(error);
-    log.warn({ error: message }, 'Initial work-report scheduler reconciliation failed');
-  });
+  const runReconciliation = (source: 'initial' | 'tick') => {
+    void schedulerRunGate.run(() => reconcileScheduledRuns(app))
+      .then((started) => {
+        if (!started) {
+          log.warn({ source }, 'Work-report scheduler reconciliation skipped — previous run still active');
+        }
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        log.warn({ error: message, source }, 'Work-report scheduler reconciliation failed');
+      });
+  };
+
+  runReconciliation('initial');
 
   const timer = setInterval(() => {
-    void reconcileScheduledRuns(app).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      log.warn({ error: message }, 'Work-report scheduler tick failed');
-    });
+    runReconciliation('tick');
   }, POLL_INTERVAL_MS);
   timer.unref();
   log.info({ intervalMs: POLL_INTERVAL_MS }, 'Work-report scheduler started');

@@ -10,6 +10,7 @@ import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../u
 import { createLogger } from '../utils/logger.js';
 import { createTaskId } from '../utils/id.js';
 import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
+import { buildProviderProcessEnv } from './provider-process-env.js';
 
 const log = createLogger('agent-manager');
 
@@ -444,8 +445,7 @@ class AgentManager {
       const result = await execa(provider.command, this.buildProbeArgs(provider, prompt), {
         cwd: (await import('node:os')).tmpdir(),
         env: {
-          ...process.env,
-          ...provider.env,
+          ...buildProviderProcessEnv(provider.id, provider.env),
           NCO_HOOK_DISABLED: '1',
         },
         reject: false,

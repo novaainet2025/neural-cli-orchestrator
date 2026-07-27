@@ -39,6 +39,9 @@ const RATE_LIMIT_PATTERNS = [
   /too many requests/i,
   /429/,
   /quota.exceeded/i,
+  /usage limit/i,
+  /weekly limit/i,
+  /monthly limit/i,
   /resource.exhausted/i,
   /slowdown/i,
 ];
@@ -139,18 +142,19 @@ const PROCESS_INTERRUPT_PATTERN = /SIGINT|exit(?: code)?=130|exit 130|aborting o
 
 /**
  * PM2 sends SIGINT to the NCO process group during a restart, so active provider
- * CLIs can report exit 130 before the shutdown drain observes them. Keep that
- * infrastructure interruption out of team-quality failures without masking
- * unrelated provider failures that merely finish while shutdown is in progress.
+ * CLIs can report exit 130 or a generic exit 1 before the shutdown drain observes
+ * them. The runtime marker covers only tasks that were active when shutdown began;
+ * the error pattern fallback preserves the legacy process-signal detection.
  */
 export function normalizeGracefulShutdownInterruption(
   result: TaskExecutionResult,
   shutdownSignal: string | null,
+  wasRunningAtShutdown = false,
 ): TaskExecutionResult {
   if (
     !shutdownSignal
     || result.success
-    || !PROCESS_INTERRUPT_PATTERN.test(result.error ?? '')
+    || (!wasRunningAtShutdown && !PROCESS_INTERRUPT_PATTERN.test(result.error ?? ''))
   ) {
     return result;
   }
@@ -335,18 +339,64 @@ export function classifyResult(result: TaskExecutionResult): TaskExecutionResult
   return result;
 }
 
-// ── P11: 단일 팀 위임 transient 재시도 지원 ──────────────────────────────
-// 정상완료·사용자취소·rate-limit은 제외. 일시적 무응답/idle/abort와 현재 실행자를
-// 사용할 수 없는 circuit/provider availability 실패만 true.
+// ── P11: 단일 팀 위임 provider failover 지원 ─────────────────────────────
+// 정상완료·사용자취소·rate-limit은 제외. 같은 provider 재시도로 회복되지 않는
+// queue/auth/CLI-process 실패도 팀 내부의 다음 실행자로 한 번 전환할 수 있게 한다.
 export function isTransientFailure(result: TaskExecutionResult): boolean {
   if (result.success) return false;                 // 정상완료는 절대 재시도 안 함(오탐 방지)
   if (result.status === 'cancelled') return false;  // 사용자 취소 재시도 금지
   const err = result.error ?? '';
+  if (
+    /\b(?:verifier failed|quality_rejected|evidence_gate_blocked|(?:user|operator)[ _-]?cancelled)\b/i.test(err)
+    || /\b(?:CLI|subprocess) cancelled\b/i.test(err)
+  ) return false;                                  // 정책/사용자 종결은 provider failover 금지
+  if (isRateLimitError(err)) return false;          // 기존 backoff/failover 경로와 중복 금지
   return err.startsWith('silent-failure:')            // classifyResult: 빈출력/무응답/limit메시지
       || err === 'timeout(idle)'                      // idle 타임아웃(활동 없음)
       || /aborting operation|aborted by (the )?provider/i.test(err) // 프로바이더측 abort
-      || /\b(?:circuit breaker open|provider[_ -]unavailable)\b/i.test(err);
-  // 주의: isRateLimitError(err)는 여기 포함 안 함 — rate-limit은 기존 backoff 루프가 처리(중복금지).
+      || /\bqueue_wait_timeout\b/i.test(err)           // 실행 전 provider queue 포화
+      || /\b(?:circuit breaker open|provider[_ -]unavailable)\b/i.test(err)
+      || /\b(?:invalid api key|credential preflight failed|unauthorized)\b/i.test(err)
+      || /\bprovider failure detected:\s*auth\b/i.test(err)
+      || /\b(?:CLI failed exit=|CLI timed out|subprocess exited with code|subprocess timed out)\b/i.test(err);
+}
+
+const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
+const EVOLUTION_LEARNING_RECOVERY_PATTERN =
+  /\b(?:queue_wait_timeout|session limit|invalid x-api-key|invalid api key|authentication_error|unauthorized|credential preflight failed|provider[_ -]unavailable)\b/i;
+
+/**
+ * Continuous Learning cycle-2 evidence showed a lead session-limit followed by
+ * a fallback 401 body. Keep the extra recovery classification team-scoped and
+ * accept evidence from either the normalized error or provider output.
+ */
+export function isEvolutionLearningRecoverableFailure(
+  teamSlug: string | null | undefined,
+  result: TaskExecutionResult,
+): boolean {
+  if (
+    teamSlug !== EVOLUTION_LEARNING_TEAM_SLUG
+    || result.success
+    || result.status === 'cancelled'
+  ) {
+    return false;
+  }
+  return EVOLUTION_LEARNING_RECOVERY_PATTERN.test(
+    `${result.error ?? ''}\n${result.output ?? ''}`,
+  );
+}
+
+function isEvolutionLearningTaskRecoverableFailure(
+  taskId: string,
+  result: TaskExecutionResult,
+): boolean {
+  const row = getDb().prepare(`
+    SELECT t.slug
+    FROM tasks k
+    JOIN teams t ON t.id = k.team_id
+    WHERE k.id=?
+  `).get(taskId) as { slug: string } | undefined;
+  return isEvolutionLearningRecoverableFailure(row?.slug, result);
 }
 
 // team_id(태스크 DB 컬럼)로 TeamRow(lead+members) 로드. company-orchestrator.loadTeams와 동일 스키마.
@@ -869,6 +919,7 @@ interface TaskRuntimeEntry {
   liveness: LivenessState;
   stalledSince: number | null;
   lastHeartbeatFlushAt: number;
+  shutdownSignal?: string;
   abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
 }
 
@@ -921,6 +972,9 @@ class TaskQueueManager {
 
   beginShutdown(signal: string): void {
     this.shutdownSignal ??= signal;
+    for (const runtime of this.runtimes.values()) {
+      runtime.shutdownSignal ??= this.shutdownSignal;
+    }
   }
 
   /**
@@ -1118,6 +1172,7 @@ class TaskQueueManager {
     let teamRetried = false;   // P11: 팀 transient failover는 태스크당 1회만
     let retryAfterRateLimit = false;
     const allowStallRetry = process.env.NCO_STALL_RETRY !== '0';
+    const p11FailoverEnabled = process.env.NCO_P11_FAILOVER_ENABLED !== '0';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       // 팀 failover/idle retry의 continue도 attempt를 증가시킨다. 직전 실패가 실제
@@ -1168,7 +1223,15 @@ class TaskQueueManager {
       // ── P11: 팀 위임 transient 실패 → 팀 실행자 체인 다음 후보로 1회 재시도(team-aware) ──
       // company-orchestrator 파이프라인의 stage-failover(P5)를 단일 팀 위임(/api/task 직행)에도 부여.
       // 정상완료·사용자취소·rate-limit은 isTransientFailure에서 이미 배제 → 오탐 없음.
-      if (!teamRetried && isTransientFailure(result)) {
+      // 비활성화: NCO_P11_FAILOVER_ENABLED=0
+      if (
+        p11FailoverEnabled
+        && !teamRetried
+        && (
+          isTransientFailure(result)
+          || isEvolutionLearningTaskRecoverableFailure(task.taskId, result)
+        )
+      ) {
         const known = new Set(this.agents.keys());
         const next = await nextTeamExecutor(task.taskId, known, attemptedAgents);
         if (next && next !== currentAgentId) {
@@ -1780,6 +1843,7 @@ class TaskQueueManager {
     return normalizeGracefulShutdownInterruption(
       { ...result, success, output, error, status },
       this.shutdownSignal,
+      runtime.shutdownSignal != null,
     );
   }
 

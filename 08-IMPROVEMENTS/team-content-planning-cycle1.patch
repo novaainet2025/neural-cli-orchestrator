@@ -1,0 +1,157 @@
+diff --git a/src/agent/agent-manager.ts b/src/agent/agent-manager.ts
+index 949fd8f..6430780 100644
+--- a/src/agent/agent-manager.ts
++++ b/src/agent/agent-manager.ts
+@@ -10,6 +10,7 @@ import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../u
+ import { createLogger } from '../utils/logger.js';
+ import { createTaskId } from '../utils/id.js';
+ import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
++import { buildProviderProcessEnv } from './provider-process-env.js';
+ 
+ const log = createLogger('agent-manager');
+ 
+@@ -444,8 +445,7 @@ class AgentManager {
+       const result = await execa(provider.command, this.buildProbeArgs(provider, prompt), {
+         cwd: (await import('node:os')).tmpdir(),
+         env: {
+-          ...process.env,
+-          ...provider.env,
++          ...buildProviderProcessEnv(provider.id, provider.env),
+           NCO_HOOK_DISABLED: '1',
+         },
+         reject: false,
+diff --git a/src/agent/orchestrated-loop.ts b/src/agent/orchestrated-loop.ts
+index b2a88bd..ab1d2b6 100644
+--- a/src/agent/orchestrated-loop.ts
++++ b/src/agent/orchestrated-loop.ts
+@@ -14,6 +14,7 @@ import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-
+ import { trajectoryGuard } from '../security/trajectory-guard.js';
+ import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+ import { ECHO_LINE_RE } from '../utils/echo-filter.js';
++import { buildProviderProcessEnv } from './provider-process-env.js';
+ 
+ const log = createLogger('orchestrated-loop');
+ 
+@@ -327,9 +328,8 @@ export class OrchestratedLoop {
+         forceKillAfterDelay: 3000,
+         detached: process.platform !== 'win32',
+         maxBuffer: 10 * 1024 * 1024,
+-        env: { 
+-          ...process.env, 
+-          ...this.provider.env, 
++        env: {
++          ...buildProviderProcessEnv(this.provider.id, this.provider.env),
+           NO_COLOR: '1', 
+           TERM: 'dumb',
+           ...(this.taskProjectDir ? { PROJECT_DIR: this.taskProjectDir } : {})
+diff --git a/src/agent/provider-process-env.ts b/src/agent/provider-process-env.ts
+new file mode 100644
+index 0000000..55d8081
+--- /dev/null
++++ b/src/agent/provider-process-env.ts
+@@ -0,0 +1,42 @@
++import { homedir } from 'node:os';
++import { delimiter, join } from 'node:path';
++
++const DISABLED_TOGGLE_VALUES = new Set(['0', 'false', 'off']);
++
++function isCursorPathFallbackEnabled(value: string | undefined): boolean {
++  return !DISABLED_TOGGLE_VALUES.has(value?.trim().toLowerCase() ?? '');
++}
++
++/**
++ * Build the environment for a provider subprocess.
++ *
++ * Cursor Agent is installed in ~/.local/bin on NCO hosts, but service managers
++ * can start NCO with a narrower PATH. Keep the fallback provider-scoped and
++ * reversible so other CLI lookup behavior remains unchanged.
++ */
++export function buildProviderProcessEnv(
++  providerId: string,
++  providerEnv: Record<string, string> | undefined,
++  baseEnv: NodeJS.ProcessEnv = process.env,
++  userHome = homedir(),
++): NodeJS.ProcessEnv {
++  const merged: NodeJS.ProcessEnv = {
++    ...baseEnv,
++    ...providerEnv,
++  };
++
++  if (
++    providerId !== 'cursor-agent'
++    || !isCursorPathFallbackEnabled(merged.NCO_CURSOR_AGENT_PATH_FALLBACK)
++  ) {
++    return merged;
++  }
++
++  const fallbackDir = merged.NCO_CURSOR_AGENT_BIN_DIR?.trim() || join(userHome, '.local', 'bin');
++  const pathEntries = (merged.PATH ?? '').split(delimiter).filter(Boolean);
++  if (!pathEntries.includes(fallbackDir)) {
++    merged.PATH = [fallbackDir, ...pathEntries].join(delimiter);
++  }
++
++  return merged;
++}
+diff --git a/src/agent/provider-process-env.test.ts b/src/agent/provider-process-env.test.ts
+new file mode 100644
+index 0000000..e2ef743
+--- /dev/null
++++ b/src/agent/provider-process-env.test.ts
+@@ -0,0 +1,57 @@
++import { delimiter } from 'node:path';
++import { describe, expect, it } from 'vitest';
++import { buildProviderProcessEnv } from './provider-process-env.js';
++
++describe('buildProviderProcessEnv', () => {
++  it('prepends the user-local bin fallback for cursor-agent', () => {
++    const env = buildProviderProcessEnv(
++      'cursor-agent',
++      { CURSOR_SETTING: 'enabled' },
++      { PATH: ['/usr/bin', '/bin'].join(delimiter) },
++      '/srv/nco',
++    );
++
++    expect(env.PATH).toBe(['/srv/nco/.local/bin', '/usr/bin', '/bin'].join(delimiter));
++    expect(env.CURSOR_SETTING).toBe('enabled');
++  });
++
++  it('does not alter PATH for another provider', () => {
++    const env = buildProviderProcessEnv(
++      'codex',
++      undefined,
++      { PATH: ['/usr/bin', '/bin'].join(delimiter) },
++      '/srv/nco',
++    );
++
++    expect(env.PATH).toBe(['/usr/bin', '/bin'].join(delimiter));
++  });
++
++  it('preserves the original PATH when the fallback toggle is off', () => {
++    const env = buildProviderProcessEnv(
++      'cursor-agent',
++      undefined,
++      {
++        PATH: ['/usr/bin', '/bin'].join(delimiter),
++        NCO_CURSOR_AGENT_PATH_FALLBACK: 'off',
++      },
++      '/srv/nco',
++    );
++
++    expect(env.PATH).toBe(['/usr/bin', '/bin'].join(delimiter));
++  });
++
++  it('uses the configured cursor-agent bin directory without duplicating it', () => {
++    const configured = '/opt/cursor/bin';
++    const env = buildProviderProcessEnv(
++      'cursor-agent',
++      undefined,
++      {
++        PATH: [configured, '/usr/bin'].join(delimiter),
++        NCO_CURSOR_AGENT_BIN_DIR: configured,
++      },
++      '/srv/nco',
++    );
++
++    expect(env.PATH).toBe([configured, '/usr/bin'].join(delimiter));
++  });
++});

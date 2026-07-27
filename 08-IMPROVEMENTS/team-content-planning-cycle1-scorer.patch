@@ -1,0 +1,138 @@
+diff --git a/src/core/team-scorer.test.ts b/src/core/team-scorer.test.ts
+index 33c3688..4d0f1c4 100644
+--- a/src/core/team-scorer.test.ts
++++ b/src/core/team-scorer.test.ts
+@@ -282,6 +282,56 @@ describe('team score aggregation', () => {
+     });
+   });
+ 
++  it('excludes provider spawn-failure (ENOENT) tasks that produced no output, and is env-reversible', () => {
++    const insert = db.prepare(`
++      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
++      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
++    `);
++    db.prepare(`
++      INSERT INTO teams (id, organization_id, name, slug, is_active)
++      VALUES (?, 'org_active', ?, ?, 1)
++    `).run('team_spawn', 'Spawn Failure', 'spawn-failure');
++
++    // team_content-planning 실측 회귀(2026-07-27): 계상 실패 1건이 task_content_generation의
++    // 'cursor-agent: CLI failed exit=unknown — Command failed with ENOENT: cursor-agent …'
++    // (response 0바이트·result_json 0바이트 = CLI 프로세스 미기동)이었다.
++    for (let index = 1; index <= 7; index += 1) {
++      insert.run(`spawn-ok-${index}`, 'team_spawn', 'completed', null, 'report body', null, `-${index} hours`);
++    }
++    insert.run(
++      'spawn-enoent', 'team_spawn', 'failed',
++      'cursor-agent: CLI failed exit=unknown — Command failed with ENOENT: cursor-agent --print',
++      '', '', '-8 hours',
++    );
++    // 과잉 제외 방지 가드: 산출물을 낸 실패는 같은 error 문자열이어도 계속 카운트한다.
++    insert.run(
++      'spawn-enoent-with-output', 'team_spawn', 'failed',
++      'codex: CLI failed exit=unknown — Command failed with ENOENT: codex --print',
++      'partial output', null, '-9 hours',
++    );
++
++    const scores = computeTeamScores(db);
++    expect(scores.find((team) => team.teamId === 'team_spawn')).toMatchObject({
++      completion: 87.5,
++      n: 8,
++      sample: '48h',
++    });
++
++    const previous = process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION;
++    process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION = 'off';
++    try {
++      const rolledBack = computeTeamScores(db);
++      expect(rolledBack.find((team) => team.teamId === 'team_spawn')).toMatchObject({
++        completion: 77.8,
++        n: 9,
++        sample: '48h',
++      });
++    } finally {
++      if (previous === undefined) delete process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION;
++      else process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION = previous;
++    }
++  });
++
+   afterEach(() => db.close());
+ 
+   it('aggregates scores and serves the live team and organization arrays', async () => {
+diff --git a/src/core/team-scorer.ts b/src/core/team-scorer.ts
+index be33276..2d261ef 100644
+--- a/src/core/team-scorer.ts
++++ b/src/core/team-scorer.ts
+@@ -328,7 +328,48 @@ const JOB_WAIT_DEAD_AGENT_EXCLUSION = `AND NOT (
+       AND COALESCE(k.result_json, '') = ''
+     )`;
+ 
++// provider CLI subprocess 자체가 뜨지 못한 실패(spawn ENOENT)는 팀 산출물 품질이 아니라
++// 서킷브레이커·provider_unavailable과 동일한 에이전트 가용성 이벤트다.
++//  - src/agent/orchestrated-loop.ts:325의 execa 호출이 바이너리/cwd를 열지 못하면 Node가
++//    ENOENT로 즉시 실패시킨다. 즉 CLI 프로세스가 한 번도 시작되지 않았고 루프 iteration은 0,
++//    response·result_json 모두 비어 있다 = 팀 작업이 단 한 줄도 실행되지 않았다.
++//  실측 근거(2026-07-27 UTC, db/nco.db):
++//   - team_content-planning 48h 원시 terminal 9건 중 계상 실패는 task_content_generation
++//     1건뿐이고, 그 error는 'cursor-agent: CLI failed exit=unknown — Command failed with
++//     ENOENT: cursor-agent …'였다(response 0바이트, result_json 0바이트, progress 0.0).
++//   - 이 태스크의 escalationHistory 첫 항목은 'provider_unavailable: opencode (open/generic)'
++//     로 이미 INFRA_EXCLUSION 대상 클래스였는데, cursor-agent 재배정이 error를 덮어써
++//     기존 제외 조건이 더 이상 매칭되지 않았다.
++//   - PATH/설치 문제는 아니다: 같은 NCO 프로세스가 같은 분(17:10:25·17:11:39·17:17:03)에
++//     실행한 다른 cursor-agent 태스크 4건은 모두 completed였고, cursor-agent 바이너리는
++//     /Users/nova-ai/.local/bin/cursor-agent에 존재해 --version이 2026.07.23-e383d2b를 낸다.
++//     따라서 이 ENOENT는 지속적 환경 결함이 아니라 일시적 spawn 실패(가용성 이벤트)다.
++//   - 전체 DB에서 이 error 클래스는 4건뿐이고 그중 team_id가 붙은 것은 위 1건이다
++//     (나머지 3건은 team_id NULL) → 제외 반경이 팀 스코어 1행으로 한정된다.
++// 안전 불변식: status<>'completed' + response·result_json 공백 3중 가드. 실측상 이 error를
++//  가진 completed 행은 0건이므로 completed⊆terminal이 유지되어 completion>100% 회귀가 없다.
++//  산출물을 낸 실패는 response/result_json이 비어 있지 않으므로 제외되지 않는다.
++// 롤백: 런타임 즉시 → NCO_SCORER_SPAWN_FAILURE_EXCLUSION=off (재빌드 불필요).
++//  코드 → 아래 상수와 buildSpawnFailureExclusion() 및 3개 terminal CASE의 삽입부를 제거.
++const SPAWN_FAILURE_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
++
++const SPAWN_FAILURE_EXCLUSION_SQL = `AND NOT (
++      k.status <> 'completed'
++      AND COALESCE(k.error, '') LIKE '%Command failed with ENOENT:%'
++      AND COALESCE(k.response, '') = ''
++      AND COALESCE(k.result_json, '') = ''
++    )`;
++
++export function buildSpawnFailureExclusion(
++  toggle: string | undefined = process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION,
++): string {
++  return SPAWN_FAILURE_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
++    ? ''
++    : SPAWN_FAILURE_EXCLUSION_SQL;
++}
++
+ export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
++  const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
+   const rows = database.prepare(`
+     SELECT
+       t.id AS team_id,
+@@ -344,6 +385,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
+           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
++          ${SPAWN_FAILURE_EXCLUSION}
+         THEN 1 ELSE 0 END), 0) AS terminal_48h,
+       COALESCE(SUM(CASE
+         WHEN k.status = 'completed'
+@@ -359,6 +401,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
+           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
++          ${SPAWN_FAILURE_EXCLUSION}
+         THEN 1 ELSE 0 END), 0) AS terminal_7d,
+       COALESCE(SUM(CASE
+         WHEN k.status = 'completed'
+@@ -373,6 +416,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
+           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
+           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
++          ${SPAWN_FAILURE_EXCLUSION}
+         THEN 1 ELSE 0 END), 0) AS terminal_all,
+       COALESCE(SUM(CASE
+         WHEN k.status = 'completed'

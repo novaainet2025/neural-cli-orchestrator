@@ -1,6 +1,17 @@
 import Database from 'better-sqlite3';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildReportPrompt, buildTeamDataContext } from './work-report-scheduler.js';
+import {
+  buildReportPrompt,
+  buildReportTaskMetadata,
+  buildOrganizationDataContext,
+  buildOrganizationReportPrompt,
+  buildTeamDataContext,
+  ingestCompletedReportTasks,
+  TASK_DISPATCH_STAGGER_MS,
+  UNLINK_TASK_STATUSES,
+  WorkReportDispatchGate,
+  WorkReportSchedulerRunGate,
+} from './work-report-scheduler.js';
 
 describe('work report real-data context', () => {
   let db: Database.Database;
@@ -11,7 +22,7 @@ describe('work report real-data context', () => {
     delete process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
     db = new Database(':memory:');
     db.exec(`
-      CREATE TABLE teams (id TEXT PRIMARY KEY, slug TEXT NOT NULL, lead TEXT);
+      CREATE TABLE teams (id TEXT PRIMARY KEY, organization_id TEXT, name TEXT, slug TEXT NOT NULL, lead TEXT, charter TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')));
       CREATE TABLE team_members (
         id TEXT PRIMARY KEY, team_id TEXT NOT NULL, member_type TEXT NOT NULL,
         member_ref TEXT NOT NULL, created_at TEXT DEFAULT (datetime('now'))
@@ -20,7 +31,8 @@ describe('work report real-data context', () => {
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
         prompt TEXT NOT NULL DEFAULT '', response TEXT, error TEXT,
         result_json TEXT, evidence_json TEXT, metadata_json TEXT,
-        created_at TEXT DEFAULT (datetime('now')), completed_at TEXT
+        created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')),
+        completed_at TEXT
       );
       CREATE TABLE learning_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT, agent_id TEXT NOT NULL,
@@ -28,7 +40,10 @@ describe('work report real-data context', () => {
         auto_applied INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE work_reports (
-        id TEXT PRIMARY KEY, team_id TEXT, report_date TEXT NOT NULL, status TEXT NOT NULL
+        id TEXT PRIMARY KEY, team_id TEXT, organization_id TEXT, report_date TEXT NOT NULL,
+        status TEXT NOT NULL, due_at TEXT, source_task_id TEXT, summary_json TEXT,
+        title TEXT, body_md TEXT, submitted_at TEXT, lateness_minutes INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE agent_performance_summary (
         agent_id TEXT NOT NULL, task_type TEXT NOT NULL, total_runs INTEGER NOT NULL,
@@ -277,5 +292,162 @@ describe('work report real-data context', () => {
     expect(prompt).toContain('[실데이터]\n데이터 없음');
     expect(prompt).toContain('없는 수치·사건·완료 상태를 지어내지 않는다');
     expect(prompt).toContain('데이터가 없더라도 빈 응답을 내지 말고');
+  });
+
+  it('includes both direct teams and sub-org teams in organization data context', () => {
+    db.exec(`
+      CREATE TABLE organizations (
+        id TEXT PRIMARY KEY, name TEXT, slug TEXT, parent_id TEXT,
+        manager TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+    db.prepare('INSERT INTO organizations (id, name, slug, manager, is_active) VALUES (?, ?, ?, ?, ?)')
+      .run('org_root', '루트', 'root', 'codex', 1);
+    db.prepare('INSERT INTO organizations (id, name, slug, parent_id, manager, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('org_sub', '하위', 'sub', 'org_root', 'ollama', 1);
+    db.prepare('INSERT INTO teams (id, organization_id, name, slug, lead, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('team_direct', 'org_root', 'Direct Team', 'direct', 'codex', 1);
+    db.prepare('INSERT INTO teams (id, organization_id, name, slug, lead, is_active) VALUES (?, ?, ?, ?, ?, ?)')
+      .run('team_sub', 'org_sub', 'Sub Team', 'sub-team', 'ollama', 1);
+    const insertTask = db.prepare('INSERT INTO tasks (id, team_id, status, created_at) VALUES (?, ?, ?, datetime(\'now\'))');
+    insertTask.run('task-d1', 'team_direct', 'completed');
+    insertTask.run('task-s1', 'team_sub', 'failed');
+
+    const context = buildOrganizationDataContext('org_root', db);
+
+    expect(context).toContain('Direct Team');
+    expect(context).toContain('Sub Team');
+    expect(context).toContain('[tasks] Direct Team');
+    expect(context).toContain('[tasks] Sub Team');
+  });
+
+  it('includes company name, org path, and all constraints in afternoon report prompt', () => {
+    const org: import('./work-report-scheduler.js').OrganizationRow = {
+      id: 'org_test', name: '테스트회사', slug: 'test-company',
+      parent_id: null, manager: 'codex', is_active: 1,
+    };
+    const snapshot: import('./work-report-scheduler.js').SubjectSnapshot = {
+      organizationId: 'org_test', teamId: null,
+      orgRootId: 'org_test', orgParentId: null,
+      orgPath: 'test-company', orgDepth: 0,
+      unitLevel: 'company', active: true,
+    };
+    const prompt = buildOrganizationReportPrompt(
+      org, '2026-07-28', 'pm', snapshot,
+      '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.',
+    );
+
+    expect(prompt).toContain('[업무보고 작성] 2026-07-28 오후 보고서를 작성하라.');
+    expect(prompt).toContain('회사: 테스트회사');
+    expect(prompt).toContain('조직 경로: test-company');
+    expect(prompt).toContain('[실데이터]');
+    expect(prompt).toContain('없는 수치·사건·완료 상태를 지어내지 않는다');
+    expect(prompt).toContain('데이터가 없더라도 빈 응답을 내지 말고');
+    expect(prompt).toContain('한국어로만 작성');
+  });
+
+  it('excludes teamId from metadata when candidate has no team', () => {
+    const orgCandidate: import('./work-report-scheduler.js').ReportTaskCandidate = {
+      reportId: 'wr-org-1',
+      subjectKind: 'organization',
+      subjectId: 'org_test',
+      teamId: null,
+      organizationId: 'org_test',
+      lead: 'codex',
+      prompt: 'test prompt',
+    };
+    const metadata = buildReportTaskMetadata(orgCandidate);
+
+    expect(metadata.subjectKind).toBe('organization');
+    expect(metadata.subjectId).toBe('org_test');
+    expect(metadata.organizationId).toBe('org_test');
+    expect(metadata.workReportId).toBe('wr-org-1');
+    expect(metadata).not.toHaveProperty('teamId');
+  });
+
+  it('serializes individual dispatches from concurrent batches at five-second start intervals', async () => {
+    let now = 0;
+    const starts: number[] = [];
+    const sleeps: number[] = [];
+    const gate = new WorkReportDispatchGate(
+      TASK_DISPATCH_STAGGER_MS,
+      () => now,
+      async (ms) => {
+        sleeps.push(ms);
+        now += ms;
+      },
+    );
+
+    await Promise.all([
+      gate.run(async () => { starts.push(now); return 'team'; }),
+      gate.run(async () => { starts.push(now); return 'organization'; }),
+      gate.run(async () => { starts.push(now); return 'overlap'; }),
+    ]);
+
+    expect(TASK_DISPATCH_STAGGER_MS).toBe(5_000);
+    expect(starts).toEqual([0, 5_000, 10_000]);
+    expect(sleeps).toEqual([5_000, 5_000]);
+  });
+
+  it('skips an overlapping scheduler reconciliation until the active run finishes', async () => {
+    const gate = new WorkReportSchedulerRunGate();
+    let releaseFirst!: () => void;
+    const firstBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const starts: string[] = [];
+
+    const first = gate.run(async () => {
+      starts.push('first');
+      await firstBlocked;
+    });
+    await Promise.resolve();
+    const overlapStarted = await gate.run(async () => {
+      starts.push('overlap');
+    });
+
+    expect(overlapStarted).toBe(false);
+    expect(starts).toEqual(['first']);
+
+    releaseFirst();
+    expect(await first).toBe(true);
+    expect(await gate.run(async () => { starts.push('next'); })).toBe(true);
+    expect(starts).toEqual(['first', 'next']);
+  });
+
+  it('unlinks a lease-expired report task so the report becomes redispatchable', () => {
+    db.prepare(`
+      INSERT INTO tasks (id, status, completed_at)
+      VALUES ('task-expired', 'lease_expired', datetime('now'))
+    `).run();
+    db.prepare(`
+      INSERT INTO work_reports (id, report_date, status, due_at, source_task_id)
+      VALUES ('report-expired', '2026-07-28', 'pending', '2026-07-28T03:00:00.000Z', 'task-expired')
+    `).run();
+
+    expect(ingestCompletedReportTasks('2026-07-28', db)).toEqual({ ingested: 0, unlinked: 1 });
+    const row = db.prepare('SELECT source_task_id FROM work_reports WHERE id=?')
+      .get('report-expired') as { source_task_id: string | null };
+
+    expect(UNLINK_TASK_STATUSES).toContain('lease_expired');
+    expect(row.source_task_id).toBeNull();
+  });
+
+  it('ingests a completed previous-day report after the KST midnight boundary', () => {
+    db.prepare(`
+      INSERT INTO tasks (id, status, response, completed_at)
+      VALUES ('task-previous-day', 'completed', '# 전날 회사 보고', '2026-07-27 15:02:00')
+    `).run();
+    db.prepare(`
+      INSERT INTO work_reports (id, report_date, status, due_at, source_task_id)
+      VALUES ('report-previous-day', '2026-07-27', 'missed', '2026-07-27T09:00:00.000Z', 'task-previous-day')
+    `).run();
+
+    expect(ingestCompletedReportTasks('2026-07-28', db)).toEqual({ ingested: 1, unlinked: 0 });
+    const row = db.prepare('SELECT status, body_md FROM work_reports WHERE id=?')
+      .get('report-previous-day') as { status: string; body_md: string | null };
+
+    expect(row.status).toBe('late');
+    expect(row.body_md).toContain('전날 회사 보고');
   });
 });

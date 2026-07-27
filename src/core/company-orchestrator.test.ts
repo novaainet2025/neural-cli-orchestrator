@@ -2,7 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   rankTeam,
   orderTeams,
+  orderRecoveryMembers,
   resolveExecutor,
+  resolveExecutorChain,
   selectCompanyStageExecutor,
   resolveDecomposer,
   resolveDecomposers,
@@ -281,6 +283,59 @@ describe('resolveExecutor', () => {
     expect(resolveExecutor(
       team({ slug: 'a', name: 'A', lead: 'codex', members: ['nvidia'] }), known, 'ollama', avail
     )).toBe('codex');
+  });
+
+  it('Continuous Learning lead 불가용 시 선언된 로컬 ollama를 첫 복구자로 선택', () => {
+    const available = (id: string) => id !== 'opencode' && known.has(id);
+    expect(resolveExecutor(
+      team({
+        slug: 'gov-evolution-learning',
+        name: 'Continuous Learning',
+        lead: 'opencode',
+        members: ['codex', 'nvidia', 'ollama'],
+      }),
+      known,
+      'ollama',
+      available,
+    )).toBe('ollama');
+  });
+});
+
+describe('resolveExecutorChain', () => {
+  const known = new Set(['claude-code', 'codex', 'nvidia', 'ollama']);
+
+  it('전용 토글 off 시 Continuous Learning의 선언된 member 순서를 복원', () => {
+    expect(orderRecoveryMembers(
+      {
+        slug: 'gov-evolution-learning',
+        members: ['codex', 'nvidia', 'ollama'],
+      },
+      'off',
+    )).toEqual(['codex', 'nvidia', 'ollama']);
+  });
+
+  it('Continuous Learning lead는 유지하고 ollama를 첫 failover 후보로 둠', () => {
+    expect(resolveExecutorChain(
+      team({
+        slug: 'gov-evolution-learning',
+        name: 'Continuous Learning',
+        lead: 'claude-code',
+        members: ['codex', 'nvidia', 'ollama'],
+      }),
+      known,
+    )).toEqual(['claude-code', 'ollama', 'codex', 'nvidia']);
+  });
+
+  it('다른 팀의 선언된 member 순서는 바꾸지 않음', () => {
+    expect(resolveExecutorChain(
+      team({
+        slug: 'gov-evolution-memory',
+        name: 'Memory',
+        lead: 'claude-code',
+        members: ['codex', 'nvidia', 'ollama'],
+      }),
+      known,
+    )).toEqual(['claude-code', 'codex', 'nvidia', 'ollama']);
   });
 });
 

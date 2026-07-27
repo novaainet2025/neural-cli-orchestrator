@@ -14,6 +14,7 @@ import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-
 import { trajectoryGuard } from '../security/trajectory-guard.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { ECHO_LINE_RE } from '../utils/echo-filter.js';
+import { buildProviderProcessEnv } from './provider-process-env.js';
 
 const log = createLogger('orchestrated-loop');
 
@@ -327,9 +328,8 @@ export class OrchestratedLoop {
         forceKillAfterDelay: 3000,
         detached: process.platform !== 'win32',
         maxBuffer: 10 * 1024 * 1024,
-        env: { 
-          ...process.env, 
-          ...this.provider.env, 
+        env: {
+          ...buildProviderProcessEnv(this.provider.id, this.provider.env),
           NO_COLOR: '1', 
           TERM: 'dumb',
           ...(this.taskProjectDir ? { PROJECT_DIR: this.taskProjectDir } : {})

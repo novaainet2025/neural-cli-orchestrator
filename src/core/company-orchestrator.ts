@@ -234,6 +234,30 @@ export function orderTeams(teams: TeamRow[]): TeamRow[] {
     .map((x) => x.t);
 }
 
+const EVOLUTION_LEARNING_LOCAL_RECOVERY_DISABLED = new Set(['0', 'false', 'off']);
+
+// Continuous Learning은 provider queue/session/auth 장애 자체를 학습해야 하므로,
+// 원격 provider를 연속으로 거친 뒤에야 로컬 복구자를 시도하면 같은 장애 표본을
+// 중복 생성한다. lead 우선순위는 유지하되, 팀에 명시적으로 등록된 ollama만 첫
+// 복구 member로 올린다. 다른 팀과 미등록 외부 provider에는 영향이 없다.
+// 런타임 롤백: NCO_EVOLUTION_LEARNING_LOCAL_RECOVERY=off.
+export function orderRecoveryMembers(
+  team: Pick<TeamRow, 'slug' | 'members'>,
+  toggle = process.env.NCO_EVOLUTION_LEARNING_LOCAL_RECOVERY,
+): string[] {
+  const disabled = EVOLUTION_LEARNING_LOCAL_RECOVERY_DISABLED.has(
+    toggle?.trim().toLowerCase() ?? '',
+  );
+  if (
+    disabled
+    || team.slug !== 'gov-evolution-learning'
+    || !team.members.includes('ollama')
+  ) {
+    return team.members;
+  }
+  return ['ollama', ...team.members.filter((member) => member !== 'ollama')];
+}
+
 // 팀의 실행자 해석: (가용한) lead → (가용한) 첫 member → fallback.
 // isAvailable 미지정 시 "등록 여부"만 본다(테스트 호환). 지정 시 리밋/차단된 provider 제외.
 export function resolveExecutor(
@@ -242,13 +266,14 @@ export function resolveExecutor(
   fallback = 'ollama',
   isAvailable: AvailabilityFn = (id) => knownAgents.has(id),
 ): string {
+  const members = orderRecoveryMembers(team);
   if (team.lead && isAvailable(team.lead)) return team.lead;
-  const m = team.members.find((ref) => isAvailable(ref));
+  const m = members.find((ref) => isAvailable(ref));
   if (m) return m;
   if (isAvailable(fallback)) return fallback;
   // 전원 차단 시: 등록된 lead/멤버라도 반환(디스패치는 /api/task failover 가 재시도).
   if (team.lead && knownAgents.has(team.lead)) return team.lead;
-  const km = team.members.find((ref) => knownAgents.has(ref));
+  const km = members.find((ref) => knownAgents.has(ref));
   return km ?? team.lead ?? fallback;
 }
 
@@ -266,11 +291,12 @@ export function resolveExecutorChain(
   const push = (id: string | null | undefined) => {
     if (id && knownAgents.has(id) && !chain.includes(id)) chain.push(id);
   };
+  const members = orderRecoveryMembers(team);
   if (team.lead && isAvailable(team.lead)) push(team.lead);
-  for (const ref of team.members) if (isAvailable(ref)) push(ref);
+  for (const ref of members) if (isAvailable(ref)) push(ref);
   if (isAvailable(fallback)) push(fallback);
   push(team.lead);
-  for (const ref of team.members) push(ref);
+  for (const ref of members) push(ref);
   push(fallback);
   return chain;
 }
