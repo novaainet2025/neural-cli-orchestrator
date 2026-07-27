@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { mockExeca, loadEnabledProviders, env, mockProviders } = vi.hoisted(() => {
+const {
+  mockExeca,
+  mockChatCreate,
+  mockEventPublish,
+  loadEnabledProviders,
+  env,
+  mockProviders,
+} = vi.hoisted(() => {
   const providers = [
     {
       id: 'aider',
@@ -19,12 +26,26 @@ const { mockExeca, loadEnabledProviders, env, mockProviders } = vi.hoisted(() =>
       args: ['--test-flag'],
       env: { SOME_VAR: 'val' } as Record<string, string>,
       persona: { systemPrompt: 'test claude prompt' },
-    }
+    },
+    {
+      id: 'api-tools',
+      role: 'execution',
+      type: 'api',
+      command: null,
+      args: [],
+      env: {} as Record<string, string>,
+      model: 'test-model',
+      endpoint: 'http://127.0.0.1:9999/v1',
+      concurrency: 1,
+      persona: { systemPrompt: 'test api prompt' },
+    },
   ];
   return {
     mockProviders: providers,
     loadEnabledProviders: vi.fn(() => providers),
     env: { PROJECT_DIR: '/dummy/project' },
+    mockChatCreate: vi.fn(),
+    mockEventPublish: vi.fn(async () => undefined),
     mockExeca: vi.fn(async (cmd: string, args: string[], opts: any) => {
       return { stdout: 'mocked output', stderr: '', exitCode: 0 };
     }),
@@ -44,13 +65,23 @@ vi.mock('execa', () => ({
   execa: mockExeca,
 }));
 
+vi.mock('openai', () => ({
+  default: class MockOpenAI {
+    chat = {
+      completions: {
+        create: (...args: unknown[]) => mockChatCreate(...args),
+      },
+    };
+  },
+}));
+
 vi.mock('../storage/database.js', () => ({
   getDb: () => { throw new Error('database unavailable in unit test'); },
 }));
 
 vi.mock('../core/event-bus.js', () => ({
   eventBus: {
-    publish: vi.fn(),
+    publish: mockEventPublish,
   },
 }));
 
@@ -89,6 +120,15 @@ vi.mock('../core/agent-evolver.js', () => ({
   },
 }));
 
+vi.mock('../security/trajectory-guard.js', () => ({
+  trajectoryGuard: {
+    beginTask: vi.fn(),
+    endTask: vi.fn(),
+    beforeTool: vi.fn(async () => ({ allowed: true })),
+    afterTool: vi.fn(async () => undefined),
+  },
+}));
+
 vi.mock('../utils/logger.js', () => ({
   createLogger: () => ({
     info: vi.fn(),
@@ -105,6 +145,7 @@ describe('AgentManager', () => {
     vi.clearAllMocks();
     circuitBreakerRegistry.reset('aider');
     circuitBreakerRegistry.reset('claude-code');
+    circuitBreakerRegistry.reset('api-tools');
   });
 
   afterEach(() => {
@@ -199,5 +240,77 @@ describe('AgentManager', () => {
       expect.objectContaining({ cwd: '/dummy/project' }),
     );
     expect(circuitBreakerRegistry.getSnapshot('aider').state).toBe('closed');
+  });
+
+  it('runs Type C agent-tools while rejecting a second task that lacks the held probe slot', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-26T00:00:00.000Z'));
+    await agentManager.init();
+
+    let resolveFirstCompletion!: (value: unknown) => void;
+    let markFirstRequestStarted!: () => void;
+    const firstCompletion = new Promise<unknown>((resolve) => {
+      resolveFirstCompletion = resolve;
+    });
+    const firstRequestStarted = new Promise<void>((resolve) => {
+      markFirstRequestStarted = resolve;
+    });
+    mockChatCreate
+      .mockImplementationOnce(() => {
+        markFirstRequestStarted();
+        return firstCompletion;
+      })
+      .mockResolvedValueOnce({
+        choices: [{ message: { content: 'type-c completed' } }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      });
+
+    circuitBreakerRegistry.recordFailure('api-tools', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    vi.advanceTimersByTime(50);
+
+    const firstTask = agentManager.executeTask('api-tools', 'use one tool', {
+      projectDir: '/tmp',
+    });
+    await firstRequestStarted;
+
+    const rejectedTask = await agentManager.executeTask('api-tools', 'second probe');
+    expect(rejectedTask).toMatchObject({
+      success: false,
+      iterations: 0,
+      error: 'provider_unavailable: api-tools (half-open/generic)',
+    });
+
+    resolveFirstCompletion({
+      choices: [{
+        message: {
+          content: null,
+          tool_calls: [{
+            id: 'tool-call-1',
+            type: 'function',
+            function: {
+              name: 'listFiles',
+              arguments: JSON.stringify({ path: '/tmp' }),
+            },
+          }],
+        },
+      }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    });
+
+    await expect(firstTask).resolves.toMatchObject({
+      success: true,
+      output: 'type-c completed',
+      iterations: 2,
+      toolCalls: 1,
+    });
+    expect(mockEventPublish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'action:listFiles',
+      agentId: 'api-tools',
+    }));
+    expect(circuitBreakerRegistry.getSnapshot('api-tools').state).toBe('closed');
   });
 });

@@ -93,6 +93,7 @@ describe('failure learning writer and consumer', () => {
       sourceCount: 3,
       reason: 'generic',
       immediateOpen: false,
+      failureThreshold: 2,
     });
     expect(learned[0].regex.test(signature)).toBe(true);
     expect(learned[0].regex.test(`prefix ${signature}`)).toBe(false);
@@ -115,6 +116,7 @@ describe('failure learning writer and consumer', () => {
         matchMode: 'full_signature',
         promotedReason: 'generic',
         immediateOpen: false,
+        failureThreshold: 2,
       }),
     });
   });
@@ -133,6 +135,7 @@ describe('failure learning writer and consumer', () => {
       signature,
       reason: 'generic',
       immediateOpen: false,
+      failureThreshold: 2,
     });
   });
 

@@ -208,6 +208,7 @@ export type VerifierResult = {
   outputSnippet: string;
   spawnError?: string;
   verifier_skipped?: 'pre-existing build failure';
+  baseline_indeterminate?: 'HEAD-clean verifier baseline unavailable or inconclusive';
 };
 
 export type VerifierProcessResult = {
@@ -224,8 +225,21 @@ export function shouldPurgeStaleJob(status: string | undefined): boolean {
 export function reconcileVerifierBaseline(
   verifierResult: VerifierResult,
   baseline: Pick<VerifierProcessResult, 'code' | 'timedOut'>,
+  headBaseline: Pick<VerifierProcessResult, 'code' | 'timedOut'> | null = null,
 ): VerifierResult {
   if (baseline.code === 0 && !baseline.timedOut) return verifierResult;
+  if (
+    !headBaseline
+    || headBaseline.code == null
+    || headBaseline.timedOut
+  ) {
+    return {
+      ...verifierResult,
+      passed: false,
+      baseline_indeterminate: 'HEAD-clean verifier baseline unavailable or inconclusive',
+    };
+  }
+  if (headBaseline.code === 0) return verifierResult;
   return {
     ...verifierResult,
     passed: true,
@@ -517,7 +531,7 @@ export async function captureHeadBaseline(
       cwd: projectDir,
       command: task.verifier.command,
       error: error instanceof Error ? error.message : String(error),
-    }, 'HEAD-clean verifier baseline could not be captured; falling back to dirty-tree baseline');
+    }, 'HEAD-clean verifier baseline could not be captured; verifier remains failed');
     return null;
   } finally {
     try {
@@ -688,23 +702,55 @@ export async function applyVerifierGate(
       // HEAD passes → dirty changes caused the failure; the task may have
       // introduced or been affected by them — do not skip verifier.
       const headBaseline = await captureHeadBaseline(task, controllerSignal);
-      if (headBaseline && headBaseline.code === 0 && !headBaseline.timedOut) {
-        log.warn({
-          taskId: task.taskId,
-          cwd: projectDir,
-          command: task.verifier.command,
-          preExitCode: preTaskBaseline.code,
-          headExitCode: headBaseline.code,
-        }, 'HEAD-clean verifier passed — dirty-worktree baseline failure is not pre-existing');
-      } else {
-        const skippedResult = reconcileVerifierBaseline(verifierResult, preTaskBaseline);
+      const reconciledResult = reconcileVerifierBaseline(
+        verifierResult,
+        preTaskBaseline,
+        headBaseline,
+      );
+      if (reconciledResult.verifier_skipped) {
         try {
-          persistVerifierResult(task.taskId, skippedResult);
+          persistVerifierResult(task.taskId, reconciledResult);
         } catch (persistErr) {
           log.warn({ taskId: task.taskId, err: persistErr }, 'Failed to persist skipped verifier result');
         }
         return classified;
       }
+
+      if (reconciledResult.baseline_indeterminate) {
+        log.warn({
+          taskId: task.taskId,
+          cwd: projectDir,
+          command: task.verifier.command,
+          preExitCode: preTaskBaseline.code,
+          headExitCode: headBaseline?.code ?? null,
+          headTimedOut: headBaseline?.timedOut ?? null,
+        }, 'baseline_indeterminate: HEAD-clean verifier baseline unavailable or inconclusive');
+      } else {
+        log.warn({
+          taskId: task.taskId,
+          cwd: projectDir,
+          command: task.verifier.command,
+          preExitCode: preTaskBaseline.code,
+          headExitCode: headBaseline?.code ?? null,
+        }, 'HEAD-clean verifier passed — dirty-worktree baseline failure is not pre-existing');
+      }
+
+      try {
+        persistVerifierResult(task.taskId, reconciledResult);
+      } catch (persistErr) {
+        log.warn({ taskId: task.taskId, err: persistErr }, 'Failed to persist verifier result');
+      }
+      return {
+        ...classified,
+        success: false,
+        error: [
+          classified.error,
+          `verifier failed: ${outputSnippet}`,
+          reconciledResult.baseline_indeterminate
+            ? `baseline_indeterminate: ${reconciledResult.baseline_indeterminate}`
+            : undefined,
+        ].filter(Boolean).join('\n\n'),
+      };
     }
 
     try {

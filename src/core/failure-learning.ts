@@ -7,6 +7,7 @@ const log = createLogger('failure-learning');
 
 export const LEARNING_WINDOW_DAYS = 14;
 export const LEARNING_PROMOTION_COUNT = 3;
+export const LEARNED_FAILURE_THRESHOLD = 2;
 export const MAX_CIRCUIT_SIGNATURE_CHARS = 500;
 const LEARNED_PATTERN_CACHE_TTL_MS = 60_000;
 
@@ -38,6 +39,7 @@ export interface LearnedCircuitPattern {
   regex: RegExp;
   reason: 'generic' | 'rate-limit' | 'quota' | 'auth';
   immediateOpen: boolean;
+  failureThreshold: number;
 }
 
 export interface FailureDigest {
@@ -164,10 +166,12 @@ function readLearnedCircuitPatterns(
       regex: new RegExp(`^${escapeRegExp(signature)}$`, 'u'),
       // Only errors that did not match an explicit provider pattern are
       // recorded as circuit_unclassified, so promotion must preserve them as
-      // thresholded generic failures. Treating every learned signature as
-      // quota made transient errors such as ECONNRESET open immediately.
+      // generic failures. Two consecutive matches open the circuit: this is
+      // protective compared with the default threshold of three, but still
+      // avoids immediate-open false positives for transient errors.
       reason: 'generic',
       immediateOpen: false,
+      failureThreshold: LEARNED_FAILURE_THRESHOLD,
     }];
   });
 }
@@ -221,6 +225,7 @@ export function recordLearnedCircuitPatternApplication(
       matchMode: 'full_signature',
       promotedReason: learned.reason,
       immediateOpen: learned.immediateOpen,
+      failureThreshold: learned.failureThreshold,
     },
     autoApplied: true,
   }, db);
@@ -320,6 +325,7 @@ export function getFailureDigest(
         lastSeen: pattern.lastSeen,
         reason: pattern.reason,
         immediateOpen: pattern.immediateOpen,
+        failureThreshold: pattern.failureThreshold,
       })),
     };
   } catch (error) {

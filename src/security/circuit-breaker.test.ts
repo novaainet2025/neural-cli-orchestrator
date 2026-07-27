@@ -1,8 +1,34 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const learnedPattern = vi.hoisted(() => ({
+  signature: null as string | null,
+}));
+
 vi.mock('../storage/database.js', () => ({
   getDb: () => { throw new Error('database unavailable in unit test'); },
 }));
+vi.mock('../core/failure-learning.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../core/failure-learning.js')>();
+  return {
+    ...actual,
+    matchLearnedCircuitPattern: vi.fn((raw: string | null | undefined) => {
+      const signature = raw?.trim();
+      if (!learnedPattern.signature || signature !== learnedPattern.signature) {
+        return actual.matchLearnedCircuitPattern(raw);
+      }
+      return {
+        signature,
+        sourceCount: 3,
+        firstSeen: '2026-01-01 00:00:00',
+        lastSeen: '2026-01-01 00:00:00',
+        regex: new RegExp(`^${signature}$`, 'u'),
+        reason: 'generic',
+        immediateOpen: false,
+        failureThreshold: 2,
+      };
+    }),
+  };
+});
 vi.mock('../core/shared-state.js', () => ({
   sharedState: { setAgentState: vi.fn(async () => undefined) },
 }));
@@ -21,9 +47,11 @@ describe('CircuitBreaker configuration', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    learnedPattern.signature = null;
   });
 
   afterEach(() => {
+    learnedPattern.signature = null;
     vi.useRealTimers();
   });
 
@@ -48,6 +76,23 @@ describe('CircuitBreaker configuration', () => {
 
     breaker.recordSuccess();
     expect(breaker.getState()).toBe('closed');
+  });
+
+  it('opens on the second exact learned failure without immediate-opening on the first', () => {
+    const signature = 'repeated exact transient failure';
+    learnedPattern.signature = signature;
+    const breaker = new CircuitBreaker('learned-threshold-test', {
+      failureThreshold: 3,
+    });
+    breaker.reset();
+
+    breaker.recordFailure(signature);
+    expect(breaker.getState()).toBe('closed');
+    expect(breaker.getFailures()).toBe(1);
+
+    breaker.recordFailure(signature);
+    expect(breaker.getState()).toBe('open');
+    expect(circuitBreakerRegistry.getSnapshot('learned-threshold-test').reason).toBe('generic');
   });
 
   // P0-3: halfOpenAttempts는 누적 카운터가 아니라 in-flight 세마포어다. 슬롯을 획득한
@@ -136,5 +181,48 @@ describe('CircuitBreaker configuration', () => {
     // Release the probe slot
     circuitBreakerRegistry.releaseProbeSlot('half-open-slot-test');
     expect(breaker.canExecute()).toBe(true); // new probe can proceed
+  });
+
+  it('keeps a live probe half-open past TTL and rejects a second probe', () => {
+    const breaker = new CircuitBreaker('live-probe-ttl-test', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    const controller = new AbortController();
+    breaker.reset();
+    breaker.recordFailure('boom');
+    vi.advanceTimersByTime(50);
+
+    expect(breaker.canExecute()).toBe(true);
+    expect(circuitBreakerRegistry.bindProbeSlot(
+      'live-probe-ttl-test',
+      controller.signal,
+    )).toBe(true);
+
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    expect(breaker.getState()).toBe('half-open');
+    expect(breaker.canExecute()).toBe(false);
+
+    controller.abort();
+    expect(breaker.getState()).toBe('closed');
+  });
+
+  it('reclaims an abandoned half-open slot after the five-minute TTL', () => {
+    const breaker = new CircuitBreaker('abandoned-probe-ttl-test', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    breaker.reset();
+    breaker.recordFailure('boom');
+    vi.advanceTimersByTime(50);
+
+    expect(breaker.canExecute()).toBe(true);
+    expect(breaker.getState()).toBe('half-open');
+
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+    expect(breaker.getState()).toBe('closed');
+    expect(breaker.canExecute()).toBe(true);
   });
 });

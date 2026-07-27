@@ -30,6 +30,7 @@ export interface ClassifiedCircuitError {
   resetTime: number | null;
   matchedText: string;
   learnedSignature?: string;
+  learnedFailureThreshold?: number;
 }
 
 export interface CircuitBreakerPolicy {
@@ -186,6 +187,7 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
       resetTime: learned.immediateOpen ? resetTime : null,
       matchedText: learned.signature,
       learnedSignature: learned.signature,
+      learnedFailureThreshold: learned.failureThreshold,
     };
   }
 
@@ -199,6 +201,10 @@ class CircuitBreakerRegistry {
   // 반드시 releaseProbeSlot()으로 반납(-1)해야 한다 — 반납 누락 시 유일한 슬롯이 영구
   // 소진되어 half-open이 고착된다(P0-1/P0-2가 다루는 증상의 근본 원인).
   private halfOpenAttempts = new Map<string, number>();
+  // AgentManager가 슬롯을 실제 실행의 AbortSignal에 결속한다. TTL이 지나도 signal이
+  // 살아 있으면 장시간 프로브가 진행 중인 것이므로 half-open을 유지한다. 실행이
+  // 중단되거나 결속되지 않은 고아 슬롯은 기존 5분 안전망이 회수한다.
+  private halfOpenProbeSignals = new Map<string, Set<AbortSignal>>();
 
   async restore(agentIds: string[]): Promise<void> {
     for (const agentId of agentIds) {
@@ -284,7 +290,13 @@ class CircuitBreakerRegistry {
   recordFailure(agentId: string, rawError?: string, policy: CircuitBreakerPolicy = {}): void {
     const current = this.ensure(agentId);
     const classified = classifyCircuitError(rawError);
-    const failureThreshold = normalizePositiveInteger(policy.failureThreshold, FAILURE_THRESHOLD);
+    const configuredFailureThreshold = normalizePositiveInteger(policy.failureThreshold, FAILURE_THRESHOLD);
+    const failureThreshold = classified?.learnedFailureThreshold == null
+      ? configuredFailureThreshold
+      : Math.min(
+          configuredFailureThreshold,
+          normalizePositiveInteger(classified.learnedFailureThreshold, configuredFailureThreshold),
+        );
 
     if (classified?.learnedSignature) {
       const learned = matchLearnedCircuitPattern(classified.learnedSignature);
@@ -348,8 +360,23 @@ class CircuitBreakerRegistry {
 
   reset(agentId: string): void {
     this.halfOpenAttempts.delete(agentId);
+    this.halfOpenProbeSignals.delete(agentId);
     const next = defaultSnapshot(agentId);
     this.commit(next, 'Circuit manually reset');
+  }
+
+  bindProbeSlot(agentId: string, signal: AbortSignal): boolean {
+    const current = this.ensure(agentId);
+    if (
+      current.state !== 'half-open'
+      || (this.halfOpenAttempts.get(agentId) ?? 0) <= 0
+    ) {
+      return false;
+    }
+    const signals = this.halfOpenProbeSignals.get(agentId) ?? new Set<AbortSignal>();
+    signals.add(signal);
+    this.halfOpenProbeSignals.set(agentId, signals);
+    return true;
   }
 
   /**
@@ -358,7 +385,18 @@ class CircuitBreakerRegistry {
    * 카운터가 0 미만으로 내려가 이후 canExecute()가 항상 true를 반환(무제한 동시 실행)하게
    * 되므로, 여기서는 0 이하로 내려가지 않도록 방어하고 그 이하면 엔트리를 제거한다.
    */
-  releaseProbeSlot(agentId: string): void {
+  releaseProbeSlot(agentId: string, signal?: AbortSignal): void {
+    const signals = this.halfOpenProbeSignals.get(agentId);
+    if (signals) {
+      if (signal) {
+        signals.delete(signal);
+      } else {
+        const first = signals.values().next().value as AbortSignal | undefined;
+        if (first) signals.delete(first);
+      }
+      if (signals.size === 0) this.halfOpenProbeSignals.delete(agentId);
+    }
+
     const attempts = this.halfOpenAttempts.get(agentId);
     if (attempts == null) return;
     const next = attempts - 1;
@@ -379,12 +417,14 @@ class CircuitBreakerRegistry {
    *
    * P0-2: half-open도 자가복구 분기가 없으면 영구 고착될 수 있다(DB 실측:
    * copilot|half-open|2026-07-21, 5일째 — 유일한 프로브 슬롯을 점유한 태스크가 결과를
-   * 기록하지 않고 사라진 경우). HALF_OPEN_TTL_MS(5분) 초과 시 closed로 되돌려 다음
-   * canExecute() 호출이 새 프로브를 시도할 수 있게 하는 사후 안전망이다
-   * (구조적 해결은 P0-3의 프로브 슬롯 세마포어).
+   * 기록하지 않고 사라진 경우). HALF_OPEN_TTL_MS(5분) 초과 후 살아 있는 실행 signal이
+   * 없는 고아 슬롯만 closed로 되돌려 다음 canExecute() 호출이 새 프로브를 시도할 수
+   * 있게 하는 사후 안전망이다(구조적 해결은 P0-3의 프로브 슬롯 세마포어).
    */
   private recoverIfExpired(agentId: string): CircuitSnapshot {
     const current = this.ensure(agentId);
+    const hasLiveProbe = Array.from(this.halfOpenProbeSignals.get(agentId) ?? [])
+      .some(signal => !signal.aborted);
     if (
       (current.state === 'open' &&
         current.reason !== 'auth' &&
@@ -392,7 +432,8 @@ class CircuitBreakerRegistry {
         Date.now() >= current.cooldownUntil) ||
       (current.state === 'half-open' &&
         current.openedAt != null &&
-        Date.now() - current.openedAt > HALF_OPEN_TTL_MS)
+        Date.now() - current.openedAt > HALF_OPEN_TTL_MS &&
+        !hasLiveProbe)
     ) {
       const next: CircuitSnapshot = {
         agentId,
@@ -501,7 +542,10 @@ class CircuitBreakerRegistry {
   }
 
   private commit(snapshot: CircuitSnapshot, message: string): void {
-    if (snapshot.state !== 'half-open') this.halfOpenAttempts.delete(snapshot.agentId);
+    if (snapshot.state !== 'half-open') {
+      this.halfOpenAttempts.delete(snapshot.agentId);
+      this.halfOpenProbeSignals.delete(snapshot.agentId);
+    }
     this.states.set(snapshot.agentId, snapshot);
     this.persist(snapshot);
     logDecision({ phase: 'circuit-breaker', decision: `circuit:${snapshot.state}`, reason: message, actor: snapshot.agentId });

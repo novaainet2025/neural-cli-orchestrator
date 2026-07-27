@@ -96,7 +96,7 @@ describe('task queue P1 reliability guards', () => {
     await expect(baseline).resolves.toBeNull();
   });
 
-  it('records why a failed verifier is skipped when its pre-task baseline failed', () => {
+  it('records why a failed verifier is skipped when clean HEAD also fails', () => {
     const result = reconcileVerifierBaseline({
       type: 'run',
       command: 'npx tsc --noEmit',
@@ -106,6 +106,9 @@ describe('task queue P1 reliability guards', () => {
       timedOut: false,
       passed: false,
       outputSnippet: 'TS2322',
+    }, {
+      code: 2,
+      timedOut: false,
     }, {
       code: 2,
       timedOut: false,
@@ -140,5 +143,27 @@ describe('task queue P1 reliability guards', () => {
     } finally {
       db.close();
     }
+  });
+
+  it('keeps the verifier failure fail-closed when the HEAD baseline is indeterminate', () => {
+    const result = reconcileVerifierBaseline({
+      type: 'run',
+      command: 'npx tsc --noEmit',
+      timeoutMs: 60_000,
+      startedAt: '2026-07-26T00:00:00.000Z',
+      exitCode: 2,
+      timedOut: false,
+      passed: false,
+      outputSnippet: 'TS2322',
+    }, {
+      code: 2,
+      timedOut: false,
+    }, null);
+
+    expect(result).toMatchObject({
+      passed: false,
+      baseline_indeterminate: 'HEAD-clean verifier baseline unavailable or inconclusive',
+    });
+    expect(result).not.toHaveProperty('verifier_skipped');
   });
 });

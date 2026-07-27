@@ -159,18 +159,20 @@ class AgentManager {
     // 반납하면 카운터가 음수로 내려가 이후 half-open 프로브 제한이 무력화된다.
     const slotHeld = circuitBreakerRegistry.getSnapshot(agentId).state === 'half-open';
 
-    // Publish task start
-    await eventBus.publish({
-      type: 'task:started', taskId, agentId,
-    });
+    const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
+    const wallClock = AbortSignal.timeout(timeoutMs);
+    const signal = options?.signal
+      ? AbortSignal.any([options.signal, wallClock])
+      : wallClock;
+    if (slotHeld) circuitBreakerRegistry.bindProbeSlot(agentId, signal);
 
     try {
+      // Publish task start
+      await eventBus.publish({
+        type: 'task:started', taskId, agentId,
+      });
+
       const agentType = classifyAgent(provider);
-      const timeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
-      const wallClock = AbortSignal.timeout(timeoutMs);
-      const signal = options?.signal
-        ? AbortSignal.any([options.signal, wallClock])
-        : wallClock;
       let output: string;
       let iterations = 0;
       let toolCalls = 0;
@@ -395,7 +397,7 @@ class AgentManager {
     } finally {
       // P0-3: 실제로 획득한 half-open 프로브 슬롯만 반납(slotHeld 가드) — 성공/실패/throw
       // 어느 경로로 끝나든 반드시 실행되어야 다음 canExecute() 호출이 새 프로브를 시도할 수 있다.
-      if (slotHeld) circuitBreakerRegistry.releaseProbeSlot(agentId);
+      if (slotHeld) circuitBreakerRegistry.releaseProbeSlot(agentId, signal);
     }
   }
 
