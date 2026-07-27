@@ -22,7 +22,10 @@ QUALITY_LEAD="cursor-agent"
 AI_CHAIN="ollama hermes codex opencode"
 POLL_INTERVAL=10
 MAX_POLLS=30
-MAX_REGENERATIONS=1
+# 품질 FAIL 재생성 상한(유계): 초안 1 + 재생성 2 = 최대 3개 서로 다른 생성 agent
+MAX_REGENERATIONS=2
+# 품질 FAIL 후 재생성 시 이미 성공 생성에 쓴 agent는 재사용 금지(승급만 허용)
+USED_GENERATORS=""
 
 mkdir -p "${DATA_DIR}" "$(dirname "${LOG_FILE}")"
 
@@ -41,7 +44,13 @@ acquire_lock() {
   done
   echo $$ > "${LOCK_FILE}"
 }
-release_lock() { [ "$(cat "${LOCK_FILE}" 2>/dev/null)" = "$$" ] && rm -f "${LOCK_FILE}"; }
+release_lock() {
+  # 멱등·항상 exit 0: 락 없거나 타 PID 소유여도 trap/set -e에서 실패하지 않음
+  if [ -f "${LOCK_FILE}" ] && [ "$(cat "${LOCK_FILE}" 2>/dev/null || true)" = "$$" ]; then
+    rm -f "${LOCK_FILE}" || true
+  fi
+  return 0
+}
 
 # ── 1. RSS 최신 글 추출 (한 번의 python 호출, 필드는 개별 파일로) ──────────
 log INFO "RSS 조회: ${BLOG_RSS}"
@@ -134,7 +143,7 @@ prompt = f"""블로그 홍보 패키지를 영문으로 작성하라. 도구/웹
 3) X 문구 2종: 각각 반드시 280자 미만. 관련 해시태그는 최대 2개이며, 원문에 없는 주장 없이 서로 다른 실용 포인트를 전달한다.
 4) SEO: 원문과 실제로 일치하는 검색 키워드 5개, 검색의도, 내부링크 제안 2개. 확인할 수 없는 내부 글 URL은 만들지 말고 주제 수준으로 제안한다.
 {revision}
-생성 라운드: {round_text} (0=초안, 1=품질 지시 반영 재생성)."""
+생성 라운드: {round_text} (0=초안, 1+=품질 지시 반영 재생성·직전 생성 agent 제외 승급)."""
 print(json.dumps({
     "ai": ai,
     "callerAgentId": "team-sns-cron",
@@ -273,7 +282,16 @@ normalized = {
     "improvements": [item.strip() for item in improvements],
 }
 open(gate_path, "w").write(json.dumps(normalized, ensure_ascii=False, indent=2) + "\n")
-open(improvements_path, "w").write("\n".join(f"- {item}" for item in normalized["improvements"]) + "\n")
+# 매 라운드 improvements를 누적해 다음 재생성 프롬프트에 계속 전달
+new_block = "\n".join(f"- {item}" for item in normalized["improvements"])
+if new_block:
+    try:
+        existing = open(improvements_path).read().strip()
+    except OSError:
+        existing = ""
+    open(improvements_path, "w").write(
+        (existing + "\n" + new_block if existing else new_block) + "\n"
+    )
 print(verdict)
 PY
 }
@@ -303,6 +321,13 @@ generate_package() { # $1=generation_round
   TASK_ID=""
   DONE_AI=""
   for ai in ${AI_CHAIN}; do
+    # 품질 FAIL 재생성: 직전/이미 성공 생성에 쓴 agent는 건너뛰고 AI_CHAIN 다음으로 승급
+    case " ${USED_GENERATORS} " in
+      *" ${ai} "*)
+        log INFO "ai=${ai} 이미 생성 성공에 사용됨 — 동일 저품질 모델 반복 차단, 승급"
+        continue
+        ;;
+    esac
     log INFO "홍보 패키지 태스크 생성 시도 (round=${generation_round}, ai=${ai})"
     TASK_ID=$( { create_task "${ai}" "${generation_round}"; } 2>/dev/null || echo "")
     if [ -z "${TASK_ID}" ]; then
@@ -314,6 +339,7 @@ generate_package() { # $1=generation_round
     if poll_task "${TASK_ID}" package; then
       cp "${TMP_DIR}/response.md" "${TMP_DIR}/package.md"
       DONE_AI="${ai}"
+      USED_GENERATORS="${USED_GENERATORS}${USED_GENERATORS:+ }${ai}"
       return 0
     fi
     log WARN "ai=${ai} 실행 실패 — 다음 후보"
@@ -369,20 +395,21 @@ write_failed_audit() {
   log FAIL "품질 게이트 미통과 — 후보 폐기, 감사 기록만 저장: ${failed_file}"
 }
 
-# ── 5. 생성 → 품질 게이트 → FAIL 시 최대 1회 재생성 ──────────────────────
+# ── 5. 생성 → 품질 게이트 → FAIL 시 최대 2회 재생성(서로 다른 agent 승급) ──
 acquire_lock
 trap 'release_lock; rm -rf "${TMP_DIR}"' EXIT
 log INFO "로컬 LLM 락 획득 (pid=$$)"
 : > "${TMP_DIR}/improvements.txt"
 : > "${TMP_DIR}/quality-audit.md"
+USED_GENERATORS=""
 
 GENERATION_ROUND=0
 while [ "${GENERATION_ROUND}" -le "${MAX_REGENERATIONS}" ]; do
   if ! generate_package "${GENERATION_ROUND}"; then
-    log FAIL "체인 전체(${AI_CHAIN}) 실패 — 오늘 패키지 생성 불가"
+    log FAIL "체인 전체(${AI_CHAIN}) 실패 또는 사용 가능 생성 agent 소진 (used=[${USED_GENERATORS}]) — 오늘 패키지 생성 불가"
     exit 1
   fi
-  log INFO "생성 성공 (round=${GENERATION_ROUND}, ai=${DONE_AI})"
+  log INFO "생성 성공 (round=${GENERATION_ROUND}, ai=${DONE_AI}, used=[${USED_GENERATORS}])"
 
   if ! run_quality_gate "${GENERATION_ROUND}"; then
     write_failed_audit
@@ -399,7 +426,7 @@ while [ "${GENERATION_ROUND}" -le "${MAX_REGENERATIONS}" ]; do
     write_failed_audit
     exit 1
   fi
-  log WARN "고품질 게이트 FAIL — 개선 지시를 반영해 1회 재생성"
+  log WARN "고품질 게이트 FAIL — 개선 지시 누적 반영, 직전 생성 agent(${DONE_AI}) 제외 후 다음 agent로 승급 재생성 ($((GENERATION_ROUND + 1))/${MAX_REGENERATIONS})"
   GENERATION_ROUND=$((GENERATION_ROUND + 1))
 done
 

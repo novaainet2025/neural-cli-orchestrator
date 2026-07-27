@@ -18,7 +18,7 @@ const JSON_TOOL_REGEX = /```json\s*\n?\s*(\{[\s\S]*?"tool"[\s\S]*?\})\s*\n?\s*``
 const BRACKET_REGEX = /\[TOOL:\s*(\w+)\(([^)]*)\)\]/g;
 
 // [2026-07-09] Qwen3-Coder 계열 네이티브 포맷 — 모델이 훈련된 형식 그대로 파싱.
-// 억제 프롬프트로 막아도 새어나와 "consecutive tool errors" 실패의 주원인이었음(mlx 72%).
+// 억제 프롬프트로 막아도 새어나와 "consecutive tool errors" 실패의 주원인이었음(로컬 모델 72%).
 // <function=runCommand><parameter=command>ls</parameter></function>
 const QWEN_FN_REGEX = /<function=([\w.-]+)>([\s\S]*?)<\/function>/g;
 const QWEN_PARAM_REGEX = /<parameter=([\w.-]+)>([\s\S]*?)<\/parameter>/g;

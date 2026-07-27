@@ -1,0 +1,8 @@
+{
+  "status": "success",
+  "messages": [
+    "{\"type\":\"connected\",\"clientId\":\"p_k6jcPn2-Yt\",\"timestamp\":\"2026-07-27T02:16:57.375Z\",\"path\":\"/\"}",
+    "{\"type\":\"pong\",\"timestamp\":1785118617378}",
+    "{\"type\":\"activity:update\",\"data\":{\"session\":\"nova-macstudio-claude-5\",\"tool\":\"Bash\",\"action\":\"executing\",\"file\":\"cd \\\"/Users/nova-ai/project/크롬확장프로그램/cli-extensions\\\" && wc -l extension/src/sidep\",\"project\":\"nco\",\"done\":false},\"id\":\"evt_qqOVsLbCI76cdKgs\",\"timestamp\":1785118621094,\"streamId\":\"1785118621095-0\"}"
+  ]
+}

@@ -558,7 +558,7 @@ export class ApiExecutor {
     const baseURL = this.provider.endpoint || this.provider.apiConfig?.primary.baseUrl;
 
     // 로컬 엔드포인트(ollama)는 단일스레드 서버 경합으로 일시적 connection
-    // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: mlx-server
+    // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: local LLM server
     // POST 200인데 동시요청 경합으로 "Connection error." 실패, circuit open 유발).
     // 원격 API는 기존대로 0: 429 Retry-After(최대 수시간) sleep hang 방지.
     const isLocalEndpoint = /localhost|127\.0\.0\.1/.test(baseURL || '');

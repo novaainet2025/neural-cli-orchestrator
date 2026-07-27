@@ -30,7 +30,7 @@ export function decideFinalEscalation(options: {
   failureReason: string;
   attemptedAgents: string[];
   circuitOpenAgents: string[];
-  /** 런타임 등록 에이전트 — 미등록 tier 항목(remote-mlx 등)으로의 에스컬레이션 방지 */
+  /** 런타임 등록 에이전트 — 미등록 tier 항목으로의 에스컬레이션 방지 */
   knownAgents?: readonly string[];
   metadata?: Record<string, unknown>;
   now?: () => string;

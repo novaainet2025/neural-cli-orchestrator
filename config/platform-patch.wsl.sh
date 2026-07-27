@@ -19,7 +19,7 @@ with open(cfg_path) as f:
 # 플랫폼 정책 (WSL 기준)
 ENABLE  = {"opencode","agy","codex","cursor-agent","copilot",
            "higgsfield","hermes","openclaw","nvidia","claude-code","openrouter"}
-DISABLE = set()  # mlx 완전제거(2026-07-21) — Mac 전용 disable 대상 없음
+DISABLE = set()  # Mac 전용 disable 대상 없음
 # Ollama: GPU 노드만 활성화
 if gpu_mode:
     ENABLE.add("ollama")

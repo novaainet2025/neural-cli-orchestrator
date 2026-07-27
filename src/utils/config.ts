@@ -110,6 +110,21 @@ const REQUIRED_PROVIDER_FIELDS: Array<keyof ProviderConfig> = [
   'persona', 'healthCheck',
 ];
 
+// Fault-injection (missing key / wrong type) showed presence-only checks let
+// type mismatches (e.g. score:"high", enabled:"true", concurrency:-5) reach
+// the seeder silently. Scalar fields get an explicit type check; nested
+// object/array shapes stay presence-only to avoid over-constraining.
+const PROVIDER_FIELD_TYPES: Partial<Record<keyof ProviderConfig, 'string' | 'boolean' | 'number' | 'array'>> = {
+  id: 'string', name: 'string', enabled: 'boolean', type: 'string', role: 'string',
+  score: 'number', concurrency: 'number', rateLimitRpm: 'number', cost: 'string',
+  args: 'array', capabilities: 'array',
+};
+
+function matchesType(value: unknown, type: 'string' | 'boolean' | 'number' | 'array'): boolean {
+  if (type === 'array') return Array.isArray(value);
+  return typeof value === type;
+}
+
 export function validateProvidersFile(data: unknown): ProvidersFile {
   if (
     !isRecord(data) ||
@@ -127,6 +142,12 @@ export function validateProvidersFile(data: unknown): ProvidersFile {
     for (const field of REQUIRED_PROVIDER_FIELDS) {
       if (!(field in provider)) {
         throw new Error(`[config] ai-providers.json providers[${index}].${field} is required`);
+      }
+      const expectedType = PROVIDER_FIELD_TYPES[field];
+      if (expectedType && !matchesType(provider[field], expectedType)) {
+        throw new Error(
+          `[config] ai-providers.json providers[${index}].${field} must be a ${expectedType}, got ${typeof provider[field]}`
+        );
       }
     }
   });

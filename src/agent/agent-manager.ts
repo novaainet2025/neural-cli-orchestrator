@@ -506,7 +506,7 @@ class AgentManager {
   }
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<boolean> {
-    // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider(예: remote-mlx) TypeError crash-loop 방지
+    // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider TypeError crash-loop 방지
     const url = this.resolveApiHealthCheckUrl(provider);
     if (!url) {
       await sharedState.setAgentState(id, { status: 'offline' });

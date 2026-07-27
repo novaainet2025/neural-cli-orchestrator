@@ -1,8 +1,8 @@
 {
-  "checked_at": "2026-07-26T13:15:31+0900",
+  "checked_at": "2026-07-27T13:20:00+0900",
   "mode": "propose",
-  "total": 208,
-  "pass": 207,
+  "total": 233,
+  "pass": 232,
   "fail": 0,
   "skip": 0,
   "defer": 1,
@@ -17,7 +17,7 @@
       "meets": true
     },
     "team": {
-      "pass": 61,
+      "pass": 86,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -98,11 +98,14 @@
       "meets": true
     }
   },
-  "provider_anomaly": null,
+  "provider_anomaly": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)",
   "failures": [],
   "dispatch": {
     "mode": "propose",
-    "dispatched": null,
-    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
+    "dispatched": {
+      "id": "provider:registry",
+      "taskId": "task_CawrTmHZfcRBh2K6"
+    },
+    "skipped_reason": null
   }
 }

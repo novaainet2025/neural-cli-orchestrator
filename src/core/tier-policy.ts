@@ -32,7 +32,7 @@ export const BRAIN_TIER: readonly string[] = [
  * 로컬(ollama) 우선 → 무료 클라우드(nvidia/openrouter) fallback.
  * ※ hermes는 2026-07-18 codex CLI(paid)로 전환되어 무료·로컬 계약에서 제외.
  *   직접 위임(nco_task ai=hermes)·failover 타깃으로는 계속 사용 가능.
- * ※ mlx는 2026-07-21 완전제거(사용자 지시) — 로컬 워커는 Ollama 단일화.
+ * ※ 로컬 워커는 Ollama 단일화.
  */
 export const WORKER_TIER: readonly string[] = [
   'ollama',       // 로컬 Ollama (qwen3:30b-a3b)

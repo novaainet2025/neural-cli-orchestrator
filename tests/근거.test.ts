@@ -17,6 +17,12 @@ describe('근거', () => {
 
   it('최신 포인터가 오늘 날짜를 가리킨다', async () => {
     const pointer = await readFile(pointerPath, 'utf8');
-    expect(pointer.trim()).toBe('2026-07-14');
+    const todayInSeoul = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Seoul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    expect(pointer.trim()).toBe(todayInSeoul);
   });
 });

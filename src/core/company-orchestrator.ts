@@ -23,7 +23,6 @@ import { acquireComputerUseLease } from './computer-use-company.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
 import { hasResponseContract } from './response-contract.js';
 import { listActivelyRateLimited } from './rate-limit-state.js';
-
 // 프로바이더 가용성 판정: 등록되어 있고 서킷이 열려있지 않은(리밋/quota/실패로 차단 안 된) 것만 true.
 // 리밋 걸린 프로바이더를 선택 단계에서 즉시 걸러 폴백이 지연 없이 이뤄지게 한다.
 export type AvailabilityFn = (agentId: string) => boolean;
@@ -52,7 +51,7 @@ const log = createLogger('company-orchestrator');
 export type OrchestrationMode = 'pipeline' | 'parallel';
 export type RunStatus =
   | 'pending' | 'decomposing' | 'planned' | 'dispatching' | 'running'
-  | 'dispatched' | 'completed' | 'failed' | 'partial';
+  | 'dispatched' | 'completed' | 'failed' | 'partial' | 'cancelled';
 export type StageStatus =
   | 'pending' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled' | 'skipped';
 
@@ -666,6 +665,66 @@ export function getCompanyRun(runId: string): CompanyRun | null {
   }
 }
 
+const ACTIVE_STAGE_FOR_CANCEL = new Set<StageStatus>(['pending', 'running']);
+const TERMINAL_RUN_FOR_CANCEL = new Set<RunStatus>([
+  'completed', 'failed', 'partial', 'cancelled', 'planned',
+]);
+
+/** True when the run driver must stop dispatching further work. */
+export function isCompanyRunCancelled(run: CompanyRun): boolean {
+  return run.status === 'cancelled';
+}
+
+/**
+ * Mark a company run cancelled and cancel any active stage tasks
+ * via POST /api/tasks/:id/cancel. Missing run → { ok:false, error:'run not found' }.
+ * Already-terminal runs are left unchanged (idempotent ack).
+ */
+export async function cancelCompanyRun(
+  app: FastifyInstance,
+  runId: string,
+): Promise<{ ok: boolean; status?: string; error?: string }> {
+  const run = getCompanyRun(runId);
+  if (!run) return { ok: false, error: 'run not found' };
+  if (TERMINAL_RUN_FOR_CANCEL.has(run.status)) {
+    return { ok: true, status: run.status };
+  }
+
+  const taskIds: string[] = [];
+  for (const stage of run.stages) {
+    if (!ACTIVE_STAGE_FOR_CANCEL.has(stage.status)) continue;
+    if (stage.taskId) taskIds.push(stage.taskId);
+    stage.status = 'cancelled';
+    stage.error = stage.error ?? 'run cancelled';
+  }
+
+  run.status = 'cancelled';
+  run.error = run.error ?? 'cancelled by request';
+  touch(run);
+
+  for (const taskId of taskIds) {
+    try {
+      await app.inject({
+        method: 'POST',
+        url: `/api/tasks/${encodeURIComponent(taskId)}/cancel`,
+      });
+    } catch (err) {
+      log.warn({
+        runId,
+        taskId,
+        err: err instanceof Error ? err.message : String(err),
+      }, 'company run cancel: task cancel inject failed');
+    }
+  }
+
+  return { ok: true, status: 'cancelled' };
+}
+
+/** Test helper: seed an in-memory company run (persistence best-effort). */
+export function seedCompanyRunForTest(run: CompanyRun): void {
+  putRun(run);
+}
+
 export function listCompanyRuns(limit = 20): CompanyRun[] {
   try {
     const rows = getDb().prepare(
@@ -679,13 +738,9 @@ export function listCompanyRuns(limit = 20): CompanyRun[] {
 
 function touch(run: CompanyRun): void {
   run.updatedAt = new Date().toISOString();
-  if (!persistRun(run)) {
-    throw new OrchestrationError(
-      503,
-      `company run persistence unavailable: ${run.id}`,
-    );
-  }
+  putRun(run, true);
 }
+
 
 // ── DB 로더 ─────────────────────────────────────────────────────────────
 export class OrchestrationError extends Error {
@@ -895,7 +950,7 @@ function launchRunDriver(
   ACTIVE_RUN_DRIVERS.add(run.id);
   void (async () => {
     if (resume) {
-      await reconcilePersistedStages(run);
+      await reconcilePersistedStages(app, run);
       const incomplete = run.stages.some((stage) => stage.status !== 'completed');
       run.resumeCount += 1;
       touch(run);
@@ -938,11 +993,14 @@ function launchRunDriver(
   });
 }
 
-async function reconcilePersistedStages(run: CompanyRun): Promise<void> {
+async function reconcilePersistedStages(app: FastifyInstance, run: CompanyRun): Promise<void> {
   for (let index = 0; index < run.stages.length; index++) {
     const stage = run.stages[index];
     if (!stage.taskId || !['running', 'pending'].includes(stage.status)) continue;
-    const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS);
+    const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS, run);
+    if (result.status === 'timed_out') {
+      await abortTimedOutCompanyTask(app, run.id, stage.taskId);
+    }
     stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
     stage.outputChars = (result.response ?? '').length;
     const acceptable = result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
@@ -1178,10 +1236,12 @@ async function driveRunBody(
   const baseSubtasks = new Map(run.stages.map((s) => [s.teamSlug, s.subtask ?? '']));
   const firstIteration = Math.min(run.maxIterations, Math.max(1, run.completedIterations + 1));
   for (let iteration = firstIteration; iteration <= run.maxIterations; iteration++) {
+    if (isCompanyRunCancelled(run)) return;
     run.iteration = iteration;
     touch(run);
     // REFINE: 2회차부터 미완료 단계 실행자 재선정(서킷/리밋 회복 반영) + 상태 초기화
     if (iteration > 1) {
+      if (isCompanyRunCancelled(run)) return;
       const k = new Set(agentManager.listEnabledIds());
       const a = liveAvailability(k);
       for (const stage of run.stages) {
@@ -1207,6 +1267,7 @@ async function driveRunBody(
     } else {
       await executePipelineOnce(app, run, teamBySlug, projectDir, baseSubtasks);
     }
+    if (isCompanyRunCancelled(run)) return;
 
     // VERIFY: 전 단계 완료면 성공 확정하고 루프 종료
     run.completedIterations = iteration;
@@ -1221,6 +1282,7 @@ async function driveRunBody(
 
     // 미완료 → 다음 반복(서킷 회복 대기). 마지막 반복이면 루프 탈출.
     if (iteration < run.maxIterations) {
+      if (isCompanyRunCancelled(run)) return;
       run.status = 'running'; touch(run);
       log.warn({ runId, iteration,
         incomplete: run.stages.filter((s) => s.status !== 'completed').map((s) => s.teamSlug) },
@@ -1229,7 +1291,8 @@ async function driveRunBody(
     }
   }
 
-  // MAX 반복 후에도 미완료 → partial/failed 확정
+  // MAX 반복 후에도 미완료 → partial/failed 확정 (취소는 보존)
+  if (isCompanyRunCancelled(run)) return;
   run.iteration = run.maxIterations;
   finalizeRun(run);
 }
@@ -1240,9 +1303,11 @@ async function executePipelineOnce(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string, baseSubtasks: Map<string, string>,
 ): Promise<void> {
+  if (isCompanyRunCancelled(run)) return;
   run.status = 'running'; touch(run);
   let prev: RunStage | null = null;
   for (let s = 0; s < run.stages.length; s++) {
+    if (isCompanyRunCancelled(run)) return;
     const stage = run.stages[s];
     if (stage.status === 'completed') { prev = stage; continue; } // 이미 완료 — handoff 소스로만
     const team = teamBySlug.get(stage.teamSlug)!;
@@ -1286,6 +1351,7 @@ async function executeParallelOnce(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string, baseSubtasks: Map<string, string>,
 ): Promise<void> {
+  if (isCompanyRunCancelled(run)) return;
   run.status = 'dispatching'; touch(run);
   const pKnown = new Set(agentManager.listEnabledIds());
   const pAvail = liveAvailability(pKnown);
@@ -1293,6 +1359,7 @@ async function executeParallelOnce(
   const executorFallback = allowOutsideTeam ? 'ollama' : '';
   const pending = run.stages.filter((s) => s.status !== 'completed');
   for (const stage of pending) {
+    if (isCompanyRunCancelled(run)) return;
     stage.subtask = baseSubtasks.get(stage.teamSlug) ?? stage.subtask;
     const team = teamBySlug.get(stage.teamSlug)!;
     const chain = resolveExecutorChain(team, pKnown, executorFallback, pAvail);
@@ -1305,8 +1372,10 @@ async function executeParallelOnce(
     await dispatchStage(app, run, stage, projectDir);
     await sleep(PARALLEL_STAGGER_MS);
   }
+  if (isCompanyRunCancelled(run)) return;
   run.status = 'running'; touch(run);
-  await Promise.all(pending.map((stage) => collectStage(stage, run)));
+  await Promise.all(pending.map((stage) => collectStage(app, stage, run)));
+  if (isCompanyRunCancelled(run)) return;
   await retryFailedStagesParallel(app, run, teamBySlug, projectDir);
 }
 
@@ -1318,8 +1387,13 @@ function summarizeRun(run: CompanyRun): { total: number; succeeded: number; fail
   return { total, succeeded, failed: total - succeeded - skipped, retried, ...(skipped ? { skipped } : {}) };
 }
 
-// 루프 소진 후 최종 상태 확정(completed/partial/failed).
+// 루프 소진 후 최종 상태 확정(completed/partial/failed). 취소는 덮어쓰지 않음.
 function finalizeRun(run: CompanyRun): void {
+  if (isCompanyRunCancelled(run)) {
+    run.summary = summarizeRun(run);
+    touch(run);
+    return;
+  }
   run.summary = summarizeRun(run);
   const failed = run.summary.failed;
   run.status = failed === 0 ? 'completed' : run.summary.succeeded > 0 ? 'partial' : 'failed';
@@ -1363,6 +1437,7 @@ async function runStageWithFailover(
   const baseSubtask = stage.subtask ?? '';
   let lastError = '';
   for (let i = 0; i < candidates.length; i++) {
+    if (isCompanyRunCancelled(run)) return false;
     const exec = candidates[i];
     if (i > 0 && !avail(exec)) { lastError = `${exec} unavailable`; continue; }
     stage.executor = exec;
@@ -1370,9 +1445,22 @@ async function runStageWithFailover(
     stage.attempt = i + 1;
     stage.taskId = null;
     const ok = await dispatchStage(app, run, stage, projectDir);
-    if (!ok || !stage.taskId) { lastError = stage.error ?? `${exec} dispatch failed`; continue; }
+    if (!ok || !stage.taskId) {
+      if (isCompanyRunCancelled(run)) return false;
+      lastError = stage.error ?? `${exec} dispatch failed`;
+      continue;
+    }
     stage.status = 'running'; touch(run);
-    const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS);
+    const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS, run);
+    if (result.status === 'timed_out') {
+      await abortTimedOutCompanyTask(app, run.id, stage.taskId);
+    }
+    if (result.status === 'cancelled' || isCompanyRunCancelled(run)) {
+      stage.status = 'cancelled';
+      stage.error = stage.error ?? 'run cancelled';
+      touch(run);
+      return false;
+    }
     stage.status = (result.status as StageStatus) ?? 'failed';
     stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
     stage.outputChars = (result.response ?? '').length;
@@ -1394,6 +1482,7 @@ async function runStageWithFailover(
     log.warn({ runId: run.id, stage: stage.teamSlug, exec, attempt: i + 1, lastError },
       'stage attempt failed, trying next executor');
   }
+  if (isCompanyRunCancelled(run)) return false;
   stage.status = 'failed';
   stage.error = `all executors failed: ${lastError}`;
   return false;
@@ -1401,6 +1490,7 @@ async function runStageWithFailover(
 
 // 단일 팀 태스크 dispatch(inject POST /api/task + team_id 태그). 성공 시 true.
 async function dispatchStage(app: FastifyInstance, run: CompanyRun, stage: RunStage, projectDir: string): Promise<boolean> {
+  if (isCompanyRunCancelled(run)) return false;
   try {
     const res = await app.inject({
       method: 'POST',
@@ -1447,7 +1537,7 @@ const modelListCache = new Map<string, { at: number; models: Set<string> }>();
 
 export async function providerModelDispatchable(id: string): Promise<boolean> {
   const provider = agentManager.getProvider(id);
-  if (!provider) return false; // 제거된 lead(mlx3/copilot3 등) → 즉시 배제
+  if (!provider) return false; // 제거된 lead(retired-provider 등) → 즉시 배제
   if (provider.type !== 'api') return true; // CLI/local 은 런타임 모델 해석 → 통과
   const wanted = provider.model || provider.apiConfig?.primary.model;
   if (!wanted) return true; // 서버 기본 모델 → 통과
@@ -1500,7 +1590,7 @@ function withHardTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 // tasks.status 폴링으로 태스크 완료 대기. 터미널 상태 또는 timeout 시 반환.
-async function waitForTask(taskId: string, timeoutMs: number): Promise<{
+async function waitForTask(taskId: string, timeoutMs: number, run?: CompanyRun): Promise<{
   status: string;
   response: string | null;
   requireProtocolPrefix: boolean;
@@ -1508,6 +1598,9 @@ async function waitForTask(taskId: string, timeoutMs: number): Promise<{
   const db = getDb();
   const deadline = Date.now() + timeoutMs;
   for (;;) {
+    if (run && isCompanyRunCancelled(run)) {
+      return { status: 'cancelled', response: null, requireProtocolPrefix: false };
+    }
     const row = db.prepare(`SELECT status, response, prompt FROM tasks WHERE id=?`).get(taskId) as
       { status: string | null; response: string | null; prompt: string | null } | undefined;
     const status = row?.status ?? 'failed';
@@ -1530,11 +1623,45 @@ async function waitForTask(taskId: string, timeoutMs: number): Promise<{
   }
 }
 
+/**
+ * A timed-out task may still be executing and editing its worktree. Abort it
+ * before any failover overwrites stage.taskId or dispatches another executor.
+ * Fail closed: if cancellation cannot be confirmed, throw and stop the driver.
+ */
+export async function abortTimedOutCompanyTask(
+  app: FastifyInstance,
+  runId: string,
+  taskId: string,
+): Promise<void> {
+  const response = await app.inject({
+    method: 'POST',
+    url: `/api/tasks/${encodeURIComponent(taskId)}/cancel`,
+    payload: {},
+  });
+  let body: { ok?: boolean; status?: string; error?: string } = {};
+  try {
+    body = response.json() as typeof body;
+  } catch {
+    // The status code below still produces an actionable failure.
+  }
+  if (response.statusCode >= 200 && response.statusCode < 300 && body.ok === true) {
+    log.warn({ runId, taskId, taskStatus: body.status }, 'Timed-out company task aborted before failover');
+    return;
+  }
+  throw new Error(
+    `timed-out company task abort failed: run=${runId} task=${taskId} ` +
+    `HTTP ${response.statusCode}${body.error ? ` ${body.error}` : ''}`,
+  );
+}
+
 // 단일 단계 결과 수집: 완료 대기 → 산출물/상태 기록 → 빈 산출물 게이트.
-async function collectStage(stage: RunStage, run: CompanyRun): Promise<void> {
+async function collectStage(app: FastifyInstance, stage: RunStage, run: CompanyRun): Promise<void> {
   if (!stage.taskId) return; // dispatch 실패 — status 이미 'failed'
   stage.status = 'running'; touch(run);
-  const result = await waitForTask(stage.taskId, PARALLEL_STAGE_TIMEOUT_MS);
+  const result = await waitForTask(stage.taskId, PARALLEL_STAGE_TIMEOUT_MS, run);
+  if (result.status === 'timed_out') {
+    await abortTimedOutCompanyTask(app, run.id, stage.taskId);
+  }
   stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
   stage.outputChars = (result.response ?? '').length;
   if (result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
@@ -1557,12 +1684,15 @@ async function retryFailedStagesParallel(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string,
 ): Promise<void> {
-  const failed = run.stages.filter((s) => s.status !== 'completed' && (s.retryCount ?? 0) < 1);
+  if (isCompanyRunCancelled(run)) return;
+  const failed = run.stages.filter((s) =>
+    s.status !== 'completed' && s.status !== 'cancelled' && (s.retryCount ?? 0) < 1);
   if (failed.length === 0) return;
   const known = new Set(agentManager.listEnabledIds());
   const avail = liveAvailability(known);
   const executorFallback = allowQueueProviderFailover(run.orgSlug) ? 'ollama' : '';
   await Promise.all(failed.map(async (stage) => {
+    if (isCompanyRunCancelled(run)) return;
     const team = teamBySlug.get(stage.teamSlug);
     if (!team) return;
     const chain = resolveExecutorChain(team, known, executorFallback, avail);
@@ -1581,7 +1711,7 @@ async function retryFailedStagesParallel(
     stage.error = undefined;
     touch(run);
     const ok = await dispatchStage(app, run, stage, projectDir);
-    if (ok && stage.taskId) await collectStage(stage, run);
+    if (ok && stage.taskId) await collectStage(app, stage, run);
   }));
 }
 

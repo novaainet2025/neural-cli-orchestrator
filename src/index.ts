@@ -337,6 +337,15 @@ async function boot(): Promise<void> {
   // 7c. Internal cron jobs
   loadCronJobs();
 
+  // 7d. Startup repair audit
+  try {
+    const { runOrganizationDesignAudit } = await import('./core/organization-design-audit.js');
+    runOrganizationDesignAudit({ database: db, source: 'startup', repair: true });
+    log.info('Startup organization design audit completed');
+  } catch (error) {
+    log.error({ err: error instanceof Error ? error.message : String(error) }, 'Startup organization design audit failed');
+  }
+
   // 8. Fastify Gateway (HTTP :6200)
   log.info('Starting API Gateway...');
   gateway = await createGateway();

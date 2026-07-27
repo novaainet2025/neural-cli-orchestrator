@@ -1,0 +1,177 @@
+- main [ref=e2]:
+  - generic [ref=e3]: Supreme Commander Operations
+  - heading "NCO 목표·성과 지휘 대시보드" [level=1] [ref=e4]
+  - paragraph [ref=e5]: 모든 활성 회사와 팀의 목표 → 실행 → 보고 → 총지휘 점검 흐름을 같은 근거에서 확인합니다.
+  - region "성과 흐름 필터" [ref=e6]:
+    - generic [ref=e7]:
+      - text: 주기
+      - combobox "주기" [ref=e8]:
+        - option "매일"
+        - option "매주" [selected]
+        - option "매월"
+    - generic [ref=e9]:
+      - text: 대상 종류
+      - combobox "대상 종류" [ref=e10]:
+        - option "전체" [selected]
+        - option "회사"
+        - option "팀"
+    - generic [ref=e11]:
+      - text: 대상
+      - combobox "대상" [ref=e12]:
+        - option "전체" [selected]
+        - option "Computer Use 회사 · organization"
+        - option "지식 다이어트 컴퍼니 (Knowledge Diet Co.) · organization"
+        - option "NCO Independent Assurance and Safety Company · organization"
+        - option "NCO Executive Command and Orchestration Company · organization"
+        - option "NCO Expert Engineering Company · organization"
+        - option "NCO Learning and Evolution Company · organization"
+        - option "NCO AI Governance and Public Administration Company · organization"
+        - option "nco-self개선 회사 · organization"
+        - option "NCO Triad Ultra Performance Company · organization"
+        - option "NOVA AX그룹 · organization"
+        - option "NOVA CLI 회사 · organization"
+        - option "리서치 컴퍼니 (Research Co.) · organization"
+        - option "SNS 블로그 회사 · organization"
+        - option "Technology Porting Company · organization"
+        - option "NCO Web Scraping Company · organization"
+        - option "Docs & Spec Agent (ax-docs) · team"
+        - option "보안 전문가 Expert (ax-expert-보안-전문가) · team"
+        - option "Git Manager (ax-git) · team"
+        - option "Research Agent (ax-research) · team"
+        - option "Security Agent (ax-security) · team"
+        - option "CLI 코어 개발팀 · team"
+        - option "Computer Use 제어 코디네이터팀 · team"
+        - option "Computer Use 요청·대기·보고팀 · team"
+        - option "콘텐츠 기획팀 · team"
+        - option "고품질 검수팀 · team"
+        - option "중복에러방지팀 · team"
+        - option "Evidence Audit and Compliance · team"
+        - option "Red Team and Adversarial Review · team"
+        - option "Security Privacy and Safety · team"
+        - option "Independent Verification · team"
+        - option "Collaboration Mesh and Protocol · team"
+        - option "Incident and Continuity Command · team"
+        - option "Mission Intake and Portfolio · team"
+        - option "Orchestrator and Adaptive Routing · team"
+        - option "Strategic Command · team"
+        - option "Systems Architecture · team"
+        - option "Build and Automation · team"
+        - option "Expert Council and Research · team"
+        - option "Integration and Release · team"
+        - option "Continuous Learning · team"
+        - option "Knowledge and Memory Stewardship · team"
+        - option "Skill Academy and Capability Transfer · team"
+        - option "Constitution and Policy · team"
+        - option "HR Capability and Lifecycle · team"
+        - option "Transparency Appeals and Public Record · team"
+        - option "Treasury and Resource Stewardship · team"
+        - option "Governance Officer (governance-officer) · team"
+        - option "Team Lifecycle HR Director · team"
+        - option "HR Incubator 2026-W30 · team"
+        - option "Infrastructure Engineer (infra-engineer) · team"
+        - option "루프·하네스 감사부 · team"
+        - option "옵시디언 데이터위생부 · team"
+        - option "프롬프트·지시 감사부 · team"
+        - option "프로바이더·설정 감사부 · team"
+        - option "Marketing Lead (marketing-lead) · team"
+        - option "분석·추론팀 (Analysis) · team"
+        - option "탐색·수집팀 (Discovery) · team"
+        - option "리서치 기획·전략팀 · team"
+        - option "검증·팩트체크팀 (Verify) · team"
+        - option "시각화·미디어팀 (Viz) · team"
+        - option "집필·리포팅팀 (Report) · team"
+        - option "자가개선팀 · team"
+        - option "자가학습팀 · team"
+        - option "SNS 블로그 홍보팀 · team"
+        - option "Support Lead (support-lead) · team"
+        - option "01 Source Discovery · team"
+        - option "02 Safety and License · team"
+        - option "03 Recovery Checkpoint · team"
+        - option "04 Baseline Benchmark · team"
+        - option "05 Upgrade Regression · team"
+        - option "07 Value Gate Report · team"
+        - option "09 Post-migration Verification · team"
+        - option "Triad Build & Verify · team"
+        - option "Triad Command & Judge · team"
+        - option "Triad Experience Challenge · team"
+        - option "01 Intake Strategy and Compliance · team"
+        - option "02 Source Discovery and Mapping · team"
+        - option "03 Static Extraction Implementation · team"
+        - option "04 Dynamic Browser Implementation · team"
+        - option "05 Data Analysis and Normalization · team"
+        - option "06 Verification and Data Quality · team"
+        - option "07 Reporting and Delivery · team"
+    - button "새로고침" [ref=e13] [cursor=pointer]
+  - region "핵심 운영 지표" [ref=e14]:
+    - article [ref=e15]:
+      - text: 목표 커버리지
+      - strong [ref=e16]: 100.0%
+    - article [ref=e17]:
+      - text: 성과보고 커버리지
+      - strong [ref=e18]: 100.0%
+    - article [ref=e19]:
+      - text: 태스크 성공률
+      - strong [ref=e20]: 51.4%
+    - article [ref=e21]:
+      - text: 최근 실패
+      - strong [ref=e22]: "308"
+  - region "운영 흐름" [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]: 1. 목표
+      - text: 82 / 82 목표
+    - generic [ref=e26]: →
+    - generic [ref=e27]:
+      - generic [ref=e28]: 2. 실행
+      - text: 326 완료 · 308 실패
+    - generic [ref=e29]: →
+    - generic [ref=e30]:
+      - generic [ref=e31]: 3. 성과 보고
+      - text: 82 / 82 성과보고
+    - generic [ref=e32]: →
+    - generic [ref=e33]:
+      - generic [ref=e34]: 4. 총지휘 점검
+      - text: ATTENTION
+  - generic [ref=e35]:
+    - article [ref=e36]:
+      - heading "성과 흐름" [level=2] [ref=e37]
+      - generic [ref=e38]:
+        - generic [ref=e39]: 목표 달성률
+        - generic [ref=e41]: 태스크 성공률
+      - img "주기별 성과 흐름 목표 달성률과 태스크 성공률을 백분율로 비교합니다." [ref=e44]:
+        - generic [ref=e61]: 0%
+        - generic [ref=e62]: 25%
+        - generic [ref=e63]: 50%
+        - generic [ref=e64]: 75%
+        - generic [ref=e65]: 100%
+        - generic [ref=e68]: 2026-07-26
+      - paragraph [ref=e69]: 자동 이력이 아직 짧습니다. 주기마다 누적되며, 표와 함께 실제 관측값만 표시합니다.
+    - article [ref=e45]:
+      - heading "최종 지휘관 운영 점검" [level=2] [ref=e46]
+      - generic [ref=e47]: ATTENTION
+      - generic [ref=e70]: 2026-07-26T09:05:59.274Z · manual
+      - list [ref=e71]:
+        - listitem [ref=e72]: "최근 24시간 실패·시간초과 태스크: 185건"
+        - listitem [ref=e73]: "오늘 누락·기한초과 업무보고: 74건"
+        - listitem [ref=e74]: "구조 보완 필요: 관리자 0, 팀장 4, 헌장 0, 실행팀 없는 회사 0"
+  - generic [ref=e48]:
+    - heading "기간별 근거 표" [level=2] [ref=e49]
+    - table [ref=e51]:
+      - rowgroup [ref=e52]:
+        - row [ref=e53]:
+          - columnheader "기간" [ref=e54]
+          - columnheader "대상 보고" [ref=e55]
+          - columnheader "목표 달성률" [ref=e56]
+          - columnheader "태스크 성공률" [ref=e57]
+          - columnheader "완료" [ref=e58]
+          - columnheader "실패" [ref=e59]
+          - columnheader "업무보고 제출률" [ref=e60]
+      - rowgroup [ref=e75]:
+        - row [ref=e76]:
+          - cell "2026-07-26" [ref=e77]
+          - cell "82" [ref=e78]
+          - cell "94.2%" [ref=e79]
+          - cell "51.4%" [ref=e80]
+          - cell "326" [ref=e81]
+          - cell "308" [ref=e82]
+          - cell "48.2%" [ref=e83]
+    - paragraph [ref=e84]: "생성 시각: 2026-07-26T09:06:42.186Z · 시간대: Asia/Seoul · 원천: tasks, team_goals, work_reports, performance_reports"

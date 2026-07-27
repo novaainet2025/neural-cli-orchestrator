@@ -242,7 +242,8 @@ describe('performance governance operating system', () => {
       goalsPresent: 6,
       reportsExpected: 6,
       reportsPresent: 6,
-      schedulesHealthy: 5,
+      schedulesHealthy: PERFORMANCE_CRON_REQUIREMENTS.length,
+      checks: { orgDesign: { checked: false, available: false } },
     });
 
     db.prepare(`
@@ -265,7 +266,7 @@ describe('performance governance operating system', () => {
     });
     expect(unhealthy.status).toBe('fail');
     expect(unhealthy.stalledTasks).toBe(1);
-    expect(unhealthy.schedulesHealthy).toBe(4);
+    expect(unhealthy.schedulesHealthy).toBe(PERFORMANCE_CRON_REQUIREMENTS.length - 1);
     expect(unhealthy.evidence.join(' ')).toContain('자동화 예약 이상');
   });
 });

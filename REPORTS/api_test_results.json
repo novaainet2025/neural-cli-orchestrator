@@ -1,0 +1,512 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/learning/patterns/invalidate",
+    "status": 415,
+    "body": "{\"statusCode\":415,\"code\":\"FST_ERR_CTP_INVALID_MEDIA_TYPE\",\"error\":\"Unsupported Media Type\",\"message\"..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/health",
+    "status": 200,
+    "body": "{\"healthy\":true,\"api\":{\"port\":6200},\"websocket\":{\"port\":6201},\"redis\":{\"connected\":true},\"storage\":{..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/fleet/nodes",
+    "status": 200,
+    "body": "{\"routable\":[],\"snapshot\":{\"ts\":1785118597986,\"nodes\":[],\"pairings\":[],\"presence\":{}}}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/hive/sessions",
+    "status": 200,
+    "body": "{\"sessions\":[],\"sharedKnowledge\":[]}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/hive/join",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/decompose",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/evidence/check",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/lifecycle",
+    "status": 200,
+    "body": "{\"defaultMode\":\"sticky\",\"stickyTtlMs\":300000,\"warm\":[{\"agentId\":\"agy\",\"lastUsedAt\":1785118235218,\"mo..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/events/stream",
+    "status": 0,
+    "error": "timeout"
+  },
+  {
+    "method": "GET",
+    "path": "/api/ai-providers",
+    "status": 200,
+    "body": "{\"providers\":[{\"id\":\"claude-code\",\"name\":\"Claude Code\",\"enabled\":true,\"type\":\"cli\",\"role\":\"Commander..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/ai-providers/enabled",
+    "status": 200,
+    "body": "{\"providers\":[{\"id\":\"claude-code\",\"name\":\"Claude Code\",\"enabled\":true,\"type\":\"cli\",\"role\":\"Commander..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/ai-providers/status",
+    "status": 200,
+    "body": "{\"providers\":{\"claude-code\":{\"id\":\"claude-code\",\"status\":\"idle\",\"currentTask\":null,\"currentFiles\":[]..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/daemons",
+    "status": 200,
+    "body": "{\"daemons\":[{\"id\":\"claude-code\",\"name\":\"claude-code\",\"status\":\"idle\",\"running\":true,\"available\":true..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/task",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/tasks",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/tasks",
+    "status": 200,
+    "body": "{\"tasks\":[{\"id\":\"task_WxCMCIk6XEFmUpLx\",\"mode\":\"hive\",\"prompt\":\"cli-extensions Chrome 사이드패널이 작업 중 멈추..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/decisions",
+    "status": 200,
+    "body": "{\"decisions\":[{\"id\":\"decision_AfAYezWy2q6qBnJX\",\"task_id\":null,\"phase\":\"circuit-breaker\",\"decision\":..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/cli-session",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/cli-sessions",
+    "status": 200,
+    "body": "{\"sessions\":[{\"id\":\"62556\",\"hostname\":\"nova-macstudio\",\"pid\":62556,\"project_dir\":\"/Users/nova-ai/pro..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/acquisitions/discover",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/acquisitions",
+    "status": 200,
+    "body": "{\"acquisitions\":[{\"id\":\"acq_1783072947119_dxo2wx\",\"package_name\":\"undefined\",\"version\":\"0.1.0\",\"sour..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/admin/drain",
+    "status": 200,
+    "body": "{\"draining\":false,\"inFlight\":23}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/admin/drain",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/chat/messages",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/chat/ais",
+    "status": 200,
+    "body": "{\"ais\":[{\"id\":\"claude-code\",\"name\":\"Claude Code\",\"role\":\"Commander\",\"score\":95},{\"id\":\"opencode\",\"na..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/nlp/intent",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/discussion",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/consensus",
+    "status": 200,
+    "body": "{\"discussions\":[{\"id\":\"sess_W4P8eNVERlxADPga\",\"topic\":\"cli-extensions Chrome 사이드패널이 작업 중 멈추고 진행이 안 되..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/parallel",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/realtime/discussion",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/realtime/parallel",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/realtime/consensus",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/discussion/create",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/discussion/start",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/discussions",
+    "status": 200,
+    "body": "{\"discussions\":[{\"id\":\"sess_W4P8eNVERlxADPga\",\"topic\":\"cli-extensions Chrome 사이드패널이 작업 중 멈추고 진행이 안 되..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/rate-limits",
+    "status": 200,
+    "body": "{\"providers\":[{\"agent_id\":\"aider\",\"is_limited\":0,\"reason\":\"test\",\"limited_at\":\"2026-05-21 02:49:27\",..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/queue/metrics",
+    "status": 200,
+    "body": "{\"metrics\":[{\"agentId\":\"claude-code\",\"waiting\":0,\"active\":0,\"completed\":13,\"failed\":66,\"concurrency\"..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/stats",
+    "status": 200,
+    "body": "{\"totalTasks\":15786,\"completedTasks\":10426,\"totalDiscussions\":1566}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/agent-actions",
+    "status": 200,
+    "body": "{\"actions\":[{\"id\":\"evt_Oy2nPsZaQOREQhv7\",\"agent_id\":\"opencode\",\"action_type\":\"task:completed\",\"targe..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/messages",
+    "status": 200,
+    "body": "{\"messages\":[{\"id\":\"msg_GlJTHjRl4k5Cy375\",\"from_agent\":\"codex\",\"to_agent\":\"gemini\",\"content\":\"Code r..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/heartbeat",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/check",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/mesh/sessions",
+    "status": 200,
+    "body": "{\"sessions\":[{\"sessionId\":\"87845\",\"agentId\":\"claude-5\",\"pid\":87845,\"status\":\"idle\",\"workMode\":\"waiti..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/mesh/summary",
+    "status": 200,
+    "body": "{\"summary\":\"• claude-5 (idle): 세션 시작\\n• claude-6 (idle): 대기중\\n• claude-7 (idle): 대기중\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/send",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/complete",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/mesh/messages",
+    "status": 200,
+    "body": "{\"messages\":[{\"id\":\"msg_tn7nwtPEURPEpRtt\",\"from_session\":\"nco-system\",\"from_agent\":\"nco\",\"to_session..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/disconnect",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/broadcast",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/mesh/delegate",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/mesh/delegations",
+    "status": 200,
+    "body": "{\"delegations\":[{\"id\":\"del_G_is87CZFRpvLYuS\",\"fromSessionId\":\"cli-direct\",\"fromAgentId\":\"unknown\",\"t..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/monitor/overview",
+    "status": 200,
+    "body": "{\"meshSessions\":[{\"sessionId\":\"87845\",\"agentId\":\"claude-5\",\"pid\":87845,\"status\":\"idle\",\"workMode\":\"w..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/collab",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/collab",
+    "status": 200,
+    "body": "{\"collaborations\":[{\"id\":\"collab_6uvjvagssFAemcdY\",\"title\":\"W8 검증\",\"description\":null,\"type\":\"brains..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/collab/open",
+    "status": 200,
+    "body": "{\"collaborations\":[{\"id\":\"collab_tU391Ef0tummRzVO\",\"title\":\"contributed 확증\",\"description\":null,\"type..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/collaborations",
+    "status": 200,
+    "body": "{\"collaborations\":[{\"id\":\"collab_6uvjvagssFAemcdY\",\"title\":\"W8 검증\",\"description\":null,\"type\":\"brains..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/locks",
+    "status": 200,
+    "body": "{\"locks\":[],\"redisConnected\":true}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/mesh/flow",
+    "status": 200,
+    "body": "{\"events\":[{\"ts\":\"2026-07-27T02:15:21.623Z\",\"event_type\":\"mesh_msg\",\"from_session\":\"nco-system\",\"fro..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/hive",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/broadcast",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/commander",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/commander/layers",
+    "status": 200,
+    "body": "{\"layers\":[{\"id\":\"management\",\"name\":\"Management\",\"agents\":[\"claude-code\",\"opencode\"],\"role\":\"Strate..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/observability/leaderboard",
+    "status": 200,
+    "body": "{\"leaderboard\":[{\"agentId\":\"cursor-agent\",\"totalTasks\":3515,\"completedTasks\":3380,\"failedTasks\":128,..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/observability/metrics",
+    "status": 200,
+    "body": "{\"tasks\":{\"total\":15786,\"completed\":10426,\"failed\":4944,\"running\":6},\"discussions\":{\"total\":1566,\"co..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/learn/save",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/learn/query",
+    "status": 200,
+    "body": "{\"error\":\"keywords parameter required\"}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/learn/context",
+    "status": 200,
+    "body": "{\"error\":\"project parameter required\"}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/plan/create",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/kanban",
+    "status": 200,
+    "body": "{\"planId\":\"all\",\"columns\":{\"todo\":[{\"id\":\"kt_JzK4Tw7rMaNt7dEo\",\"plan_id\":\"plan_ghkwEBqpIpIsDH4k\",\"ti..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/kanban/move",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/plan/execute",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/conductor",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/agent/start",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/agent/sessions",
+    "status": 200,
+    "body": "{\"sessions\":[{\"id\":\"sess_1GQIobWTxBzGEtj2\",\"agent_id\":\"codex\",\"prompt\":\"nova cli 장점 한줄 요약\",\"status\":..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/safety/backups",
+    "status": 200,
+    "body": "{\"backups\":[{\"id\":\"bak_ntKlRBf-O5t0vZ3_\",\"agent_id\":\"hermes\",\"task_id\":\"task_z97Gaz6CyrBw_wgp\",\"file..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/invocations",
+    "status": 200,
+    "body": "{\"invocations\":[{\"id\":\"inv_UsdbnT6Q9yztVHBb\",\"callerSessionId\":\"unknown\",\"callerAgentId\":\"company-or..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/invocations/overview",
+    "status": 200,
+    "body": "{\"active\":[{\"id\":\"inv_UsdbnT6Q9yztVHBb\",\"callerSessionId\":\"unknown\",\"callerAgentId\":\"company-orchest..."
+  },
+  {
+    "method": "GET",
+    "path": "/api/hr/organization-design",
+    "status": 200,
+    "body": "{\"audit\":{\"id\":\"org-design_JkPHupEMdsvxBADM\",\"audit_time\":\"2026-07-27T02:15:00.061Z\",\"source\":\"sched..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/hr/organization-design/run",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/github/search",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/github/agent",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "GET",
+    "path": "/api/mem0/stats",
+    "status": 200,
+    "body": "{\"totalMemories\":492,\"agents\":[{\"agentId\":\"cursor-agent\",\"count\":233},{\"agentId\":\"opencode\",\"count\":..."
+  },
+  {
+    "method": "POST",
+    "path": "/api/hallucination/check",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/hallucination/quick",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  },
+  {
+    "method": "POST",
+    "path": "/api/reflexion/evaluate",
+    "status": 415,
+    "body": "{\"error\":\"Unsupported Media Type\",\"statusCode\":415}"
+  }
+]

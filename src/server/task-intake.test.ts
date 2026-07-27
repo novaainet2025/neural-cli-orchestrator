@@ -89,6 +89,25 @@ describe('task-intake helpers', () => {
     }).prompt).not.toContain('[01 Source Discovery 응답 계약]');
   });
 
+  it('does not add the source-discovery contract to routine work-report/perf-goal prompts (2026-07-27 FORMAT_MISMATCH incident, task_oFksRs9zeIa0euYV)', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_tech-port-01-source-discovery',
+    };
+    const workReport = applyPromptGate(
+      '[업무보고 작성] 2026-07-27 오전 보고서를 작성하라.',
+      metadata,
+    );
+    const perfGoal = applyPromptGate(
+      '[성과보고·목표설정 입력 지시] 목표값을 입력하라.',
+      metadata,
+    );
+
+    expect(hasResponseContract(workReport.prompt)).toBe(false);
+    expect(hasResponseContract(perfGoal.prompt)).toBe(false);
+    expect(workReport.prompt).not.toContain('[01 Source Discovery 응답 계약]');
+  });
+
   it('adds the improvement-debate protocol contract only for the team or its diagnostic target', () => {
     const directMetadata = {
       projectDir: '/repo',

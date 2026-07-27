@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   rankTeam,
   orderTeams,
@@ -19,7 +19,14 @@ import {
   templateSubtask,
   isSubstantiveOutput,
   isCompanyStageOutputAcceptable,
+  cancelCompanyRun,
+  abortTimedOutCompanyTask,
+  isCompanyRunCancelled,
+  seedCompanyRunForTest,
+  getCompanyRun,
   type TeamRow,
+  type CompanyRun,
+  type RunStage,
 } from './company-orchestrator.js';
 
 function team(partial: Partial<TeamRow> & { slug: string; name: string }): TeamRow {
@@ -255,10 +262,10 @@ describe('resolveExecutor', () => {
     expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'codex' }), known)).toBe('codex');
   });
   it('lead 가 미등록이면 등록된 첫 member 사용', () => {
-    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'mlx-instruct', members: ['bogus', 'nvidia'] }), known)).toBe('nvidia');
+    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'retired-provider', members: ['bogus', 'nvidia'] }), known)).toBe('nvidia');
   });
   it('lead·member 모두 미등록이면 fallback(ollama)', () => {
-    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'mlx-instruct', members: ['bogus'] }), known)).toBe('ollama');
+    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'retired-provider', members: ['bogus'] }), known)).toBe('ollama');
   });
 
   it('리밋(서킷open) 걸린 lead 는 건너뛰고 가용한 member 사용', () => {
@@ -573,5 +580,124 @@ describe('allowQueueProviderFailover', () => {
 
   it('일반 회사의 기존 failover 동작은 유지', () => {
     expect(allowQueueProviderFailover('research')).toBe(true);
+  });
+});
+
+function makeTestRun(partial: Partial<CompanyRun> & { id: string; status: CompanyRun['status'] }): CompanyRun {
+  const now = new Date().toISOString();
+  return {
+    orgId: 'org_test',
+    orgName: 'Test Org',
+    orgSlug: 'test-org',
+    goal: 'cancel test',
+    mode: 'pipeline',
+    dryRun: false,
+    projectDir: '/tmp',
+    maxIterations: 5,
+    completedIterations: 0,
+    resumeCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    decomposer: null,
+    decomposeSource: null,
+    stages: [],
+    ...partial,
+  };
+}
+
+function makeStage(partial: Partial<RunStage> & { teamSlug: string; status: RunStage['status'] }): RunStage {
+  return {
+    teamId: `team_${partial.teamSlug}`,
+    teamName: partial.teamSlug,
+    rank: 1,
+    executor: 'codex',
+    subtask: 'do work',
+    taskId: null,
+    ...partial,
+  };
+}
+
+describe('cancelCompanyRun', () => {
+  it('없는 run 은 ok:false + run not found', async () => {
+    const app = { inject: vi.fn() } as unknown as import('fastify').FastifyInstance;
+    const res = await cancelCompanyRun(app, 'run_missing_xyz');
+    expect(res).toEqual({ ok: false, error: 'run not found' });
+    expect(app.inject).not.toHaveBeenCalled();
+  });
+
+  it('실행 중 run 을 cancelled 로 표시하고 활성 stage·task 를 취소', async () => {
+    const inject = vi.fn().mockResolvedValue({ statusCode: 200 });
+    const app = { inject } as unknown as import('fastify').FastifyInstance;
+    const runId = `run_cancel_${Date.now()}`;
+    seedCompanyRunForTest(makeTestRun({
+      id: runId,
+      status: 'running',
+      stages: [
+        makeStage({ teamSlug: 'a', status: 'running', taskId: 'task_active_1' }),
+        makeStage({ teamSlug: 'b', status: 'pending', taskId: null }),
+        makeStage({ teamSlug: 'c', status: 'completed', taskId: 'task_done' }),
+      ],
+    }));
+
+    const res = await cancelCompanyRun(app, runId);
+    expect(res).toEqual({ ok: true, status: 'cancelled' });
+
+    const run = getCompanyRun(runId)!;
+    expect(run.status).toBe('cancelled');
+    expect(isCompanyRunCancelled(run)).toBe(true);
+    expect(run.stages[0].status).toBe('cancelled');
+    expect(run.stages[1].status).toBe('cancelled');
+    expect(run.stages[2].status).toBe('completed');
+    expect(inject).toHaveBeenCalledWith({
+      method: 'POST',
+      url: '/api/tasks/task_active_1/cancel',
+    });
+    expect(inject).toHaveBeenCalledTimes(1);
+  });
+
+  it('이미 종료된 run 은 상태를 바꾸지 않고 idempotent ack', async () => {
+    const inject = vi.fn();
+    const app = { inject } as unknown as import('fastify').FastifyInstance;
+    const runId = `run_done_${Date.now()}`;
+    seedCompanyRunForTest(makeTestRun({
+      id: runId,
+      status: 'completed',
+      stages: [makeStage({ teamSlug: 'a', status: 'completed', taskId: 't1' })],
+    }));
+
+    const res = await cancelCompanyRun(app, runId);
+    expect(res).toEqual({ ok: true, status: 'completed' });
+    expect(getCompanyRun(runId)!.status).toBe('completed');
+    expect(inject).not.toHaveBeenCalled();
+  });
+});
+
+describe('abortTimedOutCompanyTask', () => {
+  it('confirms task cancellation before failover can continue', async () => {
+    const inject = vi.fn().mockResolvedValue({
+      statusCode: 200,
+      json: () => ({ ok: true, status: 'cancelled' }),
+    });
+    const app = { inject } as unknown as import('fastify').FastifyInstance;
+
+    await expect(abortTimedOutCompanyTask(app, 'run-timeout', 'task-timeout')).resolves.toBeUndefined();
+    expect(inject).toHaveBeenCalledWith({
+      method: 'POST',
+      url: '/api/tasks/task-timeout/cancel',
+      payload: {},
+    });
+  });
+
+  it('fails closed when the timed-out task cannot be cancelled', async () => {
+    const app = {
+      inject: vi.fn().mockResolvedValue({
+        statusCode: 500,
+        json: () => ({ ok: false, error: 'cancel rejected' }),
+      }),
+    } as unknown as import('fastify').FastifyInstance;
+
+    await expect(
+      abortTimedOutCompanyTask(app, 'run-timeout', 'task-timeout')
+    ).rejects.toThrow('timed-out company task abort failed');
   });
 });

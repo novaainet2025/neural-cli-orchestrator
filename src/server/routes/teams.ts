@@ -7,6 +7,7 @@ import {
   startCompanyRun,
   getCompanyRun,
   listCompanyRuns,
+  cancelCompanyRun,
   OrchestrationError,
   type OrchestrationMode,
 } from '../../core/company-orchestrator.js';
@@ -742,6 +743,15 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const run = getCompanyRun(req.params.runId);
     if (!run) return reply.code(404).send({ error: `run not found: ${req.params.runId}` });
     return { run };
+  });
+
+  app.post<{ Params: { runId: string } }>('/api/orchestrate/:runId/cancel', async (req, reply) => {
+    const res = await cancelCompanyRun(app, req.params.runId);
+    if (!res.ok) {
+      if (res.error === 'run not found') return reply.code(404).send({ error: res.error });
+      return reply.code(500).send({ error: res.error });
+    }
+    return { ok: true, status: res.status };
   });
 
   app.get('/api/orchestrate', async (req) => {

@@ -29,6 +29,8 @@ import {
 } from './hourly-role-oversight.js';
 import { runPerformanceGovernance } from './performance-governance.js';
 import { runCommanderOperationAudit } from './commander-operation-audit.js';
+import { runOrganizationDesignAudit, ORG_DESIGN_JOB_ID } from './organization-design-audit.js';
+import { sleepConsolidator } from './sleep-consolidator.js';
 
 const log = createLogger('cron-scheduler');
 
@@ -355,7 +357,6 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
     } else if (job.taskType === 'internal') {
       const { action } = job.payload as { action?: string };
       if (action === 'sleep-consolidation') {
-        const { sleepConsolidator } = await import('./sleep-consolidator.js');
         const gate = sleepConsolidator.getSelfImprovementGateStatus();
         if (!gate.ok) {
           updateJobStatus(job.id, 'delayed');
@@ -378,7 +379,7 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
         const report = await sleepConsolidator.consolidateSelfImprovements();
         result = JSON.stringify(report);
-      } else if (action === 'team-lifecycle-review' || action === 'team-score-diagnostics') {
+      } else if (action === 'team-lifecycle-review' || action === TEAM_LIFECYCLE_JOB_ID) {
         if (teamDiagnosticsRunning) {
           result = JSON.stringify({ skipped: true, reason: 'already-running' });
         } else {
@@ -391,12 +392,14 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
         }
       } else if (action === 'hr-weekly-workforce-planning') {
         result = JSON.stringify(await runWeeklyWorkforcePlanning());
-      } else if (action === 'hr-hourly-role-audit') {
+      } else if (action === HR_HOURLY_ROLE_AUDIT_JOB_ID) {
         result = JSON.stringify(runHourlyRoleAudit({ source: 'scheduled' }));
       } else if (action === 'pg-hourly-progress-refresh' || action === 'pg-daily-rollup' || action === 'pg-weekly-rollup' || action === 'pg-monthly-rollup') {
         result = JSON.stringify(runPerformanceGovernance());
       } else if (action === 'pg-hourly-commander-audit') {
         result = JSON.stringify(runCommanderOperationAudit());
+      } else if (action === ORG_DESIGN_JOB_ID) {
+        result = JSON.stringify(runOrganizationDesignAudit({ source: 'scheduled' }));
       } else {
         throw new Error(`Unknown internal cron action: ${String(action)}`);
       }
@@ -479,7 +482,7 @@ function ensureDefaultInternalJobs(): void {
       description: 'HR team lifecycle review: score, improve, probation, and soft retirement',
       schedule: TEAM_LIFECYCLE_SCHEDULE,
       taskType: 'internal',
-      payload: { action: 'team-lifecycle-review' },
+      payload: { action: TEAM_LIFECYCLE_JOB_ID },
       timezone: getDefaultTimezone(),
       maxRetries: 1,
       backoffMs: 60_000,
@@ -507,7 +510,7 @@ function ensureDefaultInternalJobs(): void {
       description: 'Hourly HR role, daily goal coverage, and self-improvement evidence audit',
       schedule: HR_HOURLY_ROLE_AUDIT_SCHEDULE,
       taskType: 'internal',
-      payload: { action: 'hr-hourly-role-audit' },
+      payload: { action: HR_HOURLY_ROLE_AUDIT_JOB_ID },
       timezone: getDefaultTimezone(),
       maxRetries: 1,
       backoffMs: 60_000,
@@ -578,6 +581,20 @@ function ensureDefaultInternalJobs(): void {
       schedule: '5 * * * *',
       taskType: 'internal',
       payload: { action: 'pg-hourly-commander-audit' },
+      timezone: 'Asia/Seoul',
+      maxRetries: 1,
+      backoffMs: 60_000,
+      enabled: true,
+    });
+  }
+
+  if (!getCronJob(ORG_DESIGN_JOB_ID)) {
+    scheduleCronJob({
+      id: ORG_DESIGN_JOB_ID,
+      description: 'Audit required capabilities, collaboration coverage, and recover missing teams',
+      schedule: '15 * * * *',
+      taskType: 'internal',
+      payload: { action: ORG_DESIGN_JOB_ID },
       timezone: 'Asia/Seoul',
       maxRetries: 1,
       backoffMs: 60_000,

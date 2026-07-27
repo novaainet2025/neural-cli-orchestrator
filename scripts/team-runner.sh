@@ -42,7 +42,12 @@ acquire_lock() {
   done
   echo $$ > "${LOCK_FILE}"
 }
-release_lock() { [ "$(cat "${LOCK_FILE}" 2>/dev/null)" = "$$" ] && rm -f "${LOCK_FILE}"; }
+# 멱등: 소유자 일치 시에만 삭제. 재호출·타소유자·파일없음 모두 exit 0
+# (명시적 release 후 EXIT trap 재호출 시 [false]가 함수 종료코드 1이 되던 버그 방지)
+release_lock() {
+  [ "$(cat "${LOCK_FILE}" 2>/dev/null)" = "$$" ] && rm -f "${LOCK_FILE}" || true
+  return 0
+}
 trap 'release_lock; rm -rf "${TMP_DIR}"' EXIT
 
 # ── charter 있는 팀 목록 ──
@@ -60,7 +65,9 @@ runnable = [
         "members": t.get("members") or [], "workflow": t.get("workflow") or {},
     }
     for t in teams
-    if (t.get("charter") or "").strip() and not (t.get("charter") or "").strip().startswith("@전담러너")
+    if (t.get("charter") or "").strip()
+    and not (t.get("charter") or "").strip().startswith("@전담러너")
+    and t.get("isActive", True) is True
 ]
 json.dump(runnable, open(os.path.join(tmp, "runnable.json"), "w"), ensure_ascii=False)
 print(len(runnable))

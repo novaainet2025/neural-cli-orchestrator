@@ -3769,6 +3769,7 @@ export async function createGateway() {
   await registerFleetOpsRoutes(app);
   await registerHandoffRoutes(app);
   await registerTeamsRoutes(app);
+
   await registerTriadRoutes(app);
   registerGoalsRoutes(app);
   registerPerformanceRoutes(app);
@@ -3780,6 +3781,30 @@ export async function createGateway() {
   await registerMathRoutes(app);
   // audit.ts는 구현만 있고 미마운트였음(emergency-stop이 compat 스텁으로 응답 — claude-1 T1 제보 2026-07-08)
   await registerAuditRoutes(app);
+
+  // ═══ HR Organization Design Audit ════════════════
+  app.get('/api/hr/organization-design', async () => {
+    const db = getDb();
+    const latest = db.prepare(`
+      SELECT * FROM organization_design_audits ORDER BY audit_time DESC LIMIT 1
+    `).get() as Record<string, unknown> | undefined;
+    if (!latest) return { audit: null };
+    return {
+      audit: {
+        ...latest,
+        excessCandidates: safeJsonParse(String(latest.excess_json ?? '[]')),
+        actions: safeJsonParse(String(latest.actions_json ?? '[]')),
+        evidence: safeJsonParse(String(latest.evidence_json ?? '[]')),
+      },
+    };
+  });
+
+  app.post('/api/hr/organization-design/run', async (req) => {
+    const { repair } = (req.body ?? {}) as { repair?: boolean };
+    const { runOrganizationDesignAudit } = await import('../core/organization-design-audit.js');
+    const result = runOrganizationDesignAudit({ source: 'manual', repair: repair !== false });
+    return { audit: result };
+  });
 
   // ═══ Dashboard Compatibility Routes ═══════════════
   await registerDashboardRoutes(app);

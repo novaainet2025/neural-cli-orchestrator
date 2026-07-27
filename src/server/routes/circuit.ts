@@ -10,6 +10,15 @@ export async function registerCircuitRoutes(app: FastifyInstance) {
     };
   });
 
+  app.post('/api/circuit/recover', async () => {
+    const result = circuitBreakerRegistry.recoverAll();
+    return {
+      ok: true,
+      ...result,
+      circuits: circuitBreakerRegistry.listSnapshots(),
+    };
+  });
+
   app.post('/api/circuit/:agentId/reset', async (req, reply) => {
     const { agentId } = req.params as { agentId: string };
     if (!agentManager.getProvider(agentId)) {

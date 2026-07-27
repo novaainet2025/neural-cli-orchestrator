@@ -10,10 +10,6 @@
     "cursor-agent",
     "opencode"
   ],
-  "mlx": [
-    "ollama",
-    "hermes"
-  ],
   "higgsfield": [
     "agy",
     "codex",

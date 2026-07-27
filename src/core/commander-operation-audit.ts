@@ -16,6 +16,7 @@ export const PERFORMANCE_CRON_REQUIREMENTS = [
   { id: 'pg-weekly-rollup', schedule: '15 0 * * 1', maxAgeMs: 8 * 24 * 60 * 60 * 1000 },
   { id: 'pg-monthly-rollup', schedule: '20 0 1 * *', maxAgeMs: 33 * 24 * 60 * 60 * 1000 },
   { id: 'pg-hourly-commander-audit', schedule: '5 * * * *', maxAgeMs: 2 * 60 * 60 * 1000 },
+  { id: 'org-design-hourly-audit', schedule: '15 * * * *', maxAgeMs: 3 * 60 * 60 * 1000 },
 ] as const;
 
 type AuditStatus = 'pass' | 'attention' | 'fail';
@@ -242,6 +243,78 @@ export function runCommanderOperationAudit(options: {
       `구조 보완 필요: 관리자 ${missingManagers}, 팀장 ${missingTeamLeads}, 헌장 ${missingTeamCharters}, 실행팀 없는 회사 ${organizationsWithoutTeams}`,
     );
   }
+
+  // Org design audit freshness check (graceful on older/unit-test DBs without the table)
+  const hasOrgDesignTable = !!database.prepare(`
+    SELECT 1 FROM sqlite_master
+    WHERE type = 'table' AND name = 'organization_design_audits'
+    LIMIT 1
+  `).get();
+
+  let orgDesignHealth: Record<string, unknown> = { checked: false, available: false };
+  if (hasOrgDesignTable) {
+    const lastOrgDesign = database.prepare(`
+      SELECT audit_time, status,
+             org_expected, org_present, cap_expected, cap_present,
+             active_teams, members_after_coverage,
+             collaboration_coverage_after,
+             missing_lead_after, missing_charter_after
+      FROM organization_design_audits
+      ORDER BY audit_time DESC LIMIT 1
+    `).get() as {
+      audit_time: string; status: string;
+      org_expected: number; org_present: number;
+      cap_expected: number; cap_present: number;
+      active_teams: number; members_after_coverage: number;
+      collaboration_coverage_after: number;
+      missing_lead_after: number; missing_charter_after: number;
+    } | undefined;
+
+    if (lastOrgDesign) {
+      const lastRunMs = new Date(lastOrgDesign.audit_time).getTime();
+      const staleMs = now.getTime() - lastRunMs;
+      const fresh = staleMs < 3 * 60 * 60 * 1000;
+      const orgFullCoverage = lastOrgDesign.org_present >= lastOrgDesign.org_expected;
+      const capFullCoverage = lastOrgDesign.cap_present >= lastOrgDesign.cap_expected;
+      const collabFullCoverage = lastOrgDesign.collaboration_coverage_after >= 1.0;
+      const hasMissingAfter = lastOrgDesign.missing_lead_after > 0 || lastOrgDesign.missing_charter_after > 0;
+      const isFailStatus = lastOrgDesign.status === 'fail';
+      orgDesignHealth = {
+        checked: true,
+        available: true,
+        fresh,
+        staleHours: Math.round(staleMs / 3600000 * 10) / 10,
+        status: lastOrgDesign.status,
+        orgCoverage: `${lastOrgDesign.org_present}/${lastOrgDesign.org_expected}`,
+        capCoverage: `${lastOrgDesign.cap_present}/${lastOrgDesign.cap_expected}`,
+        collaborationCoverage: lastOrgDesign.collaboration_coverage_after,
+        memberCoverage: lastOrgDesign.members_after_coverage,
+        activeTeams: lastOrgDesign.active_teams,
+        missingLeadAfter: lastOrgDesign.missing_lead_after,
+        missingCharterAfter: lastOrgDesign.missing_charter_after,
+      };
+      if (isFailStatus || !orgFullCoverage || !capFullCoverage || !collabFullCoverage || hasMissingAfter) {
+        status = 'fail';
+        const reasons: string[] = [];
+        if (isFailStatus) reasons.push(`감사상태=${lastOrgDesign.status}`);
+        if (!orgFullCoverage) reasons.push(`회사커버리지=${lastOrgDesign.org_present}/${lastOrgDesign.org_expected}`);
+        if (!capFullCoverage) reasons.push(`역량커버리지=${lastOrgDesign.cap_present}/${lastOrgDesign.cap_expected}`);
+        if (!collabFullCoverage) reasons.push(`협업커버리지=${lastOrgDesign.collaboration_coverage_after}`);
+        if (lastOrgDesign.missing_lead_after > 0) reasons.push(`리더미지정=${lastOrgDesign.missing_lead_after}`);
+        if (lastOrgDesign.missing_charter_after > 0) reasons.push(`헌장미정의=${lastOrgDesign.missing_charter_after}`);
+        evidence.push(`조직설계 감사 실패: ${reasons.join(', ')}`);
+      } else if (!fresh || lastOrgDesign.status === 'attention') {
+        if (status === 'pass') status = 'attention';
+        if (!fresh) evidence.push(`조직설계 감사 정보부실: 마지막 실행 ${Math.round(staleMs / 3600000 * 10) / 10}시간 전`);
+        if (lastOrgDesign.status === 'attention') evidence.push(`조직설계 감사 주의: ${lastOrgDesign.status}`);
+      }
+    } else {
+      orgDesignHealth = { checked: false, available: true };
+      if (status === 'pass') status = 'attention';
+      evidence.push('조직설계 감사 미실시');
+    }
+  }
+
   if (evidence.length === 0) {
     evidence.push('모든 활성 회사·팀의 목표, 성과보고, 실행 상태와 자동화 예약이 정상이다.');
   }
@@ -265,6 +338,7 @@ export function runCommanderOperationAudit(options: {
       missingTeamCharters,
       organizationsWithoutTeams,
     },
+    orgDesign: orgDesignHealth,
     policy: {
       finalSovereign: 'human-user',
       operationalCommander: 'org_nova-ax / Commander·두뇌',

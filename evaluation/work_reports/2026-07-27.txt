@@ -1,0 +1,30 @@
+### 업무 보고 (2026-07-27 오후)
+
+#### 팀: Evaluation and Simulation
+
+조직 경로: nova-ax/nco-evolution/gov-evolution-evaluation
+
+팀 상시 임무: 개선 전 기준선, 대표 시나리오, 반례, 회귀 한계와 통계적 판정기준을 설계한다. 평가 설계와 구현 표본을 분리하고 원시 결과·명령·환경을 보존하며 측정되지 않은 향상을 성과로 인정하지 않는다.
+
+[실데이터]
+
+[tasks] 최근 7일: 전체=4, 완료=4, 실패성=0, 진행=0, 완료율=100.0%
+
+[work_reports] 최근 7일: submitted=2
+
+[agent_performance_summary] cursor-agent/code: 실행=19, 성공률=100.0%, 평균품질=98.42, 평균소요ms=24404.16
+
+[agent_performance_summary] codex/code: 실행=15, 성공률=46.7%, 평균품질=46.27, 평균소요ms=46602.67
+
+[agent_performance_summary] cursor-agent/design: 실행=9, 성공률=100.0%, 평균품질=86.65, 평균소요ms=27100.89
+
+[agent_performance_summary] cursor-agent/verify: 실행=8, 성공률=100.0%, 평균품질=88.16, 평균소요ms=28054.63
+
+[agent_performance_summary] nvidia/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
+
+[agent_performance_summary] nvidia/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
+
+[agent_performance_summary] cursor-agent/review: 실행=5, 성공률=100.0%, 평균품질=92.80, 평균소요ms=15632.40
+
+[agent_performance_summary] nvidia/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
+

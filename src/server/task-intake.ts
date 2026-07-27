@@ -136,7 +136,14 @@ export function applyTeamResponseContract(
     ].join('\n');
   }
 
+  // 팀 상시 임무인 "[업무보고 작성]" 일일 보고와 성과/목표 입력 태스크는 companyRunId 없이
+  // 독립 스케줄러가 생성하며, 소스 발굴 dossier 계약과 무관하다. 이 계약을 주입하면
+  // gateway.ts의 hasResponseContract()가 true가 되어 requireProtocolPrefix가 켜지고, 정상
+  // "업무보고" 형식 응답(첫 줄이 done:/status:가 아님)이 FORMAT_MISMATCH로 반려된다
+  // (실측 2026-07-27: task_oFksRs9zeIa0euYV, teamId=team_tech-port-01-source-discovery,
+  // workReportId만 있고 companyRunId 없음, 응답 "**업무보고**..."가 반려됨).
   if (metadata?.teamId === SOURCE_DISCOVERY_TEAM_ID) {
+    if (isWorkReportPrompt(prompt) || isPerformanceGoalInputPrompt(prompt)) return prompt;
     if (prompt.includes(SOURCE_DISCOVERY_RESPONSE_CONTRACT)) return prompt;
     return [
       prompt,
@@ -265,7 +272,7 @@ export function buildDefaultVerifierWithFs(
   // 연구 보고서를 FORMAT_MISMATCH로 반려한다 (실측 2026-07-24: company-orchestrator 부모
   // 3건, direct retry 8건). build verifier는 코드 산출물 검증용이므로 연구/기획 팀에는
   // 붙이지 않는다 — 품질 검증은 내용 기반(response-quality.ts)으로만 수행한다.
-  if (input.metadata?.teamId === RESEARCH_STRATEGY_TEAM_ID
+  if ((input.metadata?.teamId === RESEARCH_STRATEGY_TEAM_ID || input.metadata?.teamId === SOURCE_DISCOVERY_TEAM_ID)
     && typeof input.metadata?.companyRunId === 'string'
     && input.metadata.companyRunId.trim()) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;

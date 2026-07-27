@@ -10,7 +10,7 @@
  *   // a.score === 40, a.missing === ['제약','출력형식','검증기준']
  *   const p = enrichPrompt(prompt, { projectDir: '/x', taskType: 'bugfix' });
  *
- * 순수 함수 — 외부 의존성·상태 없음. (생성: mlx, 교정: claude-1 2026-07-09)
+ * 순수 함수 — 외부 의존성·상태 없음. (교정: claude-1 2026-07-09)
  */
 
 interface SectionSpec {

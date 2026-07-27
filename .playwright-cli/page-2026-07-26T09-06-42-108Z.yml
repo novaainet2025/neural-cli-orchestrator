@@ -1,0 +1,77 @@
+- main [ref=e2]:
+  - generic [ref=e3]: Supreme Commander Operations
+  - heading "NCO 목표·성과 지휘 대시보드" [level=1] [ref=e4]
+  - paragraph [ref=e5]: 모든 활성 회사와 팀의 목표 → 실행 → 보고 → 총지휘 점검 흐름을 같은 근거에서 확인합니다.
+  - region "성과 흐름 필터" [ref=e6]:
+    - generic [ref=e7]:
+      - text: 주기
+      - combobox "주기" [ref=e8]:
+        - option "매일" [selected]
+        - option "매주"
+        - option "매월"
+    - generic [ref=e9]:
+      - text: 대상 종류
+      - combobox "대상 종류" [ref=e10]:
+        - option "전체" [selected]
+        - option "회사"
+        - option "팀"
+    - generic [ref=e11]:
+      - text: 대상
+      - combobox "대상" [ref=e12]:
+        - option "전체" [selected]
+    - button "새로고침" [ref=e13] [cursor=pointer]
+  - region "핵심 운영 지표" [ref=e14]:
+    - article [ref=e15]:
+      - text: 목표 커버리지
+      - strong [ref=e16]: —
+    - article [ref=e17]:
+      - text: 성과보고 커버리지
+      - strong [ref=e18]: —
+    - article [ref=e19]:
+      - text: 태스크 성공률
+      - strong [ref=e20]: —
+    - article [ref=e21]:
+      - text: 최근 실패
+      - strong [ref=e22]: —
+  - region "운영 흐름" [ref=e23]:
+    - generic [ref=e24]:
+      - generic [ref=e25]: 1. 목표
+      - text: 자동 목표를 확인 중
+    - generic [ref=e26]: →
+    - generic [ref=e27]:
+      - generic [ref=e28]: 2. 실행
+      - text: 실제 태스크를 집계
+    - generic [ref=e29]: →
+    - generic [ref=e30]:
+      - generic [ref=e31]: 3. 성과 보고
+      - text: 근거와 개선 방향 기록
+    - generic [ref=e32]: →
+    - generic [ref=e33]:
+      - generic [ref=e34]: 4. 총지휘 점검
+      - text: 예약·실패·누락 검사
+  - generic [ref=e35]:
+    - article [ref=e36]:
+      - heading "성과 흐름" [level=2] [ref=e37]
+      - generic [ref=e38]:
+        - generic [ref=e39]: 목표 달성률
+        - generic [ref=e41]: 태스크 성공률
+      - img "주기별 성과 흐름 목표 달성률과 태스크 성공률을 백분율로 비교합니다." [ref=e44]
+      - paragraph
+    - article [ref=e45]:
+      - heading "최종 지휘관 운영 점검" [level=2] [ref=e46]
+      - generic [ref=e47]: 확인 중
+      - list
+  - generic [ref=e48]:
+    - heading "기간별 근거 표" [level=2] [ref=e49]
+    - table [ref=e51]:
+      - rowgroup [ref=e52]:
+        - row [ref=e53]:
+          - columnheader "기간" [ref=e54]
+          - columnheader "대상 보고" [ref=e55]
+          - columnheader "목표 달성률" [ref=e56]
+          - columnheader "태스크 성공률" [ref=e57]
+          - columnheader "완료" [ref=e58]
+          - columnheader "실패" [ref=e59]
+          - columnheader "업무보고 제출률" [ref=e60]
+      - rowgroup
+    - paragraph

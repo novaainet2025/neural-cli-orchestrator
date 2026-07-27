@@ -25,7 +25,7 @@ describe('selectCapabilityExecutor', () => {
   });
   it('codex 미등록이면 역량순 가용 폴백', () => {
     const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','nvidia']));
-    expect(['mlx','copilot','openrouter']).not.toContain(r.executor);
+    expect(['retired-provider','copilot','openrouter']).not.toContain(r.executor);
     expect(r.executor).toBe('ollama');
   });
   it('전원 서킷 open → 등록된 첫 후보', () => {
@@ -40,7 +40,7 @@ describe('reselectExecutor', () => {
     expect(r.executor).toBe('codex'); expect(r.note).toBeUndefined();
   });
   it('제거 lead → 역량 재선정 + note', () => {
-    const r = reselectExecutor(team({ slug:'a', name:'A', lead:'mlx-instruct' }), '아키텍처 설계', known);
+    const r = reselectExecutor(team({ slug:'a', name:'A', lead:'retired-provider' }), '아키텍처 설계', known);
     expect(r.executor).toBe('opencode'); expect(r.note).toMatch(/제거\/미등록/);
   });
 });

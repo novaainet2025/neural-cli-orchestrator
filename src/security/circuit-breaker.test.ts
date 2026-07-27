@@ -225,4 +225,27 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.getState()).toBe('closed');
     expect(breaker.canExecute()).toBe(true);
   });
+
+  it('recoverAll recovers expired open circuits and reports counts', () => {
+    const breaker1 = new CircuitBreaker('recover-a', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+    });
+    breaker1.reset();
+
+    breaker1.recordFailure('drop');
+    expect(breaker1.getState()).toBe('open');
+
+    // Before cooldown: recoverAll keeps open circuits intact
+    let r = circuitBreakerRegistry.recoverAll();
+    expect(r.recovered).toBeGreaterThanOrEqual(0);
+    expect(r.open).toBeGreaterThanOrEqual(1);
+    expect(breaker1.getState()).toBe('open');
+
+    // Advance past cooldown (50ms)
+    vi.advanceTimersByTime(50);
+    r = circuitBreakerRegistry.recoverAll();
+    expect(r.recovered).toBeGreaterThanOrEqual(1);
+    expect(breaker1.getState()).toBe('closed');
+  });
 });

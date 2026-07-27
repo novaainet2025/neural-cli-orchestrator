@@ -489,6 +489,25 @@ class CircuitBreakerRegistry {
     };
   }
 
+  /**
+   * 모든 회로를 스캔하여 만료된 cooldown/open 회로와 5분 초과 고아 half-open
+   * 회로를 closed로 자가복구한다. 한 번에 한 에이전트씩 순차 처리하며, 복구·미복구
+   * 수를 반환한다. 외부 크론/health monitor에서 주기적으로 호출하면 open 고착
+   * 문제를 완화한다(실측: 2026-07-27 기준 claude-code 1268건 실패 — 72.8% 차지).
+   */
+  recoverAll(): { recovered: number; open: number; total: number } {
+    const agentIds = Array.from(this.states.keys());
+    let recovered = 0;
+    let open = 0;
+    for (const agentId of agentIds) {
+      const before = this.states.get(agentId);
+      const after = this.getSnapshot(agentId);
+      if (before && (before.state === 'open' || before.state === 'half-open') && after.state === 'closed') recovered++;
+      if (after.state === 'open') open++;
+    }
+    return { recovered, open, total: agentIds.length };
+  }
+
   listSnapshots(agentIds?: string[]): CircuitSnapshot[] {
     if (agentIds) {
       return agentIds.map(agentId => this.getSnapshot(agentId));

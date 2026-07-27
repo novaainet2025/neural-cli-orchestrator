@@ -215,7 +215,7 @@
         "gpu": "Apple Silicon",
         "maxModelLen": 32768
       },
-      "note": "Local Ollama (localhost:11434). qwen3:30b-a3b model. | 2026-07-21 MLX 완전제거(사용자 지시): mlx provider 폐지, 로컬 워커/검증 역할을 Ollama 단일화. 끌 경우 사유를 note에 남길 것.",
+      "note": "Local Ollama (localhost:11434). qwen3:30b-a3b model. 로컬 워커/검증 단일 경로. 끌 경우 사유를 note에 남길 것.",
       "healthCheck": {
         "type": "api",
         "url": "http://localhost:11434/api/tags",

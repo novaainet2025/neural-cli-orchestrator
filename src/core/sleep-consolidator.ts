@@ -21,6 +21,86 @@ import { vectorMemory } from './vector-memory.js';
 const log = createLogger('sleep-consolidator');
 const DEFAULT_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_TEXT_CHARS = 4000;
+/** Conservative char cap for the final LLM user prompt (≈ well under 128k-token models). */
+export const MAX_SELF_IMPROVEMENT_PROMPT_CHARS = 80_000;
+/** Hard cap on lessons saved per consolidation run after dedupe (LLM and fallback). */
+export const MAX_SELF_IMPROVEMENT_LESSONS_PER_RUN = 200;
+
+export interface DistilledLesson {
+  category: 'bug_pattern' | 'architecture' | 'convention' | 'decision';
+  content: string;
+  projectPath: string;
+  sourceTaskId?: string;
+  confidence: number;
+}
+
+export interface PromptBoundResult {
+  prompt: string;
+  truncated: boolean;
+  originalChars: number;
+  promptChars: number;
+  maxPromptChars: number;
+}
+
+export interface LessonCapResult {
+  lessons: DistilledLesson[];
+  originalCount: number;
+  kept: number;
+  truncated: number;
+}
+
+/**
+ * Bound the final user prompt by character count. Never logs prompt body.
+ */
+export function boundSelfImprovementPrompt(
+  prompt: string,
+  maxChars: number = MAX_SELF_IMPROVEMENT_PROMPT_CHARS,
+): PromptBoundResult {
+  const originalChars = prompt.length;
+  if (originalChars <= maxChars) {
+    return {
+      prompt,
+      truncated: false,
+      originalChars,
+      promptChars: originalChars,
+      maxPromptChars: maxChars,
+    };
+  }
+  const marker = '\n...[prompt truncated]...';
+  const budget = Math.max(0, maxChars - marker.length);
+  const bounded = `${prompt.slice(0, budget)}${marker}`;
+  return {
+    prompt: bounded.slice(0, maxChars),
+    truncated: true,
+    originalChars,
+    promptChars: Math.min(bounded.length, maxChars),
+    maxPromptChars: maxChars,
+  };
+}
+
+/**
+ * After dedupe: keep top lessons by confidence desc; ties break deterministically.
+ */
+export function selectTopLessonsForSave(
+  lessons: DistilledLesson[],
+  maxLessons: number = MAX_SELF_IMPROVEMENT_LESSONS_PER_RUN,
+): LessonCapResult {
+  const sorted = [...lessons].sort((a, b) => {
+    if (b.confidence !== a.confidence) {
+      return b.confidence - a.confidence;
+    }
+    const keyA = `${a.category}\0${a.projectPath}\0${a.content}\0${a.sourceTaskId ?? ''}`;
+    const keyB = `${b.category}\0${b.projectPath}\0${b.content}\0${b.sourceTaskId ?? ''}`;
+    return keyA.localeCompare(keyB);
+  });
+  const kept = Math.min(sorted.length, maxLessons);
+  return {
+    lessons: sorted.slice(0, kept),
+    originalCount: sorted.length,
+    kept,
+    truncated: Math.max(0, sorted.length - kept),
+  };
+}
 
 export interface ConsolidationReport {
   agentId: string;
@@ -59,14 +139,6 @@ export interface RawInputData {
     message: string;
     contextJson?: string;
   }>;
-}
-
-export interface DistilledLesson {
-  category: 'bug_pattern' | 'architecture' | 'convention' | 'decision';
-  content: string;
-  projectPath: string;
-  sourceTaskId?: string;
-  confidence: number;
 }
 
 class SleepConsolidator {
@@ -343,10 +415,26 @@ class SleepConsolidator {
 
   private async distillLessonsWithLLM(inputs: RawInputData): Promise<DistilledLesson[]> {
     const llmLessons = await this.tryDistillWithLLM(inputs);
-    if (llmLessons.length > 0) {
-      return this.dedupeLessons(llmLessons);
+    const deduped = llmLessons.length > 0
+      ? this.dedupeLessons(llmLessons)
+      : this.dedupeLessons(this.distillLessonsFallback(inputs));
+    return this.capLessonsPerRun(deduped);
+  }
+
+  private capLessonsPerRun(lessons: DistilledLesson[]): DistilledLesson[] {
+    const capped = selectTopLessonsForSave(lessons, MAX_SELF_IMPROVEMENT_LESSONS_PER_RUN);
+    if (capped.truncated > 0) {
+      log.info(
+        {
+          originalCount: capped.originalCount,
+          kept: capped.kept,
+          truncated: capped.truncated,
+          maxLessonsPerRun: MAX_SELF_IMPROVEMENT_LESSONS_PER_RUN,
+        },
+        'Self-improvement lessons capped after dedupe',
+      );
     }
-    return this.dedupeLessons(this.distillLessonsFallback(inputs));
+    return capped.lessons;
   }
 
   private async tryDistillWithLLM(inputs: RawInputData): Promise<DistilledLesson[]> {
@@ -523,7 +611,7 @@ class SleepConsolidator {
   }
 
   private formatInputsForPrompt(inputs: RawInputData): string {
-    return [
+    const full = [
       '# Completed tasks',
       ...inputs.tasks.map((task) => [
         `## Task ${task.id}`,
@@ -547,6 +635,19 @@ class SleepConsolidator {
         row.contextJson ? `context: ${row.contextJson}` : '',
       ].filter(Boolean).join('\n')),
     ].join('\n\n');
+
+    const bounded = boundSelfImprovementPrompt(full, MAX_SELF_IMPROVEMENT_PROMPT_CHARS);
+    // Structured size metadata only — never log prompt body / secrets.
+    log.info(
+      {
+        truncated: bounded.truncated,
+        originalChars: bounded.originalChars,
+        promptChars: bounded.promptChars,
+        maxPromptChars: bounded.maxPromptChars,
+      },
+      'Self-improvement LLM user prompt sized',
+    );
+    return bounded.prompt;
   }
 
   private normalizeLesson(lesson: DistilledLesson): DistilledLesson | null {

@@ -15,7 +15,6 @@ pm2 save
 
 현재 실행 중인 프로세스:
 - `nco-backend` — NCO 백엔드 (포트 6200/6201)
-- `mlx-server` — MLX 로컬 추론 서버 (포트 8000/4100)
 
 ## 방법 2: launchd plist (시스템 표준)
 
