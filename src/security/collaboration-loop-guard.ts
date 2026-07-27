@@ -11,8 +11,45 @@ import { createHash } from 'node:crypto';
 // 프로바이더 circuit_states와 분리된 인메모리 가드(DB 쓰기 없음).
 // 롤백: NCO_MESH_COLLAB_LOOP_GUARD=off (재빌드 불필요) 또는 cli-mesh 배선 제거.
 
+// cycle4 재검증 (2026-07-28, 고정 상한 2026-07-27T20:50:00Z, T1):
+//   julianday()로 자른 정확한 48h mesh_messages 1008건을 실제 가드에 먹였을 때
+//   기존 동작(flag off)은 7건(channel-burst 5 + echo-loop 2)을 차단했고, 모두
+//   'nco-system'의 단방향 태스크 완료 통지였다(예: "❌ [task] codex 완료 (13.1s)").
+//   면제 적용 시 차단은 0건이었다. 종전 3018/844 수치는 ISO T/Z 문자열 비교가
+//   48h 밖 행을 포함한 결과이므로 근거로 재사용하지 않는다.
+//   원인: 이 룰들은 협업 피어 간 에코 루프를 막으려고 만들어졌는데, 병렬 태스크가
+//   동시 완료되면 시스템 통지원이 정상적으로 60초에 20건을 넘겨 burst로 오탐한다.
+//   조치: 통지 발신자는 '볼륨' 룰(echo-loop/channel-burst)에서만 면제한다.
+//   protocol-echo는 발신자와 무관하게 계속 적용된다 — 프로토콜 에코 루프가 원래 표적이다.
+//   롤백: NCO_MESH_LOOP_GUARD_NOTIFIERS=off (면제 해제, cycle1 동작 복귀)
+//         또는 목록 재정의 NCO_MESH_LOOP_GUARD_NOTIFIERS=nco-system,other
+
 /** 룰이 차단 사유로 보고하는 루프 형태. */
 export type CollaborationLoopRule = 'echo-loop' | 'channel-burst' | 'protocol-echo';
+
+/** 협업 피어가 아니라 단방향 통지원인 발신 세션 — 볼륨 룰에서 면제된다. */
+export const DEFAULT_NOTIFIER_SENDERS: readonly string[] = ['nco-system'];
+
+const NOTIFIER_EXEMPTION_DISABLED = new Set(['off', 'none', '0', 'false']);
+
+/** `from->to` 채널 키에서 발신 세션만 뽑는다. */
+export function channelSender(channel: string): string {
+  const idx = channel.indexOf('->');
+  return idx < 0 ? channel : channel.slice(0, idx);
+}
+
+/**
+ * 볼륨 룰 면제 발신자 집합. env로 재정의·해제 가능(재빌드 불필요).
+ * off/none/0/false → 빈 집합 = 면제 없음(cycle1 동작).
+ */
+export function getNotifierSenders(
+  raw: string | undefined = process.env.NCO_MESH_LOOP_GUARD_NOTIFIERS,
+): ReadonlySet<string> {
+  const value = raw?.trim();
+  if (!value) return new Set(DEFAULT_NOTIFIER_SENDERS);
+  if (NOTIFIER_EXEMPTION_DISABLED.has(value.toLowerCase())) return new Set();
+  return new Set(value.split(',').map((s) => s.trim()).filter(Boolean));
+}
 
 export interface CollaborationLoopRuleConfig {
   /** 슬라이딩 윈도 길이 (ms). */
@@ -30,6 +67,11 @@ export interface CollaborationLoopRuleConfig {
   cooldownMs: number;
   /** 추적 채널 수 상한 — 초과 시 가장 오래 쓰이지 않은 채널부터 제거(메모리 누수 방지). */
   maxTrackedChannels: number;
+  /**
+   * 볼륨 룰(echo-loop/channel-burst)에서 면제할 발신 세션.
+   * protocol-echo에는 적용되지 않는다. 미지정 시 env/기본값을 쓴다.
+   */
+  notifierSenders?: ReadonlySet<string>;
 }
 
 export const DEFAULT_COLLABORATION_LOOP_CONFIG: CollaborationLoopRuleConfig = {
@@ -131,6 +173,7 @@ export class CollaborationLoopGuard {
       maxMessagesPerWindow: normalizePositiveInteger(config?.maxMessagesPerWindow, DEFAULT_COLLABORATION_LOOP_CONFIG.maxMessagesPerWindow),
       cooldownMs: normalizePositiveInteger(config?.cooldownMs, DEFAULT_COLLABORATION_LOOP_CONFIG.cooldownMs),
       maxTrackedChannels: normalizePositiveInteger(config?.maxTrackedChannels, DEFAULT_COLLABORATION_LOOP_CONFIG.maxTrackedChannels),
+      notifierSenders: config?.notifierSenders ?? getNotifierSenders(),
     };
 
     const now = Date.now();
@@ -167,14 +210,18 @@ export class CollaborationLoopGuard {
       : resolved.maxRepeatsPerWindow;
     const echoRule: CollaborationLoopRule = protocolPrefixed ? 'protocol-echo' : 'echo-loop';
 
-    if (repeats > repeatCap) {
+    // 통지원 면제: channel-burst와 일반 echo-loop만 건너뛴다.
+    // protocol-echo는 통지원에도 그대로 적용한다.
+    const notifierExempt = resolved.notifierSenders?.has(channelSender(channel)) ?? false;
+
+    if (!(notifierExempt && !protocolPrefixed) && repeats > repeatCap) {
       return this.trip(entry, channel, echoRule, now, resolved.cooldownMs, repeats, windowCount,
         protocolPrefixed
           ? `identical protocol collaboration message repeated ${repeats}x within ${resolved.windowMs}ms`
           : `identical collaboration message repeated ${repeats}x within ${resolved.windowMs}ms`);
     }
 
-    if (windowCount > resolved.maxMessagesPerWindow) {
+    if (!notifierExempt && windowCount > resolved.maxMessagesPerWindow) {
       return this.trip(entry, channel, 'channel-burst', now, resolved.cooldownMs, repeats, windowCount,
         `collaboration channel sent ${windowCount} messages within ${resolved.windowMs}ms`);
     }

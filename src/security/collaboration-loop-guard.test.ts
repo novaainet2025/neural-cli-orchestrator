@@ -22,6 +22,8 @@ import {
   collaborationLoopGuard,
   DEFAULT_COLLABORATION_LOOP_CONFIG,
   isCollaborationLoopGuardEnabled,
+  channelSender,
+  getNotifierSenders,
 } from './collaboration-loop-guard.js';
 
 describe('collaboration-msg-loop rule', () => {
@@ -32,12 +34,14 @@ describe('collaboration-msg-loop rule', () => {
     vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
     guard = new CollaborationLoopGuard();
     delete process.env.NCO_MESH_COLLAB_LOOP_GUARD;
+    delete process.env.NCO_MESH_LOOP_GUARD_NOTIFIERS;
   });
 
   afterEach(() => {
     vi.useRealTimers();
     collaborationLoopGuard.reset();
     delete process.env.NCO_MESH_COLLAB_LOOP_GUARD;
+    delete process.env.NCO_MESH_LOOP_GUARD_NOTIFIERS;
   });
 
   const channel = collaborationChannelKey('team-a', 'team-b');
@@ -190,6 +194,72 @@ describe('collaboration-msg-loop rule', () => {
     // 협업 루프는 프로바이더 장애가 아니다 — 회로는 닫힌 채로 유지되어야 한다.
     expect(breaker.getState()).toBe('closed');
     expect(breaker.getFailures()).toBe(0);
+  });
+
+  // ─── cycle3 중복에러방지팀: 통지원 볼륨-룰 면제 ────────────────────────────
+  // 근거(T1): 고정 상한 2026-07-27T20:50:00Z의 정확한 48h 1008건에서
+  // 기존 동작은 nco-system 단방향 통지 7건을 차단했고, 면제 적용 시 0건이었다.
+
+  it('exempts system notifier senders from volume rules (channel-burst/echo-loop)', () => {
+    const notifier = collaborationChannelKey('nco-system', 'work-report-scheduler');
+    // 동일 본문 통지를 캡(3)의 10배 보내도 통과해야 한다.
+    for (let i = 0; i < 30; i++) {
+      expect(guard.check(notifier, '❌ [task] codex 완료 (13.1s)').allowed).toBe(true);
+    }
+    // 서로 다른 본문으로 burst 캡(20)을 넘겨도 통과해야 한다.
+    for (let i = 0; i < 40; i++) {
+      expect(guard.check(notifier, `❌ [task] codex 완료 (${i}s)`).allowed).toBe(true);
+    }
+    // 서로 다른 protocol 통지도 channel-burst에서는 면제된다.
+    // 동일 protocol 본문의 protocol-echo는 아래 별도 테스트에서 계속 차단한다.
+    for (let i = 0; i < 30; i++) {
+      expect(guard.check(notifier, `status: distinct notification ${i}`).allowed).toBe(true);
+    }
+  });
+
+  it('still blocks protocol-echo from a notifier sender', () => {
+    // 면제는 볼륨 룰 한정 — 프로토콜 에코 루프는 발신자와 무관하게 막는다.
+    const notifier = collaborationChannelKey('nco-system', 'peer');
+    expect(guard.check(notifier, 'done: handoff payload').allowed).toBe(true);
+    const blocked = guard.check(notifier, 'done: handoff payload');
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.rule).toBe('protocol-echo');
+  });
+
+  it('keeps volume rules active for ordinary peer senders (면제 과잉 방지)', () => {
+    const peer = collaborationChannelKey('agent-a', 'agent-b');
+    for (let i = 0; i < DEFAULT_COLLABORATION_LOOP_CONFIG.maxRepeatsPerWindow; i++) {
+      expect(guard.check(peer, 'same body').allowed).toBe(true);
+    }
+    const blocked = guard.check(peer, 'same body');
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.rule).toBe('echo-loop');
+  });
+
+  it('exposes an env rollback for the notifier exemption', () => {
+    expect(getNotifierSenders(undefined).has('nco-system')).toBe(true);
+    // off → 면제 해제(cycle1 동작 복귀)
+    expect(getNotifierSenders('off').size).toBe(0);
+    expect(getNotifierSenders('none').size).toBe(0);
+    // 목록 재정의
+    const custom = getNotifierSenders('alpha, beta');
+    expect(custom.has('alpha')).toBe(true);
+    expect(custom.has('beta')).toBe(true);
+    expect(custom.has('nco-system')).toBe(false);
+
+    // 면제 해제 시 통지원도 다시 burst로 차단되어야 한다.
+    const notifier = collaborationChannelKey('nco-system', 'sink');
+    const noExempt = { notifierSenders: getNotifierSenders('off') };
+    let blockedOnce = false;
+    for (let i = 0; i < 40; i++) {
+      if (!guard.check(notifier, `msg ${i}`, noExempt).allowed) { blockedOnce = true; break; }
+    }
+    expect(blockedOnce).toBe(true);
+  });
+
+  it('channelSender parses the from-side of a channel key', () => {
+    expect(channelSender('nco-system->unknown')).toBe('nco-system');
+    expect(channelSender('no-arrow')).toBe('no-arrow');
   });
 
   it('CircuitBreaker.isProtocolReconversion mirrors the intake gate', () => {
