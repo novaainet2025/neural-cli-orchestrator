@@ -221,6 +221,26 @@ SQLite로 주입한 행으로 판정한다. `crontab -l`은 현재 sandbox에서
 - [ ] 팀 score 수정 전 실제로 해당 행이 현행 scorer에 포함되는지 별도 재계산한다.
 - [ ] 팀 lifecycle/status/retirement는 HR 승인 없이 변경하지 않는다.
 
+## 빌드·타입체크
+
+- `npm run typecheck` → exit 1. TypeScript 진단 전 tsx IPC 생성이
+  `Error: listen EPERM .../tsx-501/3598.pipe`로 차단됐다.
+- `npm run build` → exit 1. 같은 tsx IPC 오류
+  (`Error: listen EPERM .../tsx-501/15067.pipe`)로 컴파일 전 실패했다.
+- 동일 package script 본체를 IPC가 없는 Node import hook으로 실행:
+  - `env PATH="$PWD/node_modules/.bin:$PATH" node --import tsx scripts/run-with-work-event.ts --event-type regression:typecheck -- tsc --noEmit`
+    → exit 0; `work_events.id=evt_LveMIPeIYD1dflxs`,
+    `regression:typecheck:passed`, `exitCode=0`.
+  - `node --import tsx scripts/run-with-work-event.ts --event-type regression:build -- ./node_modules/.bin/tsc`
+    → exit 0; `work_events.id=evt_DedQK-IfjOtfSzTF`,
+    `regression:build:passed`, `exitCode=0`.
+- delivery gate `run-delivery-gate.sh --quick` → exit 2,
+  `PASS=0 FAIL=2 SKIP=0`: dirty worktree inspection과 정확한 npm typecheck wrapper가 실패했다.
+- 문서·메모리만 변경했으므로 런타임 테스트는 추가로 실행하지 않았다.
+
+따라서 TypeScript typecheck와 build 본체는 통과했지만, 정확한 npm wrapper와 delivery
+gate 전체 통과는 확인되지 않았다.
+
 ## 범위·되돌리기
 
 - 코드 수정: 0건
@@ -239,5 +259,5 @@ SQLite로 주입한 행으로 판정한다. `crontab -l`은 현재 sandbox에서
   `mem0-85663067090ab507179ec4414fc419f0`의 DB 행 내용을 재조회했다.
 - [미검증] crontab 실설치 내용(`operation not permitted: crontab`), NCO HTTP Mem0 경로
   (`curl: (7) Failed to connect to localhost port 6200`), semantic embedding, 런타임 코드 개선,
-  후속 48시간 점수 변화.
+  후속 48시간 점수 변화, 정확한 npm wrapper 및 delivery gate 통과.
 - Mem0 ID: `mem0-85663067090ab507179ec4414fc419f0`

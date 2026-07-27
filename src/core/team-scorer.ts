@@ -368,6 +368,30 @@ export function buildSpawnFailureExclusion(
     : SPAWN_FAILURE_EXCLUSION_SQL;
 }
 
+// status='completed'여도 response와 result_json이 모두 0바이트면 검증 가능한 팀 산출물이
+// 없으므로 completion 분자에 넣지 않는다. terminal 분모에는 그대로 남겨 "완료" 상태만으로
+// 성공률을 부풀리지 않고, completed<=terminal 불변식과 completion<=100%를 보존한다.
+// 실측 근거(2026-07-28 조회, db/nco.db):
+//  - 최근 48h의 team_id 보유 completed 0B 행은 task_trend_collector 1건뿐이며,
+//    team_content-planning의 completion 분자를 7로 부풀리고 있었다.
+//  - response 또는 result_json 중 하나라도 1바이트 이상이면 실제 산출물이 있으므로 유지한다.
+// 롤백: 런타임 즉시 → NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION=off (재빌드 불필요).
+//  코드 → 아래 상수와 buildZeroOutputCompletedExclusion() 및 3개 completed CASE 삽입부를 제거.
+const ZERO_OUTPUT_COMPLETED_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const ZERO_OUTPUT_COMPLETED_EXCLUSION_SQL = `AND NOT (
+      COALESCE(k.response, '') = ''
+      AND COALESCE(k.result_json, '') = ''
+    )`;
+
+export function buildZeroOutputCompletedExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION,
+): string {
+  return ZERO_OUTPUT_COMPLETED_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : ZERO_OUTPUT_COMPLETED_EXCLUSION_SQL;
+}
+
 // provider CLI가 자격증명 거부(HTTP 401 authentication_error)만 내고 종료한 실패는 팀 산출물
 // 품질이 아니라 'provider_unavailable'·서킷브레이커와 동일한 에이전트 가용성 이벤트다.
 //  - CLI 프로세스는 떴지만 모델 API가 인증을 거부해 에이전트 턴이 한 번도 성립하지 않는다.
@@ -420,6 +444,7 @@ export function buildProviderAuthExclusion(
 
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
+  const ZERO_OUTPUT_COMPLETED_EXCLUSION = buildZeroOutputCompletedExclusion();
   const PROVIDER_AUTH_EXCLUSION = buildProviderAuthExclusion();
   const rows = database.prepare(`
     SELECT
@@ -443,6 +468,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-48 hours')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_48h,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
@@ -460,6 +486,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-7 days')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
@@ -475,6 +502,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t
     LEFT JOIN organizations o ON o.id = t.organization_id

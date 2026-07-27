@@ -50,6 +50,7 @@ import {
 } from '../security/circuit-breaker-registry.js';
 import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
+import { refreshWorkReportPromptSnapshot } from '../core/work-report-scheduler.js';
 import { registerTriadRoutes } from './routes/triad.js';
 import { markTaskQualityRejected } from './task-quality-state.js';
 import { reserveRetry, rollbackRetryReservation } from './retry-budget.js';
@@ -1045,14 +1046,25 @@ export async function createGateway() {
       return { ok: false, statusCode: 400, body: overrideValidation.body };
     }
 
+    // 업무보고 복제본은 부모 prompt를 바이트 단위로 승계하므로 `[실데이터]` 스냅샷이
+    // 부모 제출 시각에 동결된다(그래서 failover를 유발한 실패가 보고서에서 사라진다).
+    // 복제 시점에 재조회해 실행 시점 사실과 일치시킨다. 롤백: NCO_WORK_REPORT_SNAPSHOT_REFRESH=off.
+    const inheritedMetadata = (payload.metadata ?? {}) as Record<string, unknown>;
+    const retryTeamId = typeof inheritedMetadata.teamId === 'string' ? inheritedMetadata.teamId : null;
+    const isWorkReportRetry = typeof inheritedMetadata.workReportId === 'string'
+      && inheritedMetadata.workReportId.length > 0;
+    const basePrompt = isWorkReportRetry && retryTeamId
+      ? refreshWorkReportPromptSnapshot(payload.prompt, retryTeamId)
+      : payload.prompt;
+
     const finalPayload: RetryTaskPayload = {
       ...payload,
       ai: options?.overrideAi ?? payload.ai,
       // lineage를 생성 시점에 세팅 — 사후 UPDATE 비원자성으로 인한 retry cap 우회 방지
       parentTaskId: sourceTaskId,
       prompt: options?.reason
-        ? `[Quality-gate reject: ${options.reason}]\n\n${payload.prompt}`
-        : payload.prompt,
+        ? `[Quality-gate reject: ${options.reason}]\n\n${basePrompt}`
+        : basePrompt,
       metadata: {
         ...(payload.metadata ?? {}),
         projectDir: resolveInternalProjectDir(),

@@ -617,6 +617,77 @@ export function buildOrganizationDataContext(
     : '데이터 없음\n가용 데이터 없음 — 지어내지 말고 그대로 보고.';
 }
 
+/**
+ * 업무보고 프롬프트의 `[실데이터]` 스냅샷을 실행 시점 기준으로 다시 읽어 교체한다.
+ *
+ * 왜 필요한가 (2026-07-27 team_gov-evolution-learning 실측):
+ * failover/retry 복제본은 `loadRetryPayload()`가 부모 prompt를 바이트 단위로 승계한다.
+ * 그래서 `[실데이터]` 블록이 *부모 제출 시각*에 동결된다. wr_wcXz4AG_W0eFppWp 체인
+ * (task_3eejRUftHpUXmdOH → task_IjCXiEO-3LT65aIS → task_TF-0pwR0YBvnvs0b)은 prompt
+ * SHA-1이 전부 `de1a9425…`로 동일했고, 05:29 스냅샷 `전체=4, 실패성=0`을 06:53에 실행된
+ * codex 복제본이 그대로 서술했다. 그 시점 실제 DB는 `전체=6, 실패성=2`였다.
+ *
+ * 에이전트 날조가 아니다 — 프롬프트 요구사항 5번("[실데이터]에 있는 값만 사실로 사용")을
+ * 성실히 지킬수록 failover를 유발한 바로 그 실패가 보고서에서 은폐되는 구조였다.
+ * 지속학습팀(charter: 실패에서 교훈 추출)에는 이 동결이 임무 자체를 무력화한다.
+ *
+ * 경계: `[실데이터]` 와 `요구사항:` 구분선을 둘 다 가진 업무보고 프롬프트만 건드린다.
+ * 일반 태스크 프롬프트는 구분선이 없어 그대로 반환한다(no-op).
+ * 롤백: 런타임 즉시 → NCO_WORK_REPORT_SNAPSHOT_REFRESH=off (재빌드 불필요).
+ */
+export const WORK_REPORT_SNAPSHOT_REFRESH_FLAG = 'NCO_WORK_REPORT_SNAPSHOT_REFRESH';
+const SNAPSHOT_REFRESH_DISABLED = new Set(['0', 'false', 'off']);
+const SNAPSHOT_BEGIN_MARKER = '[실데이터]';
+const SNAPSHOT_END_MARKER = '요구사항:';
+const SNAPSHOT_REFRESH_NOTE =
+  '[snapshot_refreshed] source_tier=T1(SQLite 재조회) — 위 [실데이터]는 이 실행 시점에 다시 읽은 값이다. '
+  + '이전 시도(failover/retry)의 동결 스냅샷이 아니므로, 앞선 시도의 실패도 위 수치에 반영되어 있다.';
+
+export function isWorkReportSnapshotRefreshEnabled(
+  toggle: string | undefined = process.env[WORK_REPORT_SNAPSHOT_REFRESH_FLAG],
+): boolean {
+  return !SNAPSHOT_REFRESH_DISABLED.has(toggle?.trim().toLowerCase() ?? '');
+}
+
+export function refreshWorkReportPromptSnapshot(
+  prompt: string,
+  teamId: string,
+  buildContext: (teamId: string) => string = buildTeamDataContext,
+  toggle?: string,
+): string {
+  if (!isWorkReportSnapshotRefreshEnabled(toggle)) return prompt;
+  if (!prompt || !teamId) return prompt;
+
+  const lines = prompt.split('\n');
+  const begin = lines.findIndex(line => line.trim() === SNAPSHOT_BEGIN_MARKER);
+  if (begin === -1) return prompt;
+  const end = lines.findIndex((line, index) => index > begin && line.trim() === SNAPSHOT_END_MARKER);
+  if (end === -1) return prompt;
+
+  let rebuilt: string;
+  try {
+    rebuilt = buildContext(teamId);
+  } catch (error) {
+    // 재조회 실패 시 동결 스냅샷이라도 유지한다 — 보고 자체를 깨뜨리지 않는다.
+    log.warn({
+      teamId,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Failed to refresh work report data snapshot — keeping inherited snapshot');
+    return prompt;
+  }
+  if (!rebuilt.trim()) return prompt;
+
+  const previous = lines.slice(begin + 1, end).join('\n');
+  if (previous.trim() === rebuilt.trim()) return prompt;
+
+  return [
+    ...lines.slice(0, begin + 1),
+    rebuilt,
+    SNAPSHOT_REFRESH_NOTE,
+    ...lines.slice(end),
+  ].join('\n');
+}
+
 export function buildOrganizationReportPrompt(
   org: OrganizationRow,
   reportDate: string,

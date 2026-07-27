@@ -41,18 +41,18 @@ describe('team score aggregation', () => {
     db.exec('ALTER TABLE tasks ADD COLUMN metadata_json TEXT');
 
     const insert = db.prepare(`
-      INSERT INTO tasks (id, team_id, status, created_at)
-      VALUES (?, ?, ?, datetime('now', ?))
+      INSERT INTO tasks (id, team_id, status, response, created_at)
+      VALUES (?, ?, ?, ?, datetime('now', ?))
     `);
     const insertWithError = db.prepare(`
       INSERT INTO tasks (id, team_id, status, error, created_at)
       VALUES (?, ?, ?, ?, datetime('now', ?))
     `);
-    insert.run('a1', 'team_alpha', 'completed', '-1 hour');
-    insert.run('a2', 'team_alpha', 'completed', '-2 hours');
-    insert.run('a3', 'team_alpha', 'completed', '-3 hours');
-    insert.run('a4', 'team_alpha', 'failed', '-4 hours');
-    insert.run('a-running', 'team_alpha', 'running', '-1 hour');
+    insert.run('a1', 'team_alpha', 'completed', 'report body', '-1 hour');
+    insert.run('a2', 'team_alpha', 'completed', 'report body', '-2 hours');
+    insert.run('a3', 'team_alpha', 'completed', 'report body', '-3 hours');
+    insert.run('a4', 'team_alpha', 'failed', null, '-4 hours');
+    insert.run('a-running', 'team_alpha', 'running', null, '-1 hour');
     // 인프라 기인 실패(서버 재시작 orphan)는 completion 분모에서 제외되어야 한다.
     // 이 행이 카운트되면 alpha n=5·completion=60이 되어 아래 기대값(n=4·completion=75)이 깨진다.
     insertWithError.run(
@@ -71,10 +71,10 @@ describe('team score aggregation', () => {
       'provider_unavailable: claude-code (open/quota)', '-2 hours',
     );
 
-    insert.run('b1', 'team_beta', 'completed', '-1 hour');
-    insert.run('b2', 'team_beta', 'failed', '-3 days');
-    insert.run('inactive-1', 'team_inactive', 'completed', '-1 hour');
-    insert.run('hidden-1', 'team_hidden', 'completed', '-1 hour');
+    insert.run('b1', 'team_beta', 'completed', 'report body', '-1 hour');
+    insert.run('b2', 'team_beta', 'failed', null, '-3 days');
+    insert.run('inactive-1', 'team_inactive', 'completed', 'report body', '-1 hour');
+    insert.run('hidden-1', 'team_hidden', 'completed', 'report body', '-1 hour');
   });
 
   it('excludes only NCO gateway-down failures, keeping quotes and other server failures', () => {
@@ -125,8 +125,8 @@ describe('team score aggregation', () => {
     // 실패로 마킹되는데, 이는 팀 감사 품질 신호가 아니므로 팀 무관하게 terminal에서 제외한다.
     // 범위 가드: 같은 팀의 non-perfgoal charter 태스크는 그대로 카운트되어야 한다(과잉 제외 방지).
     const insertTask = db.prepare(`
-      INSERT INTO tasks (id, team_id, status, spawned_by_cli, created_at)
-      VALUES (?, ?, ?, ?, datetime('now', ?))
+      INSERT INTO tasks (id, team_id, status, spawned_by_cli, response, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
     `);
     const insertTeam = db.prepare(`
       INSERT INTO teams (id, organization_id, name, slug, is_active)
@@ -137,14 +137,14 @@ describe('team score aggregation', () => {
 
     // 두 팀 모두 perfgoal 제어면 태스크 3건씩 — 팀 무관하게 전부 제외 대상.
     for (const teamId of ['team_kd-memory', 'team_control']) {
-      insertTask.run(`${teamId}-admin-failed`, teamId, 'failed', 'commander-perfgoal', '-1 hour');
-      insertTask.run(`${teamId}-admin-expired`, teamId, 'lease_expired', 'commander-perfgoal', '-2 hours');
-      insertTask.run(`${teamId}-admin-completed`, teamId, 'completed', 'commander-perfgoal', '-3 hours');
+      insertTask.run(`${teamId}-admin-failed`, teamId, 'failed', 'commander-perfgoal', null, '-1 hour');
+      insertTask.run(`${teamId}-admin-expired`, teamId, 'lease_expired', 'commander-perfgoal', null, '-2 hours');
+      insertTask.run(`${teamId}-admin-completed`, teamId, 'completed', 'commander-perfgoal', null, '-3 hours');
     }
     // team_control은 실제 charter 태스크(비-perfgoal) 3건 보유 — 이건 그대로 카운트돼야 한다.
-    insertTask.run('team_control-work-1', 'team_control', 'completed', 'team-runner', '-1 hour');
-    insertTask.run('team_control-work-2', 'team_control', 'completed', 'team-runner', '-2 hours');
-    insertTask.run('team_control-work-3', 'team_control', 'failed', 'team-runner', '-3 hours');
+    insertTask.run('team_control-work-1', 'team_control', 'completed', 'team-runner', 'report body', '-1 hour');
+    insertTask.run('team_control-work-2', 'team_control', 'completed', 'team-runner', 'report body', '-2 hours');
+    insertTask.run('team_control-work-3', 'team_control', 'failed', 'team-runner', null, '-3 hours');
 
     const scores = computeTeamScores(db);
     // kd-memory: perfgoal 3건 전부 제외 → 표본 없음.
@@ -167,24 +167,26 @@ describe('team score aggregation', () => {
     // never-ran lease_expired는 서킷브레이커와 동일한 가용성 이벤트라 terminal에서 제외한다.
     // heartbeat가 있는 lease_expired(실작업 타임아웃)는 정상 품질 실패로 그대로 카운트한다.
     const insertLease = db.prepare(`
-      INSERT INTO tasks (id, team_id, status, acked_at, last_heartbeat_at, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+      INSERT INTO tasks (
+        id, team_id, status, acked_at, last_heartbeat_at, response, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
     `);
     db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
       .run('team_triad', 'org_active', 'Triad', 'triad');
 
     // 정상 완료 3건.
-    insertLease.run('tri-ok-1', 'team_triad', 'completed', null, null, '-1 hour');
-    insertLease.run('tri-ok-2', 'team_triad', 'completed', null, null, '-2 hours');
-    insertLease.run('tri-ok-3', 'team_triad', 'completed', null, null, '-3 hours');
+    insertLease.run('tri-ok-1', 'team_triad', 'completed', null, null, 'report body', '-1 hour');
+    insertLease.run('tri-ok-2', 'team_triad', 'completed', null, null, 'report body', '-2 hours');
+    insertLease.run('tri-ok-3', 'team_triad', 'completed', null, null, 'report body', '-3 hours');
     // acked됐지만 heartbeat 0으로 만료된 never-ran 3건 — 제외 대상(가용성 이벤트).
-    insertLease.run('tri-never-1', 'team_triad', 'lease_expired', '2026-07-24 00:05:53', null, '-4 hours');
-    insertLease.run('tri-never-2', 'team_triad', 'lease_expired', '2026-07-24 00:05:47', null, '-5 hours');
-    insertLease.run('tri-never-3', 'team_triad', 'lease_expired', '2026-07-24 00:05:49', null, '-6 hours');
+    insertLease.run('tri-never-1', 'team_triad', 'lease_expired', '2026-07-24 00:05:53', null, null, '-4 hours');
+    insertLease.run('tri-never-2', 'team_triad', 'lease_expired', '2026-07-24 00:05:47', null, null, '-5 hours');
+    insertLease.run('tri-never-3', 'team_triad', 'lease_expired', '2026-07-24 00:05:49', null, null, '-6 hours');
     // 범위 가드: heartbeat가 있는 lease_expired는 실작업 타임아웃이므로 실패로 남아야 한다.
-    insertLease.run('tri-ran-timeout', 'team_triad', 'lease_expired', '2026-07-24 00:05:00', '2026-07-24 00:06:17', '-7 hours');
+    insertLease.run('tri-ran-timeout', 'team_triad', 'lease_expired', '2026-07-24 00:05:00', '2026-07-24 00:06:17', null, '-7 hours');
     // 범위 가드: acked_at이 없으면(리스를 잡지도 못함) 이 제외 규칙 대상이 아니다.
-    insertLease.run('tri-noack', 'team_triad', 'lease_expired', null, null, '-8 hours');
+    insertLease.run('tri-noack', 'team_triad', 'lease_expired', null, null, null, '-8 hours');
 
     const triad = computeTeamScores(db).find((t) => t.teamId === 'team_triad');
     // 제외 후 terminal = {ok×3, ran-timeout, noack} = 5, completed = 3 → completion 60.
@@ -197,21 +199,21 @@ describe('team score aggregation', () => {
     // 완료했는데 나머지 중복 사본이 'silent-failure: empty output'으로 죽으면, 산출물은 이미
     // 배달됐으므로 그 실패는 팀 품질 신호가 아니라 스케줄러 레이스 아티팩트다 → terminal 제외.
     const insertMeta = db.prepare(`
-      INSERT INTO tasks (id, team_id, status, error, metadata_json, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+      INSERT INTO tasks (id, team_id, status, error, metadata_json, response, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
     `);
     db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
       .run('team_legal', 'org_active', 'Legal', 'legal');
 
     const wrA = JSON.stringify({ workReportId: 'wr_A' });
     // wr_A: 한 사본 완료 + 빈-산출 중복 사본 2건(제외 대상).
-    insertMeta.run('legal-wrA-ok', 'team_legal', 'completed', null, wrA, '-1 hour');
-    insertMeta.run('legal-wrA-dup1', 'team_legal', 'failed', 'silent-failure: empty output', wrA, '-2 hours');
-    insertMeta.run('legal-wrA-dup2', 'team_legal', 'failed', 'silent-failure: empty output', wrA, '-3 hours');
+    insertMeta.run('legal-wrA-ok', 'team_legal', 'completed', null, wrA, 'report body', '-1 hour');
+    insertMeta.run('legal-wrA-dup1', 'team_legal', 'failed', 'silent-failure: empty output', wrA, null, '-2 hours');
+    insertMeta.run('legal-wrA-dup2', 'team_legal', 'failed', 'silent-failure: empty output', wrA, null, '-3 hours');
     // 범위 가드: 완료 형제가 없는 단독 빈-산출 실패(wr_B)는 실제 품질 실패라 그대로 카운트.
     insertMeta.run(
       'legal-wrB-fail', 'team_legal', 'failed', 'silent-failure: empty output',
-      JSON.stringify({ workReportId: 'wr_B' }), '-4 hours',
+      JSON.stringify({ workReportId: 'wr_B' }), null, '-4 hours',
     );
 
     const legal = computeTeamScores(db).find((t) => t.teamId === 'team_legal');
@@ -223,9 +225,10 @@ describe('team score aggregation', () => {
   it('excludes repeated all-failed work-report fan-out but keeps a single failure with a cancelled sibling', () => {
     const insertMeta = db.prepare(`
       INSERT INTO tasks (
-        id, team_id, status, error, metadata_json, acked_at, last_heartbeat_at, created_at
+        id, team_id, status, error, metadata_json, acked_at, last_heartbeat_at, response,
+        created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
     `);
     const insertTeam = db.prepare(`
       INSERT INTO teams (id, organization_id, name, slug, is_active)
@@ -240,33 +243,33 @@ describe('team score aggregation', () => {
     for (let index = 1; index <= 13; index += 1) {
       insertMeta.run(
         `research-ok-${index}`, 'team_research', 'completed', null, null,
-        null, null, `-${index} hours`,
+        null, null, 'report body', `-${index} hours`,
       );
     }
     const duplicatedReport = JSON.stringify({ workReportId: 'wr_research_duplicate' });
     insertMeta.run(
       'research-expired-1', 'team_research', 'lease_expired', 'lease_expired',
-      duplicatedReport, '2026-07-22 05:02:46', '2026-07-22 05:06:17', '-14 hours',
+      duplicatedReport, '2026-07-22 05:02:46', '2026-07-22 05:06:17', null, '-14 hours',
     );
     insertMeta.run(
       'research-expired-2', 'team_research', 'lease_expired', 'lease_expired',
-      duplicatedReport, '2026-07-22 05:03:18', '2026-07-22 05:04:52', '-15 hours',
+      duplicatedReport, '2026-07-22 05:03:18', '2026-07-22 05:04:52', null, '-15 hours',
     );
 
     // 범위 가드: cancelled는 scorer의 실패 상태가 아니다. 같은 workReportId에 cancelled
     // 형제가 있어도 실제 failed 1건을 "2개 실패 fan-out"으로 오인해 제외하면 안 된다.
     insertMeta.run(
       'single-ok', 'team_single_failure', 'completed', null, null,
-      null, null, '-1 hour',
+      null, null, 'report body', '-1 hour',
     );
     const singletonReport = JSON.stringify({ workReportId: 'wr_single_failure' });
     insertMeta.run(
       'single-failed', 'team_single_failure', 'failed', 'actual task failure',
-      singletonReport, '2026-07-24 00:00:00', '2026-07-24 00:01:00', '-2 hours',
+      singletonReport, '2026-07-24 00:00:00', '2026-07-24 00:01:00', null, '-2 hours',
     );
     insertMeta.run(
       'single-cancelled', 'team_single_failure', 'cancelled', 'cancelled by operator',
-      singletonReport, null, null, '-3 hours',
+      singletonReport, null, null, null, '-3 hours',
     );
 
     const scores = computeTeamScores(db);
@@ -329,6 +332,46 @@ describe('team score aggregation', () => {
     } finally {
       if (previous === undefined) delete process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION;
       else process.env.NCO_SCORER_SPAWN_FAILURE_EXCLUSION = previous;
+    }
+  });
+
+  it('keeps zero-output completed tasks in the denominator but excludes them from the numerator, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_zero_output', 'Zero Output', 'zero-output');
+
+    insert.run('zero-response-output', 'team_zero_output', 'completed', null, 'report body', null, '-1 hour');
+    insert.run('zero-result-output', 'team_zero_output', 'completed', null, null, '{"ok":true}', '-2 hours');
+    insert.run('zero-no-output', 'team_zero_output', 'completed', null, '', '', '-3 hours');
+    insert.run('zero-real-failure', 'team_zero_output', 'failed', 'actual task failure', '', '', '-4 hours');
+
+    const previous = process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
+    process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = 'on';
+    try {
+      const scores = computeTeamScores(db);
+      expect(scores.find((team) => team.teamId === 'team_zero_output')).toMatchObject({
+        completion: 50,
+        n: 4,
+        sample: '48h',
+      });
+      expect(scores.every((team) => team.completion <= 100)).toBe(true);
+
+      process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = 'off';
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_zero_output')).toMatchObject({
+        completion: 75,
+        n: 4,
+        sample: '48h',
+      });
+      expect(rolledBack.every((team) => team.completion <= 100)).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
+      else process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = previous;
     }
   });
 

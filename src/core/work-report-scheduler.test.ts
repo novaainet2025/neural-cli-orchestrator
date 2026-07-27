@@ -7,6 +7,8 @@ import {
   buildOrganizationReportPrompt,
   buildTeamDataContext,
   ingestCompletedReportTasks,
+  isWorkReportSnapshotRefreshEnabled,
+  refreshWorkReportPromptSnapshot,
   TASK_DISPATCH_STAGGER_MS,
   UNLINK_TASK_STATUSES,
   WorkReportDispatchGate,
@@ -449,5 +451,80 @@ describe('work report real-data context', () => {
 
     expect(row.status).toBe('late');
     expect(row.body_md).toContain('전날 회사 보고');
+  });
+});
+
+/**
+ * 회귀 근거 (T1, 2026-07-27 db/nco.db 실측):
+ * wr_wcXz4AG_W0eFppWp failover 체인 task_3eejRUftHpUXmdOH → task_IjCXiEO-3LT65aIS →
+ * task_TF-0pwR0YBvnvs0b 의 prompt SHA-1이 전부 de1a9425…로 동일했고, 05:29 스냅샷
+ * "전체=4, 실패성=0"을 06:53 실행 복제본이 그대로 서술했다(실제 DB: 전체=6, 실패성=2).
+ */
+describe('work report snapshot refresh on failover replicas', () => {
+  const FROZEN = [
+    '[업무보고 작성] 2026-07-27 오전 보고서를 작성하라.',
+    '팀: Continuous Learning',
+    '조직 경로: org_nco-evolution',
+    '팀 상시 임무: 실패에서 재사용 가능한 교훈을 추출한다.',
+    '[실데이터]',
+    '[tasks] 최근 7일: 전체=4, 완료=4, 실패성=0, 진행=0, 완료율=100.0%',
+    '요구사항:',
+    '1. 오늘 수행한 핵심 업무를 간단히 정리한다.',
+    '5. [실데이터]에 있는 값만 사실로 사용하고 없는 수치·사건·완료 상태를 지어내지 않는다.',
+  ].join('\n');
+  const FRESH = '[tasks] 최근 7일: 전체=6, 완료=4, 실패성=2, 진행=0, 완료율=66.7%';
+
+  it('replaces the frozen data snapshot with the value read at replica time', () => {
+    const refreshed = refreshWorkReportPromptSnapshot(
+      FROZEN,
+      'team_gov-evolution-learning',
+      () => FRESH,
+    );
+
+    expect(refreshed).toContain(FRESH);
+    expect(refreshed).not.toContain('실패성=0');
+    expect(refreshed).toContain('[snapshot_refreshed]');
+    // 구분선 밖 지시문은 보존되어야 한다 (요구사항 5번 포함).
+    expect(refreshed).toContain('[업무보고 작성] 2026-07-27 오전 보고서를 작성하라.');
+    expect(refreshed).toContain('5. [실데이터]에 있는 값만 사실로 사용하고');
+    expect(refreshed.split('\n').filter(line => line.trim() === '[실데이터]')).toHaveLength(1);
+    expect(refreshed.split('\n').filter(line => line.trim() === '요구사항:')).toHaveLength(1);
+  });
+
+  it('is a no-op when the refreshed snapshot equals the inherited one', () => {
+    const unchanged = refreshWorkReportPromptSnapshot(
+      FROZEN,
+      'team_gov-evolution-learning',
+      () => '[tasks] 최근 7일: 전체=4, 완료=4, 실패성=0, 진행=0, 완료율=100.0%',
+    );
+
+    expect(unchanged).toBe(FROZEN);
+    expect(unchanged).not.toContain('[snapshot_refreshed]');
+  });
+
+  it('leaves non work-report prompts untouched (no data-section markers)', () => {
+    const plain = 'src/core/foo.ts 의 버그를 고쳐라.\n검증: npm run build';
+
+    expect(refreshWorkReportPromptSnapshot(plain, 'team_gov-evolution-learning', () => FRESH))
+      .toBe(plain);
+  });
+
+  it('keeps the inherited snapshot when the rebuild throws or returns empty', () => {
+    const thrown = refreshWorkReportPromptSnapshot(FROZEN, 'team_x', () => {
+      throw new Error('db unavailable');
+    });
+    const empty = refreshWorkReportPromptSnapshot(FROZEN, 'team_x', () => '   ');
+
+    expect(thrown).toBe(FROZEN);
+    expect(empty).toBe(FROZEN);
+  });
+
+  it('restores the exact previous behaviour when the rollback flag is off', () => {
+    expect(isWorkReportSnapshotRefreshEnabled('off')).toBe(false);
+    expect(isWorkReportSnapshotRefreshEnabled('0')).toBe(false);
+    expect(isWorkReportSnapshotRefreshEnabled(undefined)).toBe(true);
+    expect(
+      refreshWorkReportPromptSnapshot(FROZEN, 'team_gov-evolution-learning', () => FRESH, 'off'),
+    ).toBe(FROZEN);
   });
 });
