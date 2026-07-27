@@ -4,6 +4,7 @@ import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { createEventId } from '../utils/id.js';
 import { NCOEvent, EventHandler } from './types.js';
+import { recordNcoEvent } from './work-event-ledger.js';
 export type { NCOEvent, EventHandler };
 
 const log = createLogger('event-bus');
@@ -160,7 +161,10 @@ export class EventBus {
     this.local.emit(enriched.type, enriched);
     this.local.emit('*', enriched);
 
-    // 3. SQLite persist (important events)
+    // 3. SQLite append-only work ledger (all events) + legacy action index.
+    // The work ledger is the durable learning source; agent_actions remains a
+    // narrower compatibility index for existing dashboards.
+    recordNcoEvent(enriched);
     if (PERSIST_TYPES.has(enriched.type)) {
       this.persistEvent(enriched);
     }

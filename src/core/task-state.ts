@@ -1,8 +1,18 @@
 import type Database from 'better-sqlite3';
+import { recordWorkEventSafely } from './work-event-ledger.js';
 
 export const TERMINAL_STATES = new Set(['completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']);
 
 const UNKNOWN_FAILURE_REASON = 'unknown: failure reason unavailable';
+
+function parseEvidenceJson(value: string | undefined): unknown {
+  if (value == null) return [];
+  try {
+    return JSON.parse(value);
+  } catch {
+    return [{ invalidEvidenceJson: true, raw: value }];
+  }
+}
 
 export const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
   queued: new Set(['assigned', 'running', 'cancelled', 'failed']),
@@ -32,10 +42,10 @@ export function transitionTask(
   next: string,
   extra?: { response?: string; error?: string; completedAt?: boolean; evidenceJson?: string },
 ): { ok: boolean; prev?: string } {
+  const prior = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status?: string } | undefined;
   const allowedSources = ALLOWED_SOURCES_BY_TARGET.get(next) ?? [];
   if (allowedSources.length === 0) {
-    const current = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status?: string } | undefined;
-    return { ok: false, prev: current?.status };
+    return { ok: false, prev: prior?.status };
   }
 
   const sets = ['status=?', "updated_at=datetime('now')"];
@@ -70,6 +80,23 @@ export function transitionTask(
   const result = db.prepare(sql).run(...params, taskId, ...allowedSources);
 
   if (result.changes === 1) {
+    recordWorkEventSafely({
+      source: 'task-state',
+      eventType: `task:${next}`,
+      eventKey: `task-state:${taskId}:${prior?.status ?? 'unknown'}:${next}:${Date.now()}`,
+      title: `Task ${taskId}: ${prior?.status ?? 'unknown'} → ${next}`,
+      summary: transitionError ?? null,
+      detail: {
+        previousStatus: prior?.status ?? null,
+        nextStatus: next,
+        responseBytes: extra?.response == null ? 0 : Buffer.byteLength(extra.response),
+        hasEvidence: extra?.evidenceJson != null,
+        error: transitionError ?? null,
+      },
+      evidence: parseEvidenceJson(extra?.evidenceJson),
+      taskId,
+      occurredAt: Date.now(),
+    }, db);
     if (next === 'completed') {
       const taskOutput = extra?.response || '';
       // Actually we are in ESM, so let's import dynamically

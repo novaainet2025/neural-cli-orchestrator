@@ -4,6 +4,7 @@
 # 사용: bash scripts/obsidian-provider-mirror.sh [--dry-run]
 set -euo pipefail
 
+NCO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VAULT="/Users/nova-ai/obsidian/mac-obsidian"
 DEST_BASE="$VAULT/01-AGENTS/_provider-configs"
 TS="$(date '+%Y-%m-%d %H:%M:%S')"
@@ -101,6 +102,17 @@ if [ "$DRY" != "--dry-run" ]; then
 EOF
   echo "  ✓ INDEX.md"
 fi
+
+# NCO의 작업·성공·실패·개선·맥락·이슈·Git/워크트리·회귀를 같은
+# 10분 주기로 append-only 원장에 수집하고 Obsidian에 증분 반영한다.
+if [ "$DRY" != "--dry-run" ]; then
+  if (cd "$NCO_ROOT" && npm run journal:sync); then
+    echo "  ✓ NCO work-event journal"
+  else
+    echo "  ✗ NCO work-event journal 실패 (다음 주기에 재시도)" >&2
+  fi
+fi
+
 # 미러 후 공용 지식(SECOND-BRAIN.md) 재생성 → 프로바이더 컨텍스트 배선
 SB="$(dirname "$0")/obsidian-second-brain-build.sh"
 [ -x "$SB" ] && bash "$SB" || true

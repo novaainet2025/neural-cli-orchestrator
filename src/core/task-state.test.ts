@@ -1,4 +1,6 @@
 import Database from 'better-sqlite3';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { transitionTask } from './task-state.js';
 
@@ -56,5 +58,23 @@ describe('transitionTask', () => {
 
     expect(database.prepare('SELECT error FROM tasks WHERE id=?').get('task-1'))
       .toEqual({ error: 'provider connection refused' });
+  });
+
+  it('stores task evidence as structured JSON when the ledger is available', () => {
+    const database = createTask();
+    database.exec(readFileSync(resolve('db/migrations/092_work_event_ledger.sql'), 'utf8'));
+
+    transitionTask(database, 'task-1', 'completed', {
+      response: 'done',
+      completedAt: true,
+      evidenceJson: '[{"tier":"T1","path":"/tmp/evidence.txt"}]',
+    });
+
+    const row = database.prepare(
+      "SELECT evidence_json FROM work_events WHERE source='task-state' AND task_id='task-1'",
+    ).get() as { evidence_json: string };
+    expect(JSON.parse(row.evidence_json)).toEqual([
+      { path: '/tmp/evidence.txt', tier: 'T1' },
+    ]);
   });
 });
