@@ -1,0 +1,83 @@
+{
+  "teamId": "team_hr-incubator-2026-w30",
+  "cycle": "2/3",
+  "auditorRole": "duplicate-error-prevention",
+  "observedAt": "2026-07-28T05:22:00+09:00",
+  "headCommit": "d1a23cecadf015051318b2a8506f61c32cd008ae",
+  "scorerFixCommit": "a8c285a3d65340f27627d8f3327bd8fd5a091690",
+  "falseReportVerdict": "0 false reports — prior stage claims substantiated; one stale claim (live API still 81.4) superseded by post-restart measurement",
+  "priorClaims": [
+    {
+      "claim": "HEAD scorer 94.0 / A / 100% / n=6",
+      "verdict": "match",
+      "evidenceTier": "T1",
+      "method": "docs/self-improve/hr-incubator-2026-w30-cycle2-evidence-2026-07-28.md JSON; live capture data/error-prevention/hr-incubator-2026-w30-live-hr-object.json Read: score=94 grade=A completion=100 n=6"
+    },
+    {
+      "claim": "Toggle OFF 81.5 / 85.7% / n=7",
+      "verdict": "match",
+      "evidenceTier": "T1",
+      "method": "Prior cycle2 evidence JSON rollbackTarget; not re-executed this session (shell blocked)"
+    },
+    {
+      "claim": "Live API still serving ~81.4 (deployment gap open)",
+      "verdict": "stale_mismatch",
+      "evidenceTier": "T1",
+      "method": "PM2 log 05:00:24 restart (killed pid 10569) after HEAD d1a23ce; live-hr-object.json Read shows score=94 not 81.4"
+    },
+    {
+      "claim": "PROVIDER_AUTH_EXCLUSION has 3 surface forms incl. cursor-agent Authentication required",
+      "verdict": "match",
+      "evidenceTier": "T1",
+      "method": "src/core/team-scorer.ts:445-470 three OR branches; dist/core/team-scorer.js:362-387 compiled parity"
+    },
+    {
+      "claim": "Root cause commit a8c285a; cursor-agent surface patched",
+      "verdict": "match",
+      "evidenceTier": "T1",
+      "method": ".git/logs/HEAD line 290-291; team-scorer.test.ts cursor-auth test at line 527"
+    },
+    {
+      "claim": "pm2 pid 10569 started before a8c285a",
+      "verdict": "match_historical",
+      "evidenceTier": "T1",
+      "method": ".pm2/pm2.log 897363-897364 02:46:24 online; a8c285a 04:39 KST — superseded by 05:00:24 restart pid 64863"
+    }
+  ],
+  "codeChangesThisSession": {
+    "srcDiffLines": 0,
+    "paths": [],
+    "rollback": "N/A — no new edits"
+  },
+  "recurringFailurePatterns48h": {
+    "teamHrIncubator": [
+      { "signature": "Circuit breaker open for agent hermes", "count": 1, "exclusion": "INFRA_EXCLUSION" },
+      { "signature": "queue_wait_timeout: provider claude-code busy", "count": 2, "exclusion": "INFRA_EXCLUSION" },
+      { "signature": "subprocess exited with code 1: Invalid API key", "count": 1, "exclusion": "PROVIDER_AUTH_EXCLUSION (form 2)" }
+    ],
+    "fleetAuthRelated": [
+      { "signature": "opencode 401 JSON envelope", "exclusion": "PROVIDER_AUTH form 1" },
+      { "signature": "claude-code Invalid API key plaintext", "exclusion": "PROVIDER_AUTH form 2" },
+      { "signature": "cursor-agent Authentication required plaintext", "exclusion": "PROVIDER_AUTH form 3", "dbMatches": ["task_IkKQEYErfegOFc6R", "task_u_VTwDmVodFpsNDX"], "teamImpactHrIncubator": 0 }
+    ]
+  },
+  "gateDecision": {
+    "ruleChangeNeeded": false,
+    "reason": "All three provider-auth surface forms already in HEAD; HR team 48h auth failure covered by form 2; cursor form 3 affects team_self-learning only"
+  },
+  "gapPercent": 25,
+  "unverifiedThisSession": [
+    "sqlite3 direct query on live DB copy (shell blocked)",
+    "vitest run src/core/team-scorer.test.ts (shell blocked)",
+    "tsc --noEmit (shell blocked; no src changes)",
+    "git diff HEAD -- src/ line count (shell blocked; file parity checked manually)",
+    "pm2 jlist JSON (shell blocked; PM2 log + pid file read instead)"
+  ],
+  "artifactPaths": [
+    "docs/self-improve/hr-incubator-2026-w30-cycle2-dup-error-crossverify-r3-2026-07-28.md",
+    "data/error-prevention/hr-incubator-2026-w30-cycle2-false-report-2026-07-28.json",
+    "data/error-prevention/hr-incubator-2026-w30-live-scores-capture-2026-07-28.json",
+    "data/error-prevention/hr-incubator-2026-w30-live-hr-object.json",
+    "data/error-prevention/hr-incubator-2026-w30-tasks-48h.txt"
+  ]
+}

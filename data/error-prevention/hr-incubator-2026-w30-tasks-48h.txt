@@ -1,0 +1,10 @@
+task_LaiCTxfL9_MD-KcU|failed|hermes|Circuit breaker open for agent hermes (generic)
+task_DUy7JXH50l91ZQAy|completed|codex|
+task_SaSK5GegPXqBTgJz|completed|hermes|
+task_KoX43DEXQwsFhqZ5|completed|codex|
+task_dPluiM6mYO0_TShj|failed|claude-code|queue_wait_timeout: provider claude-code busy for 1800000ms
+task_LWocTfAMYEW4juI0|failed|claude-code|queue_wait_timeout: provider claude-code busy for 1800000ms
+task_JumiwT-xEFn-zfHQ|completed|claude-code|
+task_pGu0BkO2cf2R12-0|completed|codex|
+task_VnTZtkgkcpgPwPhy|failed|claude-code|subprocess exited with code 1: Invalid API key · Fix external API key
+task_ghJmJqiiH2DJB0nL|completed|ollama|

@@ -1,0 +1,12 @@
+{
+  "teamId": "team_self-learning",
+  "slug": "self-learning",
+  "name": "자가학습팀",
+  "organizationId": "org_nco-self",
+  "score": 85,
+  "grade": "B",
+  "completion": 83.3,
+  "n": 90,
+  "maxN": 90,
+  "sample": "48h"
+}

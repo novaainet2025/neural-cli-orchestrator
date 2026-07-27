@@ -103,6 +103,30 @@ team = next(t for t in json.load(open(path)) if t["id"] == team_id)
 charter = team["charter"]
 is_self_improvement = team.get("slug") == "self-improvement" or team_id == "team_self-improvement"
 
+# 2026-07-28 (team_gov-evolution-learning 개선 사이클 3/3): 지속학습팀 charter는 "태스크 결과·실패·
+#   검증 영수증에서 재사용 가능한 교훈을 추출"인데, 이 러너가 주입하는 [실데이터]는 집계 카운트뿐이라
+#   근거가 될 태스크 id·error·learning_events가 하나도 없었다(실측: 이 팀 태스크 10건 전부 프롬프트에
+#   '[learning_task_evidence]' 0회). 프롬프트는 동시에 "위 값과 주입된 파일 내용만 사실로 사용한다"를
+#   강제하므로, 팀은 구조적으로 자기 charter를 수행할 수 없었다. src/core/work-report-scheduler.ts의
+#   buildTeamDataContext()는 2026-07-27에 같은 근거 블록을 이미 갖췄으나(work-report 경로),
+#   team-runner 경로(spawned_by_cli='team-runner')는 빠져 있었다 — 그 경로 미러링이 이 블록이다.
+# 롤백: NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT=off (재배포·재빌드 불필요, 프롬프트 바이트 동일 복원).
+EVOLUTION_LEARNING_TEAM_SLUG = "gov-evolution-learning"
+is_evolution_learning = team.get("slug") == EVOLUTION_LEARNING_TEAM_SLUG
+
+def evolution_learning_context_enabled():
+    configured = os.environ.get("NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT", "").strip().lower()
+    return configured not in ("0", "false", "off")
+
+def compact_text(value, limit):
+    compacted = " ".join(str(value).split())
+    return compacted if len(compacted) <= limit else compacted[:limit] + "…"
+
+def compact_nullable(value, limit):
+    if value is None:
+        return "없음"
+    return compact_text(value, limit) or "공백"
+
 def load_json(name):
     source = os.path.join(tmp_dir, name)
     if not os.path.exists(source):
@@ -248,6 +272,61 @@ def build_team_data_context():
                 lines.append(f"[nco tasks] 최근 실패 원인 빈도={count}: {one_line_reason}")
             note_count = db.execute("SELECT COUNT(*) FROM improvement_notes").fetchone()[0]
             lines.append(f"[improvement_notes] 현재 기록={note_count}")
+        except (OSError, sqlite3.Error):
+            pass
+
+    # gov-evolution-learning 전용: 교훈 추출의 원재료(태스크 근거 + 연결된 learning_events)를 넣는다.
+    #   src/core/work-report-scheduler.ts의 동일 블록과 같은 쿼리·같은 라벨·같은 상한을 쓴다.
+    if is_evolution_learning and db is not None and evolution_learning_context_enabled():
+        try:
+            evidence_rows = db.execute(
+                "SELECT id, status, created_at, completed_at, prompt, response, error, result_json, "
+                "evidence_json, "
+                "CASE WHEN json_valid(metadata_json) "
+                "THEN json_extract(metadata_json,'$.workReportId') ELSE NULL END AS work_report_id "
+                "FROM tasks WHERE team_id=? "
+                "AND status IN ('completed','failed','timed_out','lease_expired','cancelled') "
+                "AND created_at >= datetime('now','-48 hours') "
+                "ORDER BY COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC LIMIT 5",
+                (team_id,),
+            ).fetchall()
+            for row in evidence_rows:
+                lines.append(", ".join([
+                    "[learning_task_evidence] source_tier=T1(SQLite tasks row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[1], 50)}",
+                    f"생성={compact_text(row[2], 50)}",
+                    f"완료={compact_nullable(row[3], 50)}",
+                    f"오류={compact_nullable(row[6], 240)}",
+                    f"지시={compact_text(row[4], 240)}",
+                    f"응답(T4-natural-language)={compact_nullable(row[5], 400)}",
+                    f"result_json={compact_nullable(row[7], 300)}",
+                    f"evidence_json={compact_nullable(row[8], 300)}",
+                    f"workReportId={compact_nullable(row[9], 100)}",
+                ]))
+            source_task_ids = [row[0] for row in evidence_rows]
+            if source_task_ids:
+                placeholders = ",".join("?" for _ in source_task_ids)
+                event_rows = db.execute(
+                    "SELECT id, agent_id, event_type, pattern, context, auto_applied, created_at "
+                    "FROM learning_events WHERE created_at >= datetime('now','-48 hours') "
+                    "AND json_valid(context) AND ("
+                    f"json_extract(context,'$.taskId') IN ({placeholders}) "
+                    f"OR json_extract(context,'$.sourceTaskId') IN ({placeholders})) "
+                    "ORDER BY created_at DESC, id DESC LIMIT 10",
+                    tuple(source_task_ids) * 2,
+                ).fetchall()
+                for row in event_rows:
+                    lines.append(", ".join([
+                        "[learning_event_evidence] source_tier=T1(SQLite learning_events row)",
+                        f"id={row[0]}",
+                        f"agent={compact_text(row[1], 100)}",
+                        f"event={compact_nullable(row[2], 100)}",
+                        f"created={compact_text(row[6], 50)}",
+                        f"auto_applied={'1' if row[5] == 1 else '0'}",
+                        f"pattern={compact_nullable(row[3], 240)}",
+                        f"context={compact_text(row[4], 400)}",
+                    ]))
         except (OSError, sqlite3.Error):
             pass
 

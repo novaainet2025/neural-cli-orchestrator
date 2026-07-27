@@ -12,6 +12,18 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('invocation-tracker');
 
+const LOOP_BLOCK_RETRY_DISABLED = new Set(['0', 'false', 'off']);
+
+/**
+ * 가드에 막힌 완료 알림을 notified=0으로 되돌릴지 여부.
+ * 기본 on. `NCO_MESH_NOTIFY_LOOPBLOCK_RETRY=off`이면 종전 동작(notified=1)으로 즉시 복귀한다.
+ */
+export function isLoopBlockRetryEnabled(
+  toggle: string | undefined = process.env.NCO_MESH_NOTIFY_LOOPBLOCK_RETRY,
+): boolean {
+  return !LOOP_BLOCK_RETRY_DISABLED.has(toggle?.trim().toLowerCase() ?? '');
+}
+
 export interface Invocation {
   id: string;
   callerSessionId: string;
@@ -213,13 +225,32 @@ class InvocationTracker {
       `${statusIcon} [${inv.mode}] ${actualProvider} 완료${providerMismatch ? ` (${requestedProvider} 요청→${actualProvider} 대행)` : ''}${durationStr}${summary}`;
 
     try {
-      await cliMesh.sendMessage(
+      const receipt = await cliMesh.sendMessageWithReceipt(
         'nco-system',           // fromSessionId (system sender)
         'nco',                  // fromAgent
         inv.callerSessionId,    // toSessionId
         content,
         'info',
       );
+
+      // cycle3 중복에러방지팀: collaboration-msg-loop 가드가 이 알림을 막으면
+      // sendMessage는 예외 없이 queuedRecipients=0을 반환하므로, 아래 catch가 실행되지
+      // 않아 전송되지 않은 메시지가 notified=1('전달됨')로 기록됐다 — 조용한 mesh 메시지 누락.
+      // 가드 차단은 cooldownMs(기본 60s) 뒤 해소되는 일시적 상태이므로 notified=0(미전송)으로
+      // 되돌려 상태를 사실대로 남긴다. mesh_unavailable/recipient_unavailable은 재시도해도
+      // 즉시 해소되지 않고 무한 누적 위험이 있어 기존 동작(notified=1)을 유지한다.
+      // 롤백: NCO_MESH_NOTIFY_LOOPBLOCK_RETRY=off (재빌드 불필요).
+      if (isLoopBlockRetryEnabled() && receipt.reason === 'collaboration_loop_blocked') {
+        db.prepare(
+          `UPDATE agent_invocations SET notified = 0 WHERE id = ? AND notified = 2`
+        ).run(invocationId);
+        log.warn(
+          `Completion notice for invocation ${invocationId} was blocked by the collaboration-msg-loop guard ` +
+          `(channel nco-system->${inv.callerSessionId}); left unnotified instead of marking delivered`,
+        );
+        return;
+      }
+
       db.prepare(
         `UPDATE agent_invocations SET notified = 1 WHERE id = ?`
       ).run(invocationId);

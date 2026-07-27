@@ -253,3 +253,93 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker1.getState()).toBe('closed');
   });
 });
+
+// GATE-LEARN-R1 (cycle 2에서 배선, cycle 3 중복에러방지팀이 테스트 보강).
+// 픽스처는 실제 DB 행 task_p2V_WOaQg3z-gdGx / task_KkeE7Ly_A5hC1K2n의 tasks.response 형태다.
+describe('classifyProviderErrorEnvelope (NCO_CB_ERROR_ENVELOPE)', () => {
+  const realAuthEnvelope = JSON.stringify({
+    type: 'error',
+    timestamp: 1785173399807,
+    sessionID: 'ses_05b5fab79ffeyLgd5ir8tajWDO',
+    error: {
+      name: 'APIError',
+      data: {
+        message: 'invalid x-api-key',
+        statusCode: 401,
+        isRetryable: false,
+        responseHeaders: { server: 'cloudflare', 'content-type': 'application/json' },
+      },
+    },
+  });
+
+  it('classifies a real hard-401 provider envelope as immediate open with reason=generic', () => {
+    const result = classifyProviderErrorEnvelope(realAuthEnvelope, 'on');
+    expect(result).not.toBeNull();
+    // reason은 의도적으로 'auth'가 아님 — 'auth'는 쿨다운 없는 영구 개방이라 fleet 자가복구를 막는다.
+    expect(result?.reason).toBe('generic');
+    expect(result?.immediateOpen).toBe(true);
+    expect(result?.resetTime).toBeNull();
+    expect(result?.matchedText).toMatch(/^provider error envelope: /);
+  });
+
+  it('is a strict no-op when the toggle is disabled', () => {
+    for (const off of ['off', 'false', '0']) {
+      expect(classifyProviderErrorEnvelope(realAuthEnvelope, off)).toBeNull();
+    }
+  });
+
+  it('does not match a team report body that merely quotes the auth error', () => {
+    const reportBody = [
+      '# 중복에러방지 감사',
+      '',
+      '실패 원인: opencode가 `{"type":"error"...}` 봉투로 401 invalid x-api-key를 반환했다.',
+      '조치: 회로를 즉시 개방한다.',
+    ].join('\n');
+    expect(classifyProviderErrorEnvelope(reportBody, 'on')).toBeNull();
+    // JSON 블록을 인용부호로 감싼 마크다운도 '{'로 시작하지 않으므로 매칭되지 않는다.
+    expect(classifyProviderErrorEnvelope('```json\n' + realAuthEnvelope + '\n```', 'on')).toBeNull();
+  });
+
+  it('ignores envelopes that are not a single parseable error object', () => {
+    expect(classifyProviderErrorEnvelope(null, 'on')).toBeNull();
+    expect(classifyProviderErrorEnvelope('   ', 'on')).toBeNull();
+    expect(classifyProviderErrorEnvelope('{ not json', 'on')).toBeNull();
+    expect(classifyProviderErrorEnvelope('[{"type":"error"}]', 'on')).toBeNull();
+    // type !== 'error' (정상 산출물 봉투)
+    expect(
+      classifyProviderErrorEnvelope(
+        JSON.stringify({ type: 'result', message: 'invalid x-api-key 401' }),
+        'on',
+      ),
+    ).toBeNull();
+  });
+
+  it('ignores oversized output (team deliverable, not a provider envelope)', () => {
+    const padded = JSON.stringify({
+      type: 'error',
+      error: { data: { message: 'invalid x-api-key', statusCode: 401 } },
+      detail: 'x'.repeat(9000),
+    });
+    expect(padded.length).toBeGreaterThan(8192);
+    expect(classifyProviderErrorEnvelope(padded, 'on')).toBeNull();
+  });
+
+  it('does not take auth signals from non-whitelisted keys', () => {
+    const summaryOnly = JSON.stringify({
+      type: 'error',
+      summary: 'invalid x-api-key (401)',
+      body: 'HTTP 401 unauthorized',
+    });
+    expect(classifyProviderErrorEnvelope(summaryOnly, 'on')).toBeNull();
+  });
+
+  it('leaves quota/rate-limit envelopes out of scope in this cycle', () => {
+    const quota = JSON.stringify({
+      type: 'error',
+      error: { name: 'APIError', data: { message: 'rate limit exceeded', statusCode: 429 } },
+    });
+    const classified = classifyCircuitError('rate limit exceeded');
+    expect(classified?.reason).not.toBe('auth');
+    expect(classifyProviderErrorEnvelope(quota, 'on')).toBeNull();
+  });
+});

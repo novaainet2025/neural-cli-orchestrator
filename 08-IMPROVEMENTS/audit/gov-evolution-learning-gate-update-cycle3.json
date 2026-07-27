@@ -1,0 +1,163 @@
+{
+  "meta": {
+    "team": "team_gov-evolution-learning",
+    "slug": "gov-evolution-learning",
+    "name": "Continuous Learning",
+    "generated": "2026-07-28",
+    "author": "중복에러방지팀 (Code Reviewer)",
+    "cycle": "3/3",
+    "head": "d1a23ce",
+    "evidence_source": [
+      "db/nco.db → /tmp/nco-c3-dup.db (read-only copy, T1 rows)",
+      ".c3-learn-envelope-blastradius.mts (HEAD 코드 직접 재생, read-only)",
+      "GET http://localhost:6200/api/teams/scores (T1 HTTP body)",
+      "npx tsc --noEmit / npx vitest run (T1 exit code + counts)"
+    ],
+    "hr_directive_snapshot": {
+      "score": 83.4,
+      "completion": 87.5,
+      "sample": "48h/8",
+      "verdict": "STALE",
+      "live_measurement": { "score": 94.3, "grade": "A", "completion": 100, "n": 7, "maxN": 90, "sample": "48h" }
+    }
+  },
+
+  "failure_pattern_analysis_48h": {
+    "team_tasks_total": 10,
+    "completed": 7,
+    "failed": 3,
+    "new_failures_since_cycle2_audit": 0,
+    "last_failure_at": "2026-07-27 17:29:48",
+    "signatures": [
+      { "error_class": "silent-failure: empty output", "count": 1, "infra_excluded": false, "sibling_submitted_report": true },
+      { "error_class": "provider_unavailable: claude-code (open/generic)", "count": 1, "infra_excluded": true },
+      { "error_class": "opencode: CLI failed exit=1 (+ response auth envelope)", "count": 1, "provider_auth_excluded": true }
+    ],
+    "within_team_duplicate_burst": false,
+    "fleet_duplicate_bursts_48h_top": [
+      { "sig": "queue_wait_timeout: provider claude-code busy", "n": 66, "teams": 32, "infra_excluded": true },
+      { "sig": "orphaned: server restart (poison — requeued 2x)", "n": 53, "teams": 26, "infra_excluded": true },
+      { "sig": "Circuit breaker open for agent claude-code (generic)", "n": 32, "teams": 30, "infra_excluded": true },
+      { "sig": "provider_unavailable: opencode (open/generic)", "n": 12, "teams": 2, "infra_excluded": true },
+      { "sig": "opencode: CLI failed exit=1", "n": 8, "teams": 3, "covered_by": "GATE-LEARN-R1" }
+    ],
+    "verdict": "팀 내부 중복 실패 버스트 0건. fleet 반복은 전부 INFRA_EXCLUSION 또는 GATE-LEARN-R1 커버 → CB 임계치 변경 근거 없음(3사이클 연속 동일 결론)."
+  },
+
+  "rules": [
+    {
+      "id": "GATE-LEARN-R0",
+      "type": "unchanged",
+      "status": "LANDED",
+      "layer": "scoring",
+      "location": "src/core/team-scorer.ts INFRA_EXCLUSION / PROVIDER_AUTH_EXCLUSION",
+      "rule": "orphaned · circuit breaker open · provider_unavailable · queue_wait_timeout · provider auth 장애를 품질 분모에서 제외.",
+      "cycle3_action": "NO CHANGE (diff 0) — 라이브 94.3/A/100%로 HR 목표 90 상회."
+    },
+    {
+      "id": "GATE-LEARN-R1",
+      "type": "carried-forward",
+      "status": "LANDED_AND_SERVING",
+      "layer": "circuit-breaker classification",
+      "location": "src/security/circuit-breaker-registry.ts:265 classifyProviderErrorEnvelope + :403 recordFailure; src/agent/agent-manager.ts",
+      "env_flag": "NCO_CB_ERROR_ENVELOPE",
+      "default": "on",
+      "rollback": "NCO_CB_ERROR_ENVELOPE=off (런타임, 재빌드 불필요)",
+      "landed_commit": "a8c285a",
+      "deployed": {
+        "dist_symbol_present": true,
+        "pm2_process": "nco-backend",
+        "pm2_uptime_start": "2026-07-28T05:00:24"
+      },
+      "rule": "rawError 미분류 且 providerOutput이 단일 JSON 오류 봉투(type='error') 且 화이트리스트 키에서 auth 신호 → immediateOpen, reason='generic'.",
+      "cycle3_action": "RULE UNCHANGED — blast radius 실측 + 회귀 테스트 7건 추가로 고정.",
+      "blast_radius_measured": {
+        "probe": ".c3-learn-envelope-blastradius.mts",
+        "rows_with_response_all_time": 12676,
+        "classified_all_time": 7,
+        "classified_48h": 7,
+        "on_failed_rows": 7,
+        "already_classified_via_error_column": 0,
+        "new_immediate_open": 7,
+        "false_positives_on_completed_rows": 0,
+        "completed_rows_quoting_auth_strings": 62,
+        "of_which_misclassified": 0,
+        "with_toggle_off": 0,
+        "matched_task_ids": [
+          "task_VrWuAuDGg0Rb0gxO", "task_Zd_RsLbbpyjLTTEU", "task_4aq6FQ3yZuXoiTdK",
+          "task_HWShOuugEQE4gDzh", "task_Kb_L3S2p8lyFAjGO", "task_KkeE7Ly_A5hC1K2n",
+          "task_p2V_WOaQg3z-gdGx"
+        ]
+      }
+    },
+    {
+      "id": "GATE-LEARN-R2",
+      "type": "unchanged",
+      "status": "NO_CHANGE",
+      "layer": "command-gate",
+      "location": "src/security/command-gate.ts",
+      "rule": "변경 없음 — 48h 실패 중 shell 명령 정책 위반 0건.",
+      "cycle3_action": "diff 0"
+    },
+    {
+      "id": "GATE-LEARN-R4",
+      "type": "new",
+      "status": "IN_WORKING_TREE",
+      "layer": "regression test (rule enforcement)",
+      "location": "src/security/circuit-breaker.test.ts — describe('classifyProviderErrorEnvelope (NCO_CB_ERROR_ENVELOPE)')",
+      "rule": "GATE-LEARN-R1의 3중 가드를 테스트로 고정한다: (1) 실제 하드-401 봉투 → immediateOpen+reason='generic', (2) 토글 off/false/0 → 엄격 no-op, (3) auth 문자열을 인용한 팀 보고서 본문·```json 펜스 → 미매칭, (4) 비파싱/배열/type!=error → 미매칭, (5) 8192자 초과 → 미매칭, (6) 비화이트리스트 키(summary/body) 신호 → 미매칭, (7) quota/429 봉투 → 이번 범위 밖(미매칭).",
+      "why_now": "cycle2 감사가 남긴 Medium 지적(‘classifyProviderErrorEnvelope import만 있고 전용 unit test 0’)이 HEAD에서도 그대로였고, cycle3 자가개선 패치가 실패 error 문자열을 프롬프트로 주입하기 시작하면서 ‘auth 문자열을 인용한 산출물’ 모수가 늘어난다 → 오탐 가드가 회귀하면 즉시 fleet 전역 오개방으로 번진다.",
+      "behavior_change": "none (test-only)",
+      "test_result": "16/16 passed (기존 9 + 신규 7)",
+      "rollback": "git checkout -- src/security/circuit-breaker.test.ts (런타임 영향 0)"
+    },
+    {
+      "id": "GATE-LEARN-R5",
+      "type": "evaluated-and-rejected",
+      "status": "NO_CHANGE",
+      "layer": "circuit-breaker threshold",
+      "rule": "failureThreshold(기본 3) 조정 — 3사이클 연속 불필요 판정.",
+      "reason": "48h 팀 내부 중복 버스트 0건이고 fleet 반복 상위 5종이 전부 INFRA_EXCLUSION/R1 커버. 하향은 큐 대기 중 개방(TOCTOU) 유발, 상향은 반복 소모 연장."
+    }
+  ],
+
+  "cross_verification_previous_stages": {
+    "false_reports_table_count": 0,
+    "stage_task_id": "task_ydnyeAruzAGtfKZq",
+    "stage_task_status": "completed",
+    "claims": [
+      { "id": "C1", "claim": "scripts/team-runner.sh +79/-0", "verdict": "PASS", "tier": "T1", "evidence": "git diff --stat → 79 insertions(+), 1 file" },
+      { "id": "C2", "claim": "08-IMPROVEMENTS/gov-evolution-learning-cycle3-runner-evidence.md 신규", "verdict": "PASS", "tier": "T1", "evidence": "6035B, 2026-07-28 05:06" },
+      { "id": "C3", "claim": "라이브 94.3/A/100%/n=7", "verdict": "PASS", "tier": "T1", "evidence": "GET /api/teams/scores 본문" },
+      { "id": "C4", "claim": "팀 태스크 전부 [learning_task_evidence] 0회", "verdict": "PASS", "tier": "T1", "evidence": "SELECT COUNT(*)=10, with_evidence=0" },
+      { "id": "C5", "claim": "최근 3건 spawned_by_cli='team-runner', workReportId 없음", "verdict": "PASS", "tier": "T1", "evidence": "tasks 행 + json_extract(metadata_json,'$.workReportId') NULL/빈값" },
+      { "id": "C6", "claim": "빌더 출력 1926B/0줄 → 10353B/증거 10줄, off는 바이트 동일", "verdict": "PASS (독립 재현, 수치는 48h 창 이동으로 다름)", "tier": "T1", "evidence": "본 세션 재현: ON 10203B / task 5줄+event 5줄, OFF 1631B / 0줄, HEAD 빌더 출력과 OFF 출력 cmp 바이트 동일" },
+      { "id": "C7", "claim": "타 팀 프롬프트 무회귀", "verdict": "PASS", "tier": "T1", "evidence": "self-improvement·cfo·analytics-lead·content-planning·gov-assurance-audit 5팀 HEAD vs 패치 빌더 출력 cmp 동일" },
+      { "id": "C8", "claim": "tsc 0 / 709 passed·1 failed(선행 실패)", "verdict": "PASS", "tier": "T1", "evidence": "본 세션 tsc exit=0, vitest 716 passed·1 failed = 709 + 신규 7, 실패는 동일한 tests/근거.test.ts KST 날짜 포인터" }
+    ],
+    "false_complete_claims": 0,
+    "fabricated_metrics_found": 0,
+    "verdict": "GENUINE_FIX / NOT_FABRICATED — 이전 단계 8개 클레임 전부 독립 T1 재현. 허위 완료 주장 0건."
+  },
+
+  "review_findings": [
+    { "severity": "medium", "item": "GATE-LEARN-R1 런타임 E2E 미관측 — 게이트 배포(04:39 커밋, 05:00 재기동) 이후 fleet 실패 행 0건이라 실제 즉시 개방 사례가 아직 없음", "action": "다음 자격증명 장애 시 circuit_states.opencode reason/opened_at 확인" },
+    { "severity": "medium", "item": "scripts/team-runner.sh 신규 분기에 자동 테스트 없음(쉘 heredoc 내 파이썬이라 vitest 커버리지 밖)", "action": "수동 재현 절차를 cross-verification 문서에 기록해 대체" },
+    { "severity": "low", "item": "circuit_states.openai = open/auth/failure_count=1860, 자가복구 0회 — R1이 reason='generic'을 쓰는 이유의 실증", "action": "운영 런북에 수동 reset 절차 명시" }
+  ],
+
+  "decision": {
+    "cb_failure_threshold_change": "NO",
+    "command_gate_change": "NO",
+    "envelope_gate_rule_change": "NO (규칙 동결, 테스트로 고정)",
+    "new_code_change_this_cycle": "src/security/circuit-breaker.test.ts (+7 tests, test-only)",
+    "rollback": "git checkout -- src/security/circuit-breaker.test.ts | NCO_CB_ERROR_ENVELOPE=off | NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT=off"
+  },
+
+  "unverified_items": [
+    "GATE-LEARN-R1 런타임 E2E(실제 401 → 즉시 개방 → 재라우팅) — 배포 후 해당 실패 행 0건",
+    "team-runner cron 실제 실행이 만든 태스크 행에서의 [learning_task_evidence] 반영 (빌더 직접 실행까지만 재현)",
+    "증거 주입 후 산출물 품질 변화 (다음 사이클 관측 대상)",
+    "본 사이클 변경 커밋 여부 — 미커밋(사용자 소관)"
+  ]
+}
