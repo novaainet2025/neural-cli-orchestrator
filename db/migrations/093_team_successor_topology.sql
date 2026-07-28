@@ -1,117 +1,370 @@
--- db/migrations/093_team_successor_topology.sql
+-- 093: Replace retired teams with a smaller protected successor topology.
+--
+-- The migration runner wraps this file in an IMMEDIATE transaction with
+-- foreign_keys=ON. Historical tasks are detached instead of reassigned so the
+-- successor teams start with an honest, uncontaminated score sample.
 
-PRAGMA foreign_keys = ON;
-
-BEGIN TRANSACTION;
-
--- 1. Create 9 New teams in required_capabilities
-INSERT OR IGNORE INTO required_capabilities (id, organization_id, name, slug, description, color, lead, charter, is_always_on, protected, is_active) VALUES
-('req_computer_use_assurance_2026', 'org_computer-use', '컴퓨터 제어 감사·안전팀', 'computer-use-safety', '독립 안전·감사', '#FF5722', 'claude-3-5-sonnet', '컴퓨터 제어 시 발생할 수 있는 위험을 사전 차단하고 감사함. 화면 제어 등 직접 실행 권한 금지.', 1, 1, 1),
-('req_research_strategy_2026', 'org_research', '리서치 전략 기획팀', 'research-strategy', '연구 질문·범위·방법론', '#2196F3', 'claude-3-5-sonnet', '연구 질문 정의, 범위 설정 및 방법론 설계', 1, 1, 1),
-('req_cli_experience_2026', 'org_nova-cli', 'CLI 경험 설계팀', 'cli-design', 'CLI 경험 설계', '#4CAF50', 'claude-3-5-sonnet', 'CLI 사용자 경험 설계 및 최적화', 1, 1, 1),
-('req_cli_assurance_2026', 'org_nova-cli', 'CLI QA팀', 'cli-qa', '독립 QA', '#F44336', 'claude-3-5-sonnet', 'CLI 기능 및 안정성 독립 QA 보장', 1, 1, 1),
-('req_content_strategy_2026', 'org_sns-blog', '콘텐츠 전략 기획팀', 'content-planning', '콘텐츠 전략', '#9C27B0', 'claude-3-5-sonnet', '콘텐츠 기획 및 배포 전략 수립', 1, 1, 1),
-('req_tech_port_06_decision_2026', 'org_technology-porting', '포팅 대안 토론팀', 'tech-port-06-improvement-debate', '대안 토론·결정', '#3F51B5', 'claude-3-5-sonnet', '포팅 기술 대안 토론 및 최종 결정. 08과 독립 인력 구성.', 1, 1, 1),
-('req_tech_port_08_delivery_2026', 'org_technology-porting', '승인된 이식 구현팀', 'tech-port-08-migration-implementation', '승인된 이식 구현', '#009688', 'claude-3-5-sonnet', '승인된 기술 이식 계획의 구현 담당. 06과 독립 인력 구성.', 1, 1, 1),
-('req_ax_business_operations_2026', 'org_nova-ax', 'AX 비즈니스 운영팀', 'ax-business-operations', 'analytics+CFO+sales 통합', '#FF9800', 'claude-3-5-sonnet', '분석, 재무, 영업 기능을 통합하여 운영', 1, 1, 1),
-('req_ax_decision_coordination_2026', 'org_nova-ax', 'AX 의사결정 조정팀', 'ax-decision-coordination', 'autonomy+collaboration+discussion 통합', '#795548', 'claude-3-5-sonnet', '자율성 조율, 협력, 토론 통합 관리', 1, 1, 1);
-
--- Promotion of existing teams: team_content-quality, team_kd-quality-hygiene
-INSERT OR IGNORE INTO required_capabilities (id, organization_id, name, slug, description, color, lead, charter, is_always_on, protected, is_active) VALUES
-('req_content_quality', 'org_sns-blog', '콘텐츠 품질 검수팀', 'content-quality', '콘텐츠 품질 감사 승계', '#607D8B', 'claude-3-5-sonnet', '콘텐츠 품질 관리 및 검수', 1, 1, 1),
-('req_kd_quality_hygiene', 'org_kd', '지식 문서 품질팀', 'kd-quality-hygiene', 'KD 5개 팀 승계', '#607D8B', 'claude-3-5-sonnet', '지식 문서의 일관성 및 품질 관리', 1, 1, 1);
-
-UPDATE required_capabilities SET protected = 1 WHERE slug IN ('content-quality', 'kd-quality-hygiene');
-
--- Insert 9 new teams into teams table
-INSERT OR IGNORE INTO teams (id, organization_id, name, slug, description, color, lead, charter, is_always_on, is_active) VALUES
-('team_computer-use-assurance-2026', 'org_computer-use', '컴퓨터 제어 감사·안전팀', 'computer-use-safety', '독립 안전·감사', '#FF5722', 'claude-3-5-sonnet', '컴퓨터 제어 시 발생할 수 있는 위험을 사전 차단하고 감사함. 화면 제어 등 직접 실행 권한 금지.', 1, 1),
-('team_research-strategy-2026', 'org_research', '리서치 전략 기획팀', 'research-strategy', '연구 질문·범위·방법론', '#2196F3', 'claude-3-5-sonnet', '연구 질문 정의, 범위 설정 및 방법론 설계', 1, 1),
-('team_cli-experience-2026', 'org_nova-cli', 'CLI 경험 설계팀', 'cli-design', 'CLI 경험 설계', '#4CAF50', 'claude-3-5-sonnet', 'CLI 사용자 경험 설계 및 최적화', 1, 1),
-('team_cli-assurance-2026', 'org_nova-cli', 'CLI QA팀', 'cli-qa', '독립 QA', '#F44336', 'claude-3-5-sonnet', 'CLI 기능 및 안정성 독립 QA 보장', 1, 1),
-('team_content-strategy-2026', 'org_sns-blog', '콘텐츠 전략 기획팀', 'content-planning', '콘텐츠 전략', '#9C27B0', 'claude-3-5-sonnet', '콘텐츠 기획 및 배포 전략 수립', 1, 1),
-('team_tech-port-06-decision-2026', 'org_technology-porting', '포팅 대안 토론팀', 'tech-port-06-improvement-debate', '대안 토론·결정', '#3F51B5', 'claude-3-5-sonnet', '포팅 기술 대안 토론 및 최종 결정. 08과 독립 인력 구성.', 1, 1),
-('team_tech-port-08-delivery-2026', 'org_technology-porting', '승인된 이식 구현팀', 'tech-port-08-migration-implementation', '승인된 이식 구현', '#009688', 'claude-3-5-sonnet', '승인된 기술 이식 계획의 구현 담당. 06과 독립 인력 구성.', 1, 1),
-('team_ax-business-operations-2026', 'org_nova-ax', 'AX 비즈니스 운영팀', 'ax-business-operations', 'analytics+CFO+sales 통합', '#FF9800', 'claude-3-5-sonnet', '분석, 재무, 영업 기능을 통합하여 운영', 1, 1),
-('team_ax-decision-coordination-2026', 'org_nova-ax', 'AX 의사결정 조정팀', 'ax-decision-coordination', 'autonomy+collaboration+discussion 통합', '#795548', 'claude-3-5-sonnet', '자율성 조율, 협력, 토론 통합 관리', 1, 1);
-
--- Insert into team_lifecycle_profiles
-INSERT OR IGNORE INTO team_lifecycle_profiles (team_id, status, protected)
-SELECT id, 'active', 1 FROM teams 
-WHERE id IN (
-  'team_computer-use-assurance-2026', 'team_research-strategy-2026', 'team_cli-experience-2026',
-  'team_cli-assurance-2026', 'team_content-strategy-2026', 'team_tech-port-06-decision-2026',
-  'team_tech-port-08-delivery-2026', 'team_ax-business-operations-2026', 'team_ax-decision-coordination-2026'
+CREATE TEMP TABLE IF NOT EXISTS _team_successor_map (
+  old_team_id TEXT PRIMARY KEY,
+  new_team_id TEXT NOT NULL
 );
 
--- Protect existing ones just in case
-UPDATE team_lifecycle_profiles SET protected = 1 WHERE team_id IN ('team_content-quality', 'team_kd-quality-hygiene');
+DELETE FROM _team_successor_map;
 
--- Insert at least 3 providers per team
-INSERT OR IGNORE INTO team_members (id, team_id, member_type, member_ref)
-SELECT 
-  'mem_' || t.id || '_' || num.n, 
-  t.id, 
-  'provider', 
-  CASE num.n WHEN 1 THEN 'gpt-4o' WHEN 2 THEN 'claude-3-5-sonnet' WHEN 3 THEN 'gemini-1.5-pro' END
-FROM teams t
-CROSS JOIN (SELECT 1 AS n UNION ALL SELECT 2 UNION ALL SELECT 3) num
-WHERE t.id IN (
-  'team_computer-use-assurance-2026', 'team_research-strategy-2026', 'team_cli-experience-2026',
-  'team_cli-assurance-2026', 'team_content-strategy-2026', 'team_tech-port-06-decision-2026',
-  'team_tech-port-08-delivery-2026', 'team_ax-business-operations-2026', 'team_ax-decision-coordination-2026'
-);
+INSERT INTO _team_successor_map (old_team_id, new_team_id)
+VALUES
+  ('team_content-planning', 'team_content-strategy-2026'),
+  ('team_research-strategy', 'team_research-strategy-2026'),
+  ('team_computer-use-safety', 'team_computer-use-assurance-2026'),
+  ('team_cli-design', 'team_cli-experience-2026'),
+  ('team_cli-qa', 'team_cli-assurance-2026'),
+  ('team_analytics-lead', 'team_ax-business-operations-2026'),
+  ('team_cfo', 'team_ax-business-operations-2026'),
+  ('team_sales-director', 'team_ax-business-operations-2026'),
+  ('team_autonomy-controller', 'team_ax-decision-coordination-2026'),
+  ('team_ax-collab', 'team_ax-decision-coordination-2026'),
+  ('team_ax-discuss', 'team_ax-decision-coordination-2026'),
+  ('team_legal-counsel', 'team_governance-officer'),
+  ('team_quality-audit', 'team_content-quality'),
+  ('team_tech-port-06-improvement-debate', 'team_tech-port-06-decision-2026'),
+  ('team_tech-port-08-migration-implementation', 'team_tech-port-08-delivery-2026'),
+  ('team_kd-harness', 'team_kd-quality-hygiene'),
+  ('team_kd-memory', 'team_kd-quality-hygiene'),
+  ('team_kd-obsidian', 'team_kd-quality-hygiene'),
+  ('team_kd-prompt', 'team_kd-quality-hygiene'),
+  ('team_kd-provider', 'team_kd-quality-hygiene');
 
--- Temp table for mapping
-CREATE TEMP TABLE old_to_new_mapping (old_id TEXT, new_id TEXT);
-INSERT INTO old_to_new_mapping VALUES
-('team_content-planning', 'team_content-strategy-2026'),
-('team_research-strategy', 'team_research-strategy-2026'),
-('team_computer-use-safety', 'team_computer-use-assurance-2026'),
-('team_cli-design', 'team_cli-experience-2026'),
-('team_cli-qa', 'team_cli-assurance-2026'),
-('team_analytics-lead', 'team_ax-business-operations-2026'),
-('team_cfo', 'team_ax-business-operations-2026'),
-('team_sales-director', 'team_ax-business-operations-2026'),
-('team_autonomy-controller', 'team_ax-decision-coordination-2026'),
-('team_ax-collab', 'team_ax-decision-coordination-2026'),
-('team_ax-discuss', 'team_ax-decision-coordination-2026'),
-('team_legal-counsel', 'team_governance-officer'),
-('team_quality-audit', 'team_content-quality'),
-('team_tech-port-06-improvement-debate', 'team_tech-port-06-decision-2026'),
-('team_tech-port-08-migration-implementation', 'team_tech-port-08-delivery-2026'),
-('team_kd-memory', 'team_kd-quality-hygiene'),
-('team_kd-harness', 'team_kd-quality-hygiene'),
-('team_kd-obsidian', 'team_kd-quality-hygiene'),
-('team_kd-provider', 'team_kd-quality-hygiene'),
-('team_kd-prompt', 'team_kd-quality-hygiene');
+-- Preserve existing active successor definitions as required capabilities.
+INSERT INTO required_capabilities (
+  id, organization_id, name, slug, description, color, lead, charter,
+  is_always_on, protected, is_active
+)
+SELECT
+  id, organization_id, name, slug, COALESCE(description, name),
+  COALESCE(color, '#64748B'), lead, charter, is_always_on, 1, 1
+FROM teams
+WHERE id IN ('team_content-quality', 'team_kd-quality-hygiene')
+ON CONFLICT(id) DO UPDATE SET
+  organization_id=excluded.organization_id,
+  name=excluded.name,
+  slug=excluded.slug,
+  description=excluded.description,
+  color=excluded.color,
+  lead=excluded.lead,
+  charter=excluded.charter,
+  is_always_on=excluded.is_always_on,
+  protected=1,
+  is_active=1;
 
--- Insert into team_consolidations
-INSERT OR IGNORE INTO team_consolidations (id, old_team_id, new_team_id, reason, evidence_json, consolidated_at)
-SELECT 
-  'cons_' || old_id, 
-  old_id, 
-  new_id, 
-  '퇴사 팀 후속 조직 마이그레이션 2026-07-28', 
-  '{"reason": "topology update"}', 
+-- Register the nine new capability owners before creating their live rows.
+INSERT INTO required_capabilities (
+  id, organization_id, name, slug, description, color, lead, charter,
+  is_always_on, protected, is_active
+)
+VALUES
+  (
+    'team_computer-use-assurance-2026',
+    'org_computer-use',
+    'Computer Use 독립 안전·감사팀',
+    'computer-use-safety',
+    'Independently approve, reject, and audit high-risk computer-use requests without operating the controls.',
+    '#DC2626',
+    'cursor-agent',
+    '화면·마우스·키보드를 직접 제어하지 않는다. 요청 범위, 외부 부작용, 인간 승인, 단일 제어자 잠금, 유휴 만료와 회수 증거를 독립 검토해 제어 코디네이터에게 승인·거부 의견을 전달한다. 실행팀과 분리된 사후 감사를 유지하고 복구 불가능하거나 권한이 불명확한 동작은 중단한다.',
+    0, 1, 1
+  ),
+  (
+    'team_research-strategy-2026',
+    'org_research',
+    '리서치 전략·방법론팀',
+    'research-strategy',
+    'Turn requests into bounded research questions, hypotheses, methods, evidence standards, and handoffs.',
+    '#7C3AED',
+    'nvidia',
+    '사용자 요청을 검증 가능한 연구질문으로 분해하고 범위, 가설, 방법론, 증거등급, 성공기준과 중단조건을 정의한다. 탐색팀에 출처 요구사항을 전달하고 분석·검증팀과 독립적으로 연구 설계의 편향과 누락을 점검한다.',
+    0, 1, 1
+  ),
+  (
+    'team_cli-experience-2026',
+    'org_nova-cli',
+    'CLI 경험 설계팀',
+    'cli-design',
+    'Design accessible terminal interaction flows, information hierarchy, and operator feedback before implementation.',
+    '#2563EB',
+    'agy',
+    'REPL 입력, Markdown 표시, diff 검토, 에이전트·세션 상태와 오류 복구 흐름을 사용자 관점에서 설계한다. 구현 전에 키보드 접근성, 정보 위계, 빈·로딩·실패 상태와 수용기준을 정의하고 코어팀에 전달한다.',
+    1, 1, 1
+  ),
+  (
+    'team_cli-assurance-2026',
+    'org_nova-cli',
+    'CLI 독립 검증팀',
+    'cli-qa',
+    'Independently verify CLI commands, provider failover, network faults, builds, and critical user journeys.',
+    '#0F766E',
+    'cursor-agent',
+    'CLI 코어 구현팀과 독립적으로 명령·도구 호출, REST·WebSocket 연동, 타임아웃, 네트워크 장애, 프로바이더 폴백, 빌드 무결성과 핵심 사용자 흐름을 재현 검증한다. 명령 출력과 실패 증거가 없는 완료 주장은 승인하지 않는다.',
+    1, 1, 1
+  ),
+  (
+    'team_content-strategy-2026',
+    'org_sns-blog',
+    '콘텐츠 전략·근거기획팀',
+    'content-planning',
+    'Plan evidence-backed content opportunities and measurable audience outcomes before production.',
+    '#DB2777',
+    'agy',
+    '검색의도, 독자의 구체 문제, 기존 글과의 차별점, 원문·데이터·실사례 근거 계획과 측정 가능한 독자 결과를 정의한다. 확인되지 않은 트렌드나 수치를 만들지 않고 제작팀과 품질팀에 근거 패킷을 전달한다.',
+    1, 1, 1
+  ),
+  (
+    'team_tech-port-06-decision-2026',
+    'org_technology-porting',
+    '06 Porting Decision Council',
+    'tech-port-06-improvement-debate',
+    'Independently compare direct adoption, adapters, partial ports, reimplementation, deferral, and rejection.',
+    '#A855F7',
+    'nvidia',
+    '6단계 의사결정팀. 직접 이식, 래퍼·어댑터, 부분 포팅, 자체 재구현, 보류와 거부를 유지보수 비용, 종속성, 복잡도, 운영 위험과 장기 로드맵으로 비교한다. 구현을 직접 수행하지 않으며 반대 의견, 반례, 잔여위험과 7단계 가치 게이트 입력을 남긴다.',
+    0, 1, 1
+  ),
+  (
+    'team_tech-port-08-delivery-2026',
+    'org_technology-porting',
+    '08 Migration Delivery',
+    'tech-port-08-migration-implementation',
+    'Implement only approved migration scope with rollback-ready changes and evidence.',
+    '#EA580C',
+    'codex',
+    '8단계 이식 구현팀. 직전 리포트에 PORT_DECISION: APPROVE가 없으면 코드·설정·DB를 변경하지 않는다. 승인 범위만 최소 변경하고 기존 사용자 변경과 비밀정보를 보존하며 테스트, 데이터 전환, 롤백 절차와 검증 영수증을 9단계 팀에 전달한다.',
+    0, 1, 1
+  ),
+  (
+    'team_ax-business-operations-2026',
+    'org_nova-ax',
+    'Business Operations & Revenue Intelligence',
+    'ax-business-operations',
+    'Unify analytics, financial stewardship, forecasting, sales operations, and revenue evidence.',
+    '#059669',
+    'nvidia',
+    '회사 KPI, 비용·예산, 수요 예측, 영업 파이프라인과 고객·매출 신호를 하나의 근거 체계로 운영한다. 지표 정의와 분모를 명시하고 마케팅·지원·재무 데이터를 교차검증하며 근거 없는 매출 전망이나 비용 절감을 성과로 보고하지 않는다.',
+    1, 1, 1
+  ),
+  (
+    'team_ax-decision-coordination-2026',
+    'org_nova-ax',
+    'Decision & Coordination Office',
+    'ax-decision-coordination',
+    'Coordinate resources, dependencies, decisions, dissent, and accountable handoffs across NOVA AX.',
+    '#4F46E5',
+    'claude-code',
+    'NOVA AX의 자원 배분, 의존성, 작업량, 충돌, 토론과 의사결정 기록을 통합 조정한다. 제안·반대의견·승인권자·기한·핸드오프를 명시하고 자기 결정의 최종 검증을 수행하지 않는다. 법률·윤리 판단은 Governance Officer와 AI 정부에 이관한다.',
+    1, 1, 1
+  )
+ON CONFLICT(id) DO UPDATE SET
+  organization_id=excluded.organization_id,
+  name=excluded.name,
+  slug=excluded.slug,
+  description=excluded.description,
+  color=excluded.color,
+  lead=excluded.lead,
+  charter=excluded.charter,
+  is_always_on=excluded.is_always_on,
+  protected=1,
+  is_active=1;
+
+-- Keep an auditable handoff receipt. Counts remain stable on re-execution
+-- because detached task metadata and report subject_id preserve the old ID.
+INSERT INTO team_consolidations (
+  id, old_team_id, new_team_id, reason, evidence_json, consolidated_at
+)
+SELECT
+  'tc_successor_2026_' || replace(m.old_team_id, 'team_', ''),
+  m.old_team_id,
+  m.new_team_id,
+  'Retired team deleted after capability handoff',
+  json_object(
+    'action', 'migration_093',
+    'historicalTasksDetached', (
+      SELECT COUNT(*)
+      FROM tasks task_history
+      WHERE task_history.team_id=m.old_team_id
+         OR COALESCE(
+              json_extract(
+                CASE
+                  WHEN json_valid(task_history.metadata_json) THEN task_history.metadata_json
+                  ELSE '{}'
+                END,
+                '$.retiredTeamId'
+              ),
+              ''
+            )=m.old_team_id
+    ),
+    'historicalReportsPreserved', (
+      SELECT COUNT(*)
+      FROM work_reports report_history
+      WHERE report_history.team_id=m.old_team_id
+         OR (
+           report_history.subject_kind='team'
+           AND report_history.subject_id=m.old_team_id
+         )
+    ),
+    'scoreHistoryTransferred', json('false')
+  ),
   datetime('now')
-FROM old_to_new_mapping;
+FROM _team_successor_map m
+WHERE 1
+ON CONFLICT(old_team_id) DO UPDATE SET
+  new_team_id=excluded.new_team_id,
+  reason=excluded.reason,
+  evidence_json=excluded.evidence_json;
 
--- Update tasks metadata and set team_id = NULL
+-- Detach historical score samples while retaining their original owner and
+-- declared successor in valid object metadata.
 UPDATE tasks
-SET 
-  metadata_json = CASE 
-    WHEN json_valid(metadata_json) THEN json_set(metadata_json, '$.retiredTeamId', team_id, '$.replacementTeamId', (SELECT new_id FROM old_to_new_mapping WHERE old_id = tasks.team_id))
-    ELSE json_object('retiredTeamId', team_id, 'replacementTeamId', (SELECT new_id FROM old_to_new_mapping WHERE old_id = tasks.team_id))
-  END,
-  team_id = NULL
-WHERE team_id IN (SELECT old_id FROM old_to_new_mapping);
+SET
+  metadata_json=json_set(
+    CASE
+      WHEN json_valid(metadata_json) AND json_type(metadata_json)='object' THEN metadata_json
+      ELSE '{}'
+    END,
+    '$.retiredTeamId', team_id,
+    '$.replacementTeamId', (
+      SELECT m.new_team_id
+      FROM _team_successor_map m
+      WHERE m.old_team_id=tasks.team_id
+    ),
+    '$.teamHistoryDetachedBy', '093_team_successor_topology'
+  ),
+  team_id=NULL,
+  updated_at=datetime('now')
+WHERE team_id IN (SELECT old_team_id FROM _team_successor_map);
 
--- Ensure work_reports and team_lifecycle_events FK is NULL for retired teams
-UPDATE work_reports SET team_id = NULL WHERE team_id IN (SELECT old_id FROM old_to_new_mapping);
-UPDATE team_lifecycle_events SET team_id = NULL WHERE team_id IN (SELECT old_id FROM old_to_new_mapping);
+-- work_reports and lifecycle events use ON DELETE SET NULL. Profiles and
+-- memberships use ON DELETE CASCADE. tasks were detached above because their
+-- FK intentionally uses NO ACTION.
+DELETE FROM teams
+WHERE id IN (SELECT old_team_id FROM _team_successor_map);
 
--- DELETE old teams. (team_lifecycle_profiles and team_members will CASCADE)
-DELETE FROM teams WHERE id IN (SELECT old_id FROM old_to_new_mapping);
+-- The old rows owned the compatibility slugs, so create successors only after
+-- the delete has released those UNIQUE values.
+INSERT INTO teams (
+  id, organization_id, name, slug, description, color, lead, charter,
+  is_always_on, is_active, updated_at
+)
+SELECT
+  id, organization_id, name, slug, description, color, lead, charter,
+  is_always_on, 1, datetime('now')
+FROM required_capabilities
+WHERE id IN (
+  'team_computer-use-assurance-2026',
+  'team_research-strategy-2026',
+  'team_cli-experience-2026',
+  'team_cli-assurance-2026',
+  'team_content-strategy-2026',
+  'team_tech-port-06-decision-2026',
+  'team_tech-port-08-delivery-2026',
+  'team_ax-business-operations-2026',
+  'team_ax-decision-coordination-2026'
+)
+ON CONFLICT(id) DO UPDATE SET
+  organization_id=excluded.organization_id,
+  name=excluded.name,
+  slug=excluded.slug,
+  description=excluded.description,
+  color=excluded.color,
+  lead=excluded.lead,
+  charter=excluded.charter,
+  is_always_on=excluded.is_always_on,
+  is_active=1,
+  updated_at=datetime('now');
 
-COMMIT;
+UPDATE teams
+SET is_active=1, updated_at=datetime('now')
+WHERE id IN ('team_content-quality', 'team_kd-quality-hygiene');
+
+INSERT INTO team_members (id, team_id, member_type, member_ref)
+VALUES
+  ('member_computer_use_assurance_cursor_2026', 'team_computer-use-assurance-2026', 'provider', 'cursor-agent'),
+  ('member_computer_use_assurance_nvidia_2026', 'team_computer-use-assurance-2026', 'provider', 'nvidia'),
+  ('member_computer_use_assurance_ollama_2026', 'team_computer-use-assurance-2026', 'provider', 'ollama'),
+  ('member_research_strategy_nvidia_2026', 'team_research-strategy-2026', 'provider', 'nvidia'),
+  ('member_research_strategy_agy_2026', 'team_research-strategy-2026', 'provider', 'agy'),
+  ('member_research_strategy_ollama_2026', 'team_research-strategy-2026', 'provider', 'ollama'),
+  ('member_cli_experience_agy_2026', 'team_cli-experience-2026', 'provider', 'agy'),
+  ('member_cli_experience_claude_2026', 'team_cli-experience-2026', 'provider', 'claude-code'),
+  ('member_cli_experience_cursor_2026', 'team_cli-experience-2026', 'provider', 'cursor-agent'),
+  ('member_cli_assurance_cursor_2026', 'team_cli-assurance-2026', 'provider', 'cursor-agent'),
+  ('member_cli_assurance_nvidia_2026', 'team_cli-assurance-2026', 'provider', 'nvidia'),
+  ('member_cli_assurance_ollama_2026', 'team_cli-assurance-2026', 'provider', 'ollama'),
+  ('member_content_strategy_agy_2026', 'team_content-strategy-2026', 'provider', 'agy'),
+  ('member_content_strategy_nvidia_2026', 'team_content-strategy-2026', 'provider', 'nvidia'),
+  ('member_content_strategy_ollama_2026', 'team_content-strategy-2026', 'provider', 'ollama'),
+  ('member_port_decision_nvidia_2026', 'team_tech-port-06-decision-2026', 'provider', 'nvidia'),
+  ('member_port_decision_agy_2026', 'team_tech-port-06-decision-2026', 'provider', 'agy'),
+  ('member_port_decision_claude_2026', 'team_tech-port-06-decision-2026', 'provider', 'claude-code'),
+  ('member_port_delivery_codex_2026', 'team_tech-port-08-delivery-2026', 'provider', 'codex'),
+  ('member_port_delivery_cursor_2026', 'team_tech-port-08-delivery-2026', 'provider', 'cursor-agent'),
+  ('member_port_delivery_opencode_2026', 'team_tech-port-08-delivery-2026', 'provider', 'opencode'),
+  ('member_business_ops_nvidia_2026', 'team_ax-business-operations-2026', 'provider', 'nvidia'),
+  ('member_business_ops_agy_2026', 'team_ax-business-operations-2026', 'provider', 'agy'),
+  ('member_business_ops_ollama_2026', 'team_ax-business-operations-2026', 'provider', 'ollama'),
+  ('member_decision_coord_claude_2026', 'team_ax-decision-coordination-2026', 'provider', 'claude-code'),
+  ('member_decision_coord_cursor_2026', 'team_ax-decision-coordination-2026', 'provider', 'cursor-agent'),
+  ('member_decision_coord_hermes_2026', 'team_ax-decision-coordination-2026', 'provider', 'hermes')
+ON CONFLICT(team_id, member_type, member_ref) DO NOTHING;
+
+INSERT OR IGNORE INTO team_lifecycle_profiles (
+  team_id, status, protected,
+  improvement_count, successful_improvement_count, failed_improvement_count,
+  unresolved_improvement_count, consecutive_low_checks,
+  last_score, last_sample_size,
+  first_low_at, last_checked_at, last_improvement_at, active_run_id,
+  retired_at, retirement_reason,
+  updated_at
+)
+SELECT
+  id, 'active', 1,
+  0, 0, 0,
+  0, 0,
+  NULL, 0,
+  NULL, NULL, NULL, NULL,
+  NULL, NULL,
+  datetime('now')
+FROM required_capabilities
+WHERE id IN (
+  'team_computer-use-assurance-2026',
+  'team_research-strategy-2026',
+  'team_cli-experience-2026',
+  'team_cli-assurance-2026',
+  'team_content-strategy-2026',
+  'team_tech-port-06-decision-2026',
+  'team_tech-port-08-delivery-2026',
+  'team_ax-business-operations-2026',
+  'team_ax-decision-coordination-2026',
+  'team_content-quality',
+  'team_kd-quality-hygiene'
+);
+
+UPDATE team_lifecycle_profiles
+SET
+  status='active',
+  protected=1,
+  retired_at=NULL,
+  retirement_reason=NULL,
+  updated_at=datetime('now')
+WHERE team_id IN (
+  'team_computer-use-assurance-2026',
+  'team_research-strategy-2026',
+  'team_cli-experience-2026',
+  'team_cli-assurance-2026',
+  'team_content-strategy-2026',
+  'team_tech-port-06-decision-2026',
+  'team_tech-port-08-delivery-2026',
+  'team_ax-business-operations-2026',
+  'team_ax-decision-coordination-2026',
+  'team_content-quality',
+  'team_kd-quality-hygiene'
+);
+
+DROP TABLE _team_successor_map;
