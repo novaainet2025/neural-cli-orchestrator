@@ -15,7 +15,7 @@ HR 지시 스냅샷: score=46.7 / completion=50% / sample=48h·2 / cycle=1/3
 | CircuitBreaker `failureThreshold` | **유지(3)** — 해당 실패가 프로바이더 연속 실패가 아님 |
 | Gate 갱신 | **GATE-CONTENT-STRAT-R1** — `CircuitBreaker.isExternalInjectionPhantom` 노출 + 회귀 테스트 고정 (런타임 임계치 변경 0) |
 | Scorer 재발 차단 | 기존 `NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION`(기본 on) 이미 서빙 — 라이브 **90 / A / 100% / n=1 / sample=all** |
-| False Report 교차검증 | 이전 단계(자가개선팀) **비내구 DB unlink 클레임 1건 반증** → 보고 신뢰도 +1 |
+| False Report 교차검증 | 이전 단계 DB unlink의 **현재 효력 없음 1건** 확인. 과거 UPDATE 실행 여부는 현 DB만으로 판정 불가하므로 기존 “False Report 1건 확정”을 철회 → 미지원 비난 1건 제거 |
 | 팀 lifecycle | 삭제·비활성화 **없음** |
 
 ---
@@ -27,9 +27,9 @@ HR 지시 스냅샷: score=46.7 / completion=50% / sample=48h·2 / cycle=1/3
 | 출처 | score | grade | completion | n | sample |
 |---|---:|---|---:|---:|---|
 | HR DIRECTIVE | 46.7 | F | 50 | 2 | 48h |
-| `GET /api/teams/scores` (2026-07-28T09:49Z reverify) | **90** | **A** | **100** | **1** | **all** |
+| `GET /api/teams/scores` (2026-07-28T09:49Z 과거 스냅샷) | **90** | **A** | **100** | **1** | **all** |
 
-지시문 수치는 현재 라이브와 불일치 → **STALE**.  
+지시문 수치는 위 HTTP 스냅샷과 현재 SQLite 직접 계산(동일한 90/A/100/n=1) 모두와 불일치 → **STALE**.
 `selectCurrentSample`: `terminal_48h < 2` 이고 `terminal_7d < 2` 이면 `sample=all`.  
 외부 0B 완료를 terminal/completed에서 제외하면 유효 표본이 1건(`task_EbTqTcR3_iFzfMQB`)만 남아 `sample=all`·completion 100·score 90이 된다.
 
@@ -105,17 +105,21 @@ git checkout -- src/security/circuit-breaker.ts src/security/circuit-breaker.tes
 
 | ID | 클레임 | 재검증 | 등급 | 판정 |
 |---|---|---|---|---|
-| F1 | `UPDATE tasks SET team_id=NULL WHERE id='task_trend_collector'` 로 팀 표본에서 제거 | `GET /api/tasks/task_trend_collector` → `team_id=team_content-strategy-2026`, `created_at=2026-07-28 09:00:01` (cron 재주입) | T1 HTTP | **반증 — 비내구 / False durable-fix claim** |
-| F2 | 코드(.ts/.js) 미변경, DB only | HEAD에 `EXTERNAL_ZERO_OUTPUT` 이미 존재; 이번 라이브 90점은 scorer 제외 효과와 정합. DB unlink만으로는 cron 재발 불가 | T1 파일+HTTP | **부분 오해 — 내구 수정은 scorer/gate 쪽** |
-| F3 | build/typecheck exit 0 | 본 세션: `npx vitest run src/security/circuit-breaker.test.ts src/core/orphan-recovery-policy.test.ts` → exit 0 (36 passed). `npm run build`/`typecheck` → exit 2 on **unrelated** `src/core/subagent-service.ts` TS2339/TS18047 (본 Gate diff 범위 밖) | T1 cmd | **부분 반증** — 게이트 관련 테스트 PASS; 전체 tsc 녹색 클레임은 현재 시점 거짓(원인 파일 ≠ CB/Gate) |
+| F1 | `UPDATE tasks SET team_id=NULL WHERE id='task_trend_collector'` 로 팀 표본에서 제거 | 현재 SQLite 행은 `team_id=team_content-strategy-2026`, `created_at=2026-07-28 09:00:01`. 현재 효력은 없지만 이 스냅샷만으로 이전 단계 실행 시점의 UPDATE 성공/실패를 복원할 수 없음 | T1 DB | **현재 효력 없음 / 과거 실행 여부 unknown** |
+| F2 | 코드(.ts/.js) 미변경, DB only | 이전 단계 자체가 코드 파일을 바꾸지 않았다는 주장은 현재 HEAD에 기존 scorer Gate가 있다는 사실과 양립 가능 | T1 Git+파일 | **반증되지 않음** |
+| F3 | build/typecheck exit 0 | 현재 `npm run build`/`typecheck`는 sandbox `tsx` IPC에서 `listen EPERM`(exit 1), 직접 `tsc`는 `src/core/subagent-service.ts` TS2339/TS18047로 exit 2 | T1 cmd | **현재 재현 실패** — 과거 실행 시점 성공을 거짓으로 확정할 증거는 아님 |
 
-**False Report 1건 확정(F1)**: “team_id NULL로 고쳤다”는 지속 효과를 암시하면 허위다.  
-6시간 cron `INSERT OR REPLACE`가 team_id를 되돌린다. 재발 차단의 내구 계층은 Gate/Scorer다.
+**확정 False Report 0건**: F1은 현재 지속 효과가 없다는 점만 확정된다. 이전 보고는
+“durable”이라고 명시하지 않았으므로, 현재 행만 보고 과거 UPDATE 미실행 또는 허위 완료로
+단정한 기존 판정이 증거 범위를 넘었다. 이 과잉 판정을 철회한 것이 이번 보고 신뢰도 개선
+1건이다. 재발 차단의 내구 계층은 DB 단발 UPDATE가 아니라 Gate/Scorer다.
 
 ### 3-2 false_reports API
 
-`GET /api/false-reports` → `{"data":[],"message":"Route GET /api/false-reports — pending implementation"}`  
-테이블 경로 집계는 이 API로 확인 불가(T3 pending). 교차검증은 tasks/scores HTTP 본문으로 수행.
+과거 `GET /api/false-reports`는
+`{"data":[],"message":"Route GET /api/false-reports — pending implementation"}`이었다.
+현재(2026-07-28 11:11:55 UTC)는 NCO `:6200`이 연결되지 않아 API를 재검증하지 못했다.
+대신 `SELECT COUNT(*) FROM false_reports`를 직접 실행한 결과는 **0**이다(T1 DB).
 
 ### 3-3 LLM 허위 완료 (팀 표본)
 
@@ -123,21 +127,27 @@ git checkout -- src/security/circuit-breaker.ts src/security/circuit-breaker.tes
 
 ---
 
-## 4. 검증 영수증 (재검증 2026-07-28T09:49Z)
+## 4. 검증 영수증 (현재 재검증 2026-07-28T11:11:55Z)
 
-- [Evidence Tier 1] `GET /api/health` → `healthy:true`, sqlite `/Users/nova-ai/project/nco/db/nco.db`
-- [Evidence Tier 1] `GET /api/teams/scores` → team_content-strategy-2026 `90/A/100/n=1/sample=all` (slug=content-planning)
-- [Evidence Tier 1] `GET /api/tasks/task_trend_collector` → phantom 서명 + `team_id=team_content-strategy-2026` 유지 (`created_at=2026-07-28 09:00:01`)
-- [Evidence Tier 1] `GET /api/tasks/task_EbTqTcR3_iFzfMQB` → `response_len=891`, `spawned_by_cli=team-runner`, metadata SET
-- [Evidence Tier 1] `GET /api/false-reports` → pending implementation
-- [Evidence Tier 1] vitest gate files: exit 0, `Test Files 2 passed` / `Tests 36 passed`
-- [Evidence Tier 1] `git diff --stat` CB/orphan tests: `+93` (`circuit-breaker.ts` +20, `.test.ts` +59, `orphan-recovery-policy.test.ts` +14)
-- [Evidence Tier 1] 전체 `npm run build`/`typecheck` exit 2 — `subagent-service.ts` (본 작업 diff 0, 범위 밖)
+- [Evidence Tier 1] SQLite `tasks` 48h 행 2건 직접 조회 → 유효 성공 1건 + 외부 0바이트 phantom 1건
+- [Evidence Tier 1] `computeTeamScores(db)` → Gate 기본 on `90/A/100/n=1/sample=all`; `NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION=off` → `46.7/F/50/n=2/sample=48h`
+- [Evidence Tier 1] 현재 `task_trend_collector` DB 행 → phantom 서명 + `team_id=team_content-strategy-2026` 유지 (`created_at=2026-07-28 09:00:01`)
+- [Evidence Tier 1] 현재 `task_EbTqTcR3_iFzfMQB` DB 행 → `response_len=891`, `spawned_by_cli=team-runner`, metadata SET, heartbeat_seq=8
+- [Evidence Tier 1] `false_reports` 전체 행 수 0; 이 팀 전용 `hourly_role_audits` 48h 매칭 0
+- [Evidence Tier 1] `npx vitest run src/security/circuit-breaker.test.ts src/core/orphan-recovery-policy.test.ts src/core/team-scorer.test.ts` → exit 0, `Test Files 3 passed` / `Tests 48 passed`
+- [Evidence Tier 1] `npx vitest run` 전체 → exit 1, `113 files passed / 10 failed`; `709 tests passed / 3 failed / 39 skipped` (migration FK·날짜 포인터 실패)
+- [Evidence Tier 1] Gate 소스/테스트 diff는 commit `e07c27f25fa2f387c41f80fa7594636c569791e0`에 존재
+- [Evidence Tier 1] upstream `trend-collector.py` → `cron: 0 */6 * * *`, `INSERT OR REPLACE INTO tasks`, 고정 task/team/provider 값 직접 확인
+- [Evidence Tier 1] 직접 `tsc --noEmit`/`tsc` → exit 2, `src/core/subagent-service.ts` TS2339/TS18047
+- [Evidence Tier 3] `npm run build`/`npm run typecheck` → sandbox `tsx` IPC `listen EPERM`, exit 1
+- [Evidence Tier 1] `run-delivery-gate.sh --full` → `PASS=0 FAIL=4 SKIP=0` (dirty 산출물 2개 + npm typecheck/test/build IPC 실패)
+- [미검증] 현재 NCO HTTP health/API: `curl: (7) Failed to connect to localhost port 6200`
 - [미변경] 팀 is_active / HR retirement
 
 ## 5. Gap / remaining
 
-- upstream `nova-sns/automation/trend-collector.py` raw sqlite 쓰기 (범위 밖)
-- false_reports 라우트 pending implementation
-- cron 다음 틱(≈6h) 후 team_id 재주입은 계속될 수 있음 — scorer/gate가 계상만 방어
+- upstream `nova-sns/automation/trend-collector.py` raw sqlite 쓰기 수정 (범위 밖)
+- false_reports 라우트는 현재 NCO 오프라인으로 재검증하지 못함
+- upstream raw sqlite producer는 그대로여서 team_id 재주입 가능성이 남음 — scorer/gate가 계상만 방어
 - 저장소 전체 tsc 녹색 복구는 `subagent-service.ts` 별도 작업 필요 (본 Gate 사이클 범위 밖)
+- 전체 테스트의 migration FK·날짜 포인터 실패는 본 Gate/보고서 diff 범위 밖

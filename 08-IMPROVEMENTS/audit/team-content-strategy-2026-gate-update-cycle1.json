@@ -13,7 +13,9 @@
       "GET http://localhost:6200/api/false-reports (pending implementation)",
       "src/security/circuit-breaker.ts + tests",
       "src/core/team-scorer.ts buildExternalZeroOutputExclusion",
-      "src/core/orphan-recovery-policy.ts isExternallyInjectedOrphan"
+      "src/core/orphan-recovery-policy.ts isExternallyInjectedOrphan",
+      "sqlite3 db/nco.db current re-verification at 2026-07-28T11:11:55Z",
+      "/Users/nova-ai/project/nova-sns/automation/trend-collector.py cron and raw SQLite producer"
     ],
     "hr_directive_snapshot": {
       "score": 46.7,
@@ -30,6 +32,29 @@
         "observed_at": "2026-07-28T09:49:28Z",
         "reverified": true
       }
+    },
+    "current_reverification": {
+      "observed_at": "2026-07-28T11:11:55Z",
+      "source": "read-only SQLite + computeTeamScores(db)",
+      "gate_default_on": {
+        "score": 90,
+        "grade": "A",
+        "completion": 100,
+        "n": 1,
+        "maxN": 60,
+        "sample": "all"
+      },
+      "gate_off": {
+        "score": 46.7,
+        "grade": "F",
+        "completion": 50,
+        "n": 2,
+        "maxN": 60,
+        "sample": "48h"
+      },
+      "false_reports_table_rows": 0,
+      "team_hourly_audits_48h": 0,
+      "nco_http": "unverified — curl (7), localhost:6200 unavailable"
     }
   },
   "failure_pattern_analysis_48h": {
@@ -67,8 +92,8 @@
     },
     {
       "id": "GATE-CONTENT-STRAT-R1",
-      "type": "new",
-      "status": "IN_WORKING_TREE",
+      "type": "landed-cycle1",
+      "status": "LANDED_MAIN",
       "layer": "circuit-breaker gate API (orphan provenance)",
       "location": "src/security/circuit-breaker.ts isExternalInjectionPhantom + tests",
       "env_flag": "NCO_ORPHAN_EXTERNAL_INJECTION_GUARD",
@@ -102,29 +127,30 @@
     "claims": [
       {
         "id": "F1",
-        "claim": "UPDATE tasks SET team_id=NULL WHERE id='task_trend_collector' (durable unlink)",
-        "verdict": "FAIL",
+        "claim": "UPDATE tasks SET team_id=NULL WHERE id='task_trend_collector'",
+        "verdict": "CURRENT_EFFECT_ABSENT_HISTORICAL_EXECUTION_UNKNOWN",
         "tier": "T1",
-        "evidence": "GET /api/tasks/task_trend_collector → team_id=team_content-strategy-2026, created_at=2026-07-28 09:00:01 (cron re-inject)"
+        "evidence": "Current SQLite row has team_id=team_content-strategy-2026 and created_at=2026-07-28 09:00:01. This proves no current unlink effect, but cannot prove the UPDATE did not succeed at the earlier observation time."
       },
       {
         "id": "F2",
         "claim": "no .ts/.js modified; DB-only fix",
-        "verdict": "MISLEADING",
+        "verdict": "NOT_CONTRADICTED",
         "tier": "T1",
-        "evidence": "Live 90/A matches EXTERNAL_ZERO_OUTPUT scorer exclusion already in src/; DB unlink alone is non-durable"
+        "evidence": "The scorer Gate already present in HEAD does not contradict the previous stage's narrower claim that its own change was DB-only."
       },
       {
         "id": "F3",
         "claim": "npm run build && npm run typecheck exit 0",
-        "verdict": "PARTIAL_FAIL_UNRELATED",
+        "verdict": "NOT_REPRODUCED_CURRENTLY_HISTORICAL_RESULT_UNKNOWN",
         "tier": "T1",
-        "evidence": "vitest circuit-breaker+orphan-recovery-policy exit 0 (36 passed); npm run build/typecheck exit 2 on src/core/subagent-service.ts TS2339/TS18047 (outside GATE-CONTENT-STRAT-R1 diff)"
+        "evidence": "Current npm wrappers exit 1 at sandbox tsx IPC listen EPERM; direct tsc exits 2 on src/core/subagent-service.ts TS2339/TS18047. This does not reconstruct the earlier filesystem state."
       }
     ],
-    "false_complete_claims": 1,
+    "false_complete_claims": 0,
+    "persistence_failures": 1,
     "fabricated_metrics_found": 0,
-    "verdict": "F1 False durable-fix claim caught — reporting reliability +1. Durable defense is Gate/Scorer, not team_id NULL."
+    "verdict": "Reporting reliability +1: removed the unsupported 'False Report confirmed' accusation. Current persistence failure is verified; prior execution honesty remains unknown. Durable defense is Gate/Scorer, not one DB UPDATE."
   },
   "decision": {
     "cb_failure_threshold_change": "NO",
@@ -136,13 +162,19 @@
   },
   "unverified_items": [
     "upstream nova-sns trend-collector.py rewrite (out of scope)",
-    "false_reports table COUNT via API (route pending implementation)",
+    "current false-reports HTTP route and NCO health (localhost:6200 unavailable)",
     "full-repo tsc green blocked by pre-existing/unrelated subagent-service.ts errors (out of Gate cycle scope)"
   ],
   "verification_this_session": {
-    "health_at": "2026-07-28T09:49:28.144Z",
-    "vitest": "exit 0 — 2 files / 36 tests passed",
-    "build": "exit 2 — subagent-service.ts only",
-    "git_diff_stat": "3 files, +93 (circuit-breaker.ts +20, circuit-breaker.test.ts +59, orphan-recovery-policy.test.ts +14)"
+    "observed_at": "2026-07-28T11:11:55Z",
+    "health": "unverified — curl (7), localhost:6200 unavailable",
+    "vitest": "exit 0 — 3 files / 48 tests passed",
+    "full_vitest": "exit 1 — 113 files passed / 10 failed; 709 tests passed / 3 failed / 39 skipped (migration FK and stale date pointer)",
+    "build_wrapper": "exit 1 — sandbox tsx IPC listen EPERM",
+    "typecheck_wrapper": "exit 1 — sandbox tsx IPC listen EPERM",
+    "direct_tsc": "exit 2 — src/core/subagent-service.ts TS2339/TS18047",
+    "delivery_gate_full": "PASS=0 FAIL=4 SKIP=0 — dirty artifact files plus npm typecheck/test/build IPC failures",
+    "gate_commit": "e07c27f25fa2f387c41f80fa7594636c569791e0",
+    "current_artifact_diff": "2 audit artifacts only; no source or lifecycle changes in this re-verification"
   }
 }

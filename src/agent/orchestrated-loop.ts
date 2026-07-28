@@ -15,7 +15,7 @@ import { trajectoryGuard } from '../security/trajectory-guard.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { ECHO_LINE_RE } from '../utils/echo-filter.js';
 import { buildProviderProcessEnv } from './provider-process-env.js';
-import { parseCodexJsonlEvents, recordSubagentRun, updateSubagentRunStatus } from '../core/subagent-service.js';
+import { CodexSubagentTracker } from '../core/subagent-service.js';
 
 const log = createLogger('orchestrated-loop');
 
@@ -313,6 +313,10 @@ export class OrchestratedLoop {
     // Adapt per provider
     const finalArgs = this.buildArgs(args, combined, lastMessageFile, model);
     this.assertTaskProjectDir();
+    const subagentTracker = this.provider.id === 'codex'
+      ? new CodexSubagentTracker(taskId, this.provider.id)
+      : null;
+    let subagentTrackerStopped = false;
 
     try {
       const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
@@ -338,7 +342,11 @@ export class OrchestratedLoop {
         reject: false,
       });
       taskQueue.recordChildProcess(taskId, subprocess.pid);
-      subprocess.stdout?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
+      subprocess.stdout?.on('data', chunk => {
+        const text = chunk.toString();
+        taskQueue.recordActivity(taskId, text);
+        subagentTracker?.feedStdout(text);
+      });
       subprocess.stderr?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
       const abortSignal = this.abortSignal;
       const abortHandler = () => {
@@ -360,6 +368,13 @@ export class OrchestratedLoop {
       } finally {
         abortSignal?.removeEventListener('abort', abortHandler);
       }
+      const trackerStatus = isSuccessfulResult(result)
+        ? 'completed'
+        : (result as { isCanceled?: boolean }).isCanceled || (result as { timedOut?: boolean }).timedOut
+          ? 'cancelled'
+          : 'failed';
+      subagentTracker?.stop(trackerStatus);
+      subagentTrackerStopped = true;
       let lastMsg = '';
 
       if (lastMessageFile) {
@@ -440,6 +455,7 @@ export class OrchestratedLoop {
 
       return stripAnsi(result.stdout || result.stderr || '');
     } catch (err: any) {
+      if (!subagentTrackerStopped) subagentTracker?.stop('failed');
       log.error({ agentId: this.provider.id, err: err.message }, 'CLI call failed');
       throw err;
     }

@@ -25,6 +25,7 @@ import WebSocket from 'ws';
 import { promisify } from 'node:util';
 import { stripEchoLines } from '../../utils/echo-filter.js';
 import { isProviderUnavailableFailureText } from '../task-failover.js';
+import { listAllSubagents } from '../../core/subagent-service.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -311,6 +312,35 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   app.get('/api/debug/is', async () => {
     const peers = await listInterSessions();
     return { peers: peers.length, first: peers[0]?.name ?? null, clientsDir: IS_CLIENTS_DIR };
+  });
+
+  // ═══ Native CLI / NCO child agents ═══════════════════
+  app.get('/api/subagents', async (req) => {
+    const query = req.query as {
+      activeOnly?: string;
+      includeRecentSeconds?: string;
+      limit?: string;
+      parentTaskId?: string;
+    };
+    const includeRecentSeconds = Math.max(0, Number(query.includeRecentSeconds || 0) || 0);
+    const limit = Math.min(500, Math.max(1, Number(query.limit || 100) || 100));
+    const activeOnly = query.activeOnly !== 'false';
+    const subagents = listAllSubagents({
+      activeOnly,
+      includeRecentSeconds,
+      limit,
+      parentTaskId: query.parentTaskId || undefined,
+    });
+    return {
+      subagents,
+      meta: {
+        active: subagents.filter(subagent =>
+          subagent.status === 'starting' || subagent.status === 'working'
+        ).length,
+        total: subagents.length,
+        includeRecentSeconds,
+      },
+    };
   });
 
   // ═══ Task Master / Kanban ═══════════════════════════
