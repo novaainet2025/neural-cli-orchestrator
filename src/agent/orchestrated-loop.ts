@@ -15,6 +15,7 @@ import { trajectoryGuard } from '../security/trajectory-guard.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { ECHO_LINE_RE } from '../utils/echo-filter.js';
 import { buildProviderProcessEnv } from './provider-process-env.js';
+import { parseCodexJsonlEvents, recordSubagentRun, updateSubagentRunStatus } from '../core/subagent-service.js';
 
 const log = createLogger('orchestrated-loop');
 
@@ -480,9 +481,10 @@ export class OrchestratedLoop {
         // --output-last-message: final assistant reply only (no banner/echo)
         // --sandbox workspace-write: 기본 read-only 샌드박스는 구현 위임이 전부
         //   "patch rejected: read-only sandbox"로 실패한다 (2026-07-03 subnote 실측)
+        // --json: JSONL 형식 stdout → subagent spawn/wait/followup/interrupt 이벤트 파싱 가능
         return lastMessageFile
-          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
-          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
+          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
       case 'agy':
         // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
         // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가

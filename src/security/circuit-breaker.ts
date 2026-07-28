@@ -9,6 +9,11 @@ import {
   isProtocolReconversionGateEnabled,
   isProtocolReconversionPrompt,
 } from '../core/collaboration.js';
+import {
+  isExternalInjectionGuardEnabled,
+  isExternallyInjectedOrphan,
+  type OrphanProvenanceRow,
+} from '../core/orphan-recovery-policy.js';
 
 export type {
   CollaborationLoopDecision,
@@ -27,6 +32,11 @@ export {
   isProtocolReconversionGateEnabled,
   isProtocolReconversionPrompt,
 } from '../core/collaboration.js';
+export {
+  isExternalInjectionGuardEnabled,
+  isExternallyInjectedOrphan,
+  type OrphanProvenanceRow,
+} from '../core/orphan-recovery-policy.js';
 
 export interface CircuitBreakerConfig {
   failureThreshold: number;    // consecutive failures to open (default 3)
@@ -95,6 +105,16 @@ export class CircuitBreaker {
    */
   isProtocolReconversion(prompt: string): boolean {
     return isProtocolReconversionGateEnabled() && isProtocolReconversionPrompt(prompt);
+  }
+
+  /**
+   * Gate (GATE-CONTENT-STRAT-R1): 외부 cron이 raw sqlite로 넣은 팀 행인지 판정.
+   * 프로바이더 회로와 무관 — true면 orphan 재큐잉·품질 계상에서 제외해야 한다.
+   * 실측 고정 ID: task_trend_collector (team_content-strategy-2026, assigned_to=mlx).
+   * 롤백: NCO_ORPHAN_EXTERNAL_INJECTION_GUARD=off.
+   */
+  isExternalInjectionPhantom(row: OrphanProvenanceRow): boolean {
+    return isExternalInjectionGuardEnabled() && isExternallyInjectedOrphan(row);
   }
 
   toJSON() {

@@ -133,3 +133,5 @@
 {"ts": "2026-07-27T22:20:01+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
 {"ts": "2026-07-28T05:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
 {"ts": "2026-07-28T11:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-28T18:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-28T18:22:15+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}

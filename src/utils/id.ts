@@ -24,3 +24,7 @@ export function createMessageId(): string {
 export function createEventId(): string {
   return createId('evt');
 }
+
+export function createSubagentRunId(): string {
+  return createId('sbr');
+}

@@ -373,3 +373,62 @@ describe('classifyProviderErrorEnvelope (NCO_CB_ERROR_ENVELOPE)', () => {
     expect(classifyProviderErrorEnvelope(quota, 'on')).toBeNull();
   });
 });
+
+// GATE-CONTENT-STRAT-R1 (cycle1 중복에러방지팀, team_content-strategy-2026).
+// 픽스처는 2026-07-28 09:00:01 UTC GET /api/tasks/task_trend_collector 본문 스냅샷.
+describe('isExternalInjectionPhantom (GATE-CONTENT-STRAT-R1)', () => {
+  const previousGuard = process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD;
+
+  afterEach(() => {
+    if (previousGuard === undefined) delete process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD;
+    else process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = previousGuard;
+  });
+
+  // Live HTTP body (2026-07-28T09:16Z): team_id 유지, response/result/evidence null,
+  // metadata_json/system_prompt/spawned_by_cli null, orphan_requeue_count=0, assigned_to=mlx.
+  const trendCollectorRow = {
+    teamId: 'team_content-strategy-2026',
+    metadataJson: null,
+    systemPrompt: null,
+    spawnedByCli: null,
+    orphanRequeueCount: 0,
+  };
+
+  it('flags the live task_trend_collector provenance snapshot without opening the provider circuit', () => {
+    process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = 'on';
+    const breaker = new CircuitBreaker('mlx');
+    breaker.reset();
+
+    expect(breaker.isExternalInjectionPhantom(trendCollectorRow)).toBe(true);
+    expect(breaker.getState()).toBe('closed');
+    expect(breaker.getFailures()).toBe(0);
+  });
+
+  it('is a strict no-op when the orphan external-injection guard is disabled', () => {
+    for (const off of ['off', 'false', '0']) {
+      process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = off;
+      const breaker = new CircuitBreaker('mlx-off');
+      expect(breaker.isExternalInjectionPhantom(trendCollectorRow)).toBe(false);
+    }
+  });
+
+  it('does not flag an NCO team-runner row (metadata + spawned_by_cli present)', () => {
+    process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = 'on';
+    const breaker = new CircuitBreaker('agy');
+    // Live sibling task_EbTqTcR3_iFzfMQB (agy, spawned_by_cli=team-runner, metadata SET).
+    expect(breaker.isExternalInjectionPhantom({
+      teamId: 'team_content-strategy-2026',
+      metadataJson: '{"requestedProvider":"agy","promptGate":{"enriched":true}}',
+      systemPrompt: null,
+      spawnedByCli: 'team-runner',
+      orphanRequeueCount: 0,
+    })).toBe(false);
+  });
+
+  it('does not treat timeout/agent-nonresponse strings as this gate (wrong failure class)', () => {
+    // CB threshold changes would target these classes; this team's 50% root cause was not them.
+    expect(classifyCircuitError('Job wait timed out before finishing, no finish notification arrived')).toBeNull();
+    expect(classifyCircuitError('agent non-response')).toBeNull();
+    expect(classifyCircuitError('invalid input')).toBeNull();
+  });
+});

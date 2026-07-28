@@ -1,0 +1,148 @@
+{
+  "meta": {
+    "team": "team_content-strategy-2026",
+    "slug": "content-planning",
+    "name": "콘텐츠 전략·근거기획팀",
+    "generated": "2026-07-28",
+    "author": "중복에러방지팀 (Code Reviewer)",
+    "cycle": "1/3",
+    "evidence_source": [
+      "GET http://localhost:6200/api/teams/scores (T1 HTTP body)",
+      "GET http://localhost:6200/api/tasks/task_trend_collector (T1 HTTP body)",
+      "GET http://localhost:6200/api/tasks/task_EbTqTcR3_iFzfMQB (T1 HTTP body)",
+      "GET http://localhost:6200/api/false-reports (pending implementation)",
+      "src/security/circuit-breaker.ts + tests",
+      "src/core/team-scorer.ts buildExternalZeroOutputExclusion",
+      "src/core/orphan-recovery-policy.ts isExternallyInjectedOrphan"
+    ],
+    "hr_directive_snapshot": {
+      "score": 46.7,
+      "completion": 50,
+      "sample": "48h/2",
+      "verdict": "STALE",
+      "live_measurement": {
+        "score": 90,
+        "grade": "A",
+        "completion": 100,
+        "n": 1,
+        "maxN": 61,
+        "sample": "all",
+        "observed_at": "2026-07-28T09:49:28Z",
+        "reverified": true
+      }
+    }
+  },
+  "failure_pattern_analysis_48h": {
+    "root_cause_class": "external_injection_phantom_completed",
+    "not_observed_classes": ["timeout", "agent_non_response", "invalid_input"],
+    "signatures": [
+      {
+        "error_class": "external zero-output completed (task_trend_collector)",
+        "count": 1,
+        "task_id": "task_trend_collector",
+        "infra_or_scorer_excluded": true,
+        "exclusion": "NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION + orphan external injection guard"
+      },
+      {
+        "error_class": "valid NCO completion (task_EbTqTcR3_iFzfMQB)",
+        "count": 1,
+        "task_id": "task_EbTqTcR3_iFzfMQB",
+        "infra_or_scorer_excluded": false
+      }
+    ],
+    "verdict": "completion 50% was 1 valid + 1 phantom marker in denominator/numerator asymmetry; not CB threshold material. Live score recovered to 90 via existing EXTERNAL_ZERO_OUTPUT exclusion."
+  },
+  "rules": [
+    {
+      "id": "GATE-CONTENT-STRAT-R0",
+      "type": "carried-forward",
+      "status": "LANDED_AND_SERVING",
+      "layer": "scoring",
+      "location": "src/core/team-scorer.ts buildExternalZeroOutputExclusion",
+      "env_flag": "NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION",
+      "default": "on",
+      "rollback": "NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION=off",
+      "rule": "completed+0B+no NCO provenance+orphan_requeue_count=0 팀 행을 terminal/completed에서 제외.",
+      "cycle1_action": "NO CHANGE to SQL — verified live effect (90/A/100%/n=1/sample=all)."
+    },
+    {
+      "id": "GATE-CONTENT-STRAT-R1",
+      "type": "new",
+      "status": "IN_WORKING_TREE",
+      "layer": "circuit-breaker gate API (orphan provenance)",
+      "location": "src/security/circuit-breaker.ts isExternalInjectionPhantom + tests",
+      "env_flag": "NCO_ORPHAN_EXTERNAL_INJECTION_GUARD",
+      "default": "on",
+      "rollback": "NCO_ORPHAN_EXTERNAL_INJECTION_GUARD=off | git checkout -- src/security/circuit-breaker.ts src/security/circuit-breaker.test.ts",
+      "rule": "CircuitBreaker exposes isExternallyInjectedOrphan behind runtime toggle without mutating provider circuit_states.",
+      "behavior_change": "API surface + regression tests only; failureThreshold unchanged",
+      "fixture": "GET /api/tasks/task_trend_collector @ 2026-07-28 09:00:01"
+    },
+    {
+      "id": "GATE-CONTENT-STRAT-R2",
+      "type": "evaluated-and-rejected",
+      "status": "NO_CHANGE",
+      "layer": "circuit-breaker threshold",
+      "rule": "failureThreshold adjustment",
+      "reason": "Phantom row has error=null and never hits recordFailure; timeout/non-response counts in team sample were 0."
+    },
+    {
+      "id": "GATE-CONTENT-STRAT-R3",
+      "type": "unchanged",
+      "status": "NO_CHANGE",
+      "layer": "command-gate",
+      "location": "src/security/command-gate.ts",
+      "rule": "No shell/command-policy failures in team sample.",
+      "cycle1_action": "diff 0"
+    }
+  ],
+  "cross_verification_previous_stages": {
+    "stage_label": "자가개선팀 previous_stage_output",
+    "false_reports_api": "pending implementation",
+    "claims": [
+      {
+        "id": "F1",
+        "claim": "UPDATE tasks SET team_id=NULL WHERE id='task_trend_collector' (durable unlink)",
+        "verdict": "FAIL",
+        "tier": "T1",
+        "evidence": "GET /api/tasks/task_trend_collector → team_id=team_content-strategy-2026, created_at=2026-07-28 09:00:01 (cron re-inject)"
+      },
+      {
+        "id": "F2",
+        "claim": "no .ts/.js modified; DB-only fix",
+        "verdict": "MISLEADING",
+        "tier": "T1",
+        "evidence": "Live 90/A matches EXTERNAL_ZERO_OUTPUT scorer exclusion already in src/; DB unlink alone is non-durable"
+      },
+      {
+        "id": "F3",
+        "claim": "npm run build && npm run typecheck exit 0",
+        "verdict": "PARTIAL_FAIL_UNRELATED",
+        "tier": "T1",
+        "evidence": "vitest circuit-breaker+orphan-recovery-policy exit 0 (36 passed); npm run build/typecheck exit 2 on src/core/subagent-service.ts TS2339/TS18047 (outside GATE-CONTENT-STRAT-R1 diff)"
+      }
+    ],
+    "false_complete_claims": 1,
+    "fabricated_metrics_found": 0,
+    "verdict": "F1 False durable-fix claim caught — reporting reliability +1. Durable defense is Gate/Scorer, not team_id NULL."
+  },
+  "decision": {
+    "cb_failure_threshold_change": "NO",
+    "command_gate_change": "NO",
+    "external_injection_gate_api_change": "YES (CircuitBreaker.isExternalInjectionPhantom + tests)",
+    "scorer_sql_change": "NO (already landed)",
+    "team_lifecycle_change": "NO",
+    "rollback": "NCO_ORPHAN_EXTERNAL_INJECTION_GUARD=off | git checkout -- src/security/circuit-breaker.ts src/security/circuit-breaker.test.ts src/core/orphan-recovery-policy.test.ts"
+  },
+  "unverified_items": [
+    "upstream nova-sns trend-collector.py rewrite (out of scope)",
+    "false_reports table COUNT via API (route pending implementation)",
+    "full-repo tsc green blocked by pre-existing/unrelated subagent-service.ts errors (out of Gate cycle scope)"
+  ],
+  "verification_this_session": {
+    "health_at": "2026-07-28T09:49:28.144Z",
+    "vitest": "exit 0 — 2 files / 36 tests passed",
+    "build": "exit 2 — subagent-service.ts only",
+    "git_diff_stat": "3 files, +93 (circuit-breaker.ts +20, circuit-breaker.test.ts +59, orphan-recovery-policy.test.ts +14)"
+  }
+}

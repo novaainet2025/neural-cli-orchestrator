@@ -75,8 +75,22 @@ describe('external injection provenance', () => {
     orphanRequeueCount: 0,
   };
 
+  // Live HTTP 스냅샷(2026-07-28 09:00:01 UTC): successor team_content-strategy-2026
+  // 고정 ID task_trend_collector — cron INSERT OR REPLACE 후에도 provenance 동일.
+  const strategy2026Injected = {
+    teamId: 'team_content-strategy-2026',
+    metadataJson: null,
+    systemPrompt: null,
+    spawnedByCli: null,
+    orphanRequeueCount: 0,
+  };
+
   it('flags a pristine externally injected team row', () => {
     expect(isExternallyInjectedOrphan(injected)).toBe(true);
+  });
+
+  it('flags the live team_content-strategy-2026 task_trend_collector snapshot', () => {
+    expect(isExternallyInjectedOrphan(strategy2026Injected)).toBe(true);
   });
 
   it('does not flag a row NCO created (metadata present)', () => {
