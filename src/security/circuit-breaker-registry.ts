@@ -108,6 +108,15 @@ const RATE_LIMIT_PATTERNS = [
   /\bprovider .* busy\b/i,
 ];
 
+const QUALITY_GATE_PATTERNS = [
+  /\bquality_rejected\b/i,
+  /\bquality.reject/i,
+  /\bFORMAT_MISMATCH\b/i,
+  /\bEvidenceGateError\b/i,
+  /\bevidence.gate/i,
+  /\bmissing evidence\b/i,
+];
+
 function defaultSnapshot(agentId: string): CircuitSnapshot {
   return {
     agentId,
@@ -137,19 +146,47 @@ function parseAbsoluteResetTime(message: string): number | null {
   }
 
   const retryAfter = message.match(/\bretry[- ]after[: ]+(\d+)\s*(second|seconds|sec|secs|minute|minutes|min|mins|hour|hours|hr|hrs)\b/i);
-  if (!retryAfter) return null;
+  if (retryAfter) {
+    const amount = Number(retryAfter[1]);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
 
-  const amount = Number(retryAfter[1]);
-  if (!Number.isFinite(amount) || amount <= 0) return null;
+    const unit = retryAfter[2].toLowerCase();
+    const multiplier = unit.startsWith('sec')
+      ? 1000
+      : unit.startsWith('min')
+        ? 60_000
+        : 60 * 60_000;
 
-  const unit = retryAfter[2].toLowerCase();
-  const multiplier = unit.startsWith('sec')
-    ? 1000
-    : unit.startsWith('min')
-      ? 60_000
-      : 60 * 60_000;
+    return Date.now() + amount * multiplier;
+  }
 
-  return Date.now() + amount * multiplier;
+  // Claude CLI quota errors report a daily reset without an ISO timestamp:
+  // "You've hit your weekly limit · resets 4am (Asia/Seoul)".
+  // Preserve the quota gate until that next wall-clock reset instead of using
+  // the one-hour fallback and prematurely routing another real task to it.
+  const seoulReset = message.match(
+    /\bresets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*\(Asia\/Seoul\)/i,
+  );
+  if (!seoulReset) return null;
+
+  const twelveHour = Number(seoulReset[1]);
+  const minute = Number(seoulReset[2] ?? '0');
+  if (twelveHour < 1 || twelveHour > 12 || minute < 0 || minute > 59) return null;
+
+  const meridiem = seoulReset[3].toLowerCase();
+  const hour = (twelveHour % 12) + (meridiem === 'pm' ? 12 : 0);
+  const now = Date.now();
+  const seoulNow = new Date(now + 9 * 60 * 60_000);
+  let candidate = Date.UTC(
+    seoulNow.getUTCFullYear(),
+    seoulNow.getUTCMonth(),
+    seoulNow.getUTCDate(),
+    hour,
+    minute,
+  ) - 9 * 60 * 60_000;
+
+  if (candidate <= now) candidate += 24 * 60 * 60_000;
+  return candidate;
 }
 
 export function classifyCircuitError(raw: string | null | undefined): ClassifiedCircuitError | null {
@@ -176,6 +213,13 @@ export function classifyCircuitError(raw: string | null | undefined): Classified
     const matched = message.match(pattern);
     if (matched) {
       return { reason: 'rate-limit', immediateOpen: true, resetTime, matchedText: matched[0] };
+    }
+  }
+
+  for (const pattern of QUALITY_GATE_PATTERNS) {
+    const matched = message.match(pattern);
+    if (matched) {
+      return { reason: 'generic', immediateOpen: true, resetTime: null, matchedText: matched[0] };
     }
   }
 

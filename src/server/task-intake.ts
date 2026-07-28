@@ -233,15 +233,17 @@ export function applyPromptGate(prompt: string, metadata?: Record<string, unknow
   const textOnly = isTextOnlyPrompt(prompt);
   const structuredOutput = isStructuredOutputPrompt(prompt);
   const performanceGoalInput = isPerformanceGoalInputPrompt(prompt);
-  const isCompanyIntake = typeof metadata?.teamId === 'string'
-    && metadata.teamId === GOV_COMMAND_INTAKE_TEAM_ID
+  const isGovCommandIntake = typeof metadata?.teamId === 'string'
+    && metadata.teamId === GOV_COMMAND_INTAKE_TEAM_ID;
+  const isCompanyIntake = isGovCommandIntake
     && typeof metadata?.companyRunId === 'string'
     && metadata.companyRunId.trim().length > 0;
   const skipBuildVerification = workReport
     || textOnly
     || structuredOutput
     || performanceGoalInput
-    || isCompanyIntake;
+    || isCompanyIntake
+    || isGovCommandIntake;
   const outputFormat = workReport
     ? '요구된 Markdown 업무보고 본문.'
     : structuredOutput
@@ -250,7 +252,7 @@ export function applyPromptGate(prompt: string, metadata?: Record<string, unknow
         ? '요구된 텍스트 본문만 출력.'
         : performanceGoalInput
           ? '요청된 목표·성과 입력 결과와 검증 근거 요약.'
-          : isCompanyIntake
+          : isCompanyIntake || isGovCommandIntake
             ? '완료된 미션 접수·정규화 결과 요약과 검증 근거.'
             : undefined;
   // 실패한 업무보고의 자동 보강 프롬프트가 재시도 입력으로 재사용되면 score=100이라
@@ -327,9 +329,7 @@ export function buildDefaultVerifierWithFs(
   // 3건, direct retry 8건). build verifier는 코드 산출물 검증용이므로 연구/기획 팀에는
   // 붙이지 않는다 — 품질 검증은 내용 기반(response-quality.ts)으로만 수행한다.
   const tid = typeof input.metadata?.teamId === 'string' ? input.metadata.teamId : '';
-  if ((RESEARCH_STRATEGY_TEAM_IDS.has(tid) || tid === SOURCE_DISCOVERY_TEAM_ID || tid === GOV_COMMAND_INTAKE_TEAM_ID)
-    && typeof input.metadata?.companyRunId === 'string'
-    && input.metadata.companyRunId.trim()) return undefined;
+  if (RESEARCH_STRATEGY_TEAM_IDS.has(tid) || tid === SOURCE_DISCOVERY_TEAM_ID || tid === GOV_COMMAND_INTAKE_TEAM_ID) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;
 
   return {

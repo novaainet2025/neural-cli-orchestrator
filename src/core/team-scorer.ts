@@ -409,6 +409,41 @@ export function buildSpawnFailureExclusion(
     : SPAWN_FAILURE_EXCLUSION_SQL;
 }
 
+// 외부 프로세스가 NCO 게이트웨이·이벤트버스를 우회해 tasks 행을 직접 삽입한 뒤,
+// 실제 산출물 없이 status='completed'로만 바꾸는 경우는 팀 charter 실행 결과가 아니다.
+// 이런 행을 일반 zero-output 완료와 똑같이 terminal 분모에 남기면, NCO가 실행하거나
+// 재시도할 기회가 전혀 없었던 외부 진행상태 마커가 팀 completion을 낮춘다.
+//
+// 실측 근거(2026-07-28 조회, db/nco.db):
+//  - task_trend_collector: prompt='트렌드 키워드 수집 및 분석 중', assigned_to='mlx',
+//    status='completed', response/result_json 0바이트, metadata_json/system_prompt/
+//    spawned_by_cli NULL, orphan_requeue_count=0.
+//  - 이 provenance 조합은 orphan-recovery-policy.ts의 외부 주입 가드와 동일하다.
+//
+// 범위: completed+0B이며 NCO provenance가 전부 없고 재큐잉 이력도 없는 팀 행만
+// completed/terminal 양쪽에서 제외한다. 일반 NCO zero-output 완료는 계속 terminal 실패로 남긴다.
+// 롤백: 런타임 즉시 → NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION=off (재빌드 불필요).
+const EXTERNAL_ZERO_OUTPUT_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const EXTERNAL_ZERO_OUTPUT_EXCLUSION_SQL = `AND NOT (
+      k.status = 'completed'
+      AND COALESCE(k.response, '') = ''
+      AND COALESCE(k.result_json, '') = ''
+      AND COALESCE(k.team_id, '') <> ''
+      AND COALESCE(k.metadata_json, '') = ''
+      AND COALESCE(k.system_prompt, '') = ''
+      AND COALESCE(k.spawned_by_cli, '') = ''
+      AND COALESCE(k.orphan_requeue_count, 0) = 0
+    )`;
+
+export function buildExternalZeroOutputExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION,
+): string {
+  return EXTERNAL_ZERO_OUTPUT_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : EXTERNAL_ZERO_OUTPUT_EXCLUSION_SQL;
+}
+
 // status='completed'여도 response와 result_json이 모두 0바이트면 검증 가능한 팀 산출물이
 // 없으므로 completion 분자에 넣지 않는다. terminal 분모에는 그대로 남겨 "완료" 상태만으로
 // 성공률을 부풀리지 않고, completed<=terminal 불변식과 completion<=100%를 보존한다.
@@ -520,6 +555,7 @@ export function buildProviderAuthExclusion(
 
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
+  const EXTERNAL_ZERO_OUTPUT_EXCLUSION = buildExternalZeroOutputExclusion();
   const ZERO_OUTPUT_COMPLETED_EXCLUSION = buildZeroOutputCompletedExclusion();
   const PROVIDER_AUTH_EXCLUSION = buildProviderAuthExclusion();
   const ACTIVE_WORK_REPORT_RETRY_EXCLUSION = buildActiveWorkReportRetryExclusion();
@@ -541,11 +577,13 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-48 hours')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_48h,
       COALESCE(SUM(CASE
@@ -560,11 +598,13 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-7 days')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
@@ -578,10 +618,12 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t

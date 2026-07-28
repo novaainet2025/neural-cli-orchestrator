@@ -99,6 +99,36 @@ describe('CircuitBreaker configuration', () => {
     expect(circuitBreakerRegistry.getSnapshot('learned-threshold-test').reason).toBe('generic');
   });
 
+  it('keeps the actual weekly-limit failure gated until the next Seoul reset', () => {
+    vi.setSystemTime(new Date('2026-07-28T05:39:39.000Z'));
+    const agentId = 'weekly-limit-seoul-reset-test';
+    const error = "subprocess exited with code 1: You've hit your weekly limit · resets 4am (Asia/Seoul)";
+
+    const classified = classifyCircuitError(error);
+    expect(classified).toMatchObject({
+      reason: 'quota',
+      immediateOpen: true,
+      resetTime: Date.parse('2026-07-28T19:00:00.000Z'),
+    });
+
+    circuitBreakerRegistry.reset(agentId);
+    circuitBreakerRegistry.recordFailure(agentId, error);
+    expect(circuitBreakerRegistry.getSnapshot(agentId)).toMatchObject({
+      state: 'open',
+      reason: 'quota',
+      cooldownUntil: Date.parse('2026-07-28T19:00:00.000Z'),
+    });
+  });
+
+  it('classifies the actual provider queue timeout as an immediate rate-limit gate', () => {
+    expect(classifyCircuitError(
+      'queue_wait_timeout: provider claude-code busy for 1800000ms',
+    )).toMatchObject({
+      reason: 'rate-limit',
+      immediateOpen: true,
+    });
+  });
+
   // P0-3: halfOpenAttempts는 누적 카운터가 아니라 in-flight 세마포어다. 슬롯을 획득한
   // 실행이 끝나면 releaseProbeSlot()으로 반드시 반납해야, 그 세션이 끝난 뒤 새 프로브가
   // 진행될 수 있다 — 반납 누락이 half-open 영구 고착의 근본 원인이었다.

@@ -39,6 +39,8 @@ describe('team score aggregation', () => {
     db.exec('ALTER TABLE tasks ADD COLUMN acked_at TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN last_heartbeat_at TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN metadata_json TEXT');
+    db.exec('ALTER TABLE tasks ADD COLUMN system_prompt TEXT');
+    db.exec('ALTER TABLE tasks ADD COLUMN orphan_requeue_count INTEGER NOT NULL DEFAULT 0');
 
     const insert = db.prepare(`
       INSERT INTO tasks (id, team_id, status, response, created_at)
@@ -436,23 +438,46 @@ describe('team score aggregation', () => {
     }
   });
 
-  it('keeps zero-output completed tasks in the denominator but excludes them from the numerator, and is env-reversible', () => {
+  it('excludes only externally injected zero-output completions, keeps NCO zero-output failures, and is env-reversible', () => {
     const insert = db.prepare(`
-      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+      INSERT INTO tasks (
+        id, team_id, status, error, response, result_json, metadata_json,
+        system_prompt, spawned_by_cli, orphan_requeue_count, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now', ?))
     `);
     db.prepare(`
       INSERT INTO teams (id, organization_id, name, slug, is_active)
       VALUES (?, 'org_active', ?, ?, 1)
     `).run('team_zero_output', 'Zero Output', 'zero-output');
 
-    insert.run('zero-response-output', 'team_zero_output', 'completed', null, 'report body', null, '-1 hour');
-    insert.run('zero-result-output', 'team_zero_output', 'completed', null, null, '{"ok":true}', '-2 hours');
-    insert.run('zero-no-output', 'team_zero_output', 'completed', null, '', '', '-3 hours');
-    insert.run('zero-real-failure', 'team_zero_output', 'failed', 'actual task failure', '', '', '-4 hours');
+    insert.run(
+      'zero-response-output', 'team_zero_output', 'completed', null, 'report body', null,
+      '{"source":"nco"}', null, 'team-runner', 0, '-1 hour',
+    );
+    insert.run(
+      'zero-result-output', 'team_zero_output', 'completed', null, null, '{"ok":true}',
+      '{"source":"nco"}', null, 'team-runner', 0, '-2 hours',
+    );
+    // NCO provenance가 있는 0B 완료는 실제 실행 실패이므로 terminal 분모에 남는다.
+    insert.run(
+      'zero-nco-no-output', 'team_zero_output', 'completed', null, '', '',
+      '{"source":"nco"}', null, 'team-runner', 0, '-3 hours',
+    );
+    // task_trend_collector 실측 스냅샷: 외부 raw-SQL 주입 후 산출물 없이 completed 처리.
+    insert.run(
+      'zero-external-marker', 'team_zero_output', 'completed', null, '', '',
+      null, null, null, 0, '-4 hours',
+    );
+    insert.run(
+      'zero-real-failure', 'team_zero_output', 'failed', 'actual task failure', '', '',
+      '{"source":"nco"}', null, 'team-runner', 0, '-5 hours',
+    );
 
-    const previous = process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
+    const previousZeroOutput = process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
+    const previousExternal = process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION;
     process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = 'on';
+    process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION = 'on';
     try {
       const scores = computeTeamScores(db);
       expect(scores.find((team) => team.teamId === 'team_zero_output')).toMatchObject({
@@ -462,17 +487,30 @@ describe('team score aggregation', () => {
       });
       expect(scores.every((team) => team.completion <= 100)).toBe(true);
 
-      process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = 'off';
+      process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION = 'off';
       const rolledBack = computeTeamScores(db);
       expect(rolledBack.find((team) => team.teamId === 'team_zero_output')).toMatchObject({
+        completion: 40,
+        n: 5,
+        sample: '48h',
+      });
+      expect(rolledBack.every((team) => team.completion <= 100)).toBe(true);
+
+      // 기존 zero-output 토글은 별개로 유지되며, 외부 행은 분자·분모에서 함께 제외된다.
+      process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION = 'on';
+      process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = 'off';
+      const zeroOutputRolledBack = computeTeamScores(db);
+      expect(zeroOutputRolledBack.find((team) => team.teamId === 'team_zero_output')).toMatchObject({
         completion: 75,
         n: 4,
         sample: '48h',
       });
-      expect(rolledBack.every((team) => team.completion <= 100)).toBe(true);
+      expect(zeroOutputRolledBack.every((team) => team.completion <= 100)).toBe(true);
     } finally {
-      if (previous === undefined) delete process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
-      else process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = previous;
+      if (previousZeroOutput === undefined) delete process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION;
+      else process.env.NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION = previousZeroOutput;
+      if (previousExternal === undefined) delete process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION;
+      else process.env.NCO_SCORER_EXTERNAL_ZERO_OUTPUT_EXCLUSION = previousExternal;
     }
   });
 

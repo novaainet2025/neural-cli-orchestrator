@@ -205,7 +205,7 @@ def build_team_data_context():
             f"24시간실패={agent.get('failedLast24h')}"
         )
 
-    # analytics-lead에는 회사 전체의 현재 API 집계를 추가한다.
+    # analytics 승계팀에는 회사 전체의 현재 API 집계를 추가한다.
     if team.get("slug") in ("analytics-lead", "ax-business-operations"):
         stats = load_json("stats.json")
         required = ("totalTasks", "completedTasks", "totalDiscussions")
@@ -216,7 +216,7 @@ def build_team_data_context():
                 f"완료율={rate:.1f}%, 토론={stats['totalDiscussions']}"
             )
 
-    # CFO 전용: 기존 SQLite 경제 테이블을 읽기 전용으로 집계한다.
+    # CFO 승계팀: 기존 SQLite 경제 테이블을 읽기 전용으로 집계한다.
     if team.get("slug") in ("cfo", "ax-business-operations") and db is not None:
         try:
             wallets = db.execute(

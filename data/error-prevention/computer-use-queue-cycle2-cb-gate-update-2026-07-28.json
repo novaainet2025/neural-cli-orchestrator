@@ -1,0 +1,172 @@
+{
+  "artifact": "circuit-breaker-and-gate-config",
+  "team": "team_computer-use-queue",
+  "teamName": "Computer Use 요청·대기·보고팀",
+  "slug": "computer-use-queue",
+  "cycle": "2/3",
+  "producedBy": "중복에러방지팀",
+  "date": "2026-07-28",
+  "lifecycleChange": "none — 팀 삭제/비활성화/status 변경 없음 (HR 전권).",
+
+  "scoreContext": {
+    "directiveClaimed": { "score": 83.5, "completion": 87.5, "n": 8, "sample": "48h" },
+    "fileCaptureMeasured": {
+      "score": 94,
+      "grade": "A",
+      "completion": 100,
+      "n": 6,
+      "maxN": 90,
+      "sample": "48h",
+      "sourceFile": "data/error-prevention/hr-incubator-2026-w30-live-scores-capture-2026-07-28.json",
+      "verbatimObject": {
+        "teamId": "team_computer-use-queue",
+        "slug": "computer-use-queue",
+        "name": "Computer Use 요청·대기·보고팀",
+        "organizationId": "org_computer-use",
+        "score": 94,
+        "grade": "A",
+        "completion": 100,
+        "n": 6,
+        "maxN": 90,
+        "sample": "48h"
+      }
+    },
+    "liveApiMeasuredThisSession": "UNVERIFIED — curl/sqlite shell Auto-review blocked; check that would resolve: curl -s http://localhost:6200/api/teams/scores",
+    "verdict": "지시문 83.5/87.5%/n=8 은 파일 캡처(94/A/100%/n=6)와 불일치 → STALE 지시문 계통. 이 사이클에서 '아직 83.5라서 CB 임계치를 바꿔야 한다'고 보고하면 False Report.",
+    "thisArtifactAffectsScore": false,
+    "src_code_diff": 0
+  },
+
+  "auto_audit_log_status": {
+    "dedicated_stream": "unavailable/not injected for team_computer-use-queue in this session",
+    "substitutes_used": [
+      "docs/self-improve/kd-computer-use-queue-rootcause-2026-07-24.md (cycle1 T1 DB notes)",
+      "08-IMPROVEMENTS/pattern-escalation-error-overwrite.md (escalation overwrite fleet scan naming task_aGTLT4BLxSnCXQvn)",
+      "src/core/team-scorer.ts INFRA_EXCLUSION (Connection closed mid-response already present)",
+      "data/error-prevention/hr-incubator-2026-w30-live-scores-capture-2026-07-28.json"
+    ],
+    "live_48h_sql_this_session": "UNVERIFIED — sqlite3 Auto-review blocked"
+  },
+
+  "failure_pattern_analysis": {
+    "cycle1_documented_root_cause": {
+      "source": "docs/self-improve/kd-computer-use-queue-rootcause-2026-07-24.md",
+      "pattern": "lease_expired never-ran (acked_at set, heartbeat NULL, response empty)",
+      "task_id": "task_QQ_SR2ZiCy12vZcK",
+      "count_in_cycle1_48h_sample": 1,
+      "scorer_coverage": "LEASE_NEVER_RAN_EXCLUSION already excludes this class",
+      "circuit_breaker_open_count_in_sample": 0,
+      "command_gate_deny_count_in_sample": 0,
+      "rate_limit_exceed_count_in_sample": 0
+    },
+    "escalation_overwrite_candidate": {
+      "source": "08-IMPROVEMENTS/pattern-escalation-error-overwrite.md",
+      "measured_at_utc": "2026-07-27 18:54:51",
+      "team": "team_computer-use-queue",
+      "task_id": "task_aGTLT4BLxSnCXQvn",
+      "observed_transition": "queue_wait_timeout → connection-closed",
+      "count_named_for_this_team": 1,
+      "meets_duplicate_threshold_2plus": false,
+      "note": "단일 후보 1건 — 지시문의 '2회 이상 중복' 게이트 미충족. 본 산출물에서 CB 임계치 숫자 변경 안 함."
+    },
+    "named_patterns_from_directive": {
+      "CircuitBreaker_open": {
+        "cycle1_doc_count": 0,
+        "live_48h_count_this_session": "UNVERIFIED",
+        "meets_duplicate_threshold_2plus": "unknown_without_live_sql"
+      },
+      "command_gate_deny": {
+        "cycle1_doc_count": 0,
+        "live_48h_count_this_session": "UNVERIFIED",
+        "meets_duplicate_threshold_2plus": "unknown_without_live_sql"
+      },
+      "rate_limit_exceed": {
+        "cycle1_doc_count": 0,
+        "live_48h_count_this_session": "UNVERIFIED",
+        "meets_duplicate_threshold_2plus": "unknown_without_live_sql"
+      }
+    }
+  },
+
+  "rules": [
+    {
+      "id": "CB-CUQ-C2-R1",
+      "kind": "circuit-breaker-threshold",
+      "status": "NO_CHANGE",
+      "location": "src/security/circuit-breaker.ts DEFAULT_CONFIG + circuit-breaker-registry.ts FAILURE_THRESHOLD",
+      "current": {
+        "failureThreshold": 3,
+        "resetTimeoutMs": 60000,
+        "BASE_COOLDOWN_MS": 60000,
+        "MAX_COOLDOWN_MS": 1800000,
+        "QUOTA_FALLBACK_COOLDOWN_MS": 3600000,
+        "HALF_OPEN_TTL_MS": 300000
+      },
+      "changeThisCycle": "없음 — cycle1 문서상 CB open 0건; escalation overwrite 후보 1건(<2); 라이브 GROUP BY 미실행. 근거 없는 임계치 날조 조정 금지.",
+      "rollback": "n/a (diff 0)"
+    },
+    {
+      "id": "GATE-CUQ-C2-R2",
+      "kind": "command-gate",
+      "status": "NO_CHANGE",
+      "location": "src/security/command-gate.ts",
+      "changeThisCycle": "없음 — cycle1 표본 command gate deny 0. 라이브 deny 카운트 UNVERIFIED.",
+      "rollback": "n/a (diff 0)"
+    },
+    {
+      "id": "SCORE-CUQ-C2-R3",
+      "kind": "scorer-infra-exclusion-observation",
+      "status": "ALREADY_PRESENT_NO_CHANGE_BY_THIS_TEAM",
+      "location": "src/core/team-scorer.ts INFRA_EXCLUSION",
+      "observedClause": "k.error NOT LIKE '%API Error: Connection closed mid-response%'",
+      "relationToEscalationPattern": "task_aGTLT4BLxSnCXQvn 최종 error가 connection-closed로 덮인 경우 scorer 분모 제외 대상으로 이미 기술됨 (자가개선팀 선행 패치 관측; 본 팀이 src 재수정하지 않음).",
+      "changeThisCycleByErrorPrevention": "없음 (src diff 0)",
+      "rollback": "n/a for this artifact"
+    },
+    {
+      "id": "CB-CUQ-C2-R4-PROPOSAL",
+      "kind": "circuit-breaker-classification",
+      "status": "PROPOSAL_NOT_IMPLEMENTED",
+      "title": "Classify 'API Error: Connection closed mid-response' as transient/rate-limit-class for immediateOpen or short cooldown",
+      "location": "src/security/circuit-breaker-registry.ts RATE_LIMIT_PATTERNS (or dedicated TRANSIENT_PATTERNS)",
+      "problemFound": {
+        "summary": "Connection closed mid-response는 scorer INFRA_EXCLUSION에만 있고 CB classifyCircuitError 패턴에는 없음 (Grep 0 matches in circuit-breaker-registry.ts).",
+        "evidence": {
+          "escalation_note": "08-IMPROVEMENTS/pattern-escalation-error-overwrite.md row team_computer-use-queue / task_aGTLT4BLxSnCXQvn",
+          "scorer_has_clause": true,
+          "cb_registry_has_clause": false,
+          "duplicate_count_verified_live": "UNVERIFIED (<2 documented in escalation note)"
+        },
+        "why_not_applied_this_cycle": "팀 문서상 동일 패턴 1회만 명명됨 → '2회 이상 중복' 조건 미달. 라이브 재집계 차단. 날조 임계/패턴 추가 방지."
+      },
+      "proposedChange": {
+        "add_to_RATE_LIMIT_PATTERNS": "/API Error: Connection closed mid-response/i",
+        "effect": "동일 에이전트에 mid-response 단절이 반복될 때 rate-limit 분류로 쿨다운 — 스케줄러 재발행 노이즈 감소 가능",
+        "bounded": true,
+        "reversible": "regex 1줄 제거 또는 NCO_CB_CONN_CLOSED_AS_RATE_LIMIT=off"
+      },
+      "implemented": false
+    }
+  ],
+
+  "hollow_artifact_flag": {
+    "path": "08-IMPROVEMENTS/circuit-breaker-gate-update.md",
+    "size_bytes_observed": 129,
+    "content": "Update Circuit Breaker/Gate rules to prevent duplicate errors and cross-verify False Report status to enhance report credibility.",
+    "verdict": "지시문 영문 전사 — 규칙 ID·임계치·적용 결과 없음. 실질 gate diff가 아님 (허위 산출물 표면)."
+  },
+
+  "src_code_diff": 0,
+  "team_lifecycle_diff": 0,
+
+  "unverified_items": [
+    "sqlite3 48h GROUP BY for team_computer-use-queue (shell Auto-review blocked)",
+    "GET /api/teams/scores live re-fetch this session",
+    "GET /api/hr/hourly-audits subject match for computer-use-queue",
+    "task_aGTLT4BLxSnCXQvn row re-read from live DB (error/escalationHistory verbatim)",
+    "npx tsc --noEmit / npm run build this session",
+    "CB-CUQ-C2-R4-PROPOSAL not implemented or unit-tested"
+  ],
+
+  "rollback": "본 JSON + 짝 보고서 md만 삭제하면 산출물 원상복구. 런타임/팀 lifecycle 변화 없음."
+}
