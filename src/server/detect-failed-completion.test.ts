@@ -4,6 +4,7 @@ import {
   classifyFailedCompletionReason,
   detectFailedCompletion,
   isTextReportTask,
+  resolveTaskTerminalOutcome,
 } from './gateway.js';
 
 /**
@@ -88,5 +89,57 @@ describe('detectFailedCompletion', () => {
 
   it('보고형 태스크도 HARD 시그니처는 실패로 판정한다', () => {
     expect(detectFailedCompletion('Provider connection refused', { reportMode: true })).toBe(true);
+  });
+});
+
+describe('resolveTaskTerminalOutcome', () => {
+  it('보존된 실행 상태와 실패 원인을 표준 종결 형태로 반환한다', () => {
+    expect(resolveTaskTerminalOutcome({
+      success: false,
+      status: 'cancelled',
+      output: 'orphaned: graceful shutdown signal (SIGINT)',
+      error: 'orphaned: graceful shutdown signal (SIGINT)',
+    })).toEqual({
+      status: 'cancelled',
+      error: 'orphaned: graceful shutdown signal (SIGINT)',
+    });
+
+    expect(resolveTaskTerminalOutcome({
+      success: false,
+      status: 'timed_out',
+      error: 'timeout(hardcap)',
+    })).toEqual({
+      status: 'timed_out',
+      error: 'timeout(hardcap)',
+    });
+  });
+
+  it('실패 원인이 없으면 응답 분류 또는 안전한 fallback을 기록한다', () => {
+    expect(resolveTaskTerminalOutcome({
+      success: true,
+      output: 'Deployment failed to start.',
+    })).toEqual({
+      status: 'failed',
+      error: 'failure-pattern: operation failed',
+    });
+
+    expect(resolveTaskTerminalOutcome({
+      success: false,
+      output: '',
+    })).toEqual({
+      status: 'failed',
+      error: 'unknown: execution failed',
+    });
+  });
+
+  it('정상 완료에는 error를 만들지 않는다', () => {
+    expect(resolveTaskTerminalOutcome({
+      success: true,
+      status: 'completed',
+      output: 'done: verified',
+    })).toEqual({
+      status: 'completed',
+      error: undefined,
+    });
   });
 });

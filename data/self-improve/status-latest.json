@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-28T21:20:00+0900",
+  "checked_at": "2026-07-28T23:20:00+0900",
   "mode": "propose",
   "total": 241,
   "pass": 240,
@@ -98,7 +98,7 @@
       "meets": true
     }
   },
-  "provider_anomaly": null,
+  "provider_anomaly": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)",
   "failures": [],
   "dispatch": {
     "mode": "propose",

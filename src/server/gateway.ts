@@ -207,6 +207,35 @@ function buildFailureError(
     || 'unknown: execution failed';
 }
 
+export function resolveTaskTerminalOutcome(
+  result: {
+    success: boolean;
+    status?: 'completed' | 'failed' | 'timed_out' | 'cancelled';
+    error?: string;
+    output?: string;
+  },
+  options: FailedCompletionOptions = {},
+): {
+  status: 'completed' | 'failed' | 'timed_out' | 'cancelled';
+  error?: string;
+} {
+  const classifiedFailure = classifyFailedCompletionReason(result.output, options);
+  const status = result.status === 'cancelled'
+    ? 'cancelled'
+    : result.status === 'timed_out'
+        || result.error === 'timeout(idle)'
+        || result.error === 'timeout(hardcap)'
+      ? 'timed_out'
+      : result.success && !classifiedFailure
+        ? 'completed'
+        : 'failed';
+
+  return {
+    status,
+    error: status === 'completed' ? undefined : buildFailureError(result, options),
+  };
+}
+
 function withTaskRuntime<T extends { id: string; last_activity_at?: string | null }>(task: T) {
   const runtime = taskQueue.getTaskSnapshot(task.id);
   return {
@@ -1904,15 +1933,10 @@ export async function createGateway() {
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, model: input.model, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), ...(input.model ? { model: input.model } : {}), invocationId } })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : '';
-        const classifiedFailure = detectFailedCompletion(response, failureDetectionOptions);
-        const nextStatus = result.status === 'cancelled'
-          ? 'cancelled'
-          : result.status === 'timed_out' || result.error === 'timeout(idle)' || result.error === 'timeout(hardcap)'
-            ? 'timed_out'
-            : result.success && !classifiedFailure
-              ? 'completed'
-              : 'failed';
-        const error = nextStatus === 'completed' ? undefined : buildFailureError(result, failureDetectionOptions);
+        const { status: nextStatus, error } = resolveTaskTerminalOutcome(
+          result,
+          failureDetectionOptions,
+        );
         try {
           const moved = transitionTask(db, taskId, nextStatus, {
             response: response || undefined,
@@ -3755,8 +3779,12 @@ export async function createGateway() {
         .then(result => {
           try {
             const cResp = result.output || result.error;
-            let cStatus = result.success && !detectFailedCompletion(cResp) ? 'completed' : 'failed';
-            let cError: string | null = null;
+            const terminalOutcome = resolveTaskTerminalOutcome({
+              ...result,
+              output: cResp,
+            });
+            let cStatus = terminalOutcome.status;
+            let cError = terminalOutcome.error ?? null;
             // P1-6 evidence-gate opt-in 하드차단: requiredEvidence 선언 태스크는 증거 충족 시에만 완료.
             if (cStatus === 'completed') {
               try {
