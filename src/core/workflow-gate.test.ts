@@ -228,4 +228,46 @@ describe('durable workflow gate', () => {
       SELECT status FROM workflow_runs WHERE id=?
     `).get(runId)).toEqual({ status: 'failed' });
   });
+
+  it('replaces stale failure evidence when a retry completes the stage', () => {
+    const runId = createWorkflowRun({
+      prompt: '신규 기능 구현',
+      teamId: 'team-a',
+      metadata: { teamId: 'team-a' },
+    }, db);
+    markWorkflowStage(runId, 'discussion', 'completed', { teamId: 'team-a' }, db);
+    markWorkflowStage(runId, 'design', 'completed', { teamId: 'team-a' }, db);
+    db.prepare(`
+      INSERT INTO tasks (id, status, team_id, assigned_to)
+      VALUES ('task-failed', 'failed', 'team-a', 'nvidia')
+    `).run();
+    attachWorkflowTask('task-failed', runId, 'implementation', 'team-a', 'nvidia', db);
+    syncWorkflowTask('task-failed', 'failed', {
+      error: 'quality_rejected',
+      evidence: { source: 'startup_terminal_task_reconciliation', taskStatus: 'failed' },
+    }, db);
+
+    db.prepare(`
+      INSERT INTO tasks (id, status, team_id, assigned_to)
+      VALUES ('task-retry', 'completed', 'team-a', 'cursor-agent')
+    `).run();
+    attachWorkflowTask('task-retry', runId, 'implementation', 'team-a', 'cursor-agent', db);
+    syncWorkflowTask('task-retry', 'completed', {}, db);
+
+    const stage = db.prepare(`
+      SELECT status, task_id, executor, error, evidence_json
+      FROM workflow_stages
+      WHERE workflow_run_id=? AND team_id='team-a' AND stage='implementation'
+    `).get(runId) as Record<string, unknown>;
+    expect(stage).toMatchObject({
+      status: 'completed',
+      task_id: 'task-retry',
+      executor: 'cursor-agent',
+      error: null,
+    });
+    expect(JSON.parse(String(stage.evidence_json))).toEqual({
+      source: 'task_terminal_sync',
+      taskStatus: 'completed',
+    });
+  });
 });

@@ -415,12 +415,16 @@ export function syncWorkflowTask(
     : taskStatus === 'cancelled'
       ? 'cancelled'
       : 'failed';
+  const evidence = options.evidence ?? {
+    source: 'task_terminal_sync',
+    taskStatus,
+  };
   markWorkflowStage(task.workflow_run_id, task.workflow_stage, status, {
     teamId: task.team_id,
     taskId,
     executor: task.assigned_to,
     error: options.error,
-    evidence: options.evidence,
+    evidence,
   }, database);
 }
 
