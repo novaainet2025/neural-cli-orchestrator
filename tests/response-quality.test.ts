@@ -56,6 +56,28 @@ describe('response quality gate', () => {
     expect(checkResponseQuality('done: 통과').pass).toBe(true);
   });
 
+  it('accepts a JSON-string wrapper around an otherwise valid protocol response', () => {
+    // 실측 2026-07-28: nvidia가 정확한 단답을 `"done: ..."`로 직렬화해
+    // team_content-quality workflow gate가 FORMAT_MISMATCH로 오반려됐다.
+    expect(checkResponseQuality(
+      '"done: workflow implementation gate passed"',
+      { requireProtocolPrefix: true },
+    )).toEqual({ pass: true, heuristics: [] });
+    expect(checkResponseQuality('"OK"', { requireProtocolPrefix: true }))
+      .toEqual({ pass: true, heuristics: [] });
+  });
+
+  it('keeps rejecting serialized or malformed text without a protocol prefix', () => {
+    expect(checkResponseQuality(
+      '"workflow implementation gate passed"',
+      { requireProtocolPrefix: true },
+    ).heuristics).toContain('FORMAT_MISMATCH');
+    expect(checkResponseQuality(
+      '"done: workflow implementation gate passed',
+      { requireProtocolPrefix: true },
+    ).heuristics).toContain('FORMAT_MISMATCH');
+  });
+
   it('passes structured JSON responses including empty arrays (docs-ai edit-loop regression)', () => {
     // 문서편집 태스크의 정당한 답 [] 및 JSON 배열이 EMPTY_OR_SHORT/FORMAT_MISMATCH로
     // 무한 반려된 현장 결함 회귀 방지 (실측 2026-07-19)
