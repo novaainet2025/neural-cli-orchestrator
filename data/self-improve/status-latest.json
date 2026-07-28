@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-07-28T23:20:00+0900",
+  "checked_at": "2026-07-29T00:20:00+0900",
   "mode": "propose",
   "total": 241,
   "pass": 240,
@@ -103,6 +103,6 @@
   "dispatch": {
     "mode": "propose",
     "dispatched": null,
-    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
+    "skipped_reason": "nova-local-llm.lock 사용 중 (team-runner 등) — 이번 회차 디스패치 보류, 점검은 완료"
   }
 }
