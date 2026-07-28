@@ -3,6 +3,7 @@ import {
   buildProtocolSafeHandoff,
   isProtocolReconversionGateEnabled,
   isProtocolReconversionPrompt,
+  normalizeCollaborationProtocolResponse,
   parseCollaborationProtocol,
   summarizeCollaborationDeliveries,
 } from './collaboration.js';
@@ -14,6 +15,18 @@ describe('collaboration protocol boundary', () => {
       summary: 'blocked by access',
       payload: 'partial evidence',
     });
+  });
+
+  it('parses a provider JSON-string wrapper without accepting malformed JSON', () => {
+    const serialized = JSON.stringify('done: verified\n\nTier 1 evidence');
+    expect(normalizeCollaborationProtocolResponse(serialized))
+      .toBe('done: verified\n\nTier 1 evidence');
+    expect(parseCollaborationProtocol(serialized)).toEqual({
+      kind: 'done',
+      summary: 'verified',
+      payload: 'Tier 1 evidence',
+    });
+    expect(parseCollaborationProtocol('"done: truncated')).toBeNull();
   });
 
   it('does not turn a protocol-only reply into downstream work', () => {

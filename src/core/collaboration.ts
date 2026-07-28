@@ -26,11 +26,28 @@ const PROTOCOL_LINE = /^(done|status|error|question)\s*:\s*(.*)$/i;
 /** buildProtocolSafeHandoff가 붙이는 경계 마커 — 있으면 이미 명령으로 승격되지 않은 상태다. */
 const SAFE_HANDOFF_MARKER = '[현재 단계 실행 지시';
 
+/**
+ * Some providers serialize a protocol-only response as one JSON string.
+ * Decode only that exact wrapper so every protocol consumer applies the same
+ * boundary rule while malformed JSON and structured JSON stay unchanged.
+ */
+export function normalizeCollaborationProtocolResponse(response: string): string {
+  const trimmed = response.trim();
+  if (!trimmed.startsWith('"')) return response;
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return typeof parsed === 'string' ? parsed : response;
+  } catch {
+    return response;
+  }
+}
+
 export function parseCollaborationProtocol(
   response: string | null | undefined,
 ): CollaborationProtocolEnvelope | null {
   if (!response) return null;
-  const lines = response.split(/\r?\n/);
+  const normalized = normalizeCollaborationProtocolResponse(response);
+  const lines = normalized.split(/\r?\n/);
   const firstContentIndex = lines.findIndex((line) => line.trim().length > 0);
   if (firstContentIndex < 0) return null;
 

@@ -81,6 +81,60 @@ interface LoopResult {
   error?: string;
 }
 
+/**
+ * Provider별 비대화형 CLI 인자 생성. 태스크 수준 model override가 실제 CLI 플래그로
+ * 이어지는지 독립적으로 검증할 수 있게 순수 함수로 유지한다.
+ */
+export function buildOrchestratedCliArgs(
+  provider: Pick<ProviderConfig, 'id' | 'model'>,
+  baseArgs: string[],
+  prompt: string,
+  lastMessageFile?: string | null,
+  model?: string,
+): string[] {
+  const configuredModel = model || provider.model;
+  const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
+    ? configuredModel
+    : undefined;
+
+  switch (provider.id) {
+    case 'hermes': {
+      const hFlags = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', ...(selectedModel ? ['-m', selectedModel] : [])];
+      return lastMessageFile
+        ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
+        : [...hFlags, prompt];
+    }
+    case 'codex':
+      return lastMessageFile
+        ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
+        : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
+    case 'agy':
+      return [
+        '--dangerously-skip-permissions',
+        ...baseArgs,
+        ...(selectedModel ? ['--model', selectedModel] : []),
+        '--print',
+        prompt,
+      ];
+    case 'aider':
+      return ['--message', prompt, ...baseArgs];
+    case 'opencode': {
+      const formatArgs = baseArgs.some(arg => arg === '--format' || arg.startsWith('--format='))
+        ? []
+        : ['--format', 'json'];
+      return baseArgs[0] && !baseArgs[0].startsWith('-')
+        ? [baseArgs[0], ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
+        : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
+    }
+    case 'cursor-agent':
+      return ['--print', '--trust', '--output-format', 'text', ...(selectedModel ? ['--model', selectedModel] : []), prompt];
+    case 'higgsfield':
+      return ['generate', 'create', provider.model || 'higgsfield', '--prompt', prompt];
+    default:
+      return [...baseArgs, prompt];
+  }
+}
+
 function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
   return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
 }
@@ -474,63 +528,7 @@ export class OrchestratedLoop {
   }
 
   private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
-    // A task-level model overrides the provider default. Legacy provider IDs are
-    // display/routing aliases, not model names accepted by the corresponding CLI.
-    const configuredModel = model || this.provider.model;
-    const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
-      ? configuredModel
-      : undefined;
-    switch (this.provider.id) {
-      case 'hermes': {
-        // 2026-07-18: hermes = codex CLI 백엔드(중간모델 gpt-5.6-terra). ToolUser/추론 워커.
-        // read-only 샌드박스: assertTaskProjectDir가 codex 전용이라 hermes는 projectDir 불요
-        //   (토론/consensus 등 무프로젝트 작업 보존) + read-only로 NCO 소스 오염 차단.
-        // 모델은 options?.model(task 지정) → provider.model(gpt-5.6-terra) 순으로 강제.
-        const hModel = selectedModel;
-        const hFlags = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', ...(hModel ? ['-m', hModel] : [])];
-        return lastMessageFile
-          ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
-          : [...hFlags, prompt];
-      }
-      case 'codex':
-        // codex exec <prompt> — non-interactive; skip git trust check outside workdir
-        // --output-last-message: final assistant reply only (no banner/echo)
-        // --sandbox workspace-write: 기본 read-only 샌드박스는 구현 위임이 전부
-        //   "patch rejected: read-only sandbox"로 실패한다 (2026-07-03 subnote 실측)
-        // --json: JSONL 형식 stdout → subagent spawn/wait/followup/interrupt 이벤트 파싱 가능
-        return lastMessageFile
-          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
-          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
-      case 'agy':
-        // Antigravity CLI (Go flag 파서): 프롬프트는 반드시 마지막 위치.
-        // 기존 ['--print', '--dangerously-skip-permissions', prompt] 순서는 --print가
-        // 뒤따르는 플래그 문자열을 프롬프트로 오인해 매 태스크가 해당 플래그 설명만
-        // 반환하는 버그가 있었다 (2026-07-03 subnote 실측: 순서 교정 후 정답 반환).
-        return ['--dangerously-skip-permissions', ...baseArgs, '--print', prompt];
-      case 'aider':
-        // Flags (--yes, --no-auto-commits, --model, …) come from provider.args in config
-        return ['--message', prompt, ...baseArgs];
-      case 'opencode': {
-        // opencode run <message> — non-interactive; 'chat' opens TUI.
-        // provider.args 보존 규칙: 첫 토큰이 비플래그면 이미 subcommand(run/plan 등)가
-        // 지정된 것이므로 그대로 쓰고, 플래그로 시작하거나 비어있으면 run을 앞에 붙인다.
-        // (baseArgs 전체에서 비플래그를 찾으면 '-m <model>'의 값을 subcommand로 오판한다)
-        // --format json 필수: 기본 formatted 모드는 non-TTY에서 배너만 찍고 영구 hang.
-        const formatArgs = baseArgs.some(arg => arg === '--format' || arg.startsWith('--format='))
-          ? []
-          : ['--format', 'json'];
-        return baseArgs[0] && !baseArgs[0].startsWith('-')
-          ? [baseArgs[0], ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
-          : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
-      }
-      case 'cursor-agent':
-        // --print: non-interactive output, --trust: skip workspace trust prompt
-        return ['--print', '--trust', '--output-format', 'text', ...(selectedModel ? ['--model', selectedModel] : []), prompt];
-      case 'higgsfield':
-        return ['generate', 'create', this.provider.model || 'higgsfield', '--prompt', prompt];
-      default:
-        return [...baseArgs, prompt];
-    }
+    return buildOrchestratedCliArgs(this.provider, baseArgs, prompt, lastMessageFile, model);
   }
 
   /** Preserve first user message; drop oldest assistant/user pairs beyond MAX_HISTORY_TURNS. */

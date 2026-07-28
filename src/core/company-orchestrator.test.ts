@@ -537,6 +537,17 @@ describe('isCompanyStageOutputAcceptable (중복 품질 재시도 게이트)', (
     })).toBe(true);
   });
 
+  it('JSON-string protocol wrapper에서도 done과 blocked 상태를 구분', () => {
+    expect(isCompanyStageOutputAcceptable(
+      JSON.stringify('done: workflow implementation gate passed'),
+      { isLastStage: true, requireProtocolPrefix: true },
+    )).toBe(true);
+    expect(isCompanyStageOutputAcceptable(
+      JSON.stringify('status: blocked by missing evidence'),
+      { isLastStage: true, requireProtocolPrefix: true },
+    )).toBe(false);
+  });
+
   it('completed task라도 status/error protocol은 완료 산출물로 승인하지 않음', () => {
     const details = '실행을 시도했으나 필요한 권한이 없어 결과를 검증하지 못했습니다. '.repeat(8);
     expect(isCompanyStageOutputAcceptable(`status: ${details}`, {

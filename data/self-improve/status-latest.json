@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-07-29T00:20:00+0900",
+  "checked_at": "2026-07-29T01:20:00+0900",
   "mode": "propose",
   "total": 241,
   "pass": 240,
-  "fail": 0,
+  "fail": 1,
   "skip": 0,
-  "defer": 1,
+  "defer": 0,
   "categories": {
     "provider": {
       "pass": 9,
@@ -81,12 +81,12 @@
     },
     "build": {
       "pass": 0,
-      "fail": 0,
+      "fail": 1,
       "skip": 0,
-      "defer": 1,
-      "pass_rate": 1.0,
+      "defer": 0,
+      "pass_rate": 0.0,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     },
     "health": {
       "pass": 1,
@@ -99,7 +99,16 @@
     }
   },
   "provider_anomaly": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)",
-  "failures": [],
+  "failures": [
+    {
+      "id": "build:tsc",
+      "category": "build",
+      "kind": "tsc-noemit",
+      "ref": "/Users/nova-ai/project/nco",
+      "priority": 1,
+      "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"
+    }
+  ],
   "dispatch": {
     "mode": "propose",
     "dispatched": null,

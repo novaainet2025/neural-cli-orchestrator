@@ -1,3 +1,5 @@
+import { normalizeCollaborationProtocolResponse } from '../core/collaboration.js';
+
 const INTERNAL_THOUGHT_TAGS = [
   'thinking',
   'analysis',
@@ -44,21 +46,6 @@ function isStructuredJson(text: string): boolean {
   }
 }
 
-// 일부 provider는 "정확히 done: ..." 같은 단답 지시에도 최종 텍스트를 JSON 문자열로
-// 직렬화해 `"done: ..."`로 반환한다. 의미상 protocol 응답인데 바깥 따옴표 때문에
-// FORMAT_MISMATCH로 재시도되는 것을 막되, 정확히 하나의 유효한 JSON string일 때만
-// prefix 판정용으로 unwrap한다. 저장되는 원문과 다른 품질 휴리스틱 판정은 바꾸지 않는다.
-function protocolCandidate(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('"')) return text;
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    return typeof parsed === 'string' ? parsed : text;
-  } catch {
-    return text;
-  }
-}
-
 function isToolEcho(text: string): boolean {
   const lines = text.split(/\r?\n/);
   const firstNonBlank = lines.find(line => line.trim().length > 0);
@@ -99,7 +86,7 @@ export function checkResponseQuality(
   const normalized = text ?? '';
   const collapsed = normalized.replace(/\s+/g, '');
   const structuredJson = isStructuredJson(normalized);
-  const protocolText = protocolCandidate(normalized);
+  const protocolText = normalizeCollaborationProtocolResponse(normalized);
 
   if (isThinkingOnly(normalized)) heuristics.push('THINKING_ONLY');
   if (isToolEcho(normalized)) heuristics.push('TOOL_ECHO');

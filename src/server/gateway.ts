@@ -3669,11 +3669,14 @@ export async function createGateway() {
     }
 
     const smartRouter = await getSmartRouter();
-    const { prompt, metadata: rawMetadata } = req.body as any;
+    const { prompt, metadata: rawMetadata, callerAgentId: rawCallerAgentId } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
     const metadata = rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
       ? rawMetadata as Record<string, unknown>
       : {};
+    const callerAgentId = typeof rawCallerAgentId === 'string' && rawCallerAgentId.trim()
+      ? rawCallerAgentId.trim()
+      : null;
 
     let decision;
     try {
@@ -3735,6 +3738,7 @@ export async function createGateway() {
     const workflowStage: WorkflowStage = requiresPlanning ? 'discussion' : 'implementation';
     const taskMetadata = {
       ...metadata,
+      ...(callerAgentId ? { callerAgentId } : {}),
       workflowRunId,
       workflowStage,
       workflowRequired: workflowDecision.required,
@@ -3745,9 +3749,9 @@ export async function createGateway() {
       db.prepare(`
         INSERT INTO tasks (
           id, mode, prompt, assigned_to, status, priority, team_id,
-          metadata_json, workflow_run_id, workflow_stage
+          metadata_json, workflow_run_id, workflow_stage, spawned_by_cli
         )
-        VALUES (?, ?, ?, ?, 'assigned', 5, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'assigned', 5, ?, ?, ?, ?, ?)
       `).run(
         taskId,
         effectiveMode,
@@ -3757,6 +3761,7 @@ export async function createGateway() {
         JSON.stringify(taskMetadata),
         workflowRunId,
         workflowStage,
+        callerAgentId,
       );
       attachWorkflowTask(
         taskId,
@@ -3775,7 +3780,12 @@ export async function createGateway() {
     // Execute via discussion engine for multi-agent modes, or taskQueue for single
     const sessionId = createSessionId();
     if (effectiveMode === 'task' && decision.providers.length === 1) {
-      taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
+      taskQueue.enqueue({
+        taskId,
+        agentId: decision.providers[0],
+        prompt,
+        metadata: taskMetadata,
+      })
         .then(result => {
           try {
             const cResp = result.output || result.error;
