@@ -329,46 +329,13 @@ setup_hooks() {
 setup_settings() {
   step 9 "Claude Code 훅 설정"
   local SETTINGS="$CLAUDE_DIR/settings.json"
+  local MERGER="$NCO_DIR/scripts/merge-claude-settings.py"
+  [[ -f "$MERGER" ]] || { err "settings 병합기 없음: $MERGER"; return 1; }
 
-  if [[ -f "$SETTINGS" ]] && grep -q "mesh-register" "$SETTINGS" 2>/dev/null; then
-    ok "settings.json 이미 구성됨"
-    return
-  fi
-
-  [[ -f "$SETTINGS" ]] && cp "$SETTINGS" "${SETTINGS}.bak.$(date +%s)"
-
-  python3 - "$CLAUDE_DIR" << 'PYEOF'
-import json, sys, os
-claude_dir = sys.argv[1]
-hooks_dir = claude_dir + "/hooks"
-cfg = {
-  "hooks": {
-    "SessionStart": {"hooks": [
-      {"type":"command","command":f"bash {hooks_dir}/mesh-register.sh","timeout":8,"statusMessage":"Registering CLI session..."},
-      {"type":"command","command":f"bash {hooks_dir}/mesh-autoresponder.sh","timeout":6,"statusMessage":"Starting mesh auto-responder..."}
-    ]},
-    "UserPromptSubmit": {"hooks": [
-      {"type":"command","command":f"bash {hooks_dir}/nco-task-classifier.sh","timeout":5},
-      {"type":"command","command":f"bash {hooks_dir}/mesh-precheck.sh","timeout":5},
-      {"type":"command","command":f"bash {hooks_dir}/nco-rules-inject.sh","timeout":3}
-    ]},
-    "PreToolUse": {"hooks": [
-      {"type":"command","command":f"bash {hooks_dir}/nco-agent-enforce.sh","timeout":5}
-    ]},
-    "Stop": {"hooks": [
-      {"type":"command","command":f"bash {hooks_dir}/nco-stop-global.sh","timeout":10}
-    ]},
-    "PostToolUse": {"hooks": [
-      {"type":"command","command":f"bash {hooks_dir}/nco-track-agent-use.sh","timeout":5}
-    ]}
-  }
-}
-out = claude_dir + "/settings.json"
-with open(out, "w") as f:
-    json.dump(cfg, f, indent=2, ensure_ascii=False)
-print(f"  settings.json 작성: {out}")
-PYEOF
-  ok "settings.json 생성 완료"
+  # 전체 파일을 재작성해 사용자 model/permissions/plugins/hooks를 잃지 않는다.
+  # 병합기는 NCO 관리 훅만 갱신하며 변경 전 원본을 timestamp 백업한다.
+  python3 "$MERGER" "$SETTINGS" "$HOOKS_DST"
+  ok "settings.json NCO 훅 병합 완료 (기존 사용자 설정 보존)"
 }
 
 # ══════════════════════════════════════════════════════════════════════════

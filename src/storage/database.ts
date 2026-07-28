@@ -6,6 +6,7 @@ import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('database');
 const LEASE_TRACKING_MIGRATION = '073_tasks_lease_tracking.sql';
+const WORKFLOW_SCHEMA_REPAIR_MIGRATION = '096_repair_explicit_workflow_schema.sql';
 
 let db: Database.Database | null = null;
 
@@ -76,6 +77,10 @@ export function runMigrations(): void {
       return 'marked';
     }
 
+    if (file === WORKFLOW_SCHEMA_REPAIR_MIGRATION) {
+      ensureWorkflowLinkColumns(database);
+    }
+
     database.exec(sql);
     insertMigration.run(file);
     return 'applied';
@@ -109,6 +114,44 @@ export function runMigrations(): void {
   } else {
     log.debug('All migrations up to date');
   }
+}
+
+function ensureColumn(
+  database: Database.Database,
+  table: string,
+  column: string,
+  definition: string,
+): void {
+  const columns = new Set(
+    (database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
+      .map(entry => entry.name),
+  );
+  if (!columns.has(column)) {
+    database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+function ensureWorkflowLinkColumns(database: Database.Database): void {
+  ensureColumn(
+    database,
+    'tasks',
+    'workflow_run_id',
+    'TEXT REFERENCES workflow_runs(id) ON DELETE SET NULL',
+  );
+  ensureColumn(
+    database,
+    'tasks',
+    'workflow_stage',
+    "TEXT CHECK(workflow_stage IN ('discussion','design','implementation','review','verification'))",
+  );
+  ensureColumn(database, 'discussions', 'team_id', 'TEXT REFERENCES teams(id) ON DELETE SET NULL');
+  ensureColumn(database, 'discussions', 'company_run_id', 'TEXT');
+  ensureColumn(
+    database,
+    'discussions',
+    'workflow_run_id',
+    'TEXT REFERENCES workflow_runs(id) ON DELETE SET NULL',
+  );
 }
 
 function isLeaseTrackingMigrationSatisfied(database: Database.Database): boolean {

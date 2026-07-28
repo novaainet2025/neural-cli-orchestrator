@@ -13,7 +13,10 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '512M',
+      // 실측 RSS는 startup governance + provider queue 초기화 후 약 465~530 MiB다.
+      // 512M 기본값은 정상 프로세스를 PM2의 30초 검사 주기마다 재시작시켰다.
+      // 머신별 상한은 환경변수로 낮추거나 높일 수 있다.
+      max_memory_restart: process.env.NCO_MAX_MEMORY_RESTART || '768M',
       restart_delay: 5000,
       max_restarts: 10,
       min_uptime: '15s',

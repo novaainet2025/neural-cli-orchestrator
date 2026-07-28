@@ -15,7 +15,7 @@ import { resolveInternalProjectDir } from '../../utils/project-dir.js';
 
 type TeamMemberType = 'provider' | 'session' | 'nco-session';
 type TeamStage = 'discussion' | 'design' | 'implementation' | 'review' | 'verification';
-type TeamWorkflowState = 'pending' | 'running' | 'completed' | 'failed';
+type TeamWorkflowState = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
 interface TeamTaskLike {
   mode?: string | null;
@@ -28,6 +28,7 @@ interface TeamWorkflowBucket {
   running: number;
   completed: number;
   failed: number;
+  skipped: number;
 }
 
 export interface TeamWorkflowSummary {
@@ -96,9 +97,10 @@ function parseMembers(value: unknown): Array<{ type: TeamMemberType; ref: string
 
 function mapWorkflowState(status: string | null | undefined): TeamWorkflowState {
   if (status === 'completed') return 'completed';
+  if (status === 'skipped') return 'skipped';
   if (status === 'pending' || status === 'queued') return 'pending';
   if (status === 'assigned' || status === 'running' || status === 'streaming' || status === 'reviewing') return 'running';
-  if (status === 'failed' || status === 'timed_out' || status === 'cancelled') return 'failed';
+  if (status === 'failed' || status === 'timed_out' || status === 'cancelled' || status === 'lease_expired') return 'failed';
   return 'pending';
 }
 
@@ -114,11 +116,11 @@ export function classifyTaskStage(task: TeamTaskLike): TeamStage {
 
 export function createEmptyWorkflowSummary(): TeamWorkflowSummary {
   return {
-    discussion: { pending: 0, running: 0, completed: 0, failed: 0 },
-    design: { pending: 0, running: 0, completed: 0, failed: 0 },
-    implementation: { pending: 0, running: 0, completed: 0, failed: 0 },
-    review: { pending: 0, running: 0, completed: 0, failed: 0 },
-    verification: { pending: 0, running: 0, completed: 0, failed: 0 },
+    discussion: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0 },
+    design: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0 },
+    implementation: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0 },
+    review: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0 },
+    verification: { pending: 0, running: 0, completed: 0, failed: 0, skipped: 0 },
   };
 }
 
@@ -130,6 +132,19 @@ export function summarizeTeamWorkflow(tasks: TeamTaskLike[]): TeamWorkflowSummar
     workflow[stage][state] += 1;
   }
   return workflow;
+}
+
+function mergeWorkflowSummaries(
+  left: TeamWorkflowSummary,
+  right: TeamWorkflowSummary,
+): TeamWorkflowSummary {
+  const merged = createEmptyWorkflowSummary();
+  for (const stage of ['discussion', 'design', 'implementation', 'review', 'verification'] as const) {
+    for (const state of ['pending', 'running', 'completed', 'failed', 'skipped'] as const) {
+      merged[stage][state] = left[stage][state] + right[stage][state];
+    }
+  }
+  return merged;
 }
 
 function findActiveTaskPrompt(tasks: Array<{ prompt?: string | null; status?: string | null }>): string | null {
@@ -382,7 +397,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const taskRows = db.prepare(`
       SELECT team_id, mode, status, prompt, created_at
       FROM tasks
-      WHERE team_id IS NOT NULL
+      WHERE team_id IS NOT NULL AND workflow_run_id IS NULL
       ORDER BY created_at DESC
     `).all() as Array<{
       team_id: string | null;
@@ -390,6 +405,16 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       status: string | null;
       prompt: string | null;
       created_at: string | null;
+    }>;
+    const workflowRows = db.prepare(`
+      SELECT team_id, stage, status
+      FROM workflow_stages
+      WHERE team_id IS NOT NULL
+      ORDER BY created_at DESC
+    `).all() as Array<{
+      team_id: string;
+      stage: TeamStage;
+      status: TeamWorkflowState;
     }>;
 
     const membersByTeam = new Map<string, Array<{ type: TeamMemberType; ref: string }>>();
@@ -405,6 +430,13 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       const list = tasksByTeam.get(row.team_id) ?? [];
       list.push(row);
       tasksByTeam.set(row.team_id, list);
+    }
+    const workflowsByTeam = new Map<string, TeamWorkflowSummary>();
+    for (const row of workflowRows) {
+      if (!Object.prototype.hasOwnProperty.call(createEmptyWorkflowSummary(), row.stage)) continue;
+      const summary = workflowsByTeam.get(row.team_id) ?? createEmptyWorkflowSummary();
+      summary[row.stage][mapWorkflowState(row.status)] += 1;
+      workflowsByTeam.set(row.team_id, summary);
     }
 
     return {
@@ -426,7 +458,10 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           isAlwaysOn: !!team.is_always_on,
           isActive: !!team.is_active,
           members: membersByTeam.get(team.id) ?? [],
-          workflow: summarizeTeamWorkflow(relatedTasks),
+          workflow: mergeWorkflowSummaries(
+            workflowsByTeam.get(team.id) ?? createEmptyWorkflowSummary(),
+            summarizeTeamWorkflow(relatedTasks),
+          ),
           activeTask,
           status: activeTask ? 'working' : 'idle',
         };
@@ -691,18 +726,51 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const rawLimit = Number((req.query as { limit?: string }).limit ?? 20);
     const limit = Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20, 100);
     const rows = db.prepare(`
-      SELECT id, mode, status, assigned_to, prompt, created_at, completed_at
-      FROM tasks WHERE team_id=?
-      ORDER BY created_at DESC LIMIT ?
-    `).all(id, limit) as Array<{
+      SELECT
+        ws.id,
+        COALESCE(t.mode, 'workflow') AS mode,
+        ws.status,
+        COALESCE(t.assigned_to, ws.executor) AS assigned_to,
+        COALESCE(t.prompt, wr.prompt) AS prompt,
+        ws.created_at,
+        ws.completed_at,
+        ws.stage,
+        ws.required,
+        ws.skip_reason,
+        ws.workflow_run_id
+      FROM workflow_stages ws
+      JOIN workflow_runs wr ON wr.id=ws.workflow_run_id
+      LEFT JOIN tasks t ON t.id=ws.task_id
+      WHERE ws.team_id=?
+      UNION ALL
+      SELECT
+        t.id,
+        t.mode,
+        t.status,
+        t.assigned_to,
+        t.prompt,
+        t.created_at,
+        t.completed_at,
+        NULL AS stage,
+        0 AS required,
+        NULL AS skip_reason,
+        NULL AS workflow_run_id
+      FROM tasks t
+      WHERE t.team_id=? AND t.workflow_run_id IS NULL
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(id, id, limit) as Array<{
       id: string; mode: string | null; status: string | null; assigned_to: string | null;
       prompt: string | null; created_at: string | null; completed_at: string | null;
+      stage: TeamStage | null; required: number; skip_reason: string | null;
+      workflow_run_id: string | null;
     }>;
     return {
       tasks: rows.map((r) => ({
         ...r,
         prompt: (r.prompt ?? '').slice(0, 160),
-        stage: classifyTaskStage(r),
+        stage: r.stage ?? classifyTaskStage(r),
+        required: r.required === 1,
       })),
     };
   });

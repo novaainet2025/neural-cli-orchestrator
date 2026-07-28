@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-07-28T18:22:28+0900",
+  "checked_at": "2026-07-28T21:20:00+0900",
   "mode": "propose",
   "total": 241,
-  "pass": 241,
+  "pass": 240,
   "fail": 0,
   "skip": 0,
-  "defer": 0,
+  "defer": 1,
   "categories": {
     "provider": {
       "pass": 9,
@@ -80,10 +80,10 @@
       "meets": true
     },
     "build": {
-      "pass": 1,
+      "pass": 0,
       "fail": 0,
       "skip": 0,
-      "defer": 0,
+      "defer": 1,
       "pass_rate": 1.0,
       "threshold": 1.0,
       "meets": true

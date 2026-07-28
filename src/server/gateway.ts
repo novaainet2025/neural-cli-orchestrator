@@ -49,6 +49,18 @@ import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
 import { checkResponseQuality } from '../verification/response-quality.js';
 import { vetAcquisitionCandidate } from '../security/acquisition-vetting.js';
 import {
+  attachWorkflowTask,
+  createWorkflowRun,
+  enforceWorkflowPrerequisites,
+  evaluateWorkflowPolicy,
+  failStaleDiscussions,
+  markWorkflowStage,
+  reconcileTerminalWorkflowTasks,
+  syncWorkflowTask,
+  type WorkflowPolicyDecision,
+  type WorkflowStage,
+} from '../core/workflow-gate.js';
+import {
   circuitBreakerRegistry,
   type ProviderAvailabilitySnapshot,
 } from '../security/circuit-breaker-registry.js';
@@ -946,6 +958,16 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  try {
+    reconcileTerminalWorkflowTasks();
+    failStaleDiscussions();
+  } catch (error) {
+    // A rolling deployment may briefly run old schema code before migration.
+    // Startup stays available, but the exact cleanup gap remains observable.
+    log.warn({
+      err: error instanceof Error ? error.message : String(error),
+    }, 'Workflow stale-discussion cleanup skipped');
+  }
   app.addHook('preHandler', async (request, reply) => {
     const configuredToken = process.env.NCO_API_TOKEN?.trim() ?? '';
     const path = request.url.split('?', 1)[0];
@@ -1310,7 +1332,14 @@ export async function createGateway() {
       return;
     }
 
+    const qualityError = `quality_rejected: ${quality.heuristics.join(',')}`;
     const demoted = markTaskQualityRejected(db, taskId, quality.heuristics);
+    if (demoted) {
+      // Execution completion is provisional until this quality gate finishes.
+      // Keep the durable workflow stage aligned with the final task state so
+      // a rejected result cannot appear as a completed implementation.
+      syncWorkflowTask(taskId, 'failed', { error: qualityError }, db);
+    }
     if (!demoted) {
       log.warn(
         { taskId, heuristics: quality.heuristics },
@@ -1348,7 +1377,7 @@ export async function createGateway() {
     const created = await createRetryTask(taskId, {
       allowCompletedSource: true,
       overrideAi: toAgent,
-      reason: `quality_rejected: ${quality.heuristics.join(',')}`,
+      reason: qualityError,
     });
     if (!created.ok) {
       log.warn({ taskId, heuristics: quality.heuristics, statusCode: created.statusCode, body: created.body }, 'Quality gate rejected completed task but retry creation failed');
@@ -1746,6 +1775,53 @@ export async function createGateway() {
       }
     }
 
+    let workflowRunId = typeof input.metadata?.workflowRunId === 'string'
+      ? input.metadata.workflowRunId.trim()
+      : '';
+    let workflowStage = (
+      typeof input.metadata?.workflowStage === 'string'
+        ? input.metadata.workflowStage
+        : 'implementation'
+    ) as WorkflowStage;
+    const workflowDecision = evaluateWorkflowPolicy(input.prompt, input.metadata);
+    if (workflowDecision.scoped) {
+      if (!workflowRunId && !workflowDecision.required) {
+        workflowRunId = createWorkflowRun({
+          prompt: input.prompt,
+          teamId: taskTeamId,
+          companyRunId: typeof input.metadata?.companyRunId === 'string'
+            ? input.metadata.companyRunId
+            : null,
+          source: 'task-intake',
+          metadata: input.metadata,
+          decision: workflowDecision,
+        }, db);
+      }
+      const workflowMetadata = {
+        ...(input.metadata ?? {}),
+        ...(workflowRunId ? { workflowRunId } : {}),
+        workflowStage,
+      };
+      const gateCheck = enforceWorkflowPrerequisites(
+        workflowMetadata,
+        input.mode || 'task',
+        input.prompt,
+        db,
+      );
+      if (!gateCheck.allowed) {
+        reply.code(409);
+        return {
+          error: gateCheck.error,
+          detail: gateCheck.detail,
+          workflowRunId: gateCheck.workflowRunId,
+          requiredStage: gateCheck.requiredStage,
+          suggestion: 'Run the work through /api/conductor before dispatching implementation.',
+        };
+      }
+      workflowStage = gateCheck.workflowStage ?? workflowStage;
+      input.metadata = workflowMetadata;
+    }
+
     const taskId = createTaskId();
     const providerSelection = selectTaskProvider(requestedProvider, allowProviderFailover);
     if ('error' in providerSelection) {
@@ -1777,6 +1853,9 @@ export async function createGateway() {
         INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, team_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
         VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, taskTeamId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
+      if (workflowRunId) {
+        attachWorkflowTask(taskId, workflowRunId, workflowStage, taskTeamId, agentId, db);
+      }
     } catch (dbErr) {
       if (workReportId) {
         const existingTask = findActiveWorkReportTask(db, workReportId);
@@ -1843,9 +1922,15 @@ export async function createGateway() {
           });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
-          } else if (nextStatus === 'completed') {
-            void handleCompletedTaskQualityGate(taskId, response)
-              .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed task quality gate failed'));
+          } else {
+            syncWorkflowTask(taskId, nextStatus, {
+              error: error ?? null,
+              evidence: nextStatus === 'completed' ? result.evidenceJson : undefined,
+            }, db);
+            if (nextStatus === 'completed') {
+              void handleCompletedTaskQualityGate(taskId, response)
+                .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed task quality gate failed'));
+            }
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
         if (nextStatus !== 'completed' && nextStatus !== 'cancelled') {
@@ -1859,6 +1944,8 @@ export async function createGateway() {
           const moved = transitionTask(db, taskId, 'failed', { error: failureError });
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: 'failed' }, 'Skipped terminal failure update');
+          } else {
+            syncWorkflowTask(taskId, 'failed', { error: failureError }, db);
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task failure failed'); }
         void scheduleTaskFailover(taskId, { status: 'failed', error: failureError, response: null })
@@ -1874,6 +1961,8 @@ export async function createGateway() {
       ...(promptGate ? { promptGate } : {}),
       requestedProvider: providerSelection.failover ? requestedProvider : undefined,
       failover: providerSelection.failover,
+      workflowRunId: workflowRunId || undefined,
+      workflowStage: workflowRunId ? workflowStage : undefined,
     };
   });
 
@@ -3556,8 +3645,11 @@ export async function createGateway() {
     }
 
     const smartRouter = await getSmartRouter();
-    const { prompt } = req.body as any;
+    const { prompt, metadata: rawMetadata } = req.body as any;
     if (!prompt) return { error: 'prompt is required' };
+    const metadata = rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
+      ? rawMetadata as Record<string, unknown>
+      : {};
 
     let decision;
     try {
@@ -3583,21 +3675,82 @@ export async function createGateway() {
     // Delegate to the appropriate mode endpoint handler
     const db = getDb();
     const taskId = (await import('../utils/id.js')).createTaskId();
+    const teamId = typeof metadata.teamId === 'string' && metadata.teamId.trim()
+      ? metadata.teamId.trim()
+      : null;
+    const companyRunId = typeof metadata.companyRunId === 'string' && metadata.companyRunId.trim()
+      ? metadata.companyRunId.trim()
+      : null;
+    const baseWorkflowDecision = evaluateWorkflowPolicy(prompt, {
+      ...metadata,
+      workflowRequired: decision.mode !== 'task' || decision.complexity >= 4,
+    });
+    const workflowDecision: WorkflowPolicyDecision = {
+      ...baseWorkflowDecision,
+      scoped: true,
+      required: decision.mode !== 'task' || decision.complexity >= 4,
+      policy: decision.mode !== 'task' || decision.complexity >= 4 ? 'required' : 'routine',
+      requireReview: baseWorkflowDecision.requireReview,
+      requireVerification: baseWorkflowDecision.requireVerification,
+      reason: decision.mode !== 'task' || decision.complexity >= 4
+        ? `conductor_complexity_${decision.complexity}`
+        : 'conductor_routine',
+    };
+    const workflowRunId = createWorkflowRun({
+      prompt,
+      teamId,
+      companyRunId,
+      source: 'conductor',
+      metadata,
+      decision: workflowDecision,
+    }, db);
+    const requiresPlanning = workflowDecision.required;
+    const effectiveMode = decision.mode === 'task' && requiresPlanning
+      ? 'discussion'
+      : decision.mode;
+    const workflowStage: WorkflowStage = requiresPlanning ? 'discussion' : 'implementation';
+    const taskMetadata = {
+      ...metadata,
+      workflowRunId,
+      workflowStage,
+      workflowRequired: workflowDecision.required,
+    };
 
     // Record task
     try {
       db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, assigned_to, status, priority)
-        VALUES (?, ?, ?, ?, 'assigned', 5)
-      `).run(taskId, decision.mode, prompt, decision.providers[0] || null);
+        INSERT INTO tasks (
+          id, mode, prompt, assigned_to, status, priority, team_id,
+          metadata_json, workflow_run_id, workflow_stage
+        )
+        VALUES (?, ?, ?, ?, 'assigned', 5, ?, ?, ?, ?)
+      `).run(
+        taskId,
+        effectiveMode,
+        prompt,
+        decision.providers[0] || null,
+        teamId,
+        JSON.stringify(taskMetadata),
+        workflowRunId,
+        workflowStage,
+      );
+      attachWorkflowTask(
+        taskId,
+        workflowRunId,
+        workflowStage,
+        teamId,
+        decision.providers[0] || null,
+        db,
+      );
     } catch (dbErr) {
+      db.prepare('DELETE FROM workflow_runs WHERE id=?').run(workflowRunId);
       log.error({ err: (dbErr as Error).message, taskId }, 'Failed to insert conductor task');
       return { error: 'Failed to create task' };
     }
 
     // Execute via discussion engine for multi-agent modes, or taskQueue for single
     const sessionId = createSessionId();
-    if (decision.mode === 'task' && decision.providers.length === 1) {
+    if (effectiveMode === 'task' && decision.providers.length === 1) {
       taskQueue.enqueue({ taskId, agentId: decision.providers[0], prompt })
         .then(result => {
           try {
@@ -3628,6 +3781,10 @@ export async function createGateway() {
                   evidence_json=COALESCE(?, evidence_json)
               WHERE id=?
             `).run(cStatus, cResp, cError, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
+            syncWorkflowTask(taskId, cStatus, {
+              error: cError,
+              evidence: cStatus === 'completed' ? result.evidenceJson : undefined,
+            }, db);
             if (cStatus === 'completed') {
               void handleCompletedTaskQualityGate(taskId, cResp ?? '')
                 .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed conductor task quality gate failed'));
@@ -3638,38 +3795,64 @@ export async function createGateway() {
           try {
             db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
               .run(err.message, taskId);
+            syncWorkflowTask(taskId, 'failed', { error: err.message }, db);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     } else {
       const { discussionEngine: de } = await import('../core/discussion-engine.js');
       de.startDiscussion({
         topic: prompt,
-        mode: decision.mode as any,
+        mode: effectiveMode as any,
         providers: decision.providers,
-        maxRounds: decision.mode === 'consensus' ? 5 : 3,
+        maxRounds: effectiveMode === 'consensus' ? 5 : 3,
         sessionId,
+        taskId,
+        teamId: teamId ?? undefined,
+        companyRunId: companyRunId ?? undefined,
+        workflowRunId,
       })
         .then(report => {
           try {
             db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
               .run(report.adoptedProposal, taskId);
+            // The final synthesis is the durable design artifact produced after
+            // independent proposals and cross-evaluation.
+            markWorkflowStage(workflowRunId, 'design', 'completed', {
+              teamId,
+              taskId,
+              executor: 'discussion-synthesis',
+              evidence: {
+                discussionId: report.sessionId,
+                consensusRate: report.finalConsensusRate,
+                adoptedProposal: report.adoptedProposal,
+              },
+            }, db);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
           try {
             db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
               .run(err.message, taskId);
+            markWorkflowStage(workflowRunId, 'discussion', 'failed', {
+              teamId,
+              taskId,
+              discussionId: sessionId,
+              error: err.message,
+            }, db);
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     }
 
     return {
       taskId,
-      mode: decision.mode,
+      mode: effectiveMode,
       providers: decision.providers,
       complexity: decision.complexity,
       reasoning: decision.reasoning,
       status: 'dispatched',
+      workflowRunId,
+      workflowStage,
+      requiredStages: workflowDecision.required ? ['discussion', 'design'] : [],
     };
   });
 

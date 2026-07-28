@@ -34,6 +34,19 @@ VALUES
   ('team_kd-prompt', 'team_kd-quality-hygiene'),
   ('team_kd-provider', 'team_kd-quality-hygiene');
 
+-- Fresh installs do not have the production-created organization rows that
+-- these successor capabilities reference.  Seed only the missing parents so
+-- the teams insert below satisfies organizations(id) with foreign_keys=ON.
+INSERT OR IGNORE INTO organizations (
+  id, name, slug, graph_type, is_always_on, is_active
+)
+VALUES
+  ('org_computer-use', 'Computer Use 회사', 'computer-use', 'nova-ax', 0, 1),
+  ('org_nova-ax', 'NOVA AX그룹', 'nova-ax', 'nova-ax', 1, 1),
+  ('org_nova-cli', 'NOVA CLI 회사', 'nova-cli', 'nova-ax', 1, 1),
+  ('org_research', '리서치 컴퍼니 (Research Co.)', 'research', 'nova-ax', 1, 1),
+  ('org_sns-blog', 'SNS 블로그 회사', 'sns-blog', 'nova-ax', 1, 1);
+
 -- Preserve existing active successor definitions as required capabilities.
 INSERT INTO required_capabilities (
   id, organization_id, name, slug, description, color, lead, charter,

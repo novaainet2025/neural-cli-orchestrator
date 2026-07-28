@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const setupPath = join(root, 'setup.sh');
 const bootstrapPath = join(root, 'bootstrap.sh');
+const settingsMergerPath = join(root, 'scripts', 'merge-claude-settings.py');
 const fixtures: string[] = [];
 
 afterEach(() => {
@@ -41,6 +42,54 @@ describe('NCO one-click install', () => {
     expect(setup).toContain('PM2 실행 경로 변경 감지');
     expect(setup).toContain('"$pm2_bin" delete nco-backend');
     expect(setup).toContain('PM2 실행 경로 검증 실패');
+    expect(setup).toContain('merge-claude-settings.py');
+  });
+
+  test('Claude settings merge preserves user configuration and is idempotent', () => {
+    const fixtureDir = fixture('nco-settings-');
+    const settingsPath = join(fixtureDir, 'settings.json');
+    const hooksDir = join(fixtureDir, 'hooks');
+    mkdirSync(hooksDir);
+    writeFileSync(settingsPath, JSON.stringify({
+      model: 'user-model',
+      permissions: { allow: ['Read'] },
+      hooks: {
+        SessionStart: [{ matcher: 'startup', hooks: [{ type: 'command', command: 'user-start' }] }],
+        PostToolUse: [{ hooks: [{ type: 'command', command: 'user-post' }] }],
+      },
+    }, null, 2), 'utf8');
+
+    execFileSync('python3', [settingsMergerPath, settingsPath, hooksDir]);
+    const once = readFileSync(settingsPath, 'utf8');
+    execFileSync('python3', [settingsMergerPath, settingsPath, hooksDir]);
+    const twice = readFileSync(settingsPath, 'utf8');
+    const settings = JSON.parse(twice);
+
+    expect(twice).toBe(once);
+    expect(settings.model).toBe('user-model');
+    expect(settings.permissions).toEqual({ allow: ['Read'] });
+    expect(settings.hooks.SessionStart).toEqual(expect.arrayContaining([
+      expect.objectContaining({ matcher: 'startup' }),
+    ]));
+    expect(JSON.stringify(settings.hooks)).toContain('user-start');
+    expect(JSON.stringify(settings.hooks)).toContain('user-post');
+    expect(JSON.stringify(settings.hooks)).toContain(join(hooksDir, 'mesh-register.sh'));
+    expect(
+      JSON.stringify(settings.hooks).match(/mesh-register\.sh/g),
+    ).toHaveLength(1);
+  });
+
+  test('invalid Claude settings fail closed without changing the file', () => {
+    const fixtureDir = fixture('nco-settings-invalid-');
+    const settingsPath = join(fixtureDir, 'settings.json');
+    writeFileSync(settingsPath, '{not-json', 'utf8');
+
+    expect(() => execFileSync('python3', [
+      settingsMergerPath,
+      settingsPath,
+      join(fixtureDir, 'hooks'),
+    ], { stdio: 'pipe' })).toThrow();
+    expect(readFileSync(settingsPath, 'utf8')).toBe('{not-json');
   });
 
   test('lockfile is reproducible without the unused mem0ai SDK', () => {

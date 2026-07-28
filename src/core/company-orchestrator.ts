@@ -27,6 +27,13 @@ import {
   buildProtocolSafeHandoff,
   parseCollaborationProtocol,
 } from './collaboration.js';
+import { discussionEngine } from './discussion-engine.js';
+import {
+  createWorkflowRun,
+  evaluateWorkflowPolicy,
+  markWorkflowStage,
+  type WorkflowStage,
+} from './workflow-gate.js';
 // 프로바이더 가용성 판정: 등록되어 있고 서킷이 열려있지 않은(리밋/quota/실패로 차단 안 된) 것만 true.
 // 리밋 걸린 프로바이더를 선택 단계에서 즉시 걸러 폴백이 지연 없이 이뤄지게 한다.
 export type AvailabilityFn = (agentId: string) => boolean;
@@ -103,6 +110,7 @@ export interface CompanyRun {
   updatedAt: string;
   decomposer: string | null;   // 분해 담당 LLM(실제 사용된 agent)
   decomposeSource: 'llm' | 'template' | null;
+  workflowRunId?: string | null;
   stages: RunStage[];
   summary?: { total: number; succeeded: number; failed: number; retried: number; skipped?: number };
   iteration?: number;   // 루프 앤진: 몇 번째 완료-루프 반복인지(1부터)
@@ -657,6 +665,7 @@ function parsePersistedRun(value: string): CompanyRun | null {
     );
     parsed.completedIterations = Math.max(0, parsed.completedIterations ?? 0);
     parsed.resumeCount = Math.max(0, parsed.resumeCount ?? 0);
+    parsed.workflowRunId ??= null;
     return parsed;
   } catch {
     return null;
@@ -939,6 +948,7 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
     updatedAt: now,
     decomposer: decomposerCandidates[0] ?? null,
     decomposeSource: null,
+    workflowRunId: null,
     stages: ordered.map((t) => {
       const executor = resolveExecutor(t, known, executorFallback, avail);
       // 배정 경고 가시화: lead 가 미등록이거나 실행자와 다르면 이유를 stage 에 기록.
@@ -961,6 +971,22 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
       };
     }),
   };
+  const workflowDecision = evaluateWorkflowPolicy(goal, {
+    companyRunId: run.id,
+    workflowRequired: true,
+  });
+  run.workflowRunId = createWorkflowRun({
+    prompt: goal,
+    teamIds: ordered.map(team => team.id),
+    companyRunId: run.id,
+    source: 'company-orchestrator',
+    metadata: {
+      organizationId: run.orgId,
+      organizationSlug: run.orgSlug,
+      mode: run.mode,
+    },
+    decision: workflowDecision,
+  });
   putRun(run, true);
 
   // 실행은 비동기로 구동(HTTP 응답을 막지 않음). 파이프라인은 수분 걸릴 수 있음.
@@ -1190,6 +1216,157 @@ async function driveRun(
   await driveRunBody(app, runId, teams, projectDir, decomposers, resume);
 }
 
+function ensureCompanyWorkflowRun(run: CompanyRun, teams: TeamRow[]): string {
+  if (run.workflowRunId) return run.workflowRunId;
+  const decision = evaluateWorkflowPolicy(run.goal, {
+    companyRunId: run.id,
+    workflowRequired: true,
+  });
+  run.workflowRunId = createWorkflowRun({
+    prompt: run.goal,
+    teamIds: teams.map(team => team.id),
+    companyRunId: run.id,
+    source: 'company-orchestrator-resume',
+    metadata: {
+      organizationId: run.orgId,
+      organizationSlug: run.orgSlug,
+      resumed: true,
+    },
+    decision,
+  });
+  touch(run);
+  return run.workflowRunId;
+}
+
+function selectWorkflowProviders(decomposers: string[]): string[] {
+  const known = new Set(agentManager.listEnabledIds());
+  const available = liveAvailability(known);
+  return [...new Set([...decomposers, ...DECOMPOSER_PREFS, ...known])]
+    .filter(provider => known.has(provider) && available(provider))
+    .slice(0, 3);
+}
+
+async function ensureCompanyPlanningDiscussion(
+  run: CompanyRun,
+  teams: TeamRow[],
+  decomposers: string[],
+): Promise<string> {
+  const workflowRunId = ensureCompanyWorkflowRun(run, teams);
+  const remaining = getDb().prepare(`
+    SELECT COUNT(*) AS count
+    FROM workflow_stages
+    WHERE workflow_run_id=? AND stage='discussion' AND required=1 AND status<>'completed'
+  `).get(workflowRunId) as { count: number };
+  if (remaining.count === 0) {
+    const existing = getDb().prepare(`
+      SELECT report
+      FROM discussions
+      WHERE workflow_run_id=? AND status='completed'
+      ORDER BY ended_at DESC LIMIT 1
+    `).get(workflowRunId) as { report: string | null } | undefined;
+    return existing?.report ?? '';
+  }
+
+  const providers = selectWorkflowProviders(decomposers);
+  if (providers.length === 0) {
+    markWorkflowStage(workflowRunId, 'discussion', 'failed', {
+      error: 'no_available_discussion_provider',
+    });
+    throw new Error('required workflow discussion has no available provider');
+  }
+  markWorkflowStage(workflowRunId, 'discussion', 'running', {
+    executor: providers.join(','),
+  });
+  try {
+    const report = await discussionEngine.startDiscussion({
+      topic: [
+        `[회사 워크플로우 필수 토론] ${run.orgName}`,
+        `[목표] ${run.goal}`,
+        `[팀 역할] ${teams.map(team => `${team.name}: ${team.charter ?? team.description ?? team.slug}`).join(' | ')}`,
+        '독립 제안, 상호 평가, 반대 의견과 위험, 검증 가능한 성공 기준을 포함한 실행 설계를 합의하라.',
+      ].join('\n'),
+      mode: 'discussion',
+      providers,
+      maxRounds: 3,
+      initiator: 'company-orchestrator',
+      companyRunId: run.id,
+      workflowRunId,
+    });
+    return report.adoptedProposal;
+  } catch (error) {
+    markWorkflowStage(workflowRunId, 'discussion', 'failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+async function completeCompanyWorkflowQuality(
+  run: CompanyRun,
+  teams: TeamRow[],
+  projectDir: string,
+  decomposers: string[],
+): Promise<boolean> {
+  const workflowRunId = ensureCompanyWorkflowRun(run, teams);
+  const providers = selectWorkflowProviders(decomposers);
+  const provider = providers[0];
+  if (!provider) return false;
+  const outputs = run.stages
+    .filter(stage => stage.outputSnippet)
+    .map(stage => `[${stage.teamName}]\n${stage.outputSnippet}`)
+    .join('\n\n')
+    .slice(0, 20_000);
+
+  for (const stage of ['review', 'verification'] as const) {
+    const pending = getDb().prepare(`
+      SELECT COUNT(*) AS count
+      FROM workflow_stages
+      WHERE workflow_run_id=? AND stage=? AND required=1 AND status<>'completed'
+    `).get(workflowRunId, stage) as { count: number };
+    if (pending.count === 0) continue;
+    markWorkflowStage(workflowRunId, stage, 'running', { executor: provider });
+    const prompt = stage === 'review'
+      ? [
+        `[필수 교차 리뷰] 회사 목표: ${run.goal}`,
+        '아래 팀 산출물의 누락, 충돌, 근거 부족, 회귀 위험을 검토하라. 파일 수정은 하지 말고 승인/반려 근거와 Gap을 제시하라.',
+        outputs,
+      ].join('\n\n')
+      : [
+        `[필수 검증] 회사 목표: ${run.goal}`,
+        '아래 산출물의 핵심 주장을 가능한 명령·DB·HTTP·파일 근거로 검증하고 성공/실패/미검증을 구분하라.',
+        outputs,
+      ].join('\n\n');
+    try {
+      const result = await withHardTimeout(
+        agentManager.executeTask(provider, prompt, {
+          projectDir,
+          timeoutMs: DECOMPOSE_TIMEOUT_MS,
+        }),
+        DECOMPOSE_TIMEOUT_MS + 5000,
+      );
+      if (!result.success || !result.output?.trim()) {
+        const error = result.error || `${stage}_empty_output`;
+        markWorkflowStage(workflowRunId, stage, 'failed', { executor: provider, error });
+        return false;
+      }
+      markWorkflowStage(workflowRunId, stage, 'completed', {
+        executor: provider,
+        evidence: {
+          provider,
+          output: result.output.slice(0, 20_000),
+        },
+      });
+    } catch (error) {
+      markWorkflowStage(workflowRunId, stage, 'failed', {
+        executor: provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+  return true;
+}
+
 async function driveRunBody(
   app: FastifyInstance,
   runId: string,
@@ -1201,14 +1378,24 @@ async function driveRunBody(
   const run = RUNS.get(runId);
   if (!run) return;
   const teamBySlug = new Map(teams.map((t) => [t.slug, t]));
+  const workflowRunId = ensureCompanyWorkflowRun(run, teams);
+  const planningContext = await ensureCompanyPlanningDiscussion(run, teams, decomposers);
 
   // 1) 분해(LLM 매니저) — 후보 프로바이더를 순서대로 시도, 첫 파싱성공 채택.
   //    각 시도 직전 서킷 재확인(그 사이 리밋 걸린 provider 즉시 스킵) + 하드 타임아웃 race
   //    (executeTask 내부 abort 가 늦어도 후보 넘어가도록).
   if (!resume || run.stages.some((stage) => !stage.subtask)) {
     run.status = 'decomposing'; touch(run);
+    markWorkflowStage(workflowRunId, 'design', 'running', {
+      executor: run.decomposer,
+    });
     let decomposition: Record<string, string> | null = null;
-    const prompt = buildDecompositionPrompt(run.orgName, run.goal, teams);
+    const prompt = [
+      buildDecompositionPrompt(run.orgName, run.goal, teams),
+      planningContext
+        ? `\n[필수 토론 합의안]\n${planningContext.slice(0, 12_000)}`
+        : '',
+    ].join('');
     const known = new Set(agentManager.listEnabledIds());
     const avail = liveAvailability(known);
     let attempts = 0;
@@ -1238,7 +1425,25 @@ async function driveRunBody(
       const team = teamBySlug.get(stage.teamSlug)!;
       stage.subtask = scopeDecomposedSubtask(team, run.goal, decomposition?.[stage.teamSlug]);
     }
+    markWorkflowStage(workflowRunId, 'design', 'completed', {
+      executor: run.decomposer,
+      evidence: {
+        source: run.decomposeSource,
+        decomposer: run.decomposer,
+        decomposition: Object.fromEntries(run.stages.map(stage => [stage.teamSlug, stage.subtask])),
+      },
+    });
     touch(run);
+  } else {
+    // Persisted runs from before the workflow migration already carry a valid
+    // decomposition.  Record that recovered design instead of re-running it.
+    markWorkflowStage(workflowRunId, 'design', 'completed', {
+      executor: run.decomposer,
+      evidence: {
+        source: run.decomposeSource ?? 'persisted',
+        recovered: true,
+      },
+    });
   }
 
   // 2.5) 역량 기반 실행자 재선정 — subtask 확정 후 dispatch 전, 깨진/제거 lead 를 무시하고
@@ -1304,6 +1509,18 @@ async function driveRunBody(
     touch(run);
     const safelyRejected = run.orgSlug === 'technology-porting' && run.portDecision === 'reject';
     if (run.stages.every((s) => s.status === 'completed' || (safelyRejected && s.status === 'skipped'))) {
+      const qualityComplete = await completeCompanyWorkflowQuality(
+        run,
+        teams,
+        projectDir,
+        decomposers,
+      );
+      if (!qualityComplete) {
+        log.warn({ runId, iteration }, 'workflow review/verification incomplete');
+        if (iteration < run.maxIterations) continue;
+        finalizeRun(run);
+        return;
+      }
       run.status = 'completed';
       run.summary = summarizeRun(run);
       touch(run);
@@ -1518,10 +1735,20 @@ async function runStageWithFailover(
   return false;
 }
 
+export function classifyCompanyWorkflowStage(stage: Pick<RunStage, 'teamSlug' | 'teamName'>): WorkflowStage {
+  const text = `${stage.teamSlug} ${stage.teamName}`;
+  if (/discussion|debate|consensus|collaboration|토론|논의|합의/i.test(text)) return 'discussion';
+  if (/verification|verify|test|reliability|resilience|검증|테스트|신뢰성/i.test(text)) return 'verification';
+  if (/review|audit|quality|safety|redteam|gate|리뷰|감사|품질|안전|검수/i.test(text)) return 'review';
+  if (/strategy|architect|design|plan|intake|전략|설계|기획|접수/i.test(text)) return 'design';
+  return 'implementation';
+}
+
 // 단일 팀 태스크 dispatch(inject POST /api/task + team_id 태그). 성공 시 true.
 async function dispatchStage(app: FastifyInstance, run: CompanyRun, stage: RunStage, projectDir: string): Promise<boolean> {
   if (isCompanyRunCancelled(run)) return false;
   try {
+    const workflowStage = classifyCompanyWorkflowStage(stage);
     const res = await app.inject({
       method: 'POST',
       url: '/api/task',
@@ -1536,6 +1763,9 @@ async function dispatchStage(app: FastifyInstance, run: CompanyRun, stage: RunSt
           organizationId: run.orgId,
           teamId: stage.teamId,
           companyRunId: run.id,
+          workflowRunId: run.workflowRunId,
+          workflowStage,
+          workflowRequired: true,
           qualityRetryOwner: 'company-orchestrator',
         },
       },

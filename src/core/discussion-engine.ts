@@ -7,6 +7,10 @@ import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { sortProvidersByCostOrder } from './smart-router.js';
 import { env } from '../utils/config.js';
+import {
+  linkWorkflowDiscussion,
+  markWorkflowStage,
+} from './workflow-gate.js';
 
 const log = createLogger('discussion-engine');
 
@@ -29,6 +33,10 @@ export interface DiscussionOptions {
   workspaceId?: string;
   initiator?: string;
   sessionId?: string; // caller can inject a pre-created sessionId
+  taskId?: string;
+  teamId?: string;
+  companyRunId?: string;
+  workflowRunId?: string;
 }
 
 export interface DiscussionRoundResult {
@@ -260,9 +268,31 @@ class DiscussionEngine {
     // Save session to DB
     const db = getDb();
     db.prepare(`
-      INSERT INTO discussions (id, topic, mode, status, participants_json, initiator, max_rounds, consensus_threshold)
-      VALUES (?, ?, ?, 'active', ?, ?, ?, ?)
-    `).run(sessionId, options.topic, options.mode, JSON.stringify(participants), initiator, maxRounds, threshold);
+      INSERT INTO discussions (
+        id, topic, mode, status, participants_json, initiator, max_rounds,
+        consensus_threshold, task_id, team_id, company_run_id, workflow_run_id
+      )
+      VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      sessionId,
+      options.topic,
+      options.mode,
+      JSON.stringify(participants),
+      initiator,
+      maxRounds,
+      threshold,
+      options.taskId ?? null,
+      options.teamId ?? null,
+      options.companyRunId ?? null,
+      options.workflowRunId ?? null,
+    );
+    if (options.workflowRunId) {
+      linkWorkflowDiscussion(sessionId, options.workflowRunId, {
+        taskId: options.taskId,
+        teamId: options.teamId,
+        companyRunId: options.companyRunId,
+      }, db);
+    }
 
     await eventBus.publish({
       type: 'discussion:started', sessionId,
@@ -286,6 +316,13 @@ class DiscussionEngine {
         SET status='failed', report='discussion_no_valid_proposals', ended_at=datetime('now')
         WHERE id=?
       `).run(sessionId);
+      if (options.workflowRunId) {
+        markWorkflowStage(options.workflowRunId, 'discussion', 'failed', {
+          teamId: options.teamId,
+          discussionId: sessionId,
+          error: 'discussion_no_valid_proposals',
+        }, db);
+      }
       this.cleanupSessionState(sessionId);
       throw new Error('discussion_no_valid_proposals');
     }
@@ -387,6 +424,17 @@ class DiscussionEngine {
       UPDATE discussions SET status='completed', consensus_rate=?, result_json=?, report=?, ended_at=datetime('now')
       WHERE id=?
     `).run(consensusRate, JSON.stringify(persistedReport), report.adoptedProposal, sessionId);
+    if (options.workflowRunId) {
+      markWorkflowStage(options.workflowRunId, 'discussion', 'completed', {
+        teamId: options.teamId,
+        discussionId: sessionId,
+        evidence: {
+          consensusRate,
+          rounds: report.rounds.length,
+          participants: report.participants,
+        },
+      }, db);
+    }
 
     await eventBus.publish({
       type: 'discussion:completed', sessionId, report,
@@ -412,9 +460,28 @@ class DiscussionEngine {
     const db = getDb();
 
     db.prepare(`
-      INSERT INTO discussions (id, topic, mode, status, participants_json, initiator, max_rounds)
-      VALUES (?, ?, 'hive', 'active', ?, ?, 1)
-    `).run(sessionId, options.topic, JSON.stringify(participants), options.initiator || 'system');
+      INSERT INTO discussions (
+        id, topic, mode, status, participants_json, initiator, max_rounds,
+        task_id, team_id, company_run_id, workflow_run_id
+      )
+      VALUES (?, ?, 'hive', 'active', ?, ?, 1, ?, ?, ?, ?)
+    `).run(
+      sessionId,
+      options.topic,
+      JSON.stringify(participants),
+      options.initiator || 'system',
+      options.taskId ?? null,
+      options.teamId ?? null,
+      options.companyRunId ?? null,
+      options.workflowRunId ?? null,
+    );
+    if (options.workflowRunId) {
+      linkWorkflowDiscussion(sessionId, options.workflowRunId, {
+        taskId: options.taskId,
+        teamId: options.teamId,
+        companyRunId: options.companyRunId,
+      }, db);
+    }
 
     await eventBus.publish({
       type: 'discussion:started', sessionId,
@@ -514,6 +581,17 @@ class DiscussionEngine {
       UPDATE discussions SET status='completed', consensus_rate=1, result_json=?, report=?, ended_at=datetime('now')
       WHERE id=?
     `).run(JSON.stringify(persistedReport), synthesis, sessionId);
+    if (options.workflowRunId) {
+      markWorkflowStage(options.workflowRunId, 'discussion', 'completed', {
+        teamId: options.teamId,
+        discussionId: sessionId,
+        evidence: {
+          consensusRate: 1,
+          rounds: report.rounds.length,
+          participants: report.participants,
+        },
+      }, db);
+    }
 
     await eventBus.publish({ type: 'discussion:completed', sessionId, report });
 
@@ -525,14 +603,33 @@ class DiscussionEngine {
 
   // ═══ 자유 토론 모드 (mode: realtime) ═══
   async startRealtimeDiscussion(options: DiscussionOptions): Promise<string> {
-    const sessionId = createSessionId();
+    const sessionId = options.sessionId || createSessionId();
     const participants = options.providers || this.selectParticipants('realtime');
 
     const db = getDb();
     db.prepare(`
-      INSERT INTO discussions (id, topic, mode, status, participants_json, initiator)
-      VALUES (?, ?, 'realtime', 'active', ?, ?)
-    `).run(sessionId, options.topic, JSON.stringify(participants), options.initiator || 'user');
+      INSERT INTO discussions (
+        id, topic, mode, status, participants_json, initiator,
+        task_id, team_id, company_run_id, workflow_run_id
+      )
+      VALUES (?, ?, 'realtime', 'active', ?, ?, ?, ?, ?, ?)
+    `).run(
+      sessionId,
+      options.topic,
+      JSON.stringify(participants),
+      options.initiator || 'user',
+      options.taskId ?? null,
+      options.teamId ?? null,
+      options.companyRunId ?? null,
+      options.workflowRunId ?? null,
+    );
+    if (options.workflowRunId) {
+      linkWorkflowDiscussion(sessionId, options.workflowRunId, {
+        taskId: options.taskId,
+        teamId: options.teamId,
+        companyRunId: options.companyRunId,
+      }, db);
+    }
 
     await eventBus.publish({
       type: 'discussion:started', sessionId,
