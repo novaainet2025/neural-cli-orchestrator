@@ -649,8 +649,17 @@ describe('allowQueueProviderFailover', () => {
     }
   });
 
+  it('DB organization ID 형식의 안전 회사도 팀 밖 자동 재위임을 차단', () => {
+    expect(allowQueueProviderFailover('org_technology-porting')).toBe(false);
+    expect(allowQueueProviderFailover('org_web-scraping')).toBe(false);
+    for (const company of foundationCases) {
+      expect(allowQueueProviderFailover(`org_${company.slug}`)).toBe(false);
+    }
+  });
+
   it('일반 회사의 기존 failover 동작은 유지', () => {
     expect(allowQueueProviderFailover('research')).toBe(true);
+    expect(allowQueueProviderFailover('org_research')).toBe(true);
   });
 });
 

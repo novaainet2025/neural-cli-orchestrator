@@ -518,8 +518,33 @@ export class OrchestratedLoop {
   /** Preserve first user message; drop oldest assistant/user pairs beyond MAX_HISTORY_TURNS. */
   private trimConversationHistory(history: Array<{ role: string; content: string }>): void {
     const maxLen = 1 + MAX_HISTORY_TURNS * 2;
-    while (history.length > maxLen && history.length >= 3) {
+    const maxContextChars = 40_000;
+    const contextChars = () => history.reduce(
+      (total, message) => total + message.role.length + message.content.length + 8,
+      0,
+    );
+
+    // Tool output is already capped per call, but one turn can contain many
+    // calls. Bound the serialized CLI prompt as well as the turn count while
+    // preserving the initial request and the most recent tool-result pair.
+    while (
+      (history.length > maxLen || contextChars() > maxContextChars)
+      && history.length > 3
+    ) {
       history.splice(1, 2);
+    }
+
+    const latest = history.at(-1);
+    if (latest?.role === 'user' && contextChars() > maxContextChars) {
+      const charsWithoutLatest = contextChars() - latest.content.length;
+      const available = Math.max(0, maxContextChars - charsWithoutLatest);
+      if (latest.content.length > available) {
+        const omitted = latest.content.length - available;
+        const marker = `\n\n... (history truncated ${omitted} chars)\nContinue your work.`;
+        latest.content = available > marker.length
+          ? latest.content.slice(0, available - marker.length) + marker
+          : marker.slice(0, available);
+      }
     }
   }
 

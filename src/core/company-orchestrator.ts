@@ -592,9 +592,10 @@ export function buildPipelineHandoffSubtask(
 // 안전 게이트 회사는 팀 밖의 범용/저신뢰 executor로 재위임하지 않는다.
 // 단계별 failover는 runStageWithFailover가 조직에 등록된 팀원 체인 안에서 수행한다.
 export function allowQueueProviderFailover(orgSlug: string): boolean {
-  return orgSlug !== 'technology-porting'
-    && orgSlug !== 'web-scraping'
-    && NCO_FOUNDATION_COMPANY_POLICIES[orgSlug] === undefined;
+  const normalizedSlug = orgSlug.startsWith('org_') ? orgSlug.slice(4) : orgSlug;
+  return normalizedSlug !== 'technology-porting'
+    && normalizedSlug !== 'web-scraping'
+    && NCO_FOUNDATION_COMPANY_POLICIES[normalizedSlug] === undefined;
 }
 
 function isDeclaredTeamExecutor(team: TeamRow, executor: string): boolean {
@@ -1596,9 +1597,9 @@ export async function providerModelDispatchable(id: string): Promise<boolean> {
 const TERMINAL = new Set(['completed', 'failed', 'timed_out', 'cancelled']);
 const DECOMPOSE_TIMEOUT_MS = 60 * 1000;  // 분해 후보당 상한(짧게 — 팀 dispatch 지연 방지)
 const MAX_DECOMPOSE_ATTEMPTS = 3;        // 최대 3후보만 실제 시도 후 템플릿 폴백(전체 상한 ~3분)
-const PIPELINE_STAGE_TIMEOUT_MS = 15 * 60 * 1000;
+const PIPELINE_STAGE_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_STAGE_ATTEMPTS = 3;            // 순차 단계 failover: 초기 1 + 대체 2회
-const PARALLEL_STAGE_TIMEOUT_MS = 15 * 60 * 1000; // 병렬 단계당 완료 대기 상한
+const PARALLEL_STAGE_TIMEOUT_MS = 10 * 60 * 1000; // 병렬 단계당 완료 대기 상한
 const PARALLEL_STAGGER_MS = 400;         // dispatch 스태거(로컬 단일스레드 보호)
 const MAX_RUN_ITERATIONS = 5;            // 루프 앤진: 완료-루프 최대 반복(닫힌 자기교정)
 const ABSOLUTE_MAX_RUN_ITERATIONS = 10;   // 외부 입력으로 무한 루프를 만들 수 없게 하는 절대 상한

@@ -26,7 +26,7 @@ function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null
 
 function getTaskTimeoutMs(): number {
   const v = Number(process.env.NCO_TASK_TIMEOUT_MS);
-  return Number.isFinite(v) && v >= 60_000 ? v : 1_200_000;
+  return Number.isFinite(v) && v >= 60_000 ? v : 3_600_000;
 }
 
 function resolveTaskTeamMemoryScope(taskId: string): string | null {

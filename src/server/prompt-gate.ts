@@ -24,6 +24,9 @@ interface SectionSpec {
 export interface EnrichDefaults {
   projectDir?: string;
   taskType?: string;
+  /** 누락된 [출력형식]을 작업 종류에 맞게 보강한다. 지정하지 않으면 코드 작업용
+   *  diff 요약 형식을 유지한다. */
+  outputFormat?: string;
   /** 텍스트 전용/업무보고 프롬프트는 파일 변경이 없어 빌드·타입체크 지시가 무의미하다.
    *  (실측 2026-07-26: team_gov-engineering-reliability 업무보고 태스크가 이 지시를
    *  문자 그대로 따라 npm run build를 실행하다 lease 만료로 실패·재큐잉됨) */
@@ -54,7 +57,8 @@ const SECTIONS: readonly SectionSpec[] = [
     label: '출력형식',
     pattern: /\[(출력형식|Output\s*Format)\]|(?:^|\n)\s*(출력형식|Output\s*Format)\s*:/i,
     suggestion: '[출력형식]에 기대 출력(diff/JSON/파일 목록)을 명시하세요.',
-    defaultTemplate: () => '[출력형식] (자동 보강) 변경 파일 목록 + 핵심 diff 요약.',
+    defaultTemplate: d =>
+      `[출력형식] (자동 보강) ${d.outputFormat ?? '변경 파일 목록 + 핵심 diff 요약.'}`,
   },
   {
     label: '검증기준',

@@ -1,0 +1,155 @@
+{
+  "artifact": "skill-acl-circuit-breaker-and-gate-config",
+  "team": "team_gov-evolution-skills",
+  "teamName": "Skill Academy and Capability Transfer",
+  "slug": "gov-evolution-skills",
+  "cycle": "1/3",
+  "producedBy": "중복에러방지팀",
+  "date": "2026-07-28",
+  "lifecycleChange": "none — 팀 삭제/비활성화/status 변경 없음 (HR 전권). isActive=true 유지 확인.",
+
+  "scoreContext": {
+    "directiveClaimed": { "score": 83.5, "completion": 87.5, "n": 8, "sample": "48h" },
+    "liveMeasured": {
+      "score": 95,
+      "grade": "S",
+      "completion": 100,
+      "n": 8,
+      "maxN": 65,
+      "sample": "48h"
+    },
+    "liveSource": "GET http://localhost:6200/api/teams/scores",
+    "healthAtAudit": {
+      "status": "healthy",
+      "timestamp": "2026-07-28T07:08:24.988Z",
+      "agentsOnline": 9
+    },
+    "verdict": "지시문 수치 STALE — 라이브는 이미 95/S/completion=100%/n=8. 본 ACL 산출물은 점수 산식 미변경(src 코드 diff 0).",
+    "thisArtifactAffectsScore": false
+  },
+
+  "auto_audit_log_status": "no dedicated auto-audit stream for team_gov-evolution-skills; GET /api/hr/hourly-audits?limit=500 had 0 skill/evolution subject matches; used live tasks API (T1) as substitute. Not fabricated.",
+
+  "failure_pattern_analysis_48h": {
+    "method": "GET /api/teams/team_gov-evolution-skills/tasks + GET /api/tasks/:id for each terminal row in ~48h window",
+    "raw_observed": {
+      "completed": 8,
+      "failed": 2,
+      "task_ids_completed": [
+        "task_1BnR7wYDHUqips9J",
+        "task_lzbBgDBmlTctcZNQ",
+        "task_7AVmvuqUUoesTPLS",
+        "task_OtiY8P_OurnpiFpM",
+        "task_hngegligHYNYXQTf",
+        "task_k7gmhXuUU0o4EAhb",
+        "task_e2kxvjR0_tHOWaQj",
+        "task_v7qjggS504gvGWJK"
+      ],
+      "task_ids_failed": [
+        "task_EOKPfKyrTYcNmGaX",
+        "task_K0WzIJ30V7g4XqNi"
+      ]
+    },
+    "named_patterns_from_directive": {
+      "CircuitBreaker_open": { "count": 0, "task_ids": [], "meets_duplicate_threshold_2plus": false },
+      "command_gate_deny": { "count": 0, "task_ids": [], "meets_duplicate_threshold_2plus": false },
+      "rate_limit_exceed": { "count": 0, "task_ids": [], "meets_duplicate_threshold_2plus": false }
+    },
+    "other_failures_observed": [
+      {
+        "task_id": "task_EOKPfKyrTYcNmGaX",
+        "error": "subprocess exited with code 1: You've hit your weekly limit · resets 4am (Asia/Seoul)",
+        "assigned_to": "claude-code",
+        "spawned_by_cli": "work-report-scheduler",
+        "workReportId": "wr_8NPQ12v5jhqfciTa",
+        "count_in_48h_team_sample": 1,
+        "classification_note": "QUOTA_PATTERNS in circuit-breaker-registry.ts match 'usage limit' but NOT 'weekly limit'. Live agent health shows circuitState=closed, reason=generic, consecutiveFailures=1."
+      },
+      {
+        "task_id": "task_K0WzIJ30V7g4XqNi",
+        "error": "queue_wait_timeout: provider claude-code busy for 1800000ms",
+        "assigned_to": "claude-code",
+        "spawned_by_cli": "work-report-scheduler",
+        "count_in_48h_team_sample": 1,
+        "scorer": "already covered by INFRA_EXCLUSION (queue_wait_timeout:%)"
+      }
+    ],
+    "why_completion_100_with_2_failures": {
+      "queue_wait_timeout": "INFRA_EXCLUSION removes from terminal denominator",
+      "weekly_limit_sibling": "task_EOKPfKyrTYcNmGaX shares workReportId wr_8NPQ12v5jhqfciTa with completed siblings task_lzbBgDBmlTctcZNQ + task_1BnR7wYDHUqips9J → WORK_REPORT_DUP_DELIVERED_EXCLUSION removes failed copy",
+      "result": "completed=8 / terminal=8 → completion=100%, n=8 matches live scores"
+    }
+  },
+
+  "rules": [
+    {
+      "id": "CB-SKILL-C1-R1",
+      "kind": "circuit-breaker-threshold",
+      "status": "NO_CHANGE",
+      "location": "src/security/circuit-breaker.ts DEFAULT_CONFIG + circuit-breaker-registry.ts FAILURE_THRESHOLD",
+      "current": {
+        "failureThreshold": 3,
+        "resetTimeoutMs": 60000,
+        "BASE_COOLDOWN_MS": 60000,
+        "MAX_COOLDOWN_MS": 1800000,
+        "QUOTA_FALLBACK_COOLDOWN_MS": 3600000,
+        "HALF_OPEN_TTL_MS": 300000
+      },
+      "changeThisCycle": "없음 — 48h/8 샘플에서 CircuitBreaker open 0건 → 2회 이상 중복 조건 미충족. 임계치 조정 근거 없음.",
+      "rollback": "n/a (diff 0)"
+    },
+    {
+      "id": "GATE-SKILL-C1-R2",
+      "kind": "command-gate",
+      "status": "NO_CHANGE",
+      "location": "src/security/command-gate.ts",
+      "changeThisCycle": "없음 — command gate deny 0건 in team 48h sample. 날조 룰/임계치 추가 안 함.",
+      "rollback": "n/a (diff 0)"
+    },
+    {
+      "id": "CB-SKILL-C1-R3",
+      "kind": "rate-limit-classification",
+      "status": "NO_CHANGE",
+      "location": "src/security/circuit-breaker-registry.ts RATE_LIMIT_PATTERNS / QUOTA_PATTERNS",
+      "changeThisCycle": "없음 — 'rate limit exceeded' 문자열 매칭 0건. weekly-limit 1건은 rate-limit 표면형이 아님.",
+      "rollback": "n/a (diff 0)"
+    },
+    {
+      "id": "CB-SKILL-C1-R4-PROPOSAL",
+      "kind": "circuit-breaker-classification",
+      "status": "PROPOSAL_NOT_IMPLEMENTED",
+      "title": "Classify 'weekly limit' as quota (immediateOpen)",
+      "location": "src/security/circuit-breaker-registry.ts QUOTA_PATTERNS",
+      "problemFound": {
+        "summary": "claude-code weekly-limit 실패가 quota로 분류되지 않고 generic으로 남아 circuit이 closed 유지됨",
+        "evidence": {
+          "task_id": "task_EOKPfKyrTYcNmGaX",
+          "error": "subprocess exited with code 1: You've hit your weekly limit · resets 4am (Asia/Seoul)",
+          "agent_health": {
+            "circuitState": "closed",
+            "consecutiveFailures": 1,
+            "gate.status": "available",
+            "gate.reason": "generic"
+          }
+        },
+        "why_not_applied_this_cycle": "팀 48h 샘플 내 동일 패턴 1회만 관측 → 지시문의 '2회 이상 중복' 임계치 미달. 임계치 숫자 변경도 아님(분류 패턴 추가). 날조 조정 방지 위해 제안만 기록."
+      },
+      "proposedChange": {
+        "add_to_QUOTA_PATTERNS": "/\\bweekly limit\\b/i",
+        "effect": "immediateOpen quota + QUOTA_FALLBACK_COOLDOWN_MS (1h) instead of generic consecutiveFailures accumulation",
+        "bounded": true,
+        "reversible": "remove the one regex line; feature-flag optional NCO_CB_WEEKLY_LIMIT_AS_QUOTA=off"
+      },
+      "implemented": false
+    }
+  ],
+
+  "src_code_diff": 0,
+  "team_lifecycle_diff": 0,
+
+  "unverified_items": [
+    "sqlite3 CLI Auto-review blocked in this session — 48h task set reconstructed from HTTP task APIs (T1 HTTP bodies), not direct SQL GROUP BY",
+    "hourly_role_audits full-table GROUP BY for subject_id LIKE '%skill%' not executed; only latest-500 API proxy showed 0 matches",
+    "CB-SKILL-C1-R4-PROPOSAL not implemented or unit-tested"
+  ]
+}

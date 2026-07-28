@@ -367,6 +367,24 @@ describe('work report real-data context', () => {
     expect(metadata).not.toHaveProperty('teamId');
   });
 
+  it('applies the company safety gate to work-report provider failover', () => {
+    const candidate: import('./work-report-scheduler.js').ReportTaskCandidate = {
+      reportId: 'wr-treasury-1',
+      subjectKind: 'team',
+      subjectId: 'team_gov-government-treasury',
+      teamId: 'team_gov-government-treasury',
+      organizationId: 'org_nco-government',
+      lead: 'codex',
+      prompt: 'test prompt',
+    };
+
+    expect(buildReportTaskMetadata(candidate).allowProviderFailover).toBe(false);
+    expect(buildReportTaskMetadata({
+      ...candidate,
+      organizationId: 'org_research',
+    }).allowProviderFailover).toBe(true);
+  });
+
   it('serializes individual dispatches from concurrent batches at five-second start intervals', async () => {
     let now = 0;
     const starts: number[] = [];

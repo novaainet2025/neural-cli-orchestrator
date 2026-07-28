@@ -94,6 +94,7 @@ const QUOTA_PATTERNS = [
   /\bquota\b/i,
   /\bquota exceeded\b/i,
   /\bmonthly quota\b/i,
+  /\bweekly limit\b/i,
   /\busage limit\b/i,
   /\bhit your usage limit\b/i,
   /\bcredit balance is too low\b/i,
@@ -103,6 +104,8 @@ const RATE_LIMIT_PATTERNS = [
   /\b429\b/i,
   /\brate limit\b/i,
   /\btoo many requests\b/i,
+  /\bqueue_wait_timeout\b/i,
+  /\bprovider .* busy\b/i,
 ];
 
 function defaultSnapshot(agentId: string): CircuitSnapshot {

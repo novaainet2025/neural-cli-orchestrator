@@ -1,0 +1,40 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/nova-ai/project/nco/.codex/hooks/session-start.sh'",
+            "timeout": 15,
+            "statusMessage": "Initializing NCO session..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/nova-ai/project/nco/.codex/hooks/user-prompt-nco-context.sh'",
+            "timeout": 10,
+            "statusMessage": "Checking NCO status..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/Users/nova-ai/project/nco/.codex/hooks/end-of-turn-check.sh'",
+            "timeout": 30,
+            "statusMessage": "Gap analysis + verification..."
+          }
+        ]
+      }
+    ]
+  }
+}

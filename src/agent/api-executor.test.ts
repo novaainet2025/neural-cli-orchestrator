@@ -240,6 +240,51 @@ describe('ApiExecutor', () => {
     ]);
   });
 
+  it('bounds oversized tool history without separating native tool calls from their results', async () => {
+    let observedMessages: unknown[] = [];
+    completionHandlers.set(
+      'http://127.0.0.1:8000/v1',
+      vi.fn().mockImplementation(async (params: { messages: unknown[] }) => {
+        observedMessages = params.messages;
+        if (JSON.stringify(params.messages).length > 40_000) {
+          throw Object.assign(new Error('Prompt tokens limit exceeded'), { status: 402 });
+        }
+        return {
+          choices: [{ message: { content: 'bounded-ok' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        };
+      }),
+    );
+
+    const executor = new ApiExecutor(providerMap.get('hermes'), sandbox);
+    const result = await executor.run('task-context', 'prompt', {
+      messages: [
+        { role: 'system', content: 'system' },
+        { role: 'user', content: 'initial request' },
+        { role: 'assistant', content: 'old response' },
+        { role: 'user', content: 'old result' },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [{
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'readFile', arguments: '{}' },
+          }],
+        },
+        { role: 'tool', tool_call_id: 'call-1', content: 'x'.repeat(60_000) },
+      ],
+    });
+
+    expect(result.output).toBe('bounded-ok');
+    expect(JSON.stringify(observedMessages).length).toBeLessThanOrEqual(40_000);
+    expect(observedMessages[1]).toEqual({ role: 'user', content: 'initial request' });
+    expect(observedMessages).not.toContainEqual({ role: 'assistant', content: 'old response' });
+    expect(observedMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ role: 'assistant' }),
+      expect.objectContaining({ role: 'tool', tool_call_id: 'call-1' }),
+    ]));
+  });
 
   it('classifies transient HTTP errors (408/429/5xx) and network errors as retryable', () => {
     expect(isRetryableHttpError({ status: 408 })).toBe(true);

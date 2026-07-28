@@ -8,7 +8,7 @@ import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
-import { resolveExecutor } from './company-orchestrator.js';
+import { allowQueueProviderFailover, resolveExecutor } from './company-orchestrator.js';
 
 const log = createLogger('work-report-scheduler');
 const KST_OFFSET_HOURS = 9;
@@ -1032,7 +1032,10 @@ function resolveOrgReportExecutor(
 export function buildReportTaskMetadata(candidate: ReportTaskCandidate): Record<string, unknown> {
   const metadata: Record<string, unknown> = {
     projectDir: resolveInternalProjectDir(),
-    allowProviderFailover: true,
+    // Treasury failures task_0VCvCCPdkRADiuwH/task_7wS1alWtK8IZxVuW were dispatched with
+    // organizationId=org_nco-government and this flag forced to true. Reuse the company
+    // safety gate so foundation-company reports stay within same-role/team routing.
+    allowProviderFailover: allowQueueProviderFailover(candidate.organizationId ?? ''),
     workReportId: candidate.reportId,
     subjectKind: candidate.subjectKind,
     subjectId: candidate.subjectId,

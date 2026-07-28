@@ -222,6 +222,107 @@ describe('team score aggregation', () => {
     expect(legal).toMatchObject({ completion: 50, n: 2 });
   });
 
+  it('defers a failed work-report copy while its same-team fallback is active, and is env-reversible', () => {
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, metadata_json, response, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_retrying_report', 'Retrying Report', 'retrying-report');
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', ?, ?, 1)
+    `).run('team_retry_boundary', 'Retry Boundary', 'retry-boundary');
+
+    for (let index = 1; index <= 7; index += 1) {
+      insert.run(
+        `retry-ok-${index}`,
+        'team_retrying_report',
+        'completed',
+        null,
+        null,
+        'report body',
+        `-${index} hours`,
+      );
+    }
+
+    const retryMetadata = JSON.stringify({ workReportId: 'wr_active_retry' });
+    // Treasury 실측 경합: provider 한도 실패와 동일 workReportId 폴백이 동시에 존재하던
+    // HR 스냅샷에서 실패 사본이 먼저 계상돼 7/8=87.5%로 오진됐다.
+    insert.run(
+      'retry-provider-limit',
+      'team_retrying_report',
+      'failed',
+      "subprocess exited with code 1: You've hit your weekly limit",
+      retryMetadata,
+      "You've hit your weekly limit",
+      '-8 hours',
+    );
+    insert.run(
+      'retry-active-fallback',
+      'team_retrying_report',
+      'running',
+      null,
+      retryMetadata,
+      null,
+      '-1 minute',
+    );
+
+    // 범위 가드: 같은 workReportId라도 다른 팀의 활성 사본은 이 팀의 실패를 숨기지 않는다.
+    const otherMetadata = JSON.stringify({ workReportId: 'wr_other_team' });
+    insert.run(
+      'retry-other-team-active',
+      'team_alpha',
+      'running',
+      null,
+      otherMetadata,
+      null,
+      '-1 minute',
+    );
+    insert.run(
+      'retry-unrelated-failure',
+      'team_retry_boundary',
+      'failed',
+      'actual task failure',
+      otherMetadata,
+      null,
+      '-9 hours',
+    );
+    insert.run(
+      'retry-boundary-ok',
+      'team_retry_boundary',
+      'completed',
+      null,
+      null,
+      'report body',
+      '-8 hours',
+    );
+
+    const score = computeTeamScores(db).find((team) => team.teamId === 'team_retrying_report');
+    expect(score).toMatchObject({ completion: 100, n: 7, sample: '48h' });
+    expect(computeTeamScores(db).find((team) => team.teamId === 'team_retry_boundary')).toMatchObject({
+      completion: 50,
+      n: 2,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION;
+    process.env.NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION = 'off';
+    try {
+      const rolledBack = computeTeamScores(db);
+      expect(rolledBack.find((team) => team.teamId === 'team_retrying_report')).toMatchObject({
+        completion: 87.5,
+        n: 8,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION;
+      else process.env.NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION = previous;
+    }
+  });
+
   it('excludes repeated all-failed work-report fan-out but keeps a single failure with a cancelled sibling', () => {
     const insertMeta = db.prepare(`
       INSERT INTO tasks (

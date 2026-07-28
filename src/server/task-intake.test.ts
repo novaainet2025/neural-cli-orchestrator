@@ -7,6 +7,7 @@ import {
   buildDefaultVerifierWithFs,
   findActiveWorkReportTask,
   getWorkReportId,
+  GOV_COMMAND_INTAKE_RESPONSE_CONTRACT,
   hasResponseContract,
   inferTaskType,
   isCodeWorkPrompt,
@@ -37,13 +38,36 @@ describe('task-intake helpers', () => {
     expect(result.prompt).toContain('[컨텍스트] 프로젝트: /repo / 작업 유형: bugfix');
   });
 
-  it('does not tell work-report agents to run a build (2026-07-26 gov-engineering-reliability incident)', () => {
-    const prompt = '[업무보고 작성] 2026-07-26 오후 보고서를 작성하라.\n[실데이터] ...';
+  it('uses a report-body contract without code instructions (2026-07-28 mission-intake empty-output incident)', () => {
+    const prompt = [
+      '[업무보고 작성] 2026-07-28 오후 보고서를 작성하라.',
+      '팀: Mission Intake and Portfolio',
+      '[실데이터] ...',
+    ].join('\n');
 
     const result = applyPromptGate(prompt, { projectDir: '/repo' });
 
     expect(result.prompt).not.toContain('빌드/타입체크 통과');
+    expect(result.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
+    expect(result.prompt).toContain('[출력형식] (자동 보강) 요구된 Markdown 업무보고 본문.');
     expect(result.prompt).toContain('파일 변경 없음 — 빌드/타입체크 불필요');
+  });
+
+  it('repairs a legacy auto-generated code output contract when a work report is retried', () => {
+    const prompt = [
+      '[업무보고 작성] 2026-07-28 오후 보고서를 작성하라.',
+      '[컨텍스트] 프로젝트: /repo',
+      '[목표] 업무보고 작성',
+      '[제약] 실데이터만 사용',
+      '[출력형식] (자동 보강) 변경 파일 목록 + 핵심 diff 요약.',
+      '[검증기준] 실데이터와 본문 대조',
+    ].join('\n');
+
+    const result = applyPromptGate(prompt, { projectDir: '/repo' });
+
+    expect(result.promptGate).toEqual({ score: 100 });
+    expect(result.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
+    expect(result.prompt).toContain('[출력형식] (자동 보강) 요구된 Markdown 업무보고 본문.');
   });
 
   it('does not inject build instructions into JSON-only structured output tasks', () => {
@@ -53,7 +77,25 @@ describe('task-intake helpers', () => {
     );
 
     expect(result.prompt).not.toContain('빌드/타입체크 통과');
+    expect(result.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
+    expect(result.prompt).toContain('[출력형식] (자동 보강) 요구된 JSON 형식만 출력.');
     expect(result.prompt).toContain('파일 변경 없음 — 빌드/타입체크 불필요');
+  });
+
+  it('uses text-only and performance-goal output formats instead of a code diff contract', () => {
+    const textOnly = applyPromptGate(
+      '[팀 상시 임무] 도구 금지, 텍스트만 응답',
+      { projectDir: '/repo' },
+    );
+    const performanceGoal = applyPromptGate(
+      '[성과보고·목표설정 입력 지시] 목표값을 입력하라.',
+      { projectDir: '/repo' },
+    );
+
+    expect(textOnly.prompt).toContain('[출력형식] (자동 보강) 요구된 텍스트 본문만 출력.');
+    expect(performanceGoal.prompt).toContain('[출력형식] (자동 보강) 요청된 목표·성과 입력 결과와 검증 근거 요약.');
+    expect(textOnly.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
+    expect(performanceGoal.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
   });
 
   it('keeps prompts that already satisfy the gate', () => {
@@ -199,6 +241,40 @@ describe('task-intake helpers', () => {
       teamId: 'team_other',
       companyRunId: 'corun_other',
     }).prompt).not.toContain('[Research Strategy 응답 계약]');
+  });
+
+  it('adds the gov-command-intake evidence contract once to company runs only and excludes build verifier', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_gov-command-intake',
+      companyRunId: 'corun_nco-command-cycle3',
+    };
+    const first = applyPromptGate('[목표] 미션을 접수하고 정규화한다', metadata);
+    const retry = applyPromptGate(first.prompt, metadata);
+
+    expect(first.prompt).toContain(GOV_COMMAND_INTAKE_RESPONSE_CONTRACT);
+    expect(first.prompt).toContain('첫 줄을 `done:`');
+    expect(first.prompt).toContain('DB 행·파일 내용·명령 출력');
+    expect(first.prompt).toContain('[미검증]');
+    expect(retry.prompt.match(/\[Gov Command Intake 응답·증거 계약\]/g)).toHaveLength(1);
+
+    expect(hasResponseContract(first.prompt)).toBe(true);
+
+    expect(buildDefaultVerifierWithFs({
+      prompt: first.prompt,
+      metadata,
+      verifier: undefined,
+    }, () => true)).toBeUndefined();
+
+    expect(applyPromptGate('[목표] 독립 미션 접수 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_gov-command-intake',
+    }).prompt).not.toContain(GOV_COMMAND_INTAKE_RESPONSE_CONTRACT);
+    expect(applyPromptGate('[목표] 다른 팀 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_other',
+      companyRunId: 'corun-other',
+    }).prompt).not.toContain(GOV_COMMAND_INTAKE_RESPONSE_CONTRACT);
   });
 
   it('keeps tool-description false reports rejected while allowing an honest blocked status', () => {

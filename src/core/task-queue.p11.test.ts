@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
+  allowGenericProviderFailover,
+  filterEvolutionSkillsEscalationAgents,
+  filterRecoveryCheckpointEscalationAgents,
   isEvolutionLearningRecoverableFailure,
   isTransientFailure,
 } from './task-queue.js';
+import { decideFinalEscalation } from './task-escalation.js';
 
 // P11: 팀 내부 다른 provider로 회복 가능한 실행 실패만 대상. 정상완료·취소·rate-limit 제외.
 describe('isTransientFailure (P11 진리표)', () => {
@@ -99,6 +103,18 @@ describe('isTransientFailure (P11 진리표)', () => {
   });
 });
 
+describe('generic provider failover metadata gate', () => {
+  it('명시적 false는 팀 밖 generic escalation을 차단', () => {
+    expect(allowGenericProviderFailover({ allowProviderFailover: false })).toBe(false);
+  });
+
+  it('true 및 필드가 없는 기존 태스크는 기존 동작을 유지', () => {
+    expect(allowGenericProviderFailover({ allowProviderFailover: true })).toBe(true);
+    expect(allowGenericProviderFailover({})).toBe(true);
+    expect(allowGenericProviderFailover(undefined)).toBe(true);
+  });
+});
+
 describe('isEvolutionLearningRecoverableFailure (bounded cycle-2 recovery)', () => {
   it('실측 세션 한도와 401 출력은 Continuous Learning에서만 복구', () => {
     const sessionLimit = {
@@ -135,5 +151,71 @@ describe('isEvolutionLearningRecoverableFailure (bounded cycle-2 recovery)', () 
       'gov-evolution-learning',
       { success: false, status: 'cancelled', output: '', error: 'session limit' },
     )).toBe(false);
+  });
+});
+
+describe('Recovery Checkpoint escalation guard (bounded cycle-1 recovery)', () => {
+  const knownAgents = ['claude-code', 'opencode', 'cursor-agent', 'codex', 'agy'];
+
+  it('대상 팀의 generic escalation 후보에서 weekly-limit claude-code만 제외', () => {
+    const filtered = filterRecoveryCheckpointEscalationAgents(
+      'team_tech-port-03-recovery-checkpoint',
+      knownAgents,
+    );
+
+    expect(filtered).toEqual(['opencode', 'cursor-agent', 'codex', 'agy']);
+    expect(decideFinalEscalation({
+      failedAgentId: 'opencode',
+      failureReason: 'queue_wait_timeout: provider opencode busy for 1800000ms',
+      attemptedAgents: ['opencode'],
+      circuitOpenAgents: ['cursor-agent', 'codex'],
+      knownAgents: filtered,
+      now: () => '2026-07-28T00:00:00.000Z',
+    }).nextAgentId).toBe('agy');
+  });
+
+  it('다른 팀과 runtime rollback에서는 기존 후보 순서를 그대로 보존', () => {
+    expect(filterRecoveryCheckpointEscalationAgents(
+      'team_gov-evolution-learning',
+      knownAgents,
+    )).toEqual(knownAgents);
+    expect(filterRecoveryCheckpointEscalationAgents(
+      'team_tech-port-03-recovery-checkpoint',
+      knownAgents,
+      'off',
+    )).toEqual(knownAgents);
+  });
+});
+
+describe('Skill Academy escalation guard (bounded cycle-1 recovery)', () => {
+  const knownAgents = ['claude-code', 'opencode', 'cursor-agent', 'codex', 'ollama'];
+
+  it('대상 팀의 generic escalation 후보에서 weekly-limit/queue-wait claude-code만 제외', () => {
+    const filtered = filterEvolutionSkillsEscalationAgents(
+      'team_gov-evolution-skills',
+      knownAgents,
+    );
+
+    expect(filtered).toEqual(['opencode', 'cursor-agent', 'codex', 'ollama']);
+    expect(decideFinalEscalation({
+      failedAgentId: 'codex',
+      failureReason: 'queue_wait_timeout: provider codex busy for 1800000ms',
+      attemptedAgents: ['codex'],
+      circuitOpenAgents: ['cursor-agent', 'opencode'],
+      knownAgents: filtered,
+      now: () => '2026-07-28T00:00:00.000Z',
+    }).nextAgentId).toBe('ollama');
+  });
+
+  it('다른 팀과 runtime rollback에서는 기존 후보 순서를 그대로 보존', () => {
+    expect(filterEvolutionSkillsEscalationAgents(
+      'team_gov-evolution-learning',
+      knownAgents,
+    )).toEqual(knownAgents);
+    expect(filterEvolutionSkillsEscalationAgents(
+      'team_gov-evolution-skills',
+      knownAgents,
+      'off',
+    )).toEqual(knownAgents);
   });
 });

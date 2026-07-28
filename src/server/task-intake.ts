@@ -4,6 +4,7 @@ import type Database from 'better-sqlite3';
 import type { CreateTaskInputType } from '../utils/validation.js';
 import { analyzePrompt, enrichPrompt } from './prompt-gate.js';
 import {
+  GOV_COMMAND_INTAKE_RESPONSE_CONTRACT,
   hasResponseContract,
   IMPROVEMENT_DEBATE_RESPONSE_CONTRACT,
   QUALITY_AUDIT_RESPONSE_CONTRACT,
@@ -12,7 +13,7 @@ import {
   SOURCE_DISCOVERY_RESPONSE_CONTRACT,
 } from '../core/response-contract.js';
 
-export { hasResponseContract } from '../core/response-contract.js';
+export { GOV_COMMAND_INTAKE_RESPONSE_CONTRACT, hasResponseContract } from '../core/response-contract.js';
 
 export type PromptGateInfo =
   | {
@@ -38,15 +39,17 @@ const TEXT_ONLY_PATTERN = /텍스트만\s*응답|오직\s*텍스트만\s*생성|
 const STRUCTURED_OUTPUT_PATTERN = /오직\s*JSON\s*(?:배열|객체)?\s*만/i;
 const WORK_REPORT_PATTERN = /^\s*\[업무보고 작성\]/;
 const PERFORMANCE_GOAL_INPUT_PATTERN = /^\s*\[성과보고·목표설정 입력 지시\]/;
+const AUTO_CODE_OUTPUT_FORMAT = '[출력형식] (자동 보강) 변경 파일 목록 + 핵심 diff 요약.';
 const SOURCE_DISCOVERY_TEAM_ID = 'team_tech-port-01-source-discovery';
-const IMPROVEMENT_DEBATE_TEAM_ID = 'team_tech-port-06-improvement-debate';
+const IMPROVEMENT_DEBATE_TEAM_IDS = new Set(['team_tech-port-06-improvement-debate', 'team_tech-port-06-decision-2026']);
 const SELF_IMPROVEMENT_DIAGNOSTIC_TEAM_IDS = new Set([
   'team_self-learning',
   'team_self-improvement',
   'team_error-prevention',
 ]);
-const RESEARCH_STRATEGY_TEAM_ID = 'team_research-strategy';
-const QUALITY_AUDIT_TEAM_ID = 'team_quality-audit';
+const RESEARCH_STRATEGY_TEAM_IDS = new Set(['team_research-strategy', 'team_research-strategy-2026']);
+const QUALITY_AUDIT_TEAM_IDS = new Set(['team_quality-audit', 'team_content-quality']);
+const GOV_COMMAND_INTAKE_TEAM_ID = 'team_gov-command-intake';
 
 export interface ActiveWorkReportTask {
   id: string;
@@ -105,7 +108,7 @@ export function applyTeamResponseContract(
   // 프롬프트에는 그 계약이 없어, 실질 산출물을 낸 completed 부모도 FORMAT_MISMATCH로
   // 반복 반려됐다(2026-07-24 48h: company-orchestrator 부모 3건, direct retry 8건).
   // 회사 실행에만 계약을 주입해 일반 업무보고·핑·독립 태스크의 출력 형식은 바꾸지 않는다.
-  if (companyRunId && teamId === RESEARCH_STRATEGY_TEAM_ID) {
+  if (companyRunId && RESEARCH_STRATEGY_TEAM_IDS.has(teamId)) {
     if (prompt.includes(RESEARCH_STRATEGY_RESPONSE_CONTRACT)) return prompt;
     return [
       prompt,
@@ -122,7 +125,7 @@ export function applyTeamResponseContract(
   // 계약이 없어 실질 산출물을 낸 completed 태스크도 FORMAT_MISMATCH로 반려될 수 있다.
   // 팀이 자유형 감사 보고서를 작성하는 경우에도 프리픽스(quality-gate 통과)를 요구하므로
   // 항상(회사 실행 외부에서도) 계약을 주입해 일관된 형식을 보장한다.
-  if (metadata?.teamId === QUALITY_AUDIT_TEAM_ID) {
+  if (typeof metadata?.teamId === 'string' && QUALITY_AUDIT_TEAM_IDS.has(metadata.teamId)) {
     if (prompt.includes(QUALITY_AUDIT_RESPONSE_CONTRACT)) return prompt;
     return [
       prompt,
@@ -133,6 +136,27 @@ export function applyTeamResponseContract(
       '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
       '- 주장하는 모든 수치·파일·검증 결과는 재검증 가능한 근거(DB 행, 파일 내용, 명령 출력)가 있어야 한다.',
       '- 도구 함수 설명, 이전 단계 출력 반복, grep 문자열 존재만으로 현재 작업의 완료를 주장하지 않는다.',
+    ].join('\n');
+  }
+
+  // gov-command-intake 팀의 회사 실행 태스크는 미션 접수·정규화를 담당하며,
+  // company-orchestrator가 isCompanyStageOutputAcceptable에서 protocol prefix를
+  // 요구(done:/status:/error:)하지만 프롬프트에 계약이 없으면 에이전트가 자유형
+  // 응답을 하고, hasResponseContract=false로 requireProtocolPrefix가 꺼져 품질게이트가
+  // 형식을 검증하지 못한다. 또한 prompt-gate 보강 시 코드 작업 형식(변경 파일 목록 + diff)
+  // 이 주입되어 미션 접수 태스크와 부정합이 생긴다. 회사 실행에만 계약을 주입해
+  // 일반(비회사) gov-command-intake 태스크의 출력 형식은 바꾸지 않는다.
+  if (companyRunId && teamId === GOV_COMMAND_INTAKE_TEAM_ID) {
+    if (prompt.includes(GOV_COMMAND_INTAKE_RESPONSE_CONTRACT)) return prompt;
+    return [
+      prompt,
+      '',
+      GOV_COMMAND_INTAKE_RESPONSE_CONTRACT,
+      '- 미션 접수·정규화·유효성검사를 실제로 완료했으면 첫 줄을 `done:`으로 시작한다.',
+      '- 데이터·권한 부족, 부분 완료 또는 차단 상태이면 첫 줄을 `status:`로 시작하고 `[미검증]` 항목을 명시한다.',
+      '- 실행 실패를 보고할 때는 첫 줄을 `error:`로 시작하고 실제 오류와 재현 조건을 기록한다.',
+      '- 접수된 미션 ID, 상태, 정규화 결과는 DB 행·파일 내용·명령 출력처럼 재검증 가능한 근거가 있을 때만 주장한다.',
+      '- 도구 함수 설명, 이전 단계 출력의 반복, grep 문자열 존재만으로 현재 작업의 완료를 주장하지 않는다.',
     ].join('\n');
   }
 
@@ -156,8 +180,8 @@ export function applyTeamResponseContract(
     ].join('\n');
   }
 
-  const targetsImprovementDebate = metadata?.teamId === IMPROVEMENT_DEBATE_TEAM_ID
-    || metadata?.diagnosticTargetTeamId === IMPROVEMENT_DEBATE_TEAM_ID;
+  const targetsImprovementDebate = (typeof metadata?.teamId === 'string' && IMPROVEMENT_DEBATE_TEAM_IDS.has(metadata.teamId))
+    || (typeof metadata?.diagnosticTargetTeamId === 'string' && IMPROVEMENT_DEBATE_TEAM_IDS.has(metadata.diagnosticTargetTeamId));
   if (!targetsImprovementDebate) return prompt;
   if (prompt.includes(IMPROVEMENT_DEBATE_RESPONSE_CONTRACT)) return prompt;
 
@@ -205,17 +229,47 @@ export function applyPromptGate(prompt: string, metadata?: Record<string, unknow
   prompt: string;
   promptGate: PromptGateInfo;
 } {
-  const analysis = analyzePrompt(prompt);
+  const workReport = isWorkReportPrompt(prompt);
+  const textOnly = isTextOnlyPrompt(prompt);
+  const structuredOutput = isStructuredOutputPrompt(prompt);
+  const performanceGoalInput = isPerformanceGoalInputPrompt(prompt);
+  const isCompanyIntake = typeof metadata?.teamId === 'string'
+    && metadata.teamId === GOV_COMMAND_INTAKE_TEAM_ID
+    && typeof metadata?.companyRunId === 'string'
+    && metadata.companyRunId.trim().length > 0;
+  const skipBuildVerification = workReport
+    || textOnly
+    || structuredOutput
+    || performanceGoalInput
+    || isCompanyIntake;
+  const outputFormat = workReport
+    ? '요구된 Markdown 업무보고 본문.'
+    : structuredOutput
+      ? '요구된 JSON 형식만 출력.'
+      : textOnly
+        ? '요구된 텍스트 본문만 출력.'
+        : performanceGoalInput
+          ? '요청된 목표·성과 입력 결과와 검증 근거 요약.'
+          : isCompanyIntake
+            ? '완료된 미션 접수·정규화 결과 요약과 검증 근거.'
+            : undefined;
+  // 실패한 업무보고의 자동 보강 프롬프트가 재시도 입력으로 재사용되면 score=100이라
+  // 누락 필드 보강 분기를 건너뛴다. 사용자 작성 형식은 건드리지 않고 과거 자동 생성
+  // 코드 작업 형식만 현재 태스크 유형에 맞게 교정한다.
+  const normalizedPrompt = outputFormat && prompt.includes(AUTO_CODE_OUTPUT_FORMAT)
+    ? prompt.replace(
+      AUTO_CODE_OUTPUT_FORMAT,
+      `[출력형식] (자동 보강) ${outputFormat}`,
+    )
+    : prompt;
+  const analysis = analyzePrompt(normalizedPrompt);
   if (analysis.score < 60) {
-    const skipBuildVerification = isWorkReportPrompt(prompt)
-      || isTextOnlyPrompt(prompt)
-      || isStructuredOutputPrompt(prompt)
-      || isPerformanceGoalInputPrompt(prompt);
     return {
       prompt: applyTeamResponseContract(
-        enrichPrompt(prompt, {
+        enrichPrompt(normalizedPrompt, {
           projectDir: typeof metadata?.projectDir === 'string' ? metadata.projectDir : undefined,
           taskType: inferTaskType(prompt),
+          outputFormat,
           skipBuildVerification,
         }),
         metadata,
@@ -229,7 +283,7 @@ export function applyPromptGate(prompt: string, metadata?: Record<string, unknow
   }
 
   return {
-    prompt: applyTeamResponseContract(prompt, metadata),
+    prompt: applyTeamResponseContract(normalizedPrompt, metadata),
     promptGate: { score: analysis.score },
   };
 }
@@ -272,7 +326,8 @@ export function buildDefaultVerifierWithFs(
   // 연구 보고서를 FORMAT_MISMATCH로 반려한다 (실측 2026-07-24: company-orchestrator 부모
   // 3건, direct retry 8건). build verifier는 코드 산출물 검증용이므로 연구/기획 팀에는
   // 붙이지 않는다 — 품질 검증은 내용 기반(response-quality.ts)으로만 수행한다.
-  if ((input.metadata?.teamId === RESEARCH_STRATEGY_TEAM_ID || input.metadata?.teamId === SOURCE_DISCOVERY_TEAM_ID)
+  const tid = typeof input.metadata?.teamId === 'string' ? input.metadata.teamId : '';
+  if ((RESEARCH_STRATEGY_TEAM_IDS.has(tid) || tid === SOURCE_DISCOVERY_TEAM_ID || tid === GOV_COMMAND_INTAKE_TEAM_ID)
     && typeof input.metadata?.companyRunId === 'string'
     && input.metadata.companyRunId.trim()) return undefined;
   if (!pathExists(resolve(projectDir, 'package.json'))) return undefined;

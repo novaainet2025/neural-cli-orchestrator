@@ -231,13 +231,39 @@ export class ApiExecutor {
           throw new Error(taskQueue.getAbortReason(taskId) || 'cancelled');
         }
 
-        // Token optimization: Trim conversation history (keeping system + first user + last N)
-        if (messages.length > MAX_HISTORY + 2) {
-          const sys = messages[0] as ChatCompletionMessageParam;
-          const initialUser = messages[1] as ChatCompletionMessageParam;
-          const recent = messages.slice(-MAX_HISTORY);
-          messages.length = 0;
-          messages.push(sys, initialUser, ...recent);
+        // Keep the initial request, but bound inherited/tool history by both
+        // message count and serialized size. Removing a complete assistant
+        // turn keeps native tool_calls paired with all following tool results.
+        const maxContextChars = 40_000;
+        const contextChars = () => JSON.stringify(messages).length;
+        while (
+          (messages.length > MAX_HISTORY + 2 || contextChars() > maxContextChars)
+          && messages.length > 3
+        ) {
+          let turnEnd = 3;
+          while (turnEnd < messages.length && messages[turnEnd]?.role !== 'assistant') {
+            turnEnd++;
+          }
+          if (turnEnd === messages.length) break;
+          messages.splice(2, turnEnd - 2);
+        }
+
+        // A single latest turn can still exceed the provider window when a
+        // tool returns a large body. Compact only dynamic message content;
+        // never truncate the system prompt, initial user request, tool IDs, or
+        // function-call structure.
+        for (let i = 2; i < messages.length && contextChars() > maxContextChars; i++) {
+          const message = messages[i] as { content?: unknown };
+          if (typeof message.content !== 'string' || message.content.length <= 256) continue;
+
+          const overflow = contextChars() - maxContextChars;
+          const keep = Math.max(256, message.content.length - overflow - 64);
+          if (keep >= message.content.length) continue;
+          const omitted = message.content.length - keep;
+          const marker = `\n... (context truncated ${omitted} chars)`;
+          message.content = keep > marker.length
+            ? message.content.slice(0, keep - marker.length) + marker
+            : message.content.slice(0, keep);
         }
 
         // AgentManager owns the single mutating canExecute() admission check.

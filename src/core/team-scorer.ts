@@ -175,7 +175,7 @@ function computeVolume(n: number, maxN: number): number {
 //  서비스 연결에 실패한 태스크까지 잘못 빠지므로 반드시 error·status·NCO 포트를 함께 건다.
 // 롤백: 아래 3개 terminal CASE에서 INFRA_EXCLUSION 조건을 제거하면 정확히 이전 동작.
 //  게이트웨이-다운 절만 되돌리려면 아래 `AND NOT ( … )` 블록만 삭제한다.
-const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'provider_unavailable:%' AND k.error NOT LIKE 'queue_wait_timeout:%'))
+const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'provider_unavailable:%' AND k.error NOT LIKE 'queue_wait_timeout:%' AND k.error NOT LIKE '%API Error: Connection closed mid-response%'))
     AND NOT (
       k.status <> 'completed'
       AND COALESCE(k.error, '') LIKE 'unknown: failure pattern in output%'
@@ -249,6 +249,34 @@ const WORK_REPORT_DUP_DELIVERED_EXCLUSION = `AND NOT (
       AND dwr.wrid IS NOT NULL
     )`;
 
+// work-report 폴백이 이미 활성화됐지만 아직 완료되기 전의 짧은 창에서는, 앞선 provider
+// 사본의 실패를 팀 품질 실패로 즉시 계상하면 같은 논리 업무가 복구 중인데도 HR 진단이
+// 발사되는 스냅샷 경합이 생긴다.
+//  - 실측(2026-07-28 UTC, db/nco.db): team_gov-government-treasury의
+//    task_7wS1alWtK8IZxVuW는 claude-code 주간 한도로 05:55:46 실패했고, 동일 workReportId
+//    wr_Tl3ajbINjrI2Hp5B의 task_13SkVMe-HMX8w-N2가 같은 초에 생성되어 05:56:28 완료했다.
+//    HR 진단 task_qd-PmtgJYcAJyexy는 그 사이 05:56:09 생성되어 7/8=87.5%를 캡처했다.
+//  - 완료 뒤에는 WORK_REPORT_DUP_DELIVERED_EXCLUSION이 실패 사본을 제외하지만, 활성 폴백
+//    중에는 dwr가 아직 없어 같은 논리 업무를 일시적으로 실패로 오계상했다.
+// 안전 불변식: 같은 팀·같은 workReportId의 활성 사본이 존재하는 실패 행만 제외한다.
+// 활성 사본이 cancelled/terminal이 되면 다음 계산에서 실패 행이 다시 포함되므로 실제 미배달을
+// 숨기지 않는다. status<>'completed' 가드로 completed⊆terminal도 유지한다.
+// 롤백: 런타임 즉시 → NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION=off (재빌드 불필요).
+const ACTIVE_WORK_REPORT_RETRY_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const ACTIVE_WORK_REPORT_RETRY_EXCLUSION_SQL = `AND NOT (
+      k.status <> 'completed'
+      AND awr.wrid IS NOT NULL
+    )`;
+
+export function buildActiveWorkReportRetryExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_ACTIVE_WORK_REPORT_RETRY_EXCLUSION,
+): string {
+  return ACTIVE_WORK_REPORT_RETRY_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : ACTIVE_WORK_REPORT_RETRY_EXCLUSION_SQL;
+}
+
 // 배달된 work report 집합: status='completed'이고 workReportId가 있는 태스크의
 // (team_id, workReportId)를 유일하게 집계. terminal CASE의 중복-사본 제외 조인에 쓰인다.
 const DELIVERED_WORK_REPORTS_JOIN = `LEFT JOIN (
@@ -261,6 +289,19 @@ const DELIVERED_WORK_REPORTS_JOIN = `LEFT JOIN (
         AND TRIM(COALESCE(json_extract(metadata_json, '$.workReportId'), '')) <> ''
     ) dwr ON dwr.team_id = k.team_id
       AND dwr.wrid = json_extract(k.metadata_json, '$.workReportId')`;
+
+// 복구 중인 work report 집합. 한 실패 사본과 같은 팀·같은 논리 보고서의 활성 폴백이
+// 존재하는 동안만 위 ACTIVE_WORK_REPORT_RETRY_EXCLUSION이 그 실패를 보류한다.
+const ACTIVE_WORK_REPORTS_JOIN = `LEFT JOIN (
+      SELECT DISTINCT
+        team_id,
+        json_extract(metadata_json, '$.workReportId') AS wrid
+      FROM tasks
+      WHERE status IN ('pending','queued','assigned','running','streaming','reviewing')
+        AND json_valid(metadata_json)
+        AND TRIM(COALESCE(json_extract(metadata_json, '$.workReportId'), '')) <> ''
+    ) awr ON awr.team_id = k.team_id
+      AND awr.wrid = json_extract(k.metadata_json, '$.workReportId')`;
 
 // 동일 workReportId로 여러 태스크가 팬아웃되어 전부 실패한 경우(completed 형제 없음),
 // 스케줄러가 같은 논리 업무를 여러 번 생성한 아티팩트다. 실제 팀 산출물 실패는 1건이지만
@@ -481,6 +522,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
   const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
   const ZERO_OUTPUT_COMPLETED_EXCLUSION = buildZeroOutputCompletedExclusion();
   const PROVIDER_AUTH_EXCLUSION = buildProviderAuthExclusion();
+  const ACTIVE_WORK_REPORT_RETRY_EXCLUSION = buildActiveWorkReportRetryExclusion();
   const rows = database.prepare(`
     SELECT
       t.id AS team_id,
@@ -494,6 +536,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
@@ -512,6 +555,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
@@ -529,6 +573,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
+          ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
           ${WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION}
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
@@ -543,6 +588,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
     LEFT JOIN organizations o ON o.id = t.organization_id
     LEFT JOIN tasks k ON k.team_id = t.id
     ${DELIVERED_WORK_REPORTS_JOIN}
+    ${ACTIVE_WORK_REPORTS_JOIN}
     ${WORK_REPORT_FANOUT_ALL_FAILED_JOIN}
     WHERE t.is_active = 1
       AND (t.organization_id IS NULL OR o.is_active = 1)

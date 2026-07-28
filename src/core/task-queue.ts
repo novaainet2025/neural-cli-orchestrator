@@ -361,9 +361,75 @@ export function isTransientFailure(result: TaskExecutionResult): boolean {
       || /\b(?:CLI failed exit=|CLI timed out|subprocess exited with code|subprocess timed out)\b/i.test(err);
 }
 
+// 회사/호출자가 명시적으로 팀 밖 provider failover를 금지한 태스크만 fail-closed.
+// 필드가 없는 기존 태스크는 legacy generic escalation을 유지한다.
+export function allowGenericProviderFailover(metadata: Record<string, unknown> | undefined): boolean {
+  return metadata?.allowProviderFailover !== false;
+}
+
 const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
 const EVOLUTION_LEARNING_RECOVERY_PATTERN =
   /\b(?:queue_wait_timeout|session limit|invalid x-api-key|invalid api key|authentication_error|unauthorized|credential preflight failed|provider[_ -]unavailable)\b/i;
+const RECOVERY_CHECKPOINT_TEAM_ID = 'team_tech-port-03-recovery-checkpoint';
+const RECOVERY_CHECKPOINT_CLAUDE_AVOID_DISABLED = new Set(['0', 'false', 'off']);
+const EVOLUTION_SKILLS_TEAM_ID = 'team_gov-evolution-skills';
+const EVOLUTION_SKILLS_CLAUDE_AVOID_DISABLED = new Set(['0', 'false', 'off']);
+
+/**
+ * Recovery Checkpoint task evidence showed generic tier escalation repeatedly
+ * leaving the configured team and selecting claude-code:
+ * - task_FagxTX_VomD7kBJW / task__MWoa1v_19N_msrZ: queue_wait_timeout
+ * - task_lfZ0JKlPFz_0xVUI: weekly limit
+ *
+ * Keep the mitigation bounded to this team and only to the escalation candidate
+ * list. Team membership, lifecycle state, and every other provider/team remain
+ * unchanged. Runtime rollback: NCO_RECOVERY_CHECKPOINT_CLAUDE_AVOID=off.
+ */
+export function filterRecoveryCheckpointEscalationAgents(
+  teamId: unknown,
+  agentIds: readonly string[],
+  toggle = process.env.NCO_RECOVERY_CHECKPOINT_CLAUDE_AVOID,
+): string[] {
+  const disabled = RECOVERY_CHECKPOINT_CLAUDE_AVOID_DISABLED.has(
+    toggle?.trim().toLowerCase() ?? '',
+  );
+  if (disabled || teamId !== RECOVERY_CHECKPOINT_TEAM_ID) {
+    return [...agentIds];
+  }
+  return agentIds.filter((agentId) => agentId !== 'claude-code');
+}
+
+/**
+ * Skill Academy (gov-evolution-skills) 48h evidence (2026-07-28):
+ * - task_K0WzIJ30V7g4XqNi: codex queue_wait → escalated to claude-code →
+ *   terminal `queue_wait_timeout: provider claude-code busy for 1800000ms`
+ * - task_EOKPfKyrTYcNmGaX: ollama→cursor-agent→claude-code →
+ *   terminal weekly-limit subprocess exit
+ *
+ * Both scored failures landed on claude-code after generic tier escalation.
+ * Keep mitigation team-scoped to escalation candidates only (membership/lifecycle
+ * unchanged). Runtime rollback: NCO_EVOLUTION_SKILLS_CLAUDE_AVOID=off.
+ */
+export function filterEvolutionSkillsEscalationAgents(
+  teamId: unknown,
+  agentIds: readonly string[],
+  toggle = process.env.NCO_EVOLUTION_SKILLS_CLAUDE_AVOID,
+): string[] {
+  const disabled = EVOLUTION_SKILLS_CLAUDE_AVOID_DISABLED.has(
+    toggle?.trim().toLowerCase() ?? '',
+  );
+  if (disabled || teamId !== EVOLUTION_SKILLS_TEAM_ID) {
+    return [...agentIds];
+  }
+  return agentIds.filter((agentId) => agentId !== 'claude-code');
+}
+
+function loadTaskTeamId(taskId: string): string | null {
+  const row = getDb().prepare(
+    'SELECT team_id FROM tasks WHERE id=?',
+  ).get(taskId) as { team_id: string | null } | undefined;
+  return row?.team_id ?? null;
+}
 
 /**
  * Continuous Learning cycle-2 evidence showed a lead session-limit followed by
@@ -415,9 +481,7 @@ function loadTeamRowById(teamId: string): TeamRow | null {
 // 팀 체인에서 "아직 안 시도 + 모델검증 통과" 첫 실행자. 없으면 null(→ 기존 escalation 폴백).
 // resolveExecutorChain + providerModelDispatchable 재사용(중복금지).
 async function nextTeamExecutor(taskId: string, knownAgents: Set<string>, attempted: string[]): Promise<string | null> {
-  const db = getDb();
-  const row = db.prepare(`SELECT team_id FROM tasks WHERE id=?`).get(taskId) as { team_id: string | null } | undefined;
-  const teamId = row?.team_id ?? null;
+  const teamId = loadTaskTeamId(taskId);
   if (!teamId) return null;                          // 팀 태스크 아님 → P11 스킵
   const team = loadTeamRowById(teamId);
   if (!team) return null;
@@ -1186,7 +1250,9 @@ class TaskQueueManager {
 
         // Try to failover after first retry
         if (attempt >= 2) {
-          const failover = this.findFailoverAgent(currentAgentId, task.agentId);
+          const failover = allowGenericProviderFailover(currentMetadata)
+            ? this.findFailoverAgent(currentAgentId, task.agentId)
+            : null;
           if (failover) {
             log.info({ taskId: task.taskId, from: currentAgentId, to: failover }, 'Failing over to alternate agent');
             const previousAgentId = currentAgentId;
@@ -1287,7 +1353,13 @@ class TaskQueueManager {
     currentMetadata: Record<string, unknown>,
     context: string,
   ): Promise<TaskExecutionResult | null> {
+    if (!allowGenericProviderFailover(currentMetadata)) return null;
     try {
+      const teamId = loadTaskTeamId(task.taskId) ?? currentMetadata.teamId;
+      const knownAgents = filterEvolutionSkillsEscalationAgents(
+        teamId,
+        filterRecoveryCheckpointEscalationAgents(teamId, [...this.agents.keys()]),
+      );
       const escalation = decideFinalEscalation({
         failedAgentId,
         failureReason,
@@ -1302,7 +1374,7 @@ class TaskQueueManager {
           .map(snapshot => snapshot.agentId),
         // 런타임 등록 에이전트로 후보 제한 — 정적 tier의 미등록 항목 배제
         // 에스컬레이션 방지 (2026-07-10 T1: Unknown agent 연쇄 실패 4건)
-        knownAgents: [...this.agents.keys()],
+        knownAgents,
         metadata: currentMetadata,
       });
       if (escalation.action === 'escalate' && escalation.nextAgentId && escalation.metadataPatch) {

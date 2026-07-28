@@ -1,11 +1,11 @@
 {
-  "checked_at": "2026-07-28T05:20:00+0900",
+  "checked_at": "2026-07-28T16:20:00+0900",
   "mode": "propose",
-  "total": 233,
-  "pass": 232,
-  "fail": 1,
+  "total": 241,
+  "pass": 240,
+  "fail": 0,
   "skip": 0,
-  "defer": 0,
+  "defer": 1,
   "categories": {
     "provider": {
       "pass": 9,
@@ -17,7 +17,7 @@
       "meets": true
     },
     "team": {
-      "pass": 86,
+      "pass": 87,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -26,7 +26,7 @@
       "meets": true
     },
     "hook": {
-      "pass": 84,
+      "pass": 85,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -35,7 +35,7 @@
       "meets": true
     },
     "script": {
-      "pass": 17,
+      "pass": 22,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -62,7 +62,7 @@
       "meets": true
     },
     "plugin": {
-      "pass": 3,
+      "pass": 4,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -81,12 +81,12 @@
     },
     "build": {
       "pass": 0,
-      "fail": 1,
+      "fail": 0,
       "skip": 0,
-      "defer": 0,
-      "pass_rate": 0.0,
+      "defer": 1,
+      "pass_rate": 1.0,
       "threshold": 1.0,
-      "meets": false
+      "meets": true
     },
     "health": {
       "pass": 1,
@@ -99,22 +99,10 @@
     }
   },
   "provider_anomaly": null,
-  "failures": [
-    {
-      "id": "build:tsc",
-      "category": "build",
-      "kind": "tsc-noemit",
-      "ref": "/Users/nova-ai/project/nco",
-      "priority": 1,
-      "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"
-    }
-  ],
+  "failures": [],
   "dispatch": {
     "mode": "propose",
-    "dispatched": {
-      "id": "build:tsc",
-      "taskId": "task_d4HpemP8yE6mOk-v"
-    },
-    "skipped_reason": null
+    "dispatched": null,
+    "skipped_reason": "디스패치 후보 없음(모두 cooldown 내) 또는 실패 0"
   }
 }

@@ -206,7 +206,7 @@ def build_team_data_context():
         )
 
     # analytics-lead에는 회사 전체의 현재 API 집계를 추가한다.
-    if team.get("slug") == "analytics-lead":
+    if team.get("slug") in ("analytics-lead", "ax-business-operations"):
         stats = load_json("stats.json")
         required = ("totalTasks", "completedTasks", "totalDiscussions")
         if all(isinstance(stats.get(key), (int, float)) for key in required):
@@ -217,7 +217,7 @@ def build_team_data_context():
             )
 
     # CFO 전용: 기존 SQLite 경제 테이블을 읽기 전용으로 집계한다.
-    if team.get("slug") == "cfo" and db is not None:
+    if team.get("slug") in ("cfo", "ax-business-operations") and db is not None:
         try:
             wallets = db.execute(
                 "SELECT COUNT(*), COALESCE(SUM(balance),0), COALESCE(SUM(locked),0) FROM nova_wallets"
