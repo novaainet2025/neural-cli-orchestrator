@@ -26,6 +26,7 @@
  */
 import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { loadProviders } from '../src/utils/config.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const P = {
@@ -50,8 +51,28 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * 쓰기용 — 공유 파일 원본. 여기에 오버레이 값이 섞이면 머신별 정책이 공유
+ * 파일로 새어 나가므로, 변경(add/remove)은 반드시 이 원본만 읽고 쓴다.
+ */
 function loadProvidersFile(): ProvidersFile {
   return readJson<ProvidersFile>(P.providers);
+}
+
+/**
+ * 표시·판정용 — 런타임이 실제로 보는 뷰.
+ *
+ * 공유 config 만 읽으면 머신 오버레이(config/ai-providers.local.json)가 무시돼
+ * `provider:list` 가 실제와 다른 상태를 보고한다. 실측 사례: 공유 파일의
+ * agy.enabled=false 이지만 오버레이가 true 로 덮어써서 런타임 /api/agents 에는
+ * agy 가 working 으로 존재하는데, list 는 disabled 로 표시했다.
+ *
+ * 병합 규칙을 여기서 새로 만들지 않고 런타임과 같은 loadProviders() 를 쓴다
+ * (src/utils/config.ts: provider id 단위 shallow merge + 플랫폼 필터).
+ * 오버레이가 없거나 파손된 경우 loadProviders() 가 공유 config 로 폴백한다.
+ */
+function loadEffectiveProviders(): Provider[] {
+  return loadProviders() as unknown as Provider[];
 }
 
 function nextMigrationNumber(): string {
@@ -123,8 +144,7 @@ DELETE FROM agents           WHERE id = '${id}';
 function planRemove(id: string): Change[] {
   const changes: Change[] = [];
 
-  const file = loadProvidersFile();
-  if (!file.providers.some((provider) => provider.id === id)) {
+  if (!loadEffectiveProviders().some((provider) => provider.id === id)) {
     throw new Error(`provider '${id}' is not registered in config/ai-providers.json`);
   }
   changes.push({
@@ -189,8 +209,7 @@ function planRemove(id: string): Change[] {
 }
 
 function planAdd(id: string, options: Record<string, string>): Change[] {
-  const file = loadProvidersFile();
-  if (file.providers.some((provider) => provider.id === id)) {
+  if (loadEffectiveProviders().some((provider) => provider.id === id)) {
     throw new Error(`provider '${id}' already exists in config/ai-providers.json`);
   }
   const capabilities = (options.caps ?? 'code,analysis').split(',').map((entry) => entry.trim());
@@ -245,7 +264,9 @@ function main(): void {
   }
 
   if (command === 'list') {
-    for (const provider of loadProvidersFile().providers) {
+    // 런타임이 보는 값(오버레이 병합 후)을 보여준다 — 공유 파일만 읽으면
+    // 머신 오버레이로 켜진 프로바이더가 disabled 로 잘못 표시된다.
+    for (const provider of loadEffectiveProviders()) {
       const state = provider.enabled ? 'enabled ' : 'disabled';
       console.log(`  ${state}  ${provider.id.padEnd(16)} ${String(provider.role ?? '')}`);
     }
