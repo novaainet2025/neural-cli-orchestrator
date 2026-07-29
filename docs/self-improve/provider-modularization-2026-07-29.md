@@ -161,4 +161,4 @@ $ npm run provider:remove -- zzz-probe --apply
 - `adaptive-scorer`의 cold-start prior는 손으로 관리하는 경험값이라 표 자체는 이력으로
   남겼다(후보 목록이 등록된 것만 담으므로 유령 prior는 자연히 무시된다).
 - `provider:add`는 `enabled=false`로 등록한다 — 명령/키 확인 전 자동 투입 방지.
-- 미커밋.
+- **커밋 완료: `5cd22f0`** (nvidia 퇴출과 동일 커밋, 424 파일). 푸시 안 함.
