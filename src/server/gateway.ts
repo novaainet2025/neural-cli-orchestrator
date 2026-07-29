@@ -169,9 +169,15 @@ export function classifyFailedCompletionReason(
   // 인용한 라인은 실패 신호 스캔에서 제외한다 (orchestrated-loop 3세대와 동일 계열).
   const scanText = stripEchoLines(text);
 
-  // HARD 시그니처: 정상 콘텐츠(코드리뷰·작업로그)에 등장하지 않는 강한 실패 신호.
-  // 위치/길이 무관하게 실패로 판정한다.
-  const hardReason = matchFailureReason(scanText, HARD_FAILURE_PATTERNS);
+  // HARD 시그니처도 코드리뷰·장애 분석의 본문에는 인용될 수 있다. 실제 Cursor 리뷰가
+  // ECONNREFUSED를 분석했다는 이유만으로 정상 결과 전체가 실패 처리된 회귀가 있었다.
+  // 짧은 원시 오류는 전체를, 긴 substantive 출력은 오류 envelope인 선두만 검사한다.
+  const SHORT_OUTPUT = 500;
+  const FAILURE_ENVELOPE = 200;
+  const failureEnvelope = scanText.length <= SHORT_OUTPUT
+    ? scanText
+    : scanText.slice(0, FAILURE_ENVELOPE);
+  const hardReason = matchFailureReason(failureEnvelope, HARD_FAILURE_PATTERNS);
   if (hardReason) return hardReason;
   const hasReportedError = /^\s*ERROR:\s/im.test(scanText);
   if (hasReportedError || startsWithError) {
@@ -186,9 +192,7 @@ export function classifyFailedCompletionReason(
   // SOFT 시그니처: 정상 텍스트에도 등장할 수 있는 단어들(error/failed/usage limit 등).
   // 긴 substantive 출력의 본문 중간 등장은 오탐이므로, 짧은 출력 전체 또는 긴 출력의
   // 선두 200자에서만 판정한다. 근접 제한(.{0,N})으로 span-매칭 오탐도 차단.
-  const SHORT_OUTPUT = 500;
-  const target = scanText.length <= SHORT_OUTPUT ? scanText : scanText.slice(0, 200);
-  return matchFailureReason(target, SOFT_FAILURE_PATTERNS);
+  return matchFailureReason(failureEnvelope, SOFT_FAILURE_PATTERNS);
 }
 
 /** 응답 텍스트에 에러 패턴이 있으면 true — completed 오탐 방지 */

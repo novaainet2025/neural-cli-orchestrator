@@ -44,6 +44,28 @@ describe('detectFailedCompletion', () => {
     )).toBe('failure-pattern: request timed out');
   });
 
+  it('긴 코드리뷰 본문에서 연결 실패를 분석해도 완료 오탐하지 않는다', () => {
+    const review = [
+      '# 코드 리뷰',
+      '검토 범위와 정상 동작을 충분히 설명한 긴 서문입니다.'.repeat(20),
+      '| 낮음 | fetch 오류 분기 | timeout·ECONNREFUSED·기타 오류를 같은 메시지로 반환 |',
+      '수정 제안: 오류 유형별로 분기하십시오.',
+      'done: 읽기 전용 코드 리뷰 완료.',
+    ].join('\n');
+
+    expect(review.length).toBeGreaterThan(500);
+    expect(review.indexOf('ECONNREFUSED')).toBeGreaterThan(200);
+    expect(detectFailedCompletion(review)).toBe(false);
+  });
+
+  it('긴 출력이어도 선두 오류 envelope의 연결 실패는 탐지한다', () => {
+    const response = `Error: connection refused\n${'diagnostic context '.repeat(80)}`;
+
+    expect(response.length).toBeGreaterThan(500);
+    expect(classifyFailedCompletionReason(response))
+      .toBe('failure-pattern: connection refused');
+  });
+
   it('소스코드/상태 브리프 에코 라인은 실패 신호로 보지 않는다 (에코-FP 방어)', () => {
     expect(detectFailedCompletion(
       "변경 요약\nconst QUOTA_RE = /usage limit|quota exceeded/i;\n적용 완료",
