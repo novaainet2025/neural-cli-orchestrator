@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DISCUSSION_EVENT_CONTENT_LIMIT,
   DISCUSSION_MIN_RESPONSE_LENGTH,
+  DISCUSSION_QUORUM_GRACE_CEILING_MS,
   DISCUSSION_TIMEOUT_CEILING_MS,
   DISCUSSION_TIMEOUT_FLOOR_MS,
   buildDiscussionEventContent,
   formatDiscussionProposalContent,
   requireDiscussionOutput,
   requireSubstantiveDiscussionOutput,
+  resolveDiscussionQuorumGraceMs,
   resolveDiscussionTimeoutMs,
   selectDiscussionConclusion,
   selectDiscussionSynthesisProvider,
@@ -44,6 +46,37 @@ describe('discussion stage timeout resolution', () => {
   it('ignores non-numeric overrides instead of producing NaN', () => {
     process.env.NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS = 'not-a-number';
     expect(resolveDiscussionTimeoutMs('proposal')).toBe(420_000);
+  });
+});
+
+describe('discussion quorum grace window', () => {
+  afterEach(() => {
+    delete process.env.NCO_DISCUSSION_QUORUM_GRACE_MS;
+  });
+
+  // 유예를 두는 이유: 정족수 도달 즉시 끊으면 직후 도착할 제안까지 버린다.
+  it('defaults to a non-zero grace so a near-simultaneous proposal is not discarded', () => {
+    expect(resolveDiscussionQuorumGraceMs()).toBeGreaterThan(0);
+  });
+
+  // 유예가 상한을 넘으면 조기 진행의 의미가 사라진다.
+  it('clamps an oversized grace down to the ceiling', () => {
+    process.env.NCO_DISCUSSION_QUORUM_GRACE_MS = String(60 * 60 * 1000);
+    expect(resolveDiscussionQuorumGraceMs()).toBe(DISCUSSION_QUORUM_GRACE_CEILING_MS);
+  });
+
+  // 0 은 "즉시 진행"이라는 유효한 설정이므로 기본값으로 되돌리면 안 된다.
+  it('honours an explicit zero grace as immediate progression', () => {
+    process.env.NCO_DISCUSSION_QUORUM_GRACE_MS = '0';
+    expect(resolveDiscussionQuorumGraceMs()).toBe(0);
+  });
+
+  it('rejects negative and non-numeric values by falling back to the default', () => {
+    process.env.NCO_DISCUSSION_QUORUM_GRACE_MS = '-5000';
+    const fallback = resolveDiscussionQuorumGraceMs();
+    process.env.NCO_DISCUSSION_QUORUM_GRACE_MS = 'nope';
+    expect(resolveDiscussionQuorumGraceMs()).toBe(fallback);
+    expect(fallback).toBeGreaterThan(0);
   });
 });
 
