@@ -11,6 +11,7 @@
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import type { TaskType } from './quality-gate.js';
+import { capabilityRank, isRegistered, type ProviderTaskType } from './provider-registry.js';
 
 const log = createLogger('adaptive-scorer');
 
@@ -42,6 +43,14 @@ const OPERATIONAL_WINDOW_DAYS = 14;
 // 경험적 지식 기반: 데이터 부족 시 이 prior를 사용
 // prior 는 손으로 관리하는 경험값이다. config 에서 사라진 프로바이더의 prior 는
 // 후보 목록 자체가 등록된 것만 담기므로 자연히 무시된다(표는 이력으로 보존).
+//
+// 이 표에 **없는** 등록 프로바이더는 예전에 무조건 1.0(중립)으로 떨어졌다.
+// 2026-07-29 실측: claude-code / hermes / ollama 는 8개 taskType 어디에도 prior 가
+// 없었다. ollama 는 유일한 무료 로컬 워커이고 hermes 는 research 체인 선두인데,
+// 유료 프로바이더가 1.1~1.5 를 받는 동안 둘만 중립에 묶여 콜드스타트에서 밀렸다.
+// 표를 손으로 늘리면 프로바이더가 바뀔 때마다 또 어긋나므로, 표에 없는 등록
+// 프로바이더는 config 의 capabilities/score 에서 파생한 값을 쓴다(derivedPrior).
+// 표에 적힌 값은 사람 판단이므로 그대로 존중하고 덮어쓰지 않는다.
 const COLD_START_PRIORS: Record<string, Record<string, number>> = {
   code:     { codex: 1.3, 'cursor-agent': 1.4, opencode: 1.2, agy: 1.0, copilot: 1.0 },
   design:   { opencode: 1.5, agy: 1.3, codex: 1.0, copilot: 1.1, 'cursor-agent': 1.0 },
@@ -52,6 +61,32 @@ const COLD_START_PRIORS: Record<string, Record<string, number>> = {
   media:    { higgsfield: 1.8, agy: 1.3 },
   general:  { opencode: 1.2, codex: 1.1, 'cursor-agent': 1.1 },
 };
+
+const DERIVED_PRIOR_FLOOR = 1.0;   // 중립. 역량이 맞지 않으면 여기 머문다.
+const DERIVED_PRIOR_SPAN = 0.09;   // 상한 1.09 — 큐레이션 최저 가산값(1.1) '미만'.
+                                   // 밴드를 0.2 로 뒀더니 general 에서 파생 1.2 가
+                                   // 큐레이션 최고값과 동률이 됐다. 파생은 사람 판단을
+                                   // 넘어설 수 없어야 하므로 큐레이션 구간과 겹치지 않게 낮춘다.
+
+/**
+ * 큐레이션 표에 없는 등록 프로바이더의 prior 를 config 에서 파생한다.
+ *
+ * provider-registry.capabilityRank(taskType) 는 config 의 capabilities 매칭 수와
+ * score 로 그 유형의 후보를 정렬한다. 그 순위를 [1.0, 1.09] 밴드로 사상한다.
+ * - 역량이 하나도 안 맞으면 후보 목록에 없으므로 1.0(중립) 유지
+ * - 밴드 상한이 큐레이션 최저 가산값(1.1) 미만이라, 큐레이션된 프로바이더 간
+ *   순위는 절대 바뀌지 않는다. 바뀌는 것은 예전에 모두 1.0 으로 동률이던
+ *   무-prior 그룹의 내부 순서뿐이다.
+ * 미등록 id 는 파생하지 않는다 — 퇴출된 프로바이더가 prior 를 얻으면 안 된다.
+ */
+function derivedPrior(agentId: string, taskType: string): number | undefined {
+  if (!isRegistered(agentId)) return undefined;
+  const ranked = capabilityRank(taskType as ProviderTaskType);
+  const position = ranked.indexOf(agentId);
+  if (position === -1) return undefined;
+  const span = Math.max(1, ranked.length - 1);
+  return DERIVED_PRIOR_FLOOR + DERIVED_PRIOR_SPAN * (1 - position / span);
+}
 
 export function computeOperationalReliabilityWeight(
   successRate: number,
@@ -80,7 +115,9 @@ class AdaptiveScorer {
 
       const domainPrior = COLD_START_PRIORS[taskType]?.[agentId];
       const globalPrior = COLD_START_PRIORS['general']?.[agentId];
-      const prior = domainPrior ?? globalPrior ?? 1.0;
+      // 큐레이션(도메인 → general) 이 있으면 그것이 우선이고, 없을 때만
+      // config 파생값을 쓴다. 마지막 폴백은 종전과 같은 중립 1.0.
+      const prior = domainPrior ?? globalPrior ?? derivedPrior(agentId, taskType) ?? 1.0;
       const updatedAt = typeof row?.last_updated === 'string' ? Date.parse(row.last_updated) : Number.NaN;
       const fresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= PERFORMANCE_FRESHNESS_MS;
 
