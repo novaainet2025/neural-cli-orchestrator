@@ -1,0 +1,119 @@
+{
+  "teamId": "team_content-build",
+  "teamSlug": "content-build",
+  "cycle": "2/3",
+  "author": "중복에러방지팀",
+  "date": "2026-07-29",
+  "action": "review_only",
+  "codeDiff": 0,
+  "lifecycleChanges": 0,
+  "hrDirective": {
+    "score": 61.3,
+    "completion": 62.5,
+    "sample": "48h/8",
+    "note": "score unchanged by design — no retroactive reclassification"
+  },
+  "rootCauseClass": "declared_prerequisite_block_misclassified_as_failure_or_false_completion",
+  "evidenceTasks": [
+    "task_eMva63ao2fjDYEaX",
+    "task_jX5LC9uaq8hTO4kP",
+    "task_-UDCDk5z_ewqwLGf",
+    "task_BDQvIauXahtPrvD3"
+  ],
+  "workflowDuplicateDispatch": {
+    "workflowRunId": "wfr_gPC_-rytCy-bkS4X",
+    "workflowStage": "review",
+    "totalDispatches": 5,
+    "duplicateAfterFirst": 4,
+    "executorSwaps": 4
+  },
+  "auto_audit_log_status": {
+    "path": "data/auto-audit/",
+    "exists": false,
+    "substitute": "tasks + work_events per learning doc"
+  },
+  "classificationRules": {
+    "legitimateBlocked": {
+      "gate": "parseBlockedStageOutcome + classifyDeclaredPrerequisiteBlock",
+      "requires": [
+        "prompt declares prerequisite",
+        "status: or error: prefix",
+        "STAGE_OUTCOME: BLOCKED",
+        "BLOCKER_FINGERPRINT (8-240 chars)",
+        "BLOCKER_EVIDENCE (non-placeholder, >=8 chars)",
+        "EVIDENCE_TIER: 1"
+      ],
+      "outcomes": {
+        "gateway": "cancelled / blocked-prerequisite: declared prerequisite unavailable",
+        "orchestrator": "stage=blocked, run=partial, downstream=skipped"
+      },
+      "retrySuppression": true
+    },
+    "unjustifiedBlocked": {
+      "description": "Natural-language BLOCKED or incomplete contract",
+      "outcome": "failed / failure-pattern: agent reported error",
+      "retrySuppression": false
+    },
+    "generalFailure": {
+      "examples": [
+        "discussion_insufficient_valid_proposals:0/2",
+        "failure-pattern: agent reported error",
+        "verifier failed"
+      ],
+      "blockerPromotion": false
+    }
+  },
+  "blockerFingerprintDedup": {
+    "normalize": "lowercase + whitespace collapse",
+    "scopeRun": "single fingerprint per run.blockerFingerprints",
+    "scopeCrossRun": "not suppressed — new run may retry",
+    "scopeCrossTask": "NOT IMPLEMENTED — G-CB-R3 proposed"
+  },
+  "circuitBreakerChanges": {
+    "failureThreshold": "unchanged (0 diff)",
+    "commandGate": "unchanged (0 diff)",
+    "rationale": "Root cause is classification/dispatch, not provider CB"
+  },
+  "proposedRules": [
+    {
+      "id": "G-CB-R1",
+      "status": "implemented",
+      "commit": "91d1848",
+      "file": "src/core/stage-outcome.ts"
+    },
+    {
+      "id": "G-CB-R2",
+      "status": "proposed",
+      "description": "Document gateway vs orchestrator fingerprint normalization map"
+    },
+    {
+      "id": "G-CB-R3",
+      "status": "proposed",
+      "description": "Block redispatch when (workflow_run_id, workflow_stage, prompt_sha3) + blocker fingerprint seen",
+      "applyAfter": "E2E 4-field emit observed"
+    }
+  ],
+  "regressionTests": {
+    "files": [
+      "src/core/blocked-outcome-audit.test.ts",
+      "src/server/detect-failed-completion.test.ts",
+      "src/core/company-orchestrator.test.ts"
+    ],
+    "itCounts": {
+      "blocked-outcome-audit": 14,
+      "detect-failed-completion": 18,
+      "company-orchestrator-structured-blocked": 3
+    },
+    "executionStatus": "unverified_this_session_shell_blocked"
+  },
+  "falsePositiveRisks": [
+    "weak non-placeholder evidence passes 4-field gate",
+    "over-broad prerequisite prompt regex"
+  ],
+  "falseNegativeRisks": [
+    "agents emit bare error: BLOCKED without contract",
+    "historical tasks remain failed",
+    "cross-task workflow redispatch without G-CB-R3"
+  ],
+  "rollback": "git revert 91d1848 for contract; delete this audit pair for report-only rollback"
+}
