@@ -225,6 +225,10 @@ export function findActiveWorkReportTask(
   `).get(workReportId) as ActiveWorkReportTask | undefined;
 }
 
+export function shouldApplyPromptGateForProvider(providerId?: string): boolean {
+  return providerId !== 'higgsfield';
+}
+
 export function applyPromptGate(prompt: string, metadata?: Record<string, unknown>): {
   prompt: string;
   promptGate: PromptGateInfo;

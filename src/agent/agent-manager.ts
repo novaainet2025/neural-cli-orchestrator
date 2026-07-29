@@ -195,27 +195,31 @@ class AgentManager {
       taskQueue.recordActivity(taskId);
 
       // ── HNSW Vector Memory: Pre-task semantic recall ─────
-      try {
-        const { vectorMemory } = await import('../core/vector-memory.js');
-        const personalMemories = await vectorMemory.search(agentId, prompt, 5);
-        const teamMemories = teamMemoryScope
-          ? await vectorMemory.search(teamMemoryScope, prompt, 5)
-          : [];
-        const memories = mergeMemoryContextEntries(
-          [personalMemories, teamMemories],
-          5,
-        );
-        if (memories.length > 0) {
-          const ctx = memories
-            .map(m => `- [score:${m.score.toFixed(2)}${m.semantic ? ',sem' : ',bm25'}] ${m.content.slice(0, 300)}`)
-            .join('\n');
-          prompt = prompt + `\n\n[장기 기억 컨텍스트 (자동 검색됨)]\n${ctx}\n`;
-          log.debug(
-            { agentId, teamMemoryScope, memCount: memories.length, semantic: memories[0]?.semantic },
-            'memory context injected',
+      // B_SINGLE_PROMPT providers (e.g. higgsfield) must receive only the
+      // user's original media prompt — no memory injection, no enrichment.
+      if (agentType !== 'B_SINGLE_PROMPT') {
+        try {
+          const { vectorMemory } = await import('../core/vector-memory.js');
+          const personalMemories = await vectorMemory.search(agentId, prompt, 5);
+          const teamMemories = teamMemoryScope
+            ? await vectorMemory.search(teamMemoryScope, prompt, 5)
+            : [];
+          const memories = mergeMemoryContextEntries(
+            [personalMemories, teamMemories],
+            5,
           );
-        }
-      } catch { /* non-critical */ }
+          if (memories.length > 0) {
+            const ctx = memories
+              .map(m => `- [score:${m.score.toFixed(2)}${m.semantic ? ',sem' : ',bm25'}] ${m.content.slice(0, 300)}`)
+              .join('\n');
+            prompt = prompt + `\n\n[장기 기억 컨텍스트 (자동 검색됨)]\n${ctx}\n`;
+            log.debug(
+              { agentId, teamMemoryScope, memCount: memories.length, semantic: memories[0]?.semantic },
+              'memory context injected',
+            );
+          }
+        } catch { /* non-critical */ }
+      }
 
       switch (agentType) {
         case 'A': {

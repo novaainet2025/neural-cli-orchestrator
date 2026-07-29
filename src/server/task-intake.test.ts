@@ -14,6 +14,7 @@ import {
   isPerformanceGoalInputPrompt,
   isTextOnlyPrompt,
   isWorkReportPrompt,
+  shouldApplyPromptGateForProvider,
   validateProjectDirMetadataWithFs,
 } from './task-intake.js';
 import { checkResponseQuality } from '../verification/response-quality.js';
@@ -414,6 +415,12 @@ describe('task-intake helpers', () => {
     expect(isCodeWorkPrompt('회의록 요약')).toBe(false);
     expect(inferTaskType('리팩터 진행')).toBe('refactor');
     expect(inferTaskType('새 모듈 구현')).toBe('implementation');
+  });
+
+  it('applies the prompt gate to normal or unspecified providers, but not higgsfield', () => {
+    expect(shouldApplyPromptGateForProvider('higgsfield')).toBe(false);
+    expect(shouldApplyPromptGateForProvider('codex')).toBe(true);
+    expect(shouldApplyPromptGateForProvider(undefined)).toBe(true);
   });
 
   it('normalizes work-report ids and finds the existing active task', () => {

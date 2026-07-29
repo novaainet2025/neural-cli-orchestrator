@@ -15,6 +15,7 @@ import {
   buildDefaultVerifier,
   findActiveWorkReportTask,
   getWorkReportId,
+  shouldApplyPromptGateForProvider,
   type PromptGateInfo,
   validateProjectDirMetadata,
 } from './task-intake.js';
@@ -1702,12 +1703,14 @@ export async function createGateway() {
         return { error: 'delegation_payload_rejected', detail: dp.error, knownAgents };
       }
     }
-    try {
-      const promptGateApplied = applyPromptGate(input.prompt, input.metadata);
-      input.prompt = promptGateApplied.prompt;
-      promptGate = promptGateApplied.promptGate;
-    } catch (err) {
-      log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Prompt gate failed during task intake');
+    if (shouldApplyPromptGateForProvider(input.ai)) {
+      try {
+        const promptGateApplied = applyPromptGate(input.prompt, input.metadata);
+        input.prompt = promptGateApplied.prompt;
+        promptGate = promptGateApplied.promptGate;
+      } catch (err) {
+        log.warn({ err: err instanceof Error ? err.message : String(err) }, 'Prompt gate failed during task intake');
+      }
     }
     // GATE-COLLAB-C3-R1: done:/status:/error:/question: 프로토콜 응답을 새 태스크로
     // 재변환하지 않는다 (cycle1: company-orchestrator 30건 재변환 T1).

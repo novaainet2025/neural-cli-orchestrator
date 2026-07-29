@@ -109,10 +109,13 @@ export function buildOrchestratedCliArgs(
         ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
         : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
     case 'agy':
+      // provider.model은 NCO 라우팅 별칭(`agy-internal`)일 수 있으며 AGY CLI의
+      // 실제 모델 ID가 아니다. AGY는 태스크가 명시한 override만 --model로 전달하고,
+      // 기본 실행은 AGY 자체 기본 모델 선택에 맡긴다.
       return [
         '--dangerously-skip-permissions',
         ...baseArgs,
-        ...(selectedModel ? ['--model', selectedModel] : []),
+        ...(model?.trim() ? ['--model', model.trim()] : []),
         '--print',
         prompt,
       ];

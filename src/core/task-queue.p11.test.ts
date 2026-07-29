@@ -113,6 +113,23 @@ describe('generic provider failover metadata gate', () => {
     expect(allowGenericProviderFailover({})).toBe(true);
     expect(allowGenericProviderFailover(undefined)).toBe(true);
   });
+
+  it('model이 비어있지 않으면 allowProviderFailover 여부와 무관하게 false', () => {
+    expect(allowGenericProviderFailover({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1' })).toBe(false);
+    expect(allowGenericProviderFailover({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1', allowProviderFailover: true })).toBe(false);
+    expect(allowGenericProviderFailover({ model: 'nvidia/llama-3.3-nemotron-super-49b-v1', allowProviderFailover: false })).toBe(false);
+  });
+
+  it('model이 빈 문자열이면 기존 동작 유지', () => {
+    expect(allowGenericProviderFailover({ model: '' })).toBe(true);
+    expect(allowGenericProviderFailover({ model: '', allowProviderFailover: false })).toBe(false);
+  });
+
+  it('model이 undefined이면 기존 동작 유지', () => {
+    expect(allowGenericProviderFailover({ allowProviderFailover: true })).toBe(true);
+    expect(allowGenericProviderFailover({})).toBe(true);
+    expect(allowGenericProviderFailover(undefined)).toBe(true);
+  });
 });
 
 describe('isEvolutionLearningRecoverableFailure (bounded cycle-2 recovery)', () => {

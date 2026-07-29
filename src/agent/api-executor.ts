@@ -472,7 +472,8 @@ export class ApiExecutor {
           }
 
           const message = err instanceof Error ? err.message : String(err);
-          const fallbackProviderId = this.provider.apiConfig?.fallback?.provider;
+          const hasExplicitModel = typeof options?.model === 'string' && options.model.trim() !== '';
+          const fallbackProviderId = hasExplicitModel ? null : this.provider.apiConfig?.fallback?.provider;
 
           if (fallbackProviderId && !attemptedProviders.has(fallbackProviderId)) {
             const fallbackProvider = getProvider(fallbackProviderId);
@@ -503,7 +504,9 @@ export class ApiExecutor {
     // 빈 완료를 성공으로 기록하면 위임자가 결과 유실을 감지 못한다 (nvidia 빈 결과 사건)
     if (!finalOutput.trim()) {
       const emptyError = new Error(`empty completion from provider '${agentId}' after ${iterations} iteration(s)`);
-      const fallbackProviderId = this.provider.apiConfig?.fallback?.provider;
+      const hasExplicitModel = typeof options?.model === 'string' && options.model.trim() !== '';
+      const fallbackProviderId = hasExplicitModel ? null : this.provider.apiConfig?.fallback?.provider;
+
       if (fallbackProviderId && !attemptedProviders.has(fallbackProviderId)) {
         const fallbackProvider = getProvider(fallbackProviderId);
         if (fallbackProvider?.enabled) {

@@ -70,7 +70,11 @@ const NL_PATTERNS = [
     args: ['query', 'query', 'path'] 
   },
   { regex: /^\s*(?:bash|run|exec|runCommand|명령\s+실행|실행)\s+(.+)\s*$/im, tool: 'runCommand', args: ['command'] },
-  { regex: /^\s*(?:test|runTest|테스트\s+실행|검증)\s+([^\s\n]+)?\s*$/im, tool: 'runTest', args: ['path'] },
+  { regex: /^\s*(?:test|runTest|테스트\s+실행)(?:\s+([^\s\n]+))?\s*$/im, tool: 'runTest', args: ['path'] },
+  // "검증 영수증:", "검증 결과:" 같은 보고서 제목을 테스트 경로로 오인하면
+  // `npm test -- 영수증:`을 반복 실행하며 에이전트 루프가 끝나지 않는다.
+  // 한국어 자연어 호출은 "검증" 단독 또는 "검증 실행 [path]"만 허용한다.
+  { regex: /^\s*검증(?:\s+실행(?:\s+([^\s\n]+))?)?\s*$/im, tool: 'runTest', args: ['path'] },
   { regex: /^\s*git\s+status\s*$/im, tool: 'gitStatus', args: [] },
   { regex: /^\s*git\s+diff\s*$/im, tool: 'gitDiff', args: [] },
   { regex: /^\s*(?:delete|remove|rm|파일\s+삭제|제거)\s+([^\s\n]+)\s*$/im, tool: 'deleteFile', args: ['path'] },

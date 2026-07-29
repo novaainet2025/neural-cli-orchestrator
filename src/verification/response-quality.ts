@@ -18,6 +18,14 @@ const TOOL_DESCRIPTION = /\b`?(?:searchCode|searchFiles|readFile|writeFile|editF
 // 빠지는 케이스 (실측: "[codex: no final response — process failed] — Reading additional input from stdin...")
 // 정상 응답 뒤에 마커가 꼬리로 붙는 경우는 통과해야 하므로 시작 위치만 검사한다.
 const ERROR_MARKER_START = /^\s*\[[\w-]+:\s*no final response\b/i;
+const QUANTITATIVE_PROJECTION = /(?:\b\d+(?:\.\d+)?\s*%(?:p|포인트)?[^\n.!?]{0,80}(?:향상|개선|증가|감소|효과)[^\n.!?]{0,80}(?:예상|기대|추정|전망)|(?:예상|기대|추정|전망)[^\n.!?]{0,80}\b\d+(?:\.\d+)?\s*%(?:p|포인트)?[^\n.!?]{0,80}(?:향상|개선|증가|감소|효과)|\b\d+(?:\.\d+)?\s*%[^\n.!?]{0,80}(?:improvement|increase|decrease|effect)[^\n.!?]{0,80}(?:expected|estimated|projected))/i;
+const UNVERIFIED_QUANTITATIVE_DISCLOSURE = /(?:근거(?:가|는)?\s*(?:없|부족)|근거\s*없이|미검증|검증\s*(?:불가|필요)|확인\s*(?:불가|필요)|날조|unknown|unverified|unsupported|without\s+evidence|not\s+verified)/i;
+
+export interface ResponseQualityOptions {
+  requireProtocolPrefix?: boolean;
+  rejectToolEchoes?: boolean;
+  rejectUnsupportedQuantitativeClaims?: boolean;
+}
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -78,9 +86,36 @@ function isSerializedToolCallEcho(text: string): boolean {
   }
 }
 
+function hasUnsupportedQuantitativeProjection(text: string): boolean {
+  return text
+    .split(/\r?\n|(?<=[.!?])\s+/)
+    .some(segment => (
+      QUANTITATIVE_PROJECTION.test(segment)
+      && !UNVERIFIED_QUANTITATIVE_DISCLOSURE.test(segment)
+    ));
+}
+
+/**
+ * Scope the semantic projection gate to the one observed failure path.
+ * task_qrxIUr3BQAgn8Ojy was a team_content-quality discussion task whose
+ * unverified "80% improvement expected" claim was persisted as completed.
+ */
+export function requiresContentQualityQuantitativeEvidence(
+  metadataJson: string | null | undefined,
+): boolean {
+  if (!metadataJson) return false;
+  try {
+    const metadata = JSON.parse(metadataJson) as Record<string, unknown>;
+    return metadata.teamId === 'team_content-quality'
+      && metadata.workflowStage === 'discussion';
+  } catch {
+    return false;
+  }
+}
+
 export function checkResponseQuality(
   text: string,
-  opts?: { requireProtocolPrefix?: boolean; rejectToolEchoes?: boolean },
+  opts?: ResponseQualityOptions,
 ): { pass: boolean; heuristics: string[] } {
   const heuristics: string[] = [];
   const normalized = text ?? '';
@@ -95,6 +130,12 @@ export function checkResponseQuality(
   }
   if (opts?.rejectToolEchoes && TOOL_DESCRIPTION.test(normalized)) {
     heuristics.push('TOOL_DESCRIPTION');
+  }
+  if (
+    opts?.rejectUnsupportedQuantitativeClaims
+    && hasUnsupportedQuantitativeProjection(protocolText)
+  ) {
+    heuristics.push('UNSUPPORTED_QUANTITATIVE_CLAIM');
   }
   // EMPTY_OR_SHORT는 빈 응답 또는 문자·숫자가 전혀 없는 기호/공백 잔해만 reject.
   // 단순 길이(<50) 기준은 정당한 단답("OK", "done: 통과")까지 reject해 retry cap을

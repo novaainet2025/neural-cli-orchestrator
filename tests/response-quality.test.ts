@@ -7,7 +7,10 @@ import {
   isCompanyOrchestratorQualityRetryOwner,
   loadRetryPayload,
 } from '../src/server/gateway.js';
-import { checkResponseQuality } from '../src/verification/response-quality.js';
+import {
+  checkResponseQuality,
+  requiresContentQualityQuantitativeEvidence,
+} from '../src/verification/response-quality.js';
 
 describe('response quality gate', () => {
   const testDbPath = resolve(env.ROOT, 'db/test-response-quality.db');
@@ -76,6 +79,49 @@ describe('response quality gate', () => {
       '"done: workflow implementation gate passed',
       { requireProtocolPrefix: true },
     ).heuristics).toContain('FORMAT_MISMATCH');
+  });
+
+  it('rejects the observed unsupported projection only in content-quality discussions', () => {
+    const metadata = JSON.stringify({
+      teamId: 'team_content-quality',
+      workflowRunId: 'wfr_MBseWr_vOB55BRRZ',
+      workflowStage: 'discussion',
+    });
+    const observedResponse = [
+      '반대 의견: 팀 내 N-표결은 토론 없이 진행된다.',
+      '최종 결론: 증거등급과 서면 기록 연동 시 토론-설계 강제 효과 80% 향상 예상.',
+    ].join('\n');
+    const strict = requiresContentQualityQuantitativeEvidence(metadata);
+
+    expect(strict).toBe(true);
+    expect(checkResponseQuality(observedResponse, {
+      rejectUnsupportedQuantitativeClaims: strict,
+    })).toEqual({
+      pass: false,
+      heuristics: ['UNSUPPORTED_QUANTITATIVE_CLAIM'],
+    });
+    expect(requiresContentQualityQuantitativeEvidence(JSON.stringify({
+      teamId: 'team_content-quality',
+      workflowStage: 'implementation',
+    }))).toBe(false);
+    expect(requiresContentQualityQuantitativeEvidence(JSON.stringify({
+      teamId: 'team_other',
+      workflowStage: 'discussion',
+    }))).toBe(false);
+  });
+
+  it('allows content-quality discussions to disclose an unverified projection', () => {
+    expect(checkResponseQuality(
+      'task_qrx의 "80% 향상 예상"은 verifier가 없어 미검증이다.',
+      { rejectUnsupportedQuantitativeClaims: true },
+    )).toEqual({ pass: true, heuristics: [] });
+  });
+
+  it('does not reject an observed percentage that is not a projection', () => {
+    expect(checkResponseQuality(
+      '최근 48시간 완료율은 87.5%로 관측됐다.',
+      { rejectUnsupportedQuantitativeClaims: true },
+    )).toEqual({ pass: true, heuristics: [] });
   });
 
   it('passes structured JSON responses including empty arrays (docs-ai edit-loop regression)', () => {

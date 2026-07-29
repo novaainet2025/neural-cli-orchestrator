@@ -39,6 +39,16 @@ const {
       concurrency: 1,
       persona: { systemPrompt: 'test api prompt' },
     },
+    {
+      id: 'higgsfield',
+      role: 'media',
+      type: 'cli',
+      command: 'higgsfield',
+      args: [],
+      env: {} as Record<string, string>,
+      model: 'flux_2',
+      persona: { systemPrompt: 'test higgsfield prompt' },
+    },
   ];
   return {
     mockProviders: providers,
@@ -101,10 +111,13 @@ vi.mock('../security/verification-gate.js', () => ({
   },
 }));
 
-vi.mock('../core/mem0-service.js', () => ({
-  mem0Service: {
-    search: vi.fn(async () => []),
-    add: vi.fn(),
+const mockVectorMemorySearch = vi.fn(async (_agentId: string, _query: string, _k?: number): Promise<any[]> => []);
+const mockVectorMemoryAdd = vi.fn();
+
+vi.mock('../core/vector-memory.js', () => ({
+  vectorMemory: {
+    search: mockVectorMemorySearch,
+    add: mockVectorMemoryAdd,
   },
 }));
 
@@ -143,9 +156,11 @@ import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js'
 describe('AgentManager', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockVectorMemorySearch.mockResolvedValue([]);
     circuitBreakerRegistry.reset('aider');
     circuitBreakerRegistry.reset('claude-code');
     circuitBreakerRegistry.reset('api-tools');
+    circuitBreakerRegistry.reset('higgsfield');
   });
 
   afterEach(() => {
@@ -312,5 +327,39 @@ describe('AgentManager', () => {
       agentId: 'api-tools',
     }));
     expect(circuitBreakerRegistry.getSnapshot('api-tools').state).toBe('closed');
+  });
+
+  it('passes only the exact original prompt to higgsfield without vector-memory lookup', async () => {
+    await agentManager.init();
+
+    const originalPrompt = 'a sunset over mountains with a lake reflection';
+    mockVectorMemorySearch.mockResolvedValueOnce([
+      { id: 'm1', agentId: 'higgsfield', content: 'some memory', score: 0.9, semantic: true, importance: 1, accessCount: 0, createdAt: '2026-01-01' } as any,
+    ]);
+
+    const result = await agentManager.executeTask('higgsfield', originalPrompt, {
+      projectDir: '/dummy/project',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('mocked output');
+
+    expect(mockExeca).toHaveBeenCalled();
+    const [cmd, args] = mockExeca.mock.calls[0];
+    const promptIndex = args.indexOf('--prompt');
+    const promptArg = args[promptIndex + 1];
+    expect(cmd).toBe('higgsfield');
+    expect(args).toEqual(['generate', 'create', 'flux_2', '--prompt', originalPrompt]);
+    expect(promptIndex).toBeGreaterThan(-1);
+    expect(promptArg).toBe(originalPrompt);
+    expect(promptArg).not.toContain('test higgsfield prompt');
+    expect(promptArg).not.toContain('## Fable Principles');
+    expect(promptArg).not.toContain('## Tools (XML)');
+    expect(promptArg).not.toContain('--- 자동 보강 ---');
+    expect(promptArg).not.toContain('장기 기억 컨텍스트');
+    expect(promptArg).not.toContain('some memory');
+    expect(mockVectorMemorySearch).not.toHaveBeenCalled();
+
+    agentManager.destroy();
   });
 });

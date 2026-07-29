@@ -364,7 +364,9 @@ export function isTransientFailure(result: TaskExecutionResult): boolean {
 // 회사/호출자가 명시적으로 팀 밖 provider failover를 금지한 태스크만 fail-closed.
 // 필드가 없는 기존 태스크는 legacy generic escalation을 유지한다.
 export function allowGenericProviderFailover(metadata: Record<string, unknown> | undefined): boolean {
-  return metadata?.allowProviderFailover !== false;
+  if (metadata?.allowProviderFailover === false) return false;
+  if (typeof metadata?.model === 'string' && metadata.model.trim() !== '') return false;
+  return true;
 }
 
 const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';

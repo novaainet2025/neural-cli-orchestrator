@@ -211,6 +211,51 @@ describe('ApiExecutor', () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
+  it('explicit model override 시에는 cross-provider fallback을 하지 않고 원래 provider 오류를 반환', async () => {
+    completionHandlers.set(
+      'http://127.0.0.1:8000/v1',
+      vi.fn().mockRejectedValue(new Error('Connection error')),
+    );
+    completionHandlers.set(
+      'http://localhost:11434/v1',
+      vi.fn().mockResolvedValue({
+        choices: [{ message: { content: 'ollama-ok' } }],
+        usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+      }),
+    );
+
+    const executor = new ApiExecutor(providerMap.get('hermes'), sandbox);
+    await expect(executor.run('task-model-override', 'prompt', {
+      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+    })).rejects.toThrow('Connection error');
+    expect(completionHandlers.get('http://localhost:11434/v1')).not.toHaveBeenCalled();
+    expect(openAiConfigs.map(cfg => cfg.baseURL)).toEqual(['http://127.0.0.1:8000/v1']);
+  });
+
+  it('explicit model override의 빈 completion은 fallback 없이 원래 provider 오류를 반환', async () => {
+    completionHandlers.set(
+      'http://127.0.0.1:8000/v1',
+      vi.fn().mockResolvedValue({
+        choices: [{ message: { content: '' } }],
+        usage: { prompt_tokens: 2, completion_tokens: 0, total_tokens: 2 },
+      }),
+    );
+    completionHandlers.set(
+      'http://localhost:11434/v1',
+      vi.fn().mockResolvedValue({
+        choices: [{ message: { content: 'ollama-ok' } }],
+        usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+      }),
+    );
+
+    const executor = new ApiExecutor(providerMap.get('hermes'), sandbox);
+    await expect(executor.run('task-empty-model-override', 'prompt', {
+      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+    })).rejects.toThrow("empty completion from provider 'hermes' after 1 iteration(s)");
+    expect(completionHandlers.get('http://localhost:11434/v1')).not.toHaveBeenCalled();
+    expect(openAiConfigs.map(cfg => cfg.baseURL)).toEqual(['http://127.0.0.1:8000/v1']);
+  });
+
   it('falls back from hermes to ollama when the primary provider fails', async () => {
     completionHandlers.set(
       'http://127.0.0.1:8000/v1',

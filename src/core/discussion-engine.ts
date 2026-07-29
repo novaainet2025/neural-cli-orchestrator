@@ -37,7 +37,13 @@ export interface DiscussionOptions {
   teamId?: string;
   companyRunId?: string;
   workflowRunId?: string;
+  /** 호출자가 지정한 실제 작업 저장소. 미지정일 때만 NCO 기본 PROJECT_DIR을 사용한다. */
+  projectDir?: string;
 }
+
+export const resolveDiscussionProjectDir = (
+  options: Pick<DiscussionOptions, 'projectDir'>
+): string => options.projectDir?.trim() || env.PROJECT_DIR;
 
 export interface DiscussionRoundResult {
   round: number;
@@ -258,6 +264,7 @@ class DiscussionEngine {
     let threshold = options.consensusThreshold || 0.8;
     const participants = options.providers || this.selectParticipants(options.mode);
     const initiator = options.initiator || 'claude-code';
+    const projectDir = resolveDiscussionProjectDir(options);
     const pidController = this.getSessionPid(sessionId);
     const trustScores = this.getSessionTrustScores(sessionId);
     this.getSessionReputationScores(sessionId);
@@ -309,7 +316,14 @@ class DiscussionEngine {
       type: 'discussion:round_started', sessionId, round: 1, totalRounds: maxRounds,
     });
 
-    const proposals = await this.collectResponses(sessionId, 1, 'proposal', participants, options.topic);
+    const proposals = await this.collectResponses(
+      sessionId,
+      1,
+      'proposal',
+      participants,
+      options.topic,
+      projectDir
+    );
     if (Object.keys(proposals).length === 0) {
       db.prepare(`
         UPDATE discussions
@@ -348,7 +362,7 @@ class DiscussionEngine {
       // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음
       const nonClaude = participants.filter(p => p !== 'claude-code');
       const evaluations = await this.collectResponsesSequential(
-        sessionId, round, 'evaluation', nonClaude, evalPrompt, allProposals,
+        sessionId, round, 'evaluation', nonClaude, evalPrompt, allProposals, projectDir,
       );
 
       const scores = this.extractScores(evaluations, participants);
@@ -381,7 +395,7 @@ class DiscussionEngine {
       try {
         const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
           systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
-          projectDir: env.PROJECT_DIR, // 일관성: 합성 단계도 projectDir 전달
+          projectDir,
           signal: AbortSignal.timeout(90_000),
         });
 
@@ -457,6 +471,7 @@ class DiscussionEngine {
     const sessionId = options.sessionId || createSessionId();
     const startTime = Date.now();
     const participants = options.providers || this.selectParticipants('hive');
+    const projectDir = resolveDiscussionProjectDir(options);
     const db = getDb();
 
     db.prepare(`
@@ -499,6 +514,7 @@ class DiscussionEngine {
         try {
           const result = await agentManager.executeTask(pid, options.topic, {
             systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
+            projectDir,
             signal: AbortSignal.timeout(120_000),
           });
           const output = requireDiscussionOutput(pid, result);
@@ -548,6 +564,7 @@ class DiscussionEngine {
 
     try {
       const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
+        projectDir,
         signal: AbortSignal.timeout(90_000),
       });
       synthesis = requireDiscussionOutput('claude-code', synthResult);
@@ -681,7 +698,8 @@ class DiscussionEngine {
     round: number,
     type: string,
     participants: string[],
-    prompt: string
+    prompt: string,
+    projectDir: string
   ): Promise<Record<string, string>> {
     const results = await Promise.allSettled(
       participants.map(async (pid) => {
@@ -694,7 +712,7 @@ class DiscussionEngine {
             compact: true,
             // projectDir 필수: Type B CLI(codex)는 metadata.projectDir 없으면 즉시 실패
             // (orchestrated-loop.ts assertTaskProjectDir) → 토론에서 codex 탈락 원인이었음
-            projectDir: env.PROJECT_DIR,
+            projectDir,
             // 180s: Type A(claude-code nested `claude -p` spawn)는 콜드스타트가 무거워
             // 120s abort로 "silent-failure: empty output" 발생 → 토론에서 claude-code 탈락 원인.
             // Type B/C는 먼저 끝나면 조기 반환하므로 ceiling만 상향(저위험).
@@ -795,6 +813,7 @@ class DiscussionEngine {
     participants: string[],
     basePrompt: string,
     proposalsSummary: string,
+    projectDir: string,
   ): Promise<Record<string, string>> {
     const responses: Record<string, string> = {};
     const accumulated: string[] = [];
@@ -814,7 +833,7 @@ class DiscussionEngine {
         const result = await agentManager.executeTask(pid, prompt, {
           systemPrompt: `R${round} (seq). Concisely build on evals.`,
           compact: true,
-          projectDir: env.PROJECT_DIR, // codex 등 Type B CLI projectDir 필수
+          projectDir,
           signal: AbortSignal.timeout(60_000),
         });
         const output = requireDiscussionOutput(pid, result);

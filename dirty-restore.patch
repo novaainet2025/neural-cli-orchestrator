@@ -1,0 +1,163 @@
+diff --git a/src/server/gateway.ts b/src/server/gateway.ts
+index f94ca19..5e0e249 100644
+--- a/src/server/gateway.ts
++++ b/src/server/gateway.ts
+@@ -15,6 +15,7 @@ import {
+   buildDefaultVerifier,
+   findActiveWorkReportTask,
+   getWorkReportId,
++  shouldEnrichPrompt,
+   type PromptGateInfo,
+   validateProjectDirMetadata,
+ } from './task-intake.js';
+@@ -35,6 +36,11 @@ import {
+ } from '../core/failure-learning.js';
+ import { computeTrustScores } from '../core/trust-scorer.js';
+ import { discussionEngine } from '../core/discussion-engine.js';
++import {
++  projectDiscussionTaskProgress,
++  projectTerminalTaskActivity,
++  type DiscussionProgressRow,
++} from '../core/discussion-progress.js';
+ import { sharedState, type AgentState } from '../core/shared-state.js';
+ import { eventBus, type NCOEvent } from '../core/event-bus.js';
+ import { discoverAcquisitions } from '../core/acquisition-discovery.js';
+@@ -46,7 +52,10 @@ import { parseIntent } from '../utils/intent-parser.js';
+ import { resolveInternalProjectDir } from '../utils/project-dir.js';
+ import { taskQueue } from '../core/task-queue.js';
+ import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
+-import { checkResponseQuality } from '../verification/response-quality.js';
++import {
++  checkResponseQuality,
++  requiresContentQualityQuantitativeEvidence,
++} from '../verification/response-quality.js';
+ import { vetAcquisitionCandidate } from '../security/acquisition-vetting.js';
+ import {
+   attachWorkflowTask,
+@@ -1333,6 +1342,8 @@ export async function createGateway() {
+     const quality = checkResponseQuality(response, {
+       requireProtocolPrefix: hasResponseContract(taskRow.prompt),
+       rejectToolEchoes: companyOwnsRetry,
++      rejectUnsupportedQuantitativeClaims:
++        requiresContentQualityQuantitativeEvidence(taskRow.metadata_json),
+     });
+     if (quality.pass) {
+       try {
+@@ -1703,7 +1714,10 @@ export async function createGateway() {
+       }
+     }
+     try {
+-      const promptGateApplied = applyPromptGate(input.prompt, input.metadata);
++      const shouldEnrich = shouldEnrichPrompt(input.ai ?? 'claude-code');
++      const promptGateApplied = shouldEnrich
++        ? applyPromptGate(input.prompt, input.metadata)
++        : { prompt: input.prompt, promptGate: undefined as PromptGateInfo | undefined };
+       input.prompt = promptGateApplied.prompt;
+       promptGate = promptGateApplied.promptGate;
+     } catch (err) {
+@@ -2195,14 +2209,60 @@ export async function createGateway() {
+     const task = db.prepare('SELECT id, status, progress, response, error, updated_at, last_activity_at FROM tasks WHERE id=?').get(id) as any;
+     if (!task) { reply.code(404); return { error: 'Task not found' }; }
+     const runtime = taskQueue.getTaskSnapshot(task.id);
++    const discussion = db.prepare(`
++      SELECT
++        d.status,
++        d.current_round,
++        d.max_rounds,
++        d.participants_json,
++        d.updated_at,
++        (
++          SELECT MAX(dm.created_at)
++          FROM discussion_messages dm
++          WHERE dm.discussion_id=d.id
++        ) AS latest_message_at,
++        (
++          SELECT COUNT(*)
++          FROM discussion_messages dm
++          WHERE dm.discussion_id=d.id
++            AND dm.round=MIN(d.max_rounds, d.current_round + 1)
++            AND dm.agent_id <> 'user'
++        ) AS active_round_response_count
++      FROM discussions d
++      WHERE d.task_id=?
++      ORDER BY d.created_at DESC
++      LIMIT 1
++    `).get(task.id) as DiscussionProgressRow | undefined;
++    const discussionProgress = discussion
++      ? projectDiscussionTaskProgress(discussion)
++      : null;
++    const terminalActivity = projectTerminalTaskActivity(
++      task.status,
++      task.progress,
++      runtime.liveness
++    );
+     return {
+       taskId: task.id,
+-      status: task.status,
+-      progress: task.progress,
++      status: discussionProgress?.status ?? task.status,
++      progress: discussionProgress?.progress ?? terminalActivity.progress,
+       result: task.response,
+       updatedAt: task.updated_at,
+-      lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
+-      liveness: runtime.liveness,
++      lastActivityAt:
++        discussionProgress?.lastActivityAt ??
++        runtime.lastActivityAt ??
++        task.last_activity_at ??
++        null,
++      liveness: discussionProgress?.liveness ?? terminalActivity.liveness,
++      ...(discussionProgress
++        ? {
++            provider: 'discussion',
++            currentStep: discussionProgress.currentStep,
++            discussionRound: discussionProgress.discussionRound,
++            discussionTotalRounds: discussionProgress.discussionTotalRounds,
++            discussionResponses: discussionProgress.discussionResponses,
++            discussionParticipants: discussionProgress.discussionParticipants,
++          }
++        : {}),
+     };
+   });
+ 
+@@ -3848,6 +3908,10 @@ export async function createGateway() {
+         teamId: teamId ?? undefined,
+         companyRunId: companyRunId ?? undefined,
+         workflowRunId,
++        projectDir:
++          typeof metadata.projectDir === 'string' && metadata.projectDir.trim()
++            ? metadata.projectDir.trim()
++            : undefined,
+       })
+         .then(report => {
+           try {
+@@ -3865,6 +3929,14 @@ export async function createGateway() {
+                 adoptedProposal: report.adoptedProposal,
+               },
+             }, db);
++            // Multi-agent modes do not pass through taskQueue's completion callback.
++            // Apply the same provisional-completion quality gate to the synthesized
++            // discussion result (observed: task_qrxIUr3BQAgn8Ojy).
++            void handleCompletedTaskQualityGate(taskId, report.adoptedProposal)
++              .catch(err => log.warn({
++                err: err instanceof Error ? err.message : String(err),
++                taskId,
++              }, 'Completed discussion task quality gate failed'));
+           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
+         })
+         .catch(err => {
+diff --git a/src/server/task-intake.ts b/src/server/task-intake.ts
+index d66e72f..cd57eee 100644
+--- a/src/server/task-intake.ts
++++ b/src/server/task-intake.ts
+@@ -225,6 +225,10 @@ export function findActiveWorkReportTask(
+   `).get(workReportId) as ActiveWorkReportTask | undefined;
+ }
+ 
++export function shouldEnrichPrompt(providerId: string): boolean {
++  return providerId !== 'higgsfield';
++}
++
+ export function applyPromptGate(prompt: string, metadata?: Record<string, unknown>): {
+   prompt: string;
+   promptGate: PromptGateInfo;

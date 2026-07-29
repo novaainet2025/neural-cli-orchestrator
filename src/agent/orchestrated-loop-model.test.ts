@@ -28,4 +28,15 @@ describe('task model override CLI propagation', () => {
       'Reply OK'
     )).not.toContain('--model');
   });
+
+  it('does not send the NCO agy-internal routing alias to AGY as a model', () => {
+    const args = buildOrchestratedCliArgs(
+      { id: 'agy', model: 'agy-internal' },
+      [],
+      'Reply OK'
+    );
+    expect(args).not.toContain('--model');
+    expect(args.at(-2)).toBe('--print');
+    expect(args.at(-1)).toBe('Reply OK');
+  });
 });
