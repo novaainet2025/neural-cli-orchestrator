@@ -30,6 +30,11 @@ const PERSIST_TYPES = new Set([
   'session:handoff',
   'discussion:started', 'discussion:completed',
   'discussion:round_completed', 'discussion:consensus_reached',
+  // 토론 라운드 1이 유효 제안 부족으로 실패하면 task.error는
+  // 'discussion_insufficient_valid_proposals:N/2' 집계 문자열만 남고 참가자별 원인
+  // (180s abort / CLI exit=1 / provider_unavailable)이 소실된다. 그 결과 팀 점수
+  // 귀속 감사에서 인프라 원인과 팀 원인을 Tier 1로 구분할 수 없다. 원인 보존용 추가.
+  'discussion:provider_failed', 'discussion:failed',
   'system:error', 'system:rate_limit',
   'provider:available',
 ]);

@@ -93,3 +93,78 @@ describe('EventBus stream cursors', () => {
     bus.destroy();
   });
 });
+
+describe('discussion failure-cause persistence', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    redis.xadd.mockResolvedValue('1784716000000-0');
+    redis.publish.mockResolvedValue(1);
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  const withRecordingDb = async (
+    event: Record<string, unknown>,
+  ): Promise<unknown[][]> => {
+    const rows: unknown[][] = [];
+    const { getDb } = await import('../storage/database.js');
+    vi.mocked(getDb).mockReturnValue({
+      prepare: () => ({ run: (...args: unknown[]) => rows.push(args) }),
+    } as never);
+
+    const bus = new EventBus();
+    await bus.publish(event as never);
+    bus.destroy();
+    return rows;
+  };
+
+  it('참가자별 토론 실패 원인을 agent_actions에 보존한다', async () => {
+    const rows = await withRecordingDb({
+      type: 'discussion:provider_failed',
+      sessionId: 'sess_audit',
+      agentId: 'agy',
+      round: 1,
+      error: 'TimeoutError: The operation was aborted due to timeout',
+    });
+
+    expect(rows).toHaveLength(1);
+    const [, agentId, actionType, , detailJson, , sessionId] = rows[0] as string[];
+    expect({ agentId, actionType, sessionId }).toEqual({
+      agentId: 'agy',
+      actionType: 'discussion:provider_failed',
+      sessionId: 'sess_audit',
+    });
+    expect(JSON.parse(detailJson).error).toContain('TimeoutError');
+  });
+
+  it('토론 전체 실패도 활성·제외 참가자와 함께 보존한다', async () => {
+    const rows = await withRecordingDb({
+      type: 'discussion:failed',
+      sessionId: 'sess_audit',
+      round: 1,
+      error: 'discussion_insufficient_valid_proposals:0/2',
+      activeParticipants: [],
+      excludedParticipants: ['ollama', 'agy', 'cursor-agent'],
+    });
+
+    expect(rows).toHaveLength(1);
+    const detail = JSON.parse((rows[0] as string[])[4]);
+    expect(detail.error).toBe('discussion_insufficient_valid_proposals:0/2');
+    expect(detail.excludedParticipants).toEqual(['ollama', 'agy', 'cursor-agent']);
+  });
+
+  it('보존 대상이 아닌 이벤트는 DB에 기록하지 않는다', async () => {
+    const rows = await withRecordingDb({
+      type: 'discussion:provider_started',
+      sessionId: 'sess_audit',
+      agentId: 'agy',
+      round: 1,
+    });
+
+    expect(rows).toHaveLength(0);
+  });
+});
