@@ -61,6 +61,7 @@ describe('normalizeGracefulShutdownInterruption', () => {
     try {
       manager.beginShutdown('SIGINT');
       expect(manager.runtimes.get('active-task').shutdownSignal).toBe('SIGINT');
+      expect(manager.getShutdownSignal('active-task')).toBe('SIGINT');
     } finally {
       manager.shutdownSignal = originalSignal;
       manager.runtimes = originalRuntimes;

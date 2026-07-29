@@ -58,6 +58,42 @@ export function formatProviderUnavailableError(
   return `provider_unavailable: ${agentId} (${snapshot.state}/${snapshot.reason ?? 'generic'})`;
 }
 
+const NON_CIRCUIT_CANCELLATION_RE =
+  /(?:graceful shutdown|SIGINT|exit(?:ed| code)?[=: ]*130\b|(?:CLI|subprocess|loop) cancel(?:led|ed)|abort signal|AbortError)/i;
+const EXECUTION_TIMEOUT_RE = /(?:timed out|timeout\()/i;
+
+/**
+ * User/process cancellation is not provider-health evidence.
+ *
+ * PM2 sends SIGINT to the process group during a graceful reload. Some CLIs
+ * expose that as exit 130 + "Aborting operation" without setting execa's
+ * isCanceled flag, so task-queue normalization happens too late to stop this
+ * catch path from incrementing the provider circuit. Timeouts remain relevant.
+ */
+export function isNonCircuitCancellation(
+  error: unknown,
+  abortReason?: string,
+  shutdownSignal?: string,
+): boolean {
+  const candidate = error as {
+    name?: unknown;
+    message?: unknown;
+    canceled?: unknown;
+  } | null;
+  const signal = [
+    abortReason ?? '',
+    shutdownSignal ?? '',
+    typeof candidate?.name === 'string' ? candidate.name : '',
+    typeof candidate?.message === 'string' ? candidate.message : '',
+  ].filter(Boolean).join('\n');
+
+  if (EXECUTION_TIMEOUT_RE.test(signal)) return false;
+  return Boolean(shutdownSignal)
+    || abortReason === 'cancelled'
+    || candidate?.canceled === true
+    || NON_CIRCUIT_CANCELLATION_RE.test(signal);
+}
+
 function killProcessGroup(pid: number | undefined): void {
   if (!pid) return;
   if (process.platform === 'win32') return;
@@ -417,15 +453,21 @@ class AgentManager {
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
       const abortReason = taskQueue.getAbortReason(taskId);
+      const shutdownSignal = taskQueue.getShutdownSignal(taskId);
       const partialOutput = taskQueue.getBufferedOutput(taskId);
       const errorMessage = abortReason || err?.message || 'unknown: execution failed';
       const terminalOutput = partialOutput || (err as { partialOutput?: string } | undefined)?.partialOutput || '';
-      if (abortReason !== 'cancelled') {
+      if (!isNonCircuitCancellation(err, abortReason, shutdownSignal)) {
         // terminalOutput(= tasks.response로 저장되는 값)을 함께 넘긴다. CLI 프로바이더의
         // HTTP 401 신호는 errorMessage(execa shortMessage = 명령 에코)에 없고 stdout 오류
         // 봉투에만 있어, 이 인자가 없으면 인증 실패가 generic 3연속 임계치로 떨어진다.
         // 분류 규칙·근거·롤백(NCO_CB_ERROR_ENVELOPE=off)은 circuit-breaker-registry.ts 참조.
         circuitBreakerRegistry.recordFailure(agentId, errorMessage, undefined, terminalOutput);
+      } else {
+        log.info(
+          { taskId, agentId, error: errorMessage },
+          'Skipped circuit failure for cancelled execution',
+        );
       }
 
       // 상태 복구 — 실패/타임아웃 시 idle로 복원

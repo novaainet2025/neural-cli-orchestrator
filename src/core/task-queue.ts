@@ -1804,6 +1804,10 @@ class TaskQueueManager {
     return this.runtimes.get(taskId)?.abortReason;
   }
 
+  getShutdownSignal(taskId: string): string | undefined {
+    return this.runtimes.get(taskId)?.shutdownSignal ?? undefined;
+  }
+
   getBufferedOutput(taskId: string): string {
     return this.runtimes.get(taskId)?.partialOutput ?? '';
   }

@@ -157,13 +157,18 @@ vi.mock('../security/trajectory-guard.js', () => ({
 
 vi.mock('../utils/logger.js', () => ({
   createLogger: () => ({
+    error: vi.fn(),
     info: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
   }),
 }));
 
-import { agentManager, formatProviderUnavailableError } from './agent-manager.js';
+import {
+  agentManager,
+  formatProviderUnavailableError,
+  isNonCircuitCancellation,
+} from './agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 describe('AgentManager', () => {
@@ -201,6 +206,53 @@ describe('AgentManager', () => {
       state: 'open',
       reason: 'quota',
     })).toBe('provider_unavailable: codex (open/quota)');
+  });
+
+  it('does not treat graceful process interruption as a circuit failure', async () => {
+    await agentManager.init();
+    mockExeca.mockResolvedValueOnce({
+      stdout: '',
+      stderr: 'Aborting operation...',
+      shortMessage: 'Command failed with exit code 130',
+      exitCode: 130,
+      isCanceled: false,
+      timedOut: false,
+    } as any);
+
+    const result = await agentManager.executeTask(
+      'cursor-agent',
+      'read-only cancellation regression',
+      { projectDir: '/dummy/project' },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/exit=130.*Aborting operation/i),
+    });
+    expect(circuitBreakerRegistry.getSnapshot('cursor-agent')).toMatchObject({
+      state: 'closed',
+      failureCount: 0,
+    });
+  });
+
+  it('keeps execution timeouts circuit-relevant', () => {
+    expect(isNonCircuitCancellation(
+      Object.assign(new Error('cursor-agent: CLI timed out'), { canceled: true }),
+    )).toBe(false);
+  });
+
+  it('requires a structural cancellation signal instead of loose abort text', () => {
+    expect(isNonCircuitCancellation(
+      new Error('provider failed while aborting operation'),
+    )).toBe(false);
+    expect(isNonCircuitCancellation(
+      new Error('provider failed with exit=1300'),
+    )).toBe(false);
+    expect(isNonCircuitCancellation(
+      new Error('provider exited with code 1'),
+      undefined,
+      'SIGINT',
+    )).toBe(true);
   });
 
   it('injects NCO_HOOK_DISABLED environment variable when spawning claude-code subprocess', async () => {
