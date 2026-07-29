@@ -1,4 +1,8 @@
-import { OrchestratedLoop } from './orchestrated-loop.js';
+import {
+  OrchestratedLoop,
+  preferCursorFallbackModel,
+  resolveCursorFallbackModel,
+} from './orchestrated-loop.js';
 import { ApiExecutor } from './api-executor.js';
 import { createSandbox, type SandboxManager } from '../security/sandbox-manager.js';
 import { verificationGate } from '../security/verification-gate.js';
@@ -22,6 +26,13 @@ function promptSummary(s: string): boolean {
 
 function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
   return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
+}
+
+function normalizeCliProbeOutput(output: string): string {
+  // Keep recovery probes aligned with production CLI execution, where color
+  // is disabled and any residual ANSI sequences are stripped before parsing.
+  // eslint-disable-next-line no-control-regex
+  return output.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '').trim();
 }
 
 function getTaskTimeoutMs(): number {
@@ -94,11 +105,13 @@ interface TaskResult {
 class AgentManager {
   private static readonly QUOTA_PROBE_INTERVAL_MS = 10 * 60_000;
   private static readonly QUOTA_PROBE_TIMEOUT_MS = 10_000;
+  private static readonly CLI_RECOVERY_PROBE_TIMEOUT_MS = 30_000;
   private sandboxes = new Map<string, SandboxManager>();
   private latencyHistory = new Map<string, number[]>();
   private providers = new Map<string, ProviderConfig>();
   private healthApiKeyCallCounts = new Map<string, number>();
   private lastQuotaProbeAt = new Map<string, number>();
+  private cliRecoveryProbes = new Set<string>();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
 
   async init(): Promise<void> {
@@ -179,7 +192,20 @@ class AgentManager {
     const signal = options?.signal
       ? AbortSignal.any([options.signal, wallClock])
       : wallClock;
-    if (slotHeld) circuitBreakerRegistry.bindProbeSlot(agentId, signal);
+    if (slotHeld && !circuitBreakerRegistry.bindProbeSlot(agentId, signal)) {
+      circuitBreakerRegistry.releaseProbeSlot(agentId, signal);
+      const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
+      return {
+        taskId,
+        agentId,
+        output: '',
+        iterations: 0,
+        toolCalls: 0,
+        success: false,
+        error: formatProviderUnavailableError(agentId, snapshot),
+        durationMs: Date.now() - startTime,
+      };
+    }
 
     try {
       // Publish task start
@@ -453,7 +479,12 @@ class AgentManager {
     return sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1];
   }
 
-  async probeProvider(agentId: string, prompt = 'PING', timeoutMs = 30_000): Promise<boolean> {
+  async probeProvider(
+    agentId: string,
+    prompt = 'PING',
+    timeoutMs = 30_000,
+    model?: string,
+  ): Promise<boolean> {
     const provider = this.providers.get(agentId);
     if (!provider) return false;
 
@@ -478,23 +509,36 @@ class AgentManager {
 
       if (!provider.command) return false;
       const { execa } = await import('execa');
-      const result = await execa(provider.command, this.buildProbeArgs(provider, prompt), {
+      const result = await execa(provider.command, this.buildProbeArgs(provider, prompt, model), {
         cwd: (await import('node:os')).tmpdir(),
         env: {
           ...buildProviderProcessEnv(provider.id, provider.env),
           NCO_HOOK_DISABLED: '1',
+          NO_COLOR: '1',
+          TERM: 'dumb',
         },
         reject: false,
         stdin: 'ignore',
         timeout: timeoutMs,
       });
-      return result.exitCode === 0 && !result.failed && !result.timedOut && !result.isCanceled;
+      const processSucceeded = result.exitCode === 0
+        && !result.failed
+        && !result.timedOut
+        && !result.isCanceled;
+      if (
+        processSucceeded
+        && provider.id === 'cursor-agent'
+        && prompt === 'Reply exactly: NCO_PROVIDER_PROBE_OK'
+      ) {
+        return normalizeCliProbeOutput(result.stdout) === 'NCO_PROVIDER_PROBE_OK';
+      }
+      return processSucceeded;
     } catch {
       return false;
     }
   }
 
-  private buildProbeArgs(provider: ProviderConfig, prompt: string): string[] {
+  private buildProbeArgs(provider: ProviderConfig, prompt: string, model?: string): string[] {
     switch (provider.id) {
       case 'claude-code':
         return [...provider.args, '-p', prompt, '--output-format', 'text'];
@@ -504,7 +548,15 @@ class AgentManager {
         // hermes = codex CLI 백엔드(gpt-5.6-terra). read-only 프로브 + 모델 강제.
         return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', ...(provider.model ? ['-m', provider.model] : []), prompt];
       case 'cursor-agent':
-        return [...provider.args, '-p', prompt, '--output-format', 'text'];
+        return [
+          ...provider.args,
+          '--print',
+          '--trust',
+          ...(model ? ['--model', model] : []),
+          '--output-format',
+          'text',
+          prompt,
+        ];
       case 'higgsfield':
         return ['generate', 'create', provider.model || 'higgsfield', '--prompt', prompt];
       default:
@@ -537,7 +589,58 @@ class AgentManager {
           await sharedState.setAgentState(id, { status: 'idle' });
         }
       }
+      const availability = circuitBreakerRegistry.getAvailability(id);
+      if (
+        id === 'cursor-agent'
+        && availability.status === 'probe'
+        && availability.reason === 'generic'
+      ) {
+        await this.probeGatedCliProvider(id);
+      }
       await sharedState.heartbeat(id);
+    }
+  }
+
+  private async probeGatedCliProvider(id: string): Promise<void> {
+    if (this.cliRecoveryProbes.has(id)) return;
+    const sandbox = this.sandboxes.get(id);
+    if (!sandbox || !sandbox.canExecute()) return;
+
+    const slotHeld = circuitBreakerRegistry.getSnapshot(id).state === 'half-open';
+    if (!slotHeld) return;
+
+    const controller = new AbortController();
+    if (!circuitBreakerRegistry.bindProbeSlot(id, controller.signal)) {
+      circuitBreakerRegistry.releaseProbeSlot(id, controller.signal);
+      return;
+    }
+    this.cliRecoveryProbes.add(id);
+    try {
+      const fallbackModel = id === 'cursor-agent'
+        ? resolveCursorFallbackModel()
+        : null;
+      const recovered = await this.probeProvider(
+        id,
+        'Reply exactly: NCO_PROVIDER_PROBE_OK',
+        AgentManager.CLI_RECOVERY_PROBE_TIMEOUT_MS,
+        fallbackModel ?? undefined,
+      );
+      if (recovered) {
+        if (fallbackModel) preferCursorFallbackModel(fallbackModel);
+        circuitBreakerRegistry.recordSuccess(id);
+      } else {
+        circuitBreakerRegistry.recordFailure(id, 'CLI recovery probe failed');
+      }
+      await eventBus.publish({
+        type: 'provider:recovery-probe',
+        agentId: id,
+        success: recovered,
+        model: fallbackModel ?? 'default',
+      });
+    } finally {
+      controller.abort();
+      circuitBreakerRegistry.releaseProbeSlot(id, controller.signal);
+      this.cliRecoveryProbes.delete(id);
     }
   }
 

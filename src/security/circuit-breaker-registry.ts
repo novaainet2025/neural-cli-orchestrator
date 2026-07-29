@@ -385,7 +385,10 @@ class CircuitBreakerRegistry {
   }
 
   canExecute(agentId: string, policy: CircuitBreakerPolicy = {}): boolean {
-    const current = this.ensure(agentId);
+    // Reclaim stale/expired state before acquiring a half-open slot. If this
+    // happened after attempts++ then a following observer(getSnapshot) could
+    // clear the freshly acquired slot and allow concurrent probes.
+    const current = this.recoverIfExpired(agentId);
     if (current.state === 'closed') return true;
     if (current.state === 'half-open') {
       const attempts = this.halfOpenAttempts.get(agentId) ?? 0;
@@ -573,49 +576,47 @@ class CircuitBreakerRegistry {
   }
 
   /**
-   * cooldown이 만료된 open 회로(비-auth)를 closed로 자가복구한다.
-   * 상태 전이는 canExecute()에서만 lazy하게 일어나므로, 태스크 유입이 없는 idle
-   * 프로바이더는 cooldown이 하루 전에 지나도 'open'에 영구 고착 → 대시보드가 'error'/
-   * '해제 대기'로 잘못 표시되던 버그(2026-07-26 nova-macstudio 실측: 6개 프로바이더가
-   * 만료 17~27h 경과 후에도 available=false)를 수정한다. 리포팅 메서드에서 호출.
+   * cooldown이 만료된 open 회로(비-auth)를 probe-ready half-open으로 전환한다.
+   * 관측(getSnapshot/listSnapshots)이 곧바로 closed로 만들면 스케줄러의 동시 호출이
+   * 모두 통과하는 thundering herd가 발생한다. half-open + 빈 세마포어로 전환하면
+   * 대시보드는 복구 가능 상태를 표시하면서도 canExecute()가 정확히 한 호출만 허용한다.
+   * provider:available은 실제 프로브 성공(recordSuccess) 전에는 발행하지 않는다.
    * auth는 cooldownUntil=null이라 대상 아님(키 수정 전까지 유지가 정상).
    *
    * P0-2: half-open도 자가복구 분기가 없으면 영구 고착될 수 있다(DB 실측:
    * copilot|half-open|2026-07-21, 5일째 — 유일한 프로브 슬롯을 점유한 태스크가 결과를
    * 기록하지 않고 사라진 경우). HALF_OPEN_TTL_MS(5분) 초과 후 살아 있는 실행 signal이
-   * 없는 고아 슬롯만 closed로 되돌려 다음 canExecute() 호출이 새 프로브를 시도할 수
-   * 있게 하는 사후 안전망이다(구조적 해결은 P0-3의 프로브 슬롯 세마포어).
+   * 없는 고아 슬롯만 비우고 probe-ready half-open으로 되돌려 다음 canExecute() 호출
+   * 하나만 새 프로브를 시도할 수 있게 하는 사후 안전망이다.
    */
   private recoverIfExpired(agentId: string): CircuitSnapshot {
     const current = this.ensure(agentId);
     const hasLiveProbe = Array.from(this.halfOpenProbeSignals.get(agentId) ?? [])
       .some(signal => !signal.aborted);
-    if (
-      (current.state === 'open' &&
-        current.reason !== 'auth' &&
-        current.cooldownUntil != null &&
-        Date.now() >= current.cooldownUntil) ||
-      (current.state === 'half-open' &&
-        current.openedAt != null &&
-        Date.now() - current.openedAt > HALF_OPEN_TTL_MS &&
-        !hasLiveProbe)
-    ) {
+    const cooldownExpired = current.state === 'open'
+      && current.reason !== 'auth'
+      && current.cooldownUntil != null
+      && Date.now() >= current.cooldownUntil;
+    const abandonedProbe = current.state === 'half-open'
+      && current.openedAt != null
+      && Date.now() - current.openedAt > HALF_OPEN_TTL_MS
+      && !hasLiveProbe;
+
+    if (cooldownExpired || abandonedProbe) {
+      this.halfOpenAttempts.delete(agentId);
+      this.halfOpenProbeSignals.delete(agentId);
       const next: CircuitSnapshot = {
-        agentId,
-        state: 'closed',
+        ...current,
+        state: 'half-open',
         failureCount: 0,
-        openedAt: null,
-        cooldownUntil: null,
-        reason: null,
+        openedAt: Date.now(),
       };
-      this.commit(next, 'Circuit auto-recovered after cooldown expiry (idle)');
-      void eventBus.publish({
-        type: 'provider:available',
-        agentId,
-        previousState: current.state,
-        state: 'closed',
-        reasonCleared: current.reason,
-      });
+      this.commit(
+        next,
+        cooldownExpired
+          ? 'Circuit became probe-ready after cooldown expiry'
+          : 'Circuit reclaimed abandoned half-open probe slot',
+      );
       return next;
     }
     return current;
@@ -656,9 +657,8 @@ class CircuitBreakerRegistry {
 
   /**
    * 모든 회로를 스캔하여 만료된 cooldown/open 회로와 5분 초과 고아 half-open
-   * 회로를 closed로 자가복구한다. 한 번에 한 에이전트씩 순차 처리하며, 복구·미복구
-   * 수를 반환한다. 외부 크론/health monitor에서 주기적으로 호출하면 open 고착
-   * 문제를 완화한다(실측: 2026-07-27 기준 claude-code 1268건 실패 — 72.8% 차지).
+   * 회로를 probe-ready half-open으로 전환한다. recovered는 닫힘이 아니라 단일
+   * 복구 프로브를 받을 준비가 끝난 회로 수다.
    */
   recoverAll(): { recovered: number; open: number; total: number } {
     const agentIds = Array.from(this.states.keys());
@@ -667,7 +667,13 @@ class CircuitBreakerRegistry {
     for (const agentId of agentIds) {
       const before = this.states.get(agentId);
       const after = this.getSnapshot(agentId);
-      if (before && (before.state === 'open' || before.state === 'half-open') && after.state === 'closed') recovered++;
+      if (before && before.state === 'open' && after.state === 'half-open') recovered++;
+      if (
+        before
+        && before.state === 'half-open'
+        && after.state === 'half-open'
+        && before.openedAt !== after.openedAt
+      ) recovered++;
       if (after.state === 'open') open++;
     }
     return { recovered, open, total: agentIds.length };

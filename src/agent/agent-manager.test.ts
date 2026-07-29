@@ -49,6 +49,16 @@ const {
       model: 'flux_2',
       persona: { systemPrompt: 'test higgsfield prompt' },
     },
+    {
+      id: 'cursor-agent',
+      role: 'review',
+      type: 'cli',
+      command: 'cursor-agent',
+      args: [],
+      env: {} as Record<string, string>,
+      model: 'cursor',
+      persona: { systemPrompt: 'test cursor prompt' },
+    },
   ];
   return {
     mockProviders: providers,
@@ -57,6 +67,9 @@ const {
     mockChatCreate: vi.fn(),
     mockEventPublish: vi.fn(async () => undefined),
     mockExeca: vi.fn(async (cmd: string, args: string[], opts: any) => {
+      if (cmd === 'cursor-agent' && args.includes('Reply exactly: NCO_PROVIDER_PROBE_OK')) {
+        return { stdout: 'NCO_PROVIDER_PROBE_OK', stderr: '', exitCode: 0 };
+      }
       return { stdout: 'mocked output', stderr: '', exitCode: 0 };
     }),
   };
@@ -161,6 +174,7 @@ describe('AgentManager', () => {
     circuitBreakerRegistry.reset('claude-code');
     circuitBreakerRegistry.reset('api-tools');
     circuitBreakerRegistry.reset('higgsfield');
+    circuitBreakerRegistry.reset('cursor-agent');
   });
 
   afterEach(() => {
@@ -225,6 +239,91 @@ describe('AgentManager', () => {
     expect(opts.timeout).toBe(30_000);
 
     agentManager.destroy();
+  });
+
+  it('accepts an ANSI-wrapped exact Cursor recovery response with non-color env parity', async () => {
+    await agentManager.init();
+    mockExeca.mockResolvedValueOnce({
+      stdout: '\u001b[32mNCO_PROVIDER_PROBE_OK\u001b[0m\n',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const recovered = await agentManager.probeProvider(
+      'cursor-agent',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+      30_000,
+      'composer-2.5',
+    );
+
+    expect(recovered).toBe(true);
+    const [, , opts] = mockExeca.mock.calls[0];
+    expect(opts.env).toMatchObject({
+      NO_COLOR: '1',
+      TERM: 'dumb',
+    });
+  });
+
+  it('uses one explicit fallback-model probe before closing a recovered Cursor circuit', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-29T05:00:00.000Z'));
+    await agentManager.init();
+
+    circuitBreakerRegistry.recordFailure('cursor-agent', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    vi.advanceTimersByTime(50);
+
+    await (agentManager as any).probeGatedCliProvider('cursor-agent');
+
+    expect(mockExeca).toHaveBeenCalledTimes(1);
+    const [command, args] = mockExeca.mock.calls[0];
+    expect(command).toBe('cursor-agent');
+    expect(args).toEqual(expect.arrayContaining([
+      '--print',
+      '--trust',
+      '--model',
+      'composer-2.5',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+    ]));
+    expect(circuitBreakerRegistry.getSnapshot('cursor-agent').state).toBe('closed');
+    expect(mockEventPublish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'provider:recovery-probe',
+      agentId: 'cursor-agent',
+      success: true,
+    }));
+  });
+
+  it('reopens the Cursor circuit when the recovery probe returns the wrong output', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-29T05:00:00.000Z'));
+    await agentManager.init();
+    mockExeca.mockResolvedValueOnce({
+      stdout: 'unexpected response',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    circuitBreakerRegistry.recordFailure('cursor-agent', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    vi.advanceTimersByTime(50);
+
+    await (agentManager as any).probeGatedCliProvider('cursor-agent');
+
+    expect(circuitBreakerRegistry.getSnapshot('cursor-agent')).toMatchObject({
+      state: 'open',
+      reason: 'generic',
+    });
+    expect(mockEventPublish).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'provider:recovery-probe',
+      agentId: 'cursor-agent',
+      success: false,
+    }));
   });
 
   it('executes one Type B iteration while holding the sole half-open probe slot', async () => {

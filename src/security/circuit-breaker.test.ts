@@ -239,10 +239,12 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.canExecute()).toBe(false);
 
     controller.abort();
-    expect(breaker.getState()).toBe('closed');
+    expect(breaker.getState()).toBe('half-open');
+    expect(breaker.canExecute()).toBe(true);
+    expect(breaker.canExecute()).toBe(false);
   });
 
-  it('reclaims an abandoned half-open slot after the five-minute TTL', () => {
+  it('reclaims an abandoned half-open slot without allowing a retry burst', () => {
     const breaker = new CircuitBreaker('abandoned-probe-ttl-test', {
       failureThreshold: 1,
       resetTimeoutMs: 50,
@@ -256,11 +258,37 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.getState()).toBe('half-open');
 
     vi.advanceTimersByTime(5 * 60_000 + 1);
-    expect(breaker.getState()).toBe('closed');
+    expect(breaker.getState()).toBe('half-open');
     expect(breaker.canExecute()).toBe(true);
+    expect(breaker.canExecute()).toBe(false);
   });
 
-  it('recoverAll recovers expired open circuits and reports counts', () => {
+  it('does not let an observer clear a slot acquired from an expired half-open circuit', () => {
+    const breaker = new CircuitBreaker('expired-half-open-interleave-test', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    const controller = new AbortController();
+    breaker.reset();
+    breaker.recordFailure('boom');
+    vi.advanceTimersByTime(50);
+
+    expect(breaker.canExecute()).toBe(true);
+    vi.advanceTimersByTime(5 * 60_000 + 1);
+
+    // canExecute() must reclaim first, then acquire. A subsequent observer
+    // must not delete that just-acquired attempt before it is signal-bound.
+    expect(breaker.canExecute()).toBe(true);
+    expect(breaker.getState()).toBe('half-open');
+    expect(circuitBreakerRegistry.bindProbeSlot(
+      'expired-half-open-interleave-test',
+      controller.signal,
+    )).toBe(true);
+    expect(breaker.canExecute()).toBe(false);
+  });
+
+  it('recoverAll makes expired open circuits probe-ready without closing them', () => {
     const breaker1 = new CircuitBreaker('recover-a', {
       failureThreshold: 1,
       resetTimeoutMs: 50,
@@ -280,6 +308,10 @@ describe('CircuitBreaker configuration', () => {
     vi.advanceTimersByTime(50);
     r = circuitBreakerRegistry.recoverAll();
     expect(r.recovered).toBeGreaterThanOrEqual(1);
+    expect(breaker1.getState()).toBe('half-open');
+    expect(breaker1.canExecute()).toBe(true);
+    expect(breaker1.canExecute()).toBe(false);
+    breaker1.recordSuccess();
     expect(breaker1.getState()).toBe('closed');
   });
 });

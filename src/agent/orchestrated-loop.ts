@@ -142,6 +142,148 @@ function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null
   return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
 }
 
+const DEFAULT_CURSOR_FALLBACK_MODEL = 'composer-2.5';
+const DEFAULT_CURSOR_FALLBACK_TTL_MS = 10 * 60_000;
+const CURSOR_MODEL_PROVIDER_ERROR_RE =
+  /NonRetriableError:\s*Provider Error[\s\S]{0,500}trouble connecting to the model provider/i;
+const DISABLED_CURSOR_FALLBACK_VALUES = new Set(['0', 'false', 'off', 'none', 'disabled']);
+let cursorFallbackPreference: { model: string; until: number } | null = null;
+
+export function resolveCursorFallbackModel(
+  configured: string | undefined = process.env.NCO_CURSOR_FALLBACK_MODEL,
+): string | null {
+  const normalized = configured?.trim();
+  if (!normalized) return DEFAULT_CURSOR_FALLBACK_MODEL;
+  if (DISABLED_CURSOR_FALLBACK_VALUES.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
+
+export function resolveCursorFallbackTtlMs(
+  configured: string | undefined = process.env.NCO_CURSOR_FALLBACK_TTL_MS,
+): number {
+  if (!configured?.trim()) return DEFAULT_CURSOR_FALLBACK_TTL_MS;
+  const parsed = Number(configured);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.min(Math.max(Math.trunc(parsed), 30_000), 60 * 60_000);
+}
+
+export function preferCursorFallbackModel(
+  model: string,
+  ttlMs = resolveCursorFallbackTtlMs(),
+  now = Date.now(),
+): void {
+  if (!model.trim() || ttlMs <= 0) {
+    cursorFallbackPreference = null;
+    return;
+  }
+  cursorFallbackPreference = {
+    model: model.trim(),
+    until: now + ttlMs,
+  };
+}
+
+export function clearCursorFallbackPreference(): void {
+  cursorFallbackPreference = null;
+}
+
+function preferredCursorFallbackModel(
+  fallbackModel: string | null,
+  now = Date.now(),
+): string | null {
+  if (
+    !fallbackModel
+    || !cursorFallbackPreference
+    || cursorFallbackPreference.model !== fallbackModel
+    || cursorFallbackPreference.until <= now
+  ) {
+    if (cursorFallbackPreference?.until != null && cursorFallbackPreference.until <= now) {
+      cursorFallbackPreference = null;
+    }
+    return null;
+  }
+  return cursorFallbackPreference.model;
+}
+
+export function shouldFallbackCursorModel(input: {
+  providerId: string;
+  providerModel?: string | null;
+  requestedModel?: string;
+  error: unknown;
+  fallbackModel: string | null;
+}): boolean {
+  if (input.providerId !== 'cursor-agent' || !input.fallbackModel) return false;
+  if (input.requestedModel?.trim()) return false;
+
+  const providerModel = input.providerModel?.trim().toLowerCase();
+  if (providerModel && providerModel !== 'cursor' && providerModel !== 'auto') return false;
+
+  const candidate = input.error as {
+    message?: unknown;
+    output?: unknown;
+    canceled?: unknown;
+  } | null;
+  if (candidate?.canceled === true) return false;
+
+  const signal = [
+    typeof candidate?.message === 'string' ? candidate.message : '',
+    typeof candidate?.output === 'string' ? candidate.output : '',
+  ].filter(Boolean).join('\n');
+  return CURSOR_MODEL_PROVIDER_ERROR_RE.test(signal);
+}
+
+export async function executeWithCursorModelFallback<T>(input: {
+  providerId: string;
+  providerModel?: string | null;
+  requestedModel?: string;
+  fallbackModel?: string | null;
+  execute: (model?: string) => Promise<T>;
+  onFallback?: (context: {
+    failedModel: string;
+    fallbackModel: string;
+    error: unknown;
+  }) => void | Promise<void>;
+}): Promise<T> {
+  const fallbackModel = input.fallbackModel === undefined
+    ? resolveCursorFallbackModel()
+    : input.fallbackModel;
+  const providerModel = input.providerModel?.trim().toLowerCase();
+  const defaultCursorRoute = input.providerId === 'cursor-agent'
+    && !input.requestedModel?.trim()
+    && (!providerModel || providerModel === 'cursor' || providerModel === 'auto');
+  const preferredFallback = defaultCursorRoute
+    ? preferredCursorFallbackModel(fallbackModel)
+    : null;
+  const initialModel = preferredFallback ?? input.requestedModel;
+
+  try {
+    return await input.execute(initialModel);
+  } catch (error) {
+    // A preferred fallback is already the single bounded retry route. If it
+    // fails, bubble immediately so AgentManager can open the circuit.
+    if (preferredFallback) throw error;
+    if (!shouldFallbackCursorModel({
+      providerId: input.providerId,
+      providerModel: input.providerModel,
+      requestedModel: input.requestedModel,
+      error,
+      fallbackModel,
+    })) {
+      throw error;
+    }
+
+    await input.onFallback?.({
+      failedModel: input.providerModel?.trim() || 'auto',
+      fallbackModel: fallbackModel!,
+      error,
+    });
+    // Deliberately execute the fallback exactly once. A second failure bubbles
+    // to AgentManager so the circuit breaker can gate the provider normally.
+    const result = await input.execute(fallbackModel!);
+    preferCursorFallbackModel(fallbackModel!);
+    return result;
+  }
+}
+
 class CliExecutionError extends Error {
   constructor(
     message: string,
@@ -339,6 +481,52 @@ export class OrchestratedLoop {
   }
 
   private async callCLI(
+    taskId: string,
+    system: string,
+    history: Array<{ role: string; content: string }>,
+    disableHistory = false,
+    model?: string,
+  ): Promise<string> {
+    return executeWithCursorModelFallback({
+      providerId: this.provider.id,
+      providerModel: this.provider.model,
+      requestedModel: model,
+      execute: selectedModel => this.callCLIOnce(
+        taskId,
+        system,
+        history,
+        disableHistory,
+        selectedModel,
+      ),
+      onFallback: async ({ failedModel, fallbackModel, error }) => {
+        log.warn({
+          agentId: this.provider.id,
+          taskId,
+          failedModel,
+          fallbackModel,
+          error: error instanceof Error ? error.message : String(error),
+        }, 'Retrying Cursor Agent once with fallback model');
+        try {
+          await eventBus.publish({
+            type: 'provider:model-fallback',
+            agentId: this.provider.id,
+            taskId,
+            failedModel,
+            fallbackModel,
+            reason: 'transient-model-provider-error',
+          });
+        } catch (publishError) {
+          log.warn({
+            agentId: this.provider.id,
+            taskId,
+            error: publishError instanceof Error ? publishError.message : String(publishError),
+          }, 'Failed to publish Cursor model fallback event');
+        }
+      },
+    });
+  }
+
+  private async callCLIOnce(
     taskId: string,
     system: string,
     history: Array<{ role: string; content: string }>,
