@@ -24,6 +24,7 @@ import {
   isProtocolReconversionGateEnabled,
   isProtocolReconversionPrompt,
 } from '../core/collaboration.js';
+import { parseBlockedStageOutcome } from '../core/stage-outcome.js';
 import { fleetGateway, hiveRelay, getPaInbox, paLifecycle } from '../core/ported-integrations.js';
 import type { LifecycleMode } from '../core/pa-lifecycle.js';
 import { decompose, getLeaves, countNodes } from '../core/recursive-decomposer.js';
@@ -84,7 +85,10 @@ type TaskFailureContext = {
   team_id?: string | null;
 };
 
-type FailedCompletionOptions = { reportMode?: boolean };
+type FailedCompletionOptions = {
+  reportMode?: boolean;
+  prompt?: string | null;
+};
 
 type FailurePattern = {
   reason: string;
@@ -147,6 +151,29 @@ function matchFailureReason(text: string, patterns: readonly FailurePattern[]): 
   return patterns.find(({ pattern }) => pattern.test(text))?.reason;
 }
 
+const DECLARED_PREREQUISITE_BLOCK_REASON =
+  'blocked-prerequisite: declared prerequisite unavailable';
+
+/**
+ * A declared prerequisite block is a policy-safe terminal outcome, not an
+ * execution failure. Require both sides of the contract so an agent cannot
+ * evade a real failure by merely prefixing its response with "BLOCKED".
+ */
+export function classifyDeclaredPrerequisiteBlock(
+  response: string | null | undefined,
+  options: FailedCompletionOptions = {},
+): string | undefined {
+  if (!response || !options.prompt) return undefined;
+  const promptDeclaresPrerequisite =
+    /\bprerequisites?\b|\bapproved\s+[\w -]{0,80}\bonly\b|선행\s*조건|승인(?:된)?[^\n.]{0,80}(?:만\s*(?:입력|사용)|후(?:에만)?)/i
+      .test(options.prompt);
+  if (!promptDeclaresPrerequisite) return undefined;
+
+  return parseBlockedStageOutcome(response)
+    ? DECLARED_PREREQUISITE_BLOCK_REASON
+    : undefined;
+}
+
 export function isTextReportTask(task: TaskFailureContext): boolean {
   const prompt = task.prompt?.trimStart() ?? '';
   if (prompt.startsWith('[업무보고') || prompt.startsWith('[팀 상시 임무')) return true;
@@ -161,6 +188,7 @@ export function classifyFailedCompletionReason(
   options: FailedCompletionOptions = {},
 ): string | undefined {
   if (!response) return undefined;
+  if (classifyDeclaredPrerequisiteBlock(response, options)) return undefined;
   const text = response.trim();
 
   // 성공 프로토콜 가드(2026-07-16, claude-2 관측 + T1 실데이터: 2일 7건 중 4건 오탐).
@@ -230,20 +258,25 @@ export function resolveTaskTerminalOutcome(
   status: 'completed' | 'failed' | 'timed_out' | 'cancelled';
   error?: string;
 } {
+  const prerequisiteBlock = classifyDeclaredPrerequisiteBlock(result.output, options);
   const classifiedFailure = classifyFailedCompletionReason(result.output, options);
   const status = result.status === 'cancelled'
     ? 'cancelled'
-    : result.status === 'timed_out'
+    : prerequisiteBlock
+      ? 'cancelled'
+      : result.status === 'timed_out'
         || result.error === 'timeout(idle)'
         || result.error === 'timeout(hardcap)'
-      ? 'timed_out'
-      : result.success && !classifiedFailure
-        ? 'completed'
-        : 'failed';
+        ? 'timed_out'
+        : result.success && !classifiedFailure
+          ? 'completed'
+          : 'failed';
 
   return {
     status,
-    error: status === 'completed' ? undefined : buildFailureError(result, options),
+    error: status === 'completed'
+      ? undefined
+      : prerequisiteBlock ?? buildFailureError(result, options),
   };
 }
 
@@ -1986,7 +2019,10 @@ export async function createGateway() {
       prompt: input.prompt,
       team_id: typeof input.metadata?.teamId === 'string' ? input.metadata.teamId : null,
     };
-    const failureDetectionOptions = { reportMode: isTextReportTask(taskFailureContext) };
+    const failureDetectionOptions = {
+      reportMode: isTextReportTask(taskFailureContext),
+      prompt: input.prompt,
+    };
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
     taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, model: input.model, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), ...(input.model ? { model: input.model } : {}), invocationId } })
@@ -3873,7 +3909,7 @@ export async function createGateway() {
             const terminalOutcome = resolveTaskTerminalOutcome({
               ...result,
               output: cResp,
-            });
+            }, { prompt });
             let cStatus = terminalOutcome.status;
             let cError = terminalOutcome.error ?? null;
             // P1-6 evidence-gate opt-in 하드차단: requiredEvidence 선언 태스크는 증거 충족 시에만 완료.

@@ -27,6 +27,11 @@ import {
   buildProtocolSafeHandoff,
   parseCollaborationProtocol,
 } from './collaboration.js';
+import {
+  BLOCKED_STAGE_OUTCOME_CONTRACT,
+  parseBlockedStageOutcome,
+  type BlockedStageOutcome,
+} from './stage-outcome.js';
 import { discussionEngine } from './discussion-engine.js';
 import {
   createWorkflowRun,
@@ -64,7 +69,7 @@ export type RunStatus =
   | 'pending' | 'decomposing' | 'planned' | 'dispatching' | 'running'
   | 'dispatched' | 'completed' | 'failed' | 'partial' | 'cancelled';
 export type StageStatus =
-  | 'pending' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled' | 'skipped';
+  | 'pending' | 'running' | 'completed' | 'failed' | 'timed_out' | 'cancelled' | 'skipped' | 'blocked';
 
 export interface TeamRow {
   id: string;
@@ -91,6 +96,9 @@ export interface RunStage {
   outputChars?: number;    // 산출물 길이(빈 산출물 진단)
   attempt?: number;        // 순차 failover: 몇 번째 후보에서 처리됐는지
   retryCount?: number;     // 병렬 재시도 횟수(0=재시도 없음)
+  blockerFingerprint?: string;
+  blockerEvidence?: string;
+  blockerEvidenceTier?: 1;
 }
 
 export interface CompanyRun {
@@ -112,7 +120,15 @@ export interface CompanyRun {
   decomposeSource: 'llm' | 'template' | null;
   workflowRunId?: string | null;
   stages: RunStage[];
-  summary?: { total: number; succeeded: number; failed: number; retried: number; skipped?: number };
+  summary?: {
+    total: number;
+    succeeded: number;
+    failed: number;
+    retried: number;
+    skipped?: number;
+    blocked?: number;
+  };
+  blockerFingerprints?: string[];
   iteration?: number;   // 루프 앤진: 몇 번째 완료-루프 반복인지(1부터)
   error?: string;
   portDecision?: 'approve' | 'reject' | 'undetermined';
@@ -666,6 +682,7 @@ function parsePersistedRun(value: string): CompanyRun | null {
     parsed.completedIterations = Math.max(0, parsed.completedIterations ?? 0);
     parsed.resumeCount = Math.max(0, parsed.resumeCount ?? 0);
     parsed.workflowRunId ??= null;
+    parsed.blockerFingerprints = [...new Set(parsed.blockerFingerprints ?? [])];
     return parsed;
   } catch {
     return null;
@@ -712,6 +729,11 @@ const TERMINAL_RUN_FOR_CANCEL = new Set<RunStatus>([
 /** True when the run driver must stop dispatching further work. */
 export function isCompanyRunCancelled(run: CompanyRun): boolean {
   return run.status === 'cancelled';
+}
+
+export function isCompanyRunBlocked(run: CompanyRun): boolean {
+  return (run.blockerFingerprints?.length ?? 0) > 0
+    || run.stages.some((stage) => stage.status === 'blocked');
 }
 
 /**
@@ -949,6 +971,7 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
     decomposer: decomposerCandidates[0] ?? null,
     decomposeSource: null,
     workflowRunId: null,
+    blockerFingerprints: [],
     stages: ordered.map((t) => {
       const executor = resolveExecutor(t, known, executorFallback, avail);
       // 배정 경고 가시화: lead 가 미등록이거나 실행자와 다르면 이유를 stage 에 기록.
@@ -1005,6 +1028,10 @@ function launchRunDriver(
   if (ACTIVE_RUN_DRIVERS.has(run.id)) return;
   ACTIVE_RUN_DRIVERS.add(run.id);
   void (async () => {
+    if (isCompanyRunBlocked(run)) {
+      finalizeRun(run);
+      return;
+    }
     if (resume) {
       await reconcilePersistedStages(app, run);
       const incomplete = run.stages.some((stage) => stage.status !== 'completed');
@@ -1059,6 +1086,10 @@ async function reconcilePersistedStages(app: FastifyInstance, run: CompanyRun): 
     }
     stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
     stage.outputChars = (result.response ?? '').length;
+    if (applyBlockedStageOutcome(run, stage, result.response)) {
+      touch(run);
+      return;
+    }
     const acceptable = result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
       isLastStage: index === run.stages.length - 1,
       requireProtocolPrefix: result.requireProtocolPrefix,
@@ -1471,7 +1502,7 @@ async function driveRunBody(
   const baseSubtasks = new Map(run.stages.map((s) => [s.teamSlug, s.subtask ?? '']));
   const firstIteration = Math.min(run.maxIterations, Math.max(1, run.completedIterations + 1));
   for (let iteration = firstIteration; iteration <= run.maxIterations; iteration++) {
-    if (isCompanyRunCancelled(run)) return;
+    if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
     run.iteration = iteration;
     touch(run);
     // REFINE: 2회차부터 미완료 단계 실행자 재선정(서킷/리밋 회복 반영) + 상태 초기화
@@ -1503,6 +1534,11 @@ async function driveRunBody(
       await executePipelineOnce(app, run, teamBySlug, projectDir, baseSubtasks);
     }
     if (isCompanyRunCancelled(run)) return;
+    if (isCompanyRunBlocked(run)) {
+      run.completedIterations = iteration;
+      finalizeRun(run);
+      return;
+    }
 
     // VERIFY: 전 단계 완료면 성공 확정하고 루프 종료
     run.completedIterations = iteration;
@@ -1550,11 +1586,11 @@ async function executePipelineOnce(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string, baseSubtasks: Map<string, string>,
 ): Promise<void> {
-  if (isCompanyRunCancelled(run)) return;
+  if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
   run.status = 'running'; touch(run);
   let prev: RunStage | null = null;
   for (let s = 0; s < run.stages.length; s++) {
-    if (isCompanyRunCancelled(run)) return;
+    if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
     const stage = run.stages[s];
     if (stage.status === 'completed') { prev = stage; continue; } // 이미 완료 — handoff 소스로만
     const team = teamBySlug.get(stage.teamSlug)!;
@@ -1598,7 +1634,7 @@ async function executeParallelOnce(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string, baseSubtasks: Map<string, string>,
 ): Promise<void> {
-  if (isCompanyRunCancelled(run)) return;
+  if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
   run.status = 'dispatching'; touch(run);
   const pKnown = new Set(agentManager.listEnabledIds());
   const pAvail = liveAvailability(pKnown);
@@ -1606,7 +1642,7 @@ async function executeParallelOnce(
   const executorFallback = allowOutsideTeam ? 'ollama' : '';
   const pending = run.stages.filter((s) => s.status !== 'completed');
   for (const stage of pending) {
-    if (isCompanyRunCancelled(run)) return;
+    if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
     stage.subtask = baseSubtasks.get(stage.teamSlug) ?? stage.subtask;
     const team = teamBySlug.get(stage.teamSlug)!;
     const chain = resolveExecutorChain(team, pKnown, executorFallback, pAvail);
@@ -1622,16 +1658,64 @@ async function executeParallelOnce(
   if (isCompanyRunCancelled(run)) return;
   run.status = 'running'; touch(run);
   await Promise.all(pending.map((stage) => collectStage(app, stage, run)));
-  if (isCompanyRunCancelled(run)) return;
+  if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
   await retryFailedStagesParallel(app, run, teamBySlug, projectDir);
 }
 
-function summarizeRun(run: CompanyRun): { total: number; succeeded: number; failed: number; retried: number; skipped?: number } {
+function summarizeRun(run: CompanyRun): {
+  total: number;
+  succeeded: number;
+  failed: number;
+  retried: number;
+  skipped?: number;
+  blocked?: number;
+} {
   const total = run.stages.length;
   const succeeded = run.stages.filter((s) => s.status === 'completed').length;
   const skipped = run.stages.filter((s) => s.status === 'skipped').length;
+  const blocked = run.stages.filter((s) => s.status === 'blocked').length;
   const retried = run.stages.filter((s) => (s.retryCount ?? 0) > 0 || (s.attempt ?? 1) > 1).length;
-  return { total, succeeded, failed: total - succeeded - skipped, retried, ...(skipped ? { skipped } : {}) };
+  return {
+    total,
+    succeeded,
+    failed: total - succeeded - skipped - blocked,
+    retried,
+    ...(skipped ? { skipped } : {}),
+    ...(blocked ? { blocked } : {}),
+  };
+}
+
+export function applyBlockedStageOutcome(
+  run: CompanyRun,
+  stage: RunStage,
+  response: string | null | undefined,
+): BlockedStageOutcome | undefined {
+  const outcome = parseBlockedStageOutcome(response);
+  if (!outcome) return undefined;
+
+  run.blockerFingerprints ??= [];
+  if (!run.blockerFingerprints.includes(outcome.fingerprint)) {
+    run.blockerFingerprints.push(outcome.fingerprint);
+  }
+  stage.status = 'blocked';
+  stage.blockerFingerprint = outcome.fingerprint;
+  stage.blockerEvidence = outcome.evidence;
+  stage.blockerEvidenceTier = outcome.evidenceTier;
+  stage.error = `blocked: ${outcome.fingerprint}`;
+
+  if (run.mode === 'pipeline') {
+    const blockedIndex = run.stages.indexOf(stage);
+    for (const downstream of run.stages.slice(blockedIndex + 1)) {
+      if (downstream.status === 'completed') continue;
+      downstream.status = 'skipped';
+      downstream.error = `upstream blocker: ${outcome.fingerprint}`;
+    }
+  }
+
+  run.status = 'partial';
+  run.summary = summarizeRun(run);
+  run.error = `stage blocked: ${stage.teamSlug} (${outcome.fingerprint})`;
+  return outcome;
 }
 
 // 루프 소진 후 최종 상태 확정(completed/partial/failed). 취소는 덮어쓰지 않음.
@@ -1642,6 +1726,12 @@ function finalizeRun(run: CompanyRun): void {
     return;
   }
   run.summary = summarizeRun(run);
+  if (isCompanyRunBlocked(run)) {
+    run.status = 'partial';
+    run.error ??= `stage blocked: ${run.blockerFingerprints?.join(', ')}`;
+    touch(run);
+    return;
+  }
   const failed = run.summary.failed;
   run.status = failed === 0 ? 'completed' : run.summary.succeeded > 0 ? 'partial' : 'failed';
   if (failed > 0) {
@@ -1684,7 +1774,7 @@ async function runStageWithFailover(
   const baseSubtask = stage.subtask ?? '';
   let lastError = '';
   for (let i = 0; i < candidates.length; i++) {
-    if (isCompanyRunCancelled(run)) return false;
+    if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return false;
     const exec = candidates[i];
     if (i > 0 && !avail(exec)) { lastError = `${exec} unavailable`; continue; }
     stage.executor = exec;
@@ -1702,6 +1792,12 @@ async function runStageWithFailover(
     if (result.status === 'timed_out') {
       await abortTimedOutCompanyTask(app, run.id, stage.taskId);
     }
+    stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
+    stage.outputChars = (result.response ?? '').length;
+    if (applyBlockedStageOutcome(run, stage, result.response)) {
+      touch(run);
+      return false;
+    }
     if (result.status === 'cancelled' || isCompanyRunCancelled(run)) {
       stage.status = 'cancelled';
       stage.error = stage.error ?? 'run cancelled';
@@ -1709,8 +1805,6 @@ async function runStageWithFailover(
       return false;
     }
     stage.status = (result.status as StageStatus) ?? 'failed';
-    stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
-    stage.outputChars = (result.response ?? '').length;
     touch(run);
     // 최종 stage는 길이 게이트만 예외다. 품질 게이트까지 우회하면 도구 호출 에코가
     // 완료로 오인되어 같은 회사 실행을 다시 트리거하므로 모든 단계에 품질 검사를 적용한다.
@@ -1745,16 +1839,26 @@ export function classifyCompanyWorkflowStage(stage: Pick<RunStage, 'teamSlug' | 
 }
 
 // 단일 팀 태스크 dispatch(inject POST /api/task + team_id 태그). 성공 시 true.
-async function dispatchStage(app: FastifyInstance, run: CompanyRun, stage: RunStage, projectDir: string): Promise<boolean> {
-  if (isCompanyRunCancelled(run)) return false;
+export async function dispatchStage(
+  app: FastifyInstance,
+  run: CompanyRun,
+  stage: RunStage,
+  projectDir: string,
+): Promise<boolean> {
+  if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return false;
   try {
     const workflowStage = classifyCompanyWorkflowStage(stage);
+    const prompt = [
+      stage.subtask ?? '',
+      '',
+      BLOCKED_STAGE_OUTCOME_CONTRACT,
+    ].join('\n');
     const res = await app.inject({
       method: 'POST',
       url: '/api/task',
       payload: {
         ai: stage.executor,
-        prompt: stage.subtask ?? '',
+        prompt,
         mode: 'task',
         callerAgentId: 'company-orchestrator',
         metadata: {
@@ -1917,6 +2021,7 @@ export async function abortTimedOutCompanyTask(
 // 단일 단계 결과 수집: 완료 대기 → 산출물/상태 기록 → 빈 산출물 게이트.
 async function collectStage(app: FastifyInstance, stage: RunStage, run: CompanyRun): Promise<void> {
   if (!stage.taskId) return; // dispatch 실패 — status 이미 'failed'
+  if (isCompanyRunBlocked(run)) return;
   stage.status = 'running'; touch(run);
   const result = await waitForTask(stage.taskId, PARALLEL_STAGE_TIMEOUT_MS, run);
   if (result.status === 'timed_out') {
@@ -1924,6 +2029,10 @@ async function collectStage(app: FastifyInstance, stage: RunStage, run: CompanyR
   }
   stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
   stage.outputChars = (result.response ?? '').length;
+  if (applyBlockedStageOutcome(run, stage, result.response)) {
+    touch(run);
+    return;
+  }
   if (result.status === 'completed' && isCompanyStageOutputAcceptable(result.response, {
     isLastStage: false,
     requireProtocolPrefix: result.requireProtocolPrefix,
@@ -1944,7 +2053,7 @@ async function retryFailedStagesParallel(
   app: FastifyInstance, run: CompanyRun,
   teamBySlug: Map<string, TeamRow>, projectDir: string,
 ): Promise<void> {
-  if (isCompanyRunCancelled(run)) return;
+  if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return;
   const failed = run.stages.filter((s) =>
     s.status !== 'completed' && s.status !== 'cancelled' && (s.retryCount ?? 0) < 1);
   if (failed.length === 0) return;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { classifyResult } from '../core/task-queue.js';
 import {
+  classifyDeclaredPrerequisiteBlock,
   classifyFailedCompletionReason,
   detectFailedCompletion,
   isTextReportTask,
@@ -14,6 +15,9 @@ import {
  * 아래 케이스는 그 실데이터 형태를 반영한다.
  */
 describe('detectFailedCompletion', () => {
+  const prerequisitePrompt =
+    '승인된 근거팩만 입력으로 사용하고, 없으면 BLOCKED로 보고한다.';
+
   it('done: 성공 프로토콜은 본문에 에러 어휘가 있어도 실패로 보지 않는다 (오탐 방지)', () => {
     expect(detectFailedCompletion(
       "done: [Evidence Tier 1] 401/403 unauthorized 처리와 usage limit 가드를 구현했습니다. error: 케이스 전부 커버.",
@@ -27,6 +31,79 @@ describe('detectFailedCompletion', () => {
     expect(detectFailedCompletion('error: 전체 Vitest 검증 기준을 충족하지 못했습니다.')).toBe(true);
     expect(detectFailedCompletion('error: Unsupported shell metacharacter in command')).toBe(true);
     expect(detectFailedCompletion('Error: connection refused')).toBe(true);
+  });
+
+  it('요청에 선언된 선행조건 부재는 일반 실패가 아니라 재시도 없는 cancelled로 종결한다', () => {
+    const response = [
+      'error: BLOCKED — 승인된 근거팩이 없어 제작을 진행할 수 없습니다.',
+      '',
+      'STAGE_OUTCOME: BLOCKED',
+      'BLOCKER_FINGERPRINT: evidence-packs:approval_status=incomplete',
+      'BLOCKER_EVIDENCE: evidence-packs.yaml approval_status=INCOMPLETE를 직접 확인',
+      'EVIDENCE_TIER: 1',
+    ].join('\n');
+
+    expect(classifyDeclaredPrerequisiteBlock(response, { prompt: prerequisitePrompt }))
+      .toBe('blocked-prerequisite: declared prerequisite unavailable');
+    expect(detectFailedCompletion(response, { prompt: prerequisitePrompt })).toBe(false);
+    expect(resolveTaskTerminalOutcome(
+      { success: true, output: response },
+      { prompt: prerequisitePrompt },
+    )).toEqual({
+      status: 'cancelled',
+      error: 'blocked-prerequisite: declared prerequisite unavailable',
+    });
+  });
+
+  it('status: 프로토콜의 검증된 선행조건 차단도 같은 fingerprint로 종결한다', () => {
+    const response = [
+      'status: This task cannot proceed because the approved evidence packs are missing.',
+      'STAGE_OUTCOME: BLOCKED',
+      'BLOCKER_FINGERPRINT: evidence-packs:approval_status=incomplete',
+      'BLOCKER_EVIDENCE: evidence-packs.yaml approval_status=INCOMPLETE observed',
+      'EVIDENCE_TIER: 1',
+    ].join('\n');
+
+    expect(resolveTaskTerminalOutcome(
+      { success: true, output: response },
+      { prompt: 'Use approved evidence packs only; report BLOCKED if the prerequisite is missing.' },
+    )).toEqual({
+      status: 'cancelled',
+      error: 'blocked-prerequisite: declared prerequisite unavailable',
+    });
+  });
+
+  it('선행조건 계약이나 부재 근거가 없는 BLOCKED 표시는 기존 실패 판정을 우회하지 못한다', () => {
+    const response = 'error: BLOCKED — 테스트 구현에 실패했습니다.';
+
+    expect(classifyDeclaredPrerequisiteBlock(response, { prompt: '테스트를 구현하라.' }))
+      .toBeUndefined();
+    expect(resolveTaskTerminalOutcome(
+      { success: true, output: response },
+      { prompt: '테스트를 구현하라.' },
+    )).toEqual({
+      status: 'failed',
+      error: 'failure-pattern: agent reported error',
+    });
+  });
+
+  it('구조화 BLOCKED라도 Tier 1 근거 필드가 없으면 기존 실패·재시도를 유지한다', () => {
+    const response = [
+      'error: BLOCKED — 근거가 아직 없습니다.',
+      'STAGE_OUTCOME: BLOCKED',
+      'BLOCKER_FINGERPRINT: evidence-packs:approval_status=incomplete',
+      'BLOCKER_EVIDENCE: unverified',
+    ].join('\n');
+
+    expect(classifyDeclaredPrerequisiteBlock(response, { prompt: prerequisitePrompt }))
+      .toBeUndefined();
+    expect(resolveTaskTerminalOutcome(
+      { success: true, output: response },
+      { prompt: prerequisitePrompt },
+    )).toEqual({
+      status: 'failed',
+      error: 'failure-pattern: agent reported error',
+    });
   });
 
   it('실패 패턴을 집계 가능한 구체 원인으로 분류한다', () => {

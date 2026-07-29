@@ -23,6 +23,9 @@ import {
   isCompanyStageOutputAcceptable,
   cancelCompanyRun,
   abortTimedOutCompanyTask,
+  applyBlockedStageOutcome,
+  dispatchStage,
+  isCompanyRunBlocked,
   isCompanyRunCancelled,
   seedCompanyRunForTest,
   getCompanyRun,
@@ -790,5 +793,82 @@ describe('abortTimedOutCompanyTask', () => {
     await expect(
       abortTimedOutCompanyTask(app, 'run-timeout', 'task-timeout')
     ).rejects.toThrow('timed-out company task abort failed');
+  });
+});
+
+describe('structured company stage BLOCKED outcome', () => {
+  const blockedResponse = [
+    'status: 승인된 근거팩이 없어 안전하게 중단합니다.',
+    'STAGE_OUTCOME: BLOCKED',
+    'BLOCKER_FINGERPRINT: evidence-packs:approval_status=incomplete',
+    'BLOCKER_EVIDENCE: evidence-packs.yaml의 approval_status=INCOMPLETE를 직접 확인',
+    'EVIDENCE_TIER: 1',
+  ].join('\n');
+
+  it('valid Tier 1 block를 blocked/skipped/partial로 기록하고 iteration 대상에서 제외한다', () => {
+    const blocked = makeStage({ teamSlug: 'content-build', status: 'running', taskId: 'task-blocked' });
+    const downstream = makeStage({ teamSlug: 'content-quality', status: 'pending' });
+    const run = makeTestRun({
+      id: `run_blocked_${Date.now()}`,
+      status: 'running',
+      stages: [
+        makeStage({ teamSlug: 'content-planning', status: 'completed' }),
+        blocked,
+        downstream,
+      ],
+    });
+
+    expect(applyBlockedStageOutcome(run, blocked, blockedResponse)).toMatchObject({
+      fingerprint: 'evidence-packs:approval_status=incomplete',
+      evidenceTier: 1,
+    });
+    expect(blocked).toMatchObject({
+      status: 'blocked',
+      blockerFingerprint: 'evidence-packs:approval_status=incomplete',
+      blockerEvidenceTier: 1,
+    });
+    expect(downstream).toMatchObject({
+      status: 'skipped',
+      error: 'upstream blocker: evidence-packs:approval_status=incomplete',
+    });
+    expect(run).toMatchObject({
+      status: 'partial',
+      blockerFingerprints: ['evidence-packs:approval_status=incomplete'],
+      summary: { total: 3, succeeded: 1, failed: 0, blocked: 1, skipped: 1 },
+    });
+    expect(isCompanyRunBlocked(run)).toBe(true);
+  });
+
+  it('근거 없는 BLOCKED는 구조화 차단으로 인정하지 않아 기존 실패·재시도 경로를 유지한다', () => {
+    const stage = makeStage({ teamSlug: 'content-build', status: 'failed' });
+    const run = makeTestRun({
+      id: `run_unverified_block_${Date.now()}`,
+      status: 'running',
+      stages: [stage],
+    });
+
+    expect(applyBlockedStageOutcome(
+      run,
+      stage,
+      'error: BLOCKED — 승인 여부를 확인하지 못했습니다.',
+    )).toBeUndefined();
+    expect(stage.status).toBe('failed');
+    expect(run.status).toBe('running');
+    expect(isCompanyRunBlocked(run)).toBe(false);
+  });
+
+  it('동일 fingerprint가 기록된 run에서는 실제 POST dispatch를 0건으로 억제한다', async () => {
+    const stage = makeStage({ teamSlug: 'content-build', status: 'running', taskId: 'task-blocked' });
+    const run = makeTestRun({
+      id: `run_duplicate_block_${Date.now()}`,
+      status: 'running',
+      stages: [stage],
+    });
+    applyBlockedStageOutcome(run, stage, blockedResponse);
+    const inject = vi.fn();
+    const app = { inject } as unknown as import('fastify').FastifyInstance;
+
+    await expect(dispatchStage(app, run, stage, '/tmp')).resolves.toBe(false);
+    expect(inject).toHaveBeenCalledTimes(0);
   });
 });
