@@ -3396,8 +3396,10 @@ async function dbgTest(url,resId){
     const r=await fetch(url);
     const d=await r.json();
     const ms=Date.now()-t0;
-    el2.style.color='#3fb950';
-    el2.textContent=r.status+' OK ('+ms+'ms)\\n'+JSON.stringify(d,null,2).slice(0,400);
+    // 상태코드와 무관하게 초록 'OK' 를 찍던 것을 고친다. 404/500 을 받고도
+    // 성공으로 보이면 이 패널이 거짓 증거를 만든다(catch-all 200 건과 같은 계열).
+    el2.style.color=r.ok?'#3fb950':'#f85149';
+    el2.textContent=r.status+' '+(r.ok?'OK':r.statusText||'FAILED')+' ('+ms+'ms)\\n'+JSON.stringify(d,null,2).slice(0,400);
   }catch(e){
     el2.style.color='#f85149';
     el2.textContent=String(e);

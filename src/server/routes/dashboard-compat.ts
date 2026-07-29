@@ -26,7 +26,9 @@ import { promisify } from 'node:util';
 import { stripEchoLines } from '../../utils/echo-filter.js';
 import { isProviderUnavailableFailureText } from '../task-failover.js';
 import { listAllSubagents } from '../../core/subagent-service.js';
+import { createLogger } from '../../utils/logger.js';
 
+const log = createLogger('dashboard-compat');
 const execFileAsync = promisify(execFile);
 
 const IS_CLIENTS_DIR = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
@@ -293,12 +295,11 @@ async function startCbAutoHeal() {
   if (cbAutoHealTimer) return; // 이미 실행 중
   cbAutoHealTimer = setInterval(async () => {
     try {
-      for (const [id] of (agentManager as any).providers as Map<string, any>) {
-        // P0-1: canExecute()는 조회가 아니라 상태 변이 함수(half-open 전이 + 유일한 프로브
-        // 슬롯 점유)라 여기서 호출하면 실행 없이 슬롯만 소각한다. getSnapshot()은 내부적으로
-        // recoverIfExpired()를 거쳐 만료된 open을 closed로 되돌리므로 복구 효과는 동일하되
-        // 프로브 슬롯은 건드리지 않는다 (work-report-scheduler.ts:580 동일 원칙).
-        circuitBreakerRegistry.getSnapshot(id);
+      // P0-1: canExecute()는 half-open 프로브 슬롯을 소각한다 — 호출 금지.
+      // recoverAll()은 만료된 open·고아 half-open만 probe-ready로 전환하고 슬롯은 건드리지 않는다.
+      const result = circuitBreakerRegistry.recoverAll();
+      if (result.recovered > 0) {
+        log.debug(result, 'Circuit auto-heal reclaimed expired circuits');
       }
     } catch { /* 예외 무시 */ }
   }, 2 * 60 * 1000); // 2분
@@ -450,9 +451,15 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
   });
 
   // ═══ Plans ══════════════════════════════════════════
-  app.get('/api/plans', async () => {
-    // Plans table not yet created — return empty for now
-    return { plans: [] };
+  app.get('/api/plans', async (req) => {
+    // 이전에는 "Plans table not yet created" 주석과 함께 빈 배열을 하드코딩했으나
+    // plans 테이블과 planManager.listPlans() 는 실재한다(현재 300+ row).
+    // 그 결과 /nco-do 가 인자 없이 호출될 때 항상 "플랜 없음"으로 잘못 안내했다.
+    const { planManager } = await import('../../core/plan-manager.js');
+    const { limit } = (req.query ?? {}) as Record<string, unknown>;
+    const parsedLimit = Number(limit);
+    const max = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
+    return { plans: planManager.listPlans().slice(0, max) };
   });
 
   app.post('/api/plans', async (req) => {
@@ -2093,7 +2100,23 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       return agentEvolver.getStats(agentId);
     }
 
-    reply.code(200);
-    return { data: [], message: `Route ${req.method} ${req.url} — pending implementation` };
+    // 여기까지 왔다는 것은 app.all('/api/*') 이 요청을 받았지만 위 분기 어디에도
+    // 해당하지 않는다는 뜻이다. 예전에는 reply.code(200) 으로 응답했는데, 그러면
+    // 오타·단수복수 실수·존재하지 않는 경로가 전부 "성공"으로 보인다.
+    //
+    // 실제 피해(2026-07-29): 태스크 취소에 단수형 POST /api/task/:id/cancel 을
+    // 호출하고 200 을 받아 취소된 줄 알았다. 실구현은 복수형 /api/tasks/:id/cancel
+    // 이고 그 태스크는 계속 돌고 있었다. 우리는 HTTP 응답 본문을 증거로 쓰기 때문에
+    // 200 + 빈 배열 조합은 기계가 만들어내는 거짓 성공이다.
+    //
+    // 404 를 쓰는 이유: 여기 도달하는 경로는 "구현 예정"이 아니라 그냥 없는 경로다.
+    // 실제로 구현 예정인 것들은 위 분기에 이미 등록돼 있다. 501 은 "이 서버가 그
+    // 메서드/기능을 지원하지 않는다"는 뜻이라 의미가 어긋난다.
+    reply.code(404);
+    return {
+      ok: false,
+      error: 'route_not_found',
+      message: `${req.method} ${req.url} is not a registered route`,
+    };
   });
 }
