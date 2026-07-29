@@ -2,7 +2,7 @@
 
 조직 경로: nova-ax/marketing-lead
 담당 영역: 캠페인 · 브랜드 전략 · 콘텐츠 마케팅 · 분석 · 성장
-기반 모델: internal (NCO 프로바이더 openrouter · mlx 경유)
+기반 모델: internal (NCO 프로바이더 openrouter · retired-local-provider 경유)
 
 ## 오늘 수행한 핵심 업무
 - 저장소의 기존 `marketing-lead` 보고서(`2026-07-09`, `2026-07-10`)와 최신 날짜 포인터(`team_marketing-lead.last`)를 대조해 오늘 오전 보고서의 저장 경로·형식·연속성을 정리했다.

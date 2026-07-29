@@ -1,4 +1,4 @@
-# Docs & Spec Agent (ax-docs) — 일일 산출물 (2026-07-13, ai=mlx, taskId=task_v0UC7CwlGqchHKrR)
+# Docs & Spec Agent (ax-docs) — 일일 산출물 (2026-07-13, ai=retired-local-provider, taskId=task_v0UC7CwlGqchHKrR)
 
 ### 📊 2026년 7월 13일 Docs & Spec Agent 일일 산출물  
 #### ✅ 수행 내역  

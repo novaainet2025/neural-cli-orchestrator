@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_kz5bDubfUVbMZFxQ)
+# 품질 검수팀 — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_kz5bDubfUVbMZFxQ)
 
 PASS: Pinterest Pin 1 - Title: "10 Proven ChatGPT Prompts to Make Money in 2026" (279자)  
 FIX: Pinterest Pin 1 - Description: "Discover 10 high-conversion ChatGPT prompts that generate passive income, freelance gigs, and digital products. Perfect for solopreneurs and side-hustlers. Use these scripts to write sales pages, create eBooks, automate client outreach, and scale online businesses. No coding needed. #ChatGPTMoney #SideHustle2026 #PassiveIncome #AIEntrepreneur #MakeMoneyOnline" (278자) → Remove "high-conversion" and "proven" due to unverified claims; replace with "tested" and "practical" for data-driven tone.

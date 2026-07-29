@@ -1,4 +1,4 @@
-# Discussion Lead (ax-discuss) — 일일 산출물 (2026-07-10, ai=mlx, taskId=task_GcdiY7y-Iy9bOoeO)
+# Discussion Lead (ax-discuss) — 일일 산출물 (2026-07-10, ai=retired-local-provider, taskId=task_GcdiY7y-Iy9bOoeO)
 
 # 2026년 7월 10일 Discussion Lead (ax-discuss) 일일 산출물
 

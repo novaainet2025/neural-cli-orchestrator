@@ -40,7 +40,7 @@ completed 분자에서는 제외하므로 유효 완료가 1/2가 되어 complet
 | task | DB 상태 | 담당 | 직접 관측된 실행/산출물 | 판정과 원인 |
 |---|---|---|---|---|
 | `task_EbTqTcR3_iFzfMQB` | completed | agy | response 891바이트, error NULL, 현 세대 agent action 2건, work event 7건, heartbeat 8 | 유효 성공. 주입된 에이전트 현황 수치를 그대로 요약하고 근거가 없는 검색의도·독자 문제·차별점은 `미확인`으로 표시했다. 다만 입력 자체에 독자·콘텐츠 근거가 없어 실제 근거 패킷은 만들지 못했다. |
-| `task_trend_collector` | completed | mlx | response 0바이트, result 0바이트, evidence 0바이트, progress 0.0, ack/heartbeat 없음, 현 세대 agent action 0건, work event 0건 | 유효 실패. 외부 수집 스크립트의 성공 상태만 DB에 투영됐고 NCO가 검증할 산출물은 저장되지 않았다. `mlx`는 이 팀의 구성원도 아니다. |
+| `task_trend_collector` | completed | retired-local-provider | response 0바이트, result 0바이트, evidence 0바이트, progress 0.0, ack/heartbeat 없음, 현 세대 agent action 0건, work event 0건 | 유효 실패. 외부 수집 스크립트의 성공 상태만 DB에 투영됐고 NCO가 검증할 산출물은 저장되지 않았다. `retired-local-provider`는 이 팀의 구성원도 아니다. |
 
 ## 에이전트별 작업 패턴
 
@@ -49,8 +49,8 @@ completed 분자에서는 제외하므로 유효 완료가 1/2가 되어 complet
   주입 텍스트와의 일치만 뜻하며, 원문·실사례·독자 결과를 검증했다는 뜻은 아니다.
 - `retired-provider`, `ollama`: 구성원이지만 최근 48시간 이 팀 표본에 배정된 태스크가 0건이어서
   이 팀에서의 성공/실패 패턴을 평가할 수 없다.
-- `mlx`: 구성원이 아닌데 외부 cron이 고정값으로 지정했다. 현 세대 NCO 실행은 0건이며
-  0바이트 완료 행만 남았다. 따라서 이 표본으로 `mlx`의 모델 성능을 평가해서는 안 된다.
+- `retired-local-provider`: 구성원이 아닌데 외부 cron이 고정값으로 지정했다. 현 세대 NCO 실행은 0건이며
+  0바이트 완료 행만 남았다. 따라서 이 표본으로 `retired-local-provider`의 모델 성능을 평가해서는 안 된다.
 
 ## 46.7점의 주요 저해 요인
 

@@ -3,7 +3,7 @@
 # 5줄 출력:
 #  1. [이름] [백엔드:모델] 📁 폴더
 #  2. api✓ ws✓ [AI상태]N/9
-#  3. MLX · Apple Silicon · localhost:8000 · proxy:4100   (MLX 모드일 때)
+#  3. retired-local-provider · Apple Silicon · localhost:8000 · proxy:4100   (retired-local-provider 모드일 때)
 #  4. 1일 ████ X% · 주별 ████ Y% | Ctx:Z% | $cost
 #  5. ↻ 1일 MM/DD HH:MM · 주별 MM/DD HH:MM
 
@@ -37,9 +37,9 @@ fi
 
 # ── 백엔드 / 모델 표시 ────────────────────────────────────────────────────────
 BACKEND="${NCO_STATUSLINE_BACKEND:-}"
-if [ -n "$NCO_MLX_MODE" ] && [ -z "$BACKEND" ]; then BACKEND="MLX"; fi
+if [ -n "$NCO_RETIRED_LOCAL_MODE" ] && [ -z "$BACKEND" ]; then BACKEND="retired-local-provider"; fi
 
-MODEL="${NCO_MLX_MODEL:-${MODEL_RAW:-?}}"
+MODEL="${NCO_RETIRED_LOCAL_MODEL:-${MODEL_RAW:-?}}"
 if [ -n "$BACKEND" ]; then
   BRACKET="${BACKEND}:${MODEL}"
   BRACKET_COLOR="$MAGENTA"
@@ -162,9 +162,9 @@ API="✗"; WS="✗"
 declare -A SHORT=(
   ["claude-code"]="Cla" ["opencode"]="Opn" ["gemini"]="Gem"
   ["codex"]="Cdx"       ["aider"]="Aid"    ["cursor-agent"]="Cur"
-  ["copilot"]="Cop"     ["openrouter"]="ORT" ["mlx"]="MLX" ["ollama"]="OlM"
+  ["copilot"]="Cop"     ["openrouter"]="ORT" ["retired-local-provider"]="retired-local-provider" ["ollama"]="OlM"
 )
-ORDER=("claude-code" "opencode" "gemini" "codex" "aider" "cursor-agent" "copilot" "openrouter" "mlx")
+ORDER=("claude-code" "opencode" "gemini" "codex" "aider" "cursor-agent" "copilot" "openrouter" "retired-local-provider")
 
 DAEMONS=""; AI_DISPLAY=""; ONLINE=0
 [ "$API" = "✓" ] && DAEMONS=$(curl -s -m 1 http://localhost:6200/api/daemons 2>/dev/null)

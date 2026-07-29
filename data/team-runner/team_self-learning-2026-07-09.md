@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-09, ai=mlx, taskId=task_u9FbebruqTgBarMC)
+# 자가학습팀 — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_u9FbebruqTgBarMC)
 
 ### 📝 2026년 7월 9일 자기학습팀 일일 산출물  
 

@@ -8,7 +8,7 @@ done: 근거 등급 1 — 팀 산출물·오전 보고서·품질 게이트 규�
 - 조직 경로: `nova-ax/marketing-lead`
 - 담당 영역: 캠페인, 브랜드 전략, 콘텐츠 마케팅, 분석, 성장
 - 기반 모델: internal
-- 제공자: `openrouter`, `mlx`
+- 제공자: `openrouter`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 

@@ -1,4 +1,4 @@
-# Legal Counsel (legal-counsel) — 일일 산출물 (2026-07-18, ai=mlx, taskId=task_Ed11d94Kz2K5pH2g)
+# Legal Counsel (legal-counsel) — 일일 산출물 (2026-07-18, ai=retired-local-provider, taskId=task_Ed11d94Kz2K5pH2g)
 
 (1) 오늘 관찰·분석:  
 - 자가진단 리포트 기반의 NCO 소스코드 개선 작업이 지속적으로 수행되고 있음.  

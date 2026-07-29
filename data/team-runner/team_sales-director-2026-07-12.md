@@ -1,4 +1,4 @@
-# Sales Director (sales-director) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_Iu-w_Cy_Dtd-AHbH)
+# Sales Director (sales-director) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_Iu-w_Cy_Dtd-AHbH)
 
 ### 📊 2026년 7월 12일 Sales Director 일일 산출물  
 #### ✅ 수행 내역  

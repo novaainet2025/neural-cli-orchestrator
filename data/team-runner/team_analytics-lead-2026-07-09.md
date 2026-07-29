@@ -1,4 +1,4 @@
-# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-09, ai=mlx, taskId=task_qrl05vbhbpFmjGPF)
+# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_qrl05vbhbpFmjGPF)
 
 ### 📊 2026년 7월 9일 Analytics Lead 일일 산출물
 

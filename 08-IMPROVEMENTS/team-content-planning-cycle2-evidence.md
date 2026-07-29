@@ -35,7 +35,7 @@ cycle 1 토글의 on/off 원복은 직접 재현됐다.
 
 ```text
 id                    team_id                status     assigned_to  created_at           completed_at         response_bytes  result_bytes
-task_trend_collector  team_content-planning  completed  mlx          2026-07-27 15:00:04  2026-07-27 15:00:09  0               0
+task_trend_collector  team_content-planning  completed  retired-local-provider          2026-07-27 15:00:04  2026-07-27 15:00:09  0               0
 ```
 
 최근 48시간에 `team_id`가 있는 completed 행 중 `response`와 `result_json`이 모두
@@ -219,7 +219,7 @@ task_JAg7_6r9hm4tuMtG  completed  agy           07-26 08:00  resp=2196
 task_mUctLweT5Iuokwf9  completed  agy           07-26 15:00  resp=1689
 task_bdP-dIFNni_P814l  completed  agy           07-27 00:00  resp=1424
 task_wbmNJYskCFXrjmCE  completed  agy           07-27 05:12  resp=1633
-task_trend_collector   completed  mlx           07-27 15:00  resp=0 res=0   ← 0B 산출물
+task_trend_collector   completed  retired-local-provider           07-27 15:00  resp=0 res=0   ← 0B 산출물
 task_NTFmch7UjbcOYnqh  completed  agy           07-27 15:00  resp=1742
 task_content_generation failed    cursor-agent  07-27 17:10  resp=0 res=0  CLI failed exit=unknown
 ```

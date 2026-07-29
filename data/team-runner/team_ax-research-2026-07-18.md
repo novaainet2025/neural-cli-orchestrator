@@ -1,4 +1,4 @@
-# Research Agent (ax-research) — 일일 산출물 (2026-07-18, ai=mlx, taskId=task_GMiSEAGmz24hA61B)
+# Research Agent (ax-research) — 일일 산출물 (2026-07-18, ai=retired-local-provider, taskId=task_GMiSEAGmz24hA61B)
 
 (1) 오늘 관찰·분석: 미확인  
 (2) 현재 상태: 미확인  

@@ -4,16 +4,16 @@ Your branch is up to date with 'origin/main'.
 Changes not staged for commit:
   (use "git add/rm <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
-	deleted:    .claude/commands/nco-mlx.md
+	deleted:    .claude/commands/nco-retired-local-provider.md
 	modified:   .claude/hooks/end-of-turn-check.sh
 	modified:   REPORTS/support-lead/daily-2026-07-18.md
-	deleted:    cli-installs/__pycache__/anthropic-mlx-proxy.cpython-314.pyc
-	deleted:    cli-installs/anthropic-mlx-proxy.py
-	deleted:    cli-installs/mlx-chat-liveness.sh
-	deleted:    cli-installs/mlx-chat-liveness.sh.bak-174023
-	deleted:    cli-installs/mlx-ctl.sh
-	deleted:    cli-installs/mlx-heartbeat.sh
-	deleted:    cli-installs/mlx-watchdog.sh
+	deleted:    cli-installs/__pycache__/anthropic-retired-local-provider-proxy.cpython-314.pyc
+	deleted:    cli-installs/anthropic-retired-local-provider-proxy.py
+	deleted:    cli-installs/retired-local-provider-chat-liveness.sh
+	deleted:    cli-installs/retired-local-provider-chat-liveness.sh.bak-174023
+	deleted:    cli-installs/retired-local-provider-ctl.sh
+	deleted:    cli-installs/retired-local-provider-heartbeat.sh
+	deleted:    cli-installs/retired-local-provider-watchdog.sh
 	modified:   config/failover-chains.json
 	modified:   config/platform-patch.wsl.sh
 	modified:   data/team-runner/team_analytics-lead.last
@@ -47,8 +47,8 @@ Changes not staged for commit:
 	modified:   db/hnsw-indices/cursor-agent.hnsw
 	modified:   db/hnsw-indices/hermes.hnsw
 	modified:   db/hnsw-indices/higgsfield.hnsw
-	deleted:    db/hnsw-indices/mlx-instruct.hnsw
-	deleted:    db/hnsw-indices/mlx.hnsw
+	deleted:    db/hnsw-indices/retired-local-provider.hnsw
+	deleted:    db/hnsw-indices/retired-local-provider.hnsw
 	modified:   db/hnsw-indices/retired-provider.hnsw
 	modified:   db/hnsw-indices/ollama.hnsw
 	modified:   db/hnsw-indices/opencode.hnsw
@@ -111,8 +111,8 @@ Changes not staged for commit:
 	modified:   src/utils/findMax.ts
 	modified:   src/utils/lruCache.test.ts
 	modified:   src/utils/lruCache.ts
-	deleted:    src/utils/mlx-models.test.ts
-	deleted:    src/utils/mlx-models.ts
+	deleted:    src/utils/retired-local-provider-models.test.ts
+	deleted:    src/utils/retired-local-provider-models.ts
 	modified:   src/utils/summarizer.ts
 	modified:   src/utils/unique.ts
 	modified:   src/verification/response-quality.ts

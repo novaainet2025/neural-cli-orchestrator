@@ -161,8 +161,8 @@ WHERE status IN ('completed', 'failed', 'timed_out', 'lease_expired')
 
 | task ID | created_at UTC | prompt | 최초 assigned_to | `metadata.created_by` | `metadata.source` | `spawned_by_cli` | 현재 행 구간 task 이벤트 |
 |---|---|---|---|---|---|---|---:|
-| `task_trend_collector` | `2026-07-27 15:00:04` | `트렌드 키워드 수집 및 분석 중` | `mlx` | NULL | NULL | NULL | 0 |
-| `task_content_generation` | `2026-07-27 17:10:06` | `누락된 SEO 키워드 분석 및 최적화 중` | `mlx` | NULL | NULL | NULL | 0 |
+| `task_trend_collector` | `2026-07-27 15:00:04` | `트렌드 키워드 수집 및 분석 중` | `retired-local-provider` | NULL | NULL | NULL | 0 |
+| `task_content_generation` | `2026-07-27 17:10:06` | `누락된 SEO 키워드 분석 및 최적화 중` | `retired-local-provider` | NULL | NULL | NULL | 0 |
 
 `task_content_generation`의 현재 metadata에는 NCO가 orphan 채택 후 추가한
 `attemptedAgents`, `reassignedFrom`, `escalationHistory`만 있다.
@@ -181,7 +181,7 @@ NCO 저장소의 `src`, `scripts`, `config`, `db/migrations`에서 두 고정 ID
 - `trend-collector.py:400-431`
   - `/Users/nova-ai/project/nco/db/nco.db`를 sqlite3로 직접 연다.
   - `status='running'`이면 `INSERT OR REPLACE INTO tasks`를 실행한다.
-  - 고정 ID `task_trend_collector`, team `team_content-planning`, provider `mlx`,
+  - 고정 ID `task_trend_collector`, team `team_content-planning`, provider `retired-local-provider`,
     위 prompt를 쓴다.
   - 외부 `logs/cron.log`의 `2026-07-28 00:00:04 KST 트렌드 수집 시작`과
     DB `created_at=2026-07-27 15:00:04 UTC`가 정확히 일치한다.

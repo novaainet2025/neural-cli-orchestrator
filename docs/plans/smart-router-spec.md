@@ -168,7 +168,7 @@ export async function providerModelDispatchable(id: string): Promise<boolean> {
 }
 ```
 **독립 롤백**: 함수+2상수 삭제(P5/P6 미적용이면 무참조).
-**효과 증명**: `tsc`→0. `providerModelDispatchable('mlx-instruct')`→false(getProvider undefined, T1). ollama에 없는 태그 설정 후 `providerModelDispatchable('ollama')`→false, 존재 태그→true. 2회 연속 호출 시 2번째 fetch 미발생(TTL 캐시). 31/31 유지.
+**효과 증명**: `tsc`→0. `providerModelDispatchable('retired-local-provider')`→false(getProvider undefined, T1). ollama에 없는 태그 설정 후 `providerModelDispatchable('ollama')`→false, 존재 태그→true. 2회 연속 호출 시 2번째 fetch 미발생(TTL 캐시). 31/31 유지.
 
 ---
 
@@ -487,7 +487,7 @@ export function reselectExecutor(
   touch(run);
 ```
 **의존**: P7. **독립 롤백**: 이 블록 삭제(P5/P6는 stage.executor를 startCompanyRun 초기값으로 seed → 정상 동작).
-**효과 증명**: `tsc`→0. 라이브: 제거 lead(mlx-instruct) 팀 run 후 `stages[*].executor`가 현재 가용 provider·executorNote '역량매칭' 기록. 31/31 유지(driveRun 미호출).
+**효과 증명**: `tsc`→0. 라이브: 제거 lead(retired-local-provider) 팀 run 후 `stages[*].executor`가 현재 가용 provider·executorNote '역량매칭' 기록. 31/31 유지(driveRun 미호출).
 
 ---
 
@@ -526,7 +526,7 @@ describe('selectCapabilityExecutor', () => {
   });
   it('codex 미등록이면 역량순 가용 폴백', () => {
     const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','retired-provider']));
-    expect(['mlx','copilot','openrouter']).not.toContain(r.executor);
+    expect(['retired-local-provider','copilot','openrouter']).not.toContain(r.executor);
     expect(r.executor).toBe('ollama');
   });
   it('전원 서킷 open → 등록된 첫 후보', () => {
@@ -541,7 +541,7 @@ describe('reselectExecutor', () => {
     expect(r.executor).toBe('codex'); expect(r.note).toBeUndefined();
   });
   it('제거 lead → 역량 재선정 + note', () => {
-    const r = reselectExecutor(team({ slug:'a', name:'A', lead:'mlx-instruct' }), '아키텍처 설계', known);
+    const r = reselectExecutor(team({ slug:'a', name:'A', lead:'retired-local-provider' }), '아키텍처 설계', known);
     expect(r.executor).toBe('opencode'); expect(r.note).toMatch(/제거\/미등록/);
   });
 });
@@ -551,18 +551,18 @@ describe('reselectExecutor', () => {
 
 ---
 
-## P10 — DECOMPOSER_PREFS 위생 (제거된 'mlx' 제거)  [Tier4 · 리스크 낮음 · 독립롤백 O]
+## P10 — DECOMPOSER_PREFS 위생 (제거된 'retired-local-provider' 제거)  [Tier4 · 리스크 낮음 · 독립롤백 O]
 
 **파일**: 동. **앵커**: 라인 137.
 
-**근거**: 메모리 T1(mlx fleet-wide 제거, ollama 단일화). availability 필터로 무해하나 stale. 순서 의미 불변.
+**근거**: 메모리 T1(retired-local-provider fleet-wide 제거, ollama 단일화). availability 필터로 무해하나 stale. 순서 의미 불변.
 
 **최종 코드**:
 ```ts
 const DECOMPOSER_PREFS = ['opencode', 'claude-code', 'retired-provider', 'codex', 'ollama'];
 ```
-**주의(테스트)**: `resolveDecomposers` 테스트(라인 127) `['retired-provider','opencode','claude-code','codex','ollama']`는 known에 mlx 미포함이라 **영향 없음**. 검증: 31/31 유지.
-**독립 롤백**: 'mlx' 재삽입.
+**주의(테스트)**: `resolveDecomposers` 테스트(라인 127) `['retired-provider','opencode','claude-code','codex','ollama']`는 known에 retired-local-provider 미포함이라 **영향 없음**. 검증: 31/31 유지.
+**독립 롤백**: 'retired-local-provider' 재삽입.
 
 ---
 

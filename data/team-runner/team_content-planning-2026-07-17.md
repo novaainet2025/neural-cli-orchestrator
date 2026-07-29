@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-17, ai=mlx, taskId=task_q1S3xUs2Ii9Dw4Rg)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task_q1S3xUs2Ii9Dw4Rg)
 
 1) 오늘 관찰·분석:  
 - 최근 3일간의 검색 트렌드 분석 결과, 'AI side hustle', 'passive income with AI', 'ETF investing for beginners' 등 키워드의 월간 검색량이 평균 12% 상승.  

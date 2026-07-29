@@ -1,4 +1,4 @@
-# CLI 검증/QA팀 — 일일 산출물 (2026-07-21, ai=mlx, taskId=task__eqSUaSEc5QyF5Sl)
+# CLI 검증/QA팀 — 일일 산출물 (2026-07-21, ai=retired-local-provider, taskId=task__eqSUaSEc5QyF5Sl)
 
 (1) 오늘 관찰·분석  
 - 프로젝트 루트 경로: /Users/nova-ai/project/nco  

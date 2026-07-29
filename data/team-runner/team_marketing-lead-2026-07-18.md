@@ -1,4 +1,4 @@
-# Marketing Lead (marketing-lead) — 일일 산출물 (2026-07-18, ai=mlx, taskId=task_mi6m-GGwHGpRs3oW)
+# Marketing Lead (marketing-lead) — 일일 산출물 (2026-07-18, ai=retired-local-provider, taskId=task_mi6m-GGwHGpRs3oW)
 
 1. 오늘 관찰:  
    - 변경 파일 목록: 미확인 (콘텐츠 제공 없음)  

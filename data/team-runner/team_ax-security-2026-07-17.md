@@ -1,4 +1,4 @@
-# Security Agent (ax-security) — 일일 산출물 (2026-07-17, ai=mlx, taskId=task_HYjPlHg5WiEaK40K)
+# Security Agent (ax-security) — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task_HYjPlHg5WiEaK40K)
 
 (1) 오늘 관찰·분석: 보안 모니터링 대상 경로(/Users/nova-ai/project/nco)에 최근 변경 내역이 없음. 프로젝트 상태는 안정됨. 보안 스캔 및 의존성 검토 대상 파일은 현재 변경되지 않음. 코드 분석 도구(claude-code)는 최신 상태로 동작 중이며, 컴플라이언스 검사 결과 이상 없음.
 

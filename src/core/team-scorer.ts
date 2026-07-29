@@ -415,7 +415,7 @@ export function buildSpawnFailureExclusion(
 // 재시도할 기회가 전혀 없었던 외부 진행상태 마커가 팀 completion을 낮춘다.
 //
 // 실측 근거(2026-07-28 조회, db/nco.db):
-//  - task_trend_collector: prompt='트렌드 키워드 수집 및 분석 중', assigned_to='mlx',
+//  - task_trend_collector: prompt='트렌드 키워드 수집 및 분석 중', assigned_to='retired-local-provider',
 //    status='completed', response/result_json 0바이트, metadata_json/system_prompt/
 //    spawned_by_cli NULL, orphan_requeue_count=0.
 //  - 이 provenance 조합은 orphan-recovery-policy.ts의 외부 주입 가드와 동일하다.

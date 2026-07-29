@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_W1CJ5rNoQM1d6wuI)
+# 자가학습팀 — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_W1CJ5rNoQM1d6wuI)
 
 (1) 오늘 관찰·분석  
 - 과거 3일 간 자가학습팀 작업 기록에서 'obsidian-improvement-no' 파일명이 반복적으로 언급됨. 하지만 파일 내용, Mem0 연동 여부, 지식 베이스 최적화 지표는 제공되지 않음.  

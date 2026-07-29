@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-08, ai=mlx, taskId=task_qVdFgi2U-zg14U9X)
+# 자가학습팀 — 일일 산출물 (2026-07-08, ai=retired-local-provider, taskId=task_qVdFgi2U-zg14U9X)
 
 今日任务完成情况：
 

@@ -1,4 +1,4 @@
-# Security Agent (ax-security) — 일일 산출물 (2026-07-15, ai=mlx, taskId=task_8J3JnIXU0FpGFK2V)
+# Security Agent (ax-security) — 일일 산출물 (2026-07-15, ai=retired-local-provider, taskId=task_8J3JnIXU0FpGFK2V)
 
 (1) 오늘 관찰·분석: 보안 모니터링 대상 경로(/Users/nova-ai/project/nco)에 최근 변경 내역이 없음. 최근 보안 스캔 및 의존성 검사 수행 기록 없음. 코드 분석 대상 파일 목록 미확인. 컴플라이언스 상태는 미확인.
 

@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-13, ai=mlx, taskId=task_WIRuwi6uIX-m12Hv)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-13, ai=retired-local-provider, taskId=task_WIRuwi6uIX-m12Hv)
 
 오늘 날짜: 2026-07-13  
 [팀 상시 임무 — 콘텐츠 기획팀]  

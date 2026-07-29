@@ -27,7 +27,7 @@ tags:
 
 ### 목표 2: 외부 에이전트 의존도 최소화
 - **내부 검증 모듈 도입**: `src/core/validation/`에 자체 검증 로직 추가
-- **Fallback 메커니즘**: 외부 API 장애 시 로컬 모델(MLX) 사용 전환 구현
+- **Fallback 메커니즘**: 외부 API 장애 시 로컬 모델(retired-local-provider) 사용 전환 구현
 - **의존도 모니터링**: `src/security/DependencyGuard.ts`에 의존도 추적 및 경고 기능 추가
 
 ### 목표 3: 지식 베이스·개선 메모 활용 최적화

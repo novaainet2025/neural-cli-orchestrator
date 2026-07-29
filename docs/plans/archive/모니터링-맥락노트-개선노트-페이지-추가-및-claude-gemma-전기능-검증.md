@@ -9,8 +9,8 @@
 ## 배경 및 컨텍스트
 
 - **NCO Monitor**: `src/server/monitor.ts` (3626줄) — 현재 탭: Overview, Mesh, Sessions, Messages, Discussions, Tasks, Flow, Debug
-- **claude-gemma**: `ANTHROPIC_BASE_URL=http://localhost:4100 claude` — MLX Proxy(port 4100) → MLX Server(port 8000) → Gemma 4 26B A4B 4-bit
-- **MLX 프록시**: `/Users/nova-ai/project/nco/cli-installs/anthropic-mlx-proxy.py` (774줄) — Anthropic API ↔ OpenAI-compatible 변환
+- **claude-gemma**: `ANTHROPIC_BASE_URL=http://localhost:4100 claude` — retired-local-provider Proxy(port 4100) → retired-local-provider Server(port 8000) → Gemma 4 26B A4B 4-bit
+- **retired-local-provider 프록시**: `/Users/nova-ai/project/nco/cli-installs/anthropic-retired-local-provider-proxy.py` (774줄) — Anthropic API ↔ OpenAI-compatible 변환
 - **기존 이슈**: Connection: keep-alive → close 수정으로 SSE Dilly-dallying 해결 이력 있음
 
 ---
@@ -80,8 +80,8 @@
 ## Phase 3: claude-gemma 전기능 검증
 
 ### 3-1. 환경 확인
-- [ ] MLX 서버 실행 확인: `curl http://localhost:8000/health`
-- [ ] MLX 프록시 실행 확인: `curl http://localhost:4100/health`
+- [ ] retired-local-provider 서버 실행 확인: `curl http://localhost:8000/health`
+- [ ] retired-local-provider 프록시 실행 확인: `curl http://localhost:4100/health`
 - [ ] 기본 추론 테스트: `ANTHROPIC_BASE_URL=http://localhost:4100 ANTHROPIC_API_KEY=dummy claude -p "hello"`
 
 ### 3-2. Claude Code 기본 기능 검증
@@ -110,7 +110,7 @@
 ## Phase 4: 프록시 설정 수정 및 도구 사용 검증
 
 ### 4-1. 현재 프록시 이슈 진단
-- [ ] `anthropic-mlx-proxy.py` 전체 검토 — 지원 엔드포인트 목록화
+- [ ] `anthropic-retired-local-provider-proxy.py` 전체 검토 — 지원 엔드포인트 목록화
 - [ ] 현재 미지원/오작동 엔드포인트 식별:
   - `/v1/messages` (스트리밍/비스트리밍)
   - `/v1/messages/count_tokens`
@@ -146,7 +146,7 @@
 ### 4-4. 최종 검증 및 문서화
 - [x] 모든 수정 사항 TypeScript 컴파일 확인: `npx tsc --noEmit`
 - [ ] 기존 API 엔드포인트 응답 확인 (회귀 없음)
-- [ ] `config/ai-providers.json` MLX 항목 업데이트 (수정된 정보 반영)
+- [ ] `config/ai-providers.json` retired-local-provider 항목 업데이트 (수정된 정보 반영)
 - [ ] 개선노트 탭에 이번 작업의 수정 사항 일괄 등록
 - [ ] `docs/reports/` 에 검증 결과 리포트 저장
 

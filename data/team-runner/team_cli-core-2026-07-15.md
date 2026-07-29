@@ -1,4 +1,4 @@
-# CLI 코어 개발팀 — 일일 산출물 (2026-07-15, ai=mlx, taskId=task_j_NgAjxbAABeNVlz)
+# CLI 코어 개발팀 — 일일 산출물 (2026-07-15, ai=retired-local-provider, taskId=task_j_NgAjxbAABeNVlz)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/src/edge/protocol/rest.rs  

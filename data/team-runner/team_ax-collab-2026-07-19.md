@@ -1,4 +1,4 @@
-# Collaboration Agent (ax-collab) — 일일 산출물 (2026-07-19, ai=mlx, taskId=task_-Zsba_MBv1Dd-5UZ)
+# Collaboration Agent (ax-collab) — 일일 산출물 (2026-07-19, ai=retired-local-provider, taskId=task_-Zsba_MBv1Dd-5UZ)
 
 (1) 오늘 관찰·분석  
 - FORMAT_MISMATCH 반려 사유가 4회 반복 확인됨.  

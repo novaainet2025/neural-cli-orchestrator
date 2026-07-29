@@ -1,4 +1,4 @@
-# CLI 검증/QA팀 — 일일 산출물 (2026-07-09, ai=mlx-instruct, taskId=task_l9rf2l1gjc90Wu6K)
+# CLI 검증/QA팀 — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_l9rf2l1gjc90Wu6K)
 
 done: 오늘 날짜 기준(2026-07-09)으로 팀 상시 임무 — CLI 검증/QA팀의 일일 산출물을 작성하였습니다.  
 - CLI 검증: 도구 호출 검증 및 API 타임아웃 폴백 테스트 수행 완료. 검증 결과는 각 테스트 케이스별로 기록됨.  

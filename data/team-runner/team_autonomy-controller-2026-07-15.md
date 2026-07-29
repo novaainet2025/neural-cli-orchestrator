@@ -1,4 +1,4 @@
-# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-15, ai=mlx, taskId=task_Zll6HWHU6W7eY6Ap)
+# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-15, ai=retired-local-provider, taskId=task_Zll6HWHU6W7eY6Ap)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/docs/obsidian-improvement-no

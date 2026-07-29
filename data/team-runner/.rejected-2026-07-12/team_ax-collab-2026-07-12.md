@@ -1,4 +1,4 @@
-# Collaboration Agent (ax-collab) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_0U5LMgk4a2ywSddD)
+# Collaboration Agent (ax-collab) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_0U5LMgk4a2ywSddD)
 
 변경 파일 목록: - /Users/nova-ai/project/nco/agents/collab/dependency-resolver.py
 - /Users/nova-ai/project/nco/agents/collab/workload-balancer.py

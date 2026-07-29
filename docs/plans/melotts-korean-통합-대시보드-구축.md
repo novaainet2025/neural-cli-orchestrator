@@ -2,7 +2,7 @@
 
 **ID**: plan_547A4X4jdjok4Zit  
 **경로**: /Users/nova-ai/project/@@gentop/lib/MeloTTS-Korean  
-**참여 AI (4-Layer)**: opencode → codex+aider → cursor-agent → mlx  
+**참여 AI (4-Layer)**: opencode → codex+aider → cursor-agent → retired-local-provider  
 **스택**: Python 3.14 / FastAPI / MeloTTS / vanilla JS  
 
 ## 태스크
@@ -24,9 +24,9 @@
 - [ ] `start.sh` 시작 스크립트 (uvicorn + 브라우저 오픈)
 - [ ] `requirements.txt`
 
-### Layer 4 — 리뷰 + 검증 (cursor-agent + mlx)
+### Layer 4 — 리뷰 + 검증 (cursor-agent + retired-local-provider)
 - [ ] **cursor-agent**: 코드 리뷰 (보안, 에러 처리, 입력 검증)
-- [ ] **mlx**: 한국어 TTS 추론 정상 작동 확인
+- [ ] **retired-local-provider**: 한국어 TTS 추론 정상 작동 확인
 - [ ] `README.md` (한국어 사용법 + 스크린샷)
 - [ ] NCO 모니터 메타데이터 (`/api/realtime/parallel` 등록)
 

@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-21, ai=mlx, taskId=task_GvQSHDAvy6vLeSVq)
+# 자가학습팀 — 일일 산출물 (2026-07-21, ai=retired-local-provider, taskId=task_GvQSHDAvy6vLeSVq)
 
 (1) 오늘 관찰·분석  
 - 자가학습팀의 작업 요청이 2026-07-13, 2026-07-15, 2026-07-19, 2026-07-21에 걸쳐 동일한 형식으로 반복됨. 주요 목적은 에이전트별 작업 이력 분석, Obsidian 개선 노트 작성, Mem0 장기 기억 연동, 지식 베이스 최적화.  

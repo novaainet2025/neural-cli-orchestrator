@@ -3,7 +3,7 @@
 - 팀: 문서·명세 에이전트(`ax-docs`)
 - 조직 경로: `nova-ax/ax-docs`
 - 담당 영역: 명세 추적, 변경 이력 감시, 연동 규격 검토, 이전 안내서
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 
@@ -11,7 +11,7 @@
 - `db/migrations`의 이전 파일 83개를 확인했다. 가장 큰 번호의 파일은 `074_decision_log.sql`이며, 이번 확인에서 이전 파일의 미커밋 변경은 확인되지 않았다.
 - `docs/`에서 새 설정값 `projectDir: env.PROJECT_DIR`을 검색했다. 일치하는 문서는 확인되지 않았고, `src/core/discussion-engine.ts`를 언급하는 문서는 계획 문서 1개만 확인됐다.
 - `npm run build`를 실행해 빌드가 성공했다.
-- `http://localhost:6200/health`에 다시 연결을 시도했다. 연결 거부로 종료 코드 7이 반환되어, `copilot`과 `mlx`의 현재 상태는 확인하지 못했다.
+- `http://localhost:6200/health`에 다시 연결을 시도했다. 연결 거부로 종료 코드 7이 반환되어, `copilot`과 `retired-local-provider`의 현재 상태는 확인하지 못했다.
 
 ## 진행 중 이슈와 다음 조치
 
@@ -34,5 +34,5 @@
 
 ## 미검증·남은 항목
 
-- `copilot`과 `mlx`의 현재 가용 상태 및 연동 응답 본문
+- `copilot`과 `retired-local-provider`의 현재 가용 상태 및 연동 응답 본문
 - 작업 경로·제한 시간 변경을 반영할 최종 명세 문서와 반영 여부

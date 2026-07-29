@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-15, ai=mlx, taskId=task_2Oj_fIPvJYiUj9m-)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-15, ai=retired-local-provider, taskId=task_2Oj_fIPvJYiUj9m-)
 
 1. **제목**: "How to Use AI to Generate $1,000/Month Passive Income in 2026 (Step-by-Step Guide)"  
    **타깃 독자**: 영문 재테크 블로그 신규 독자, 부수입 관심 있는 25–40세 직장인, AI 도구 사용 경험이 있는 초보자  

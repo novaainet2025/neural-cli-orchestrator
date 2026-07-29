@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-18, ai=mlx, taskId=task_GJHvdcgMqMqHsia8)
+# 자가학습팀 — 일일 산출물 (2026-07-18, ai=retired-local-provider, taskId=task_GJHvdcgMqMqHsia8)
 
 (1) 오늘 관찰·분석  
 - 2026-07-15 및 2026-07-13의 이전 임무에서 동일한 작업 유형([팀 상시 임무 — 자가학습팀])이 반복됨.  

@@ -110,7 +110,7 @@ export class CircuitBreaker {
   /**
    * Gate (GATE-CONTENT-STRAT-R1): 외부 cron이 raw sqlite로 넣은 팀 행인지 판정.
    * 프로바이더 회로와 무관 — true면 orphan 재큐잉·품질 계상에서 제외해야 한다.
-   * 실측 고정 ID: task_trend_collector (team_content-strategy-2026, assigned_to=mlx).
+   * 실측 고정 ID: task_trend_collector (team_content-strategy-2026, assigned_to=retired-local-provider).
    * 롤백: NCO_ORPHAN_EXTERNAL_INJECTION_GUARD=off.
    */
   isExternalInjectionPhantom(row: OrphanProvenanceRow): boolean {

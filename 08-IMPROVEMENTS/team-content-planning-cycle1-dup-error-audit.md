@@ -72,9 +72,9 @@ cursor.execute("""INSERT OR REPLACE INTO tasks (id, mode, prompt, assigned_to, s
 
 | 행 | orphan_requeue_count | 주입 시 assigned_to | 현재 assigned_to | 귀결 |
 |---|---|---|---|---|
-| `task_content_generation` | 1 | mlx | cursor-agent | ENOENT 실패 → **team_content-planning 계상** |
+| `task_content_generation` | 1 | retired-local-provider | cursor-agent | ENOENT 실패 → **team_content-planning 계상** |
 | `task_quality_check` | 2 | ollama | claude-code | team_quality-audit에서 동일 경로 |
-| `task_trend_collector` | 0 | mlx | mlx | 아직 미채택(다음 부팅에 채택 예정) |
+| `task_trend_collector` | 0 | retired-local-provider | retired-local-provider | 아직 미채택(다음 부팅에 채택 예정) |
 
 `agent_actions`에 이 3행의 `task:created` / `task:completed` 이벤트가 **0건**이다(14일, 팀 귀속 6,052행 중
 이벤트 없는 행은 정확히 이 3건). 같은 시각(07-27 15:00:00~15:01:00, 17:09~17:23) 다른 태스크들의
@@ -117,7 +117,7 @@ cursor.execute("""INSERT OR REPLACE INTO tasks (id, mode, prompt, assigned_to, s
 | `task_quality_check` | team_quality-audit | `completed` @07-27 01:18:14 | 동일 서명(이벤트 0건, provenance 컬럼 전무). response 566B는 orphan 채택 후 claude-code가 채운 것 | **허위 성공** — `content-gen.py:806` 동일 메커니즘 |
 
 `register_nco_task(..., 'completed')`는 **어떤 exit code도 읽지 않는다**. 성공 판정 근거는 파이썬 함수가
-예외 없이 반환했다는 사실뿐이며, `assigned_to='mlx'`는 실행 주체가 아니라 라벨이다.
+예외 없이 반환했다는 사실뿐이며, `assigned_to='retired-local-provider'`는 실행 주체가 아니라 라벨이다.
 이 행은 팀 완료율 분자를 부풀린다.
 
 ### 4-3. 오귀속 실패(허위보고 아님): 1건

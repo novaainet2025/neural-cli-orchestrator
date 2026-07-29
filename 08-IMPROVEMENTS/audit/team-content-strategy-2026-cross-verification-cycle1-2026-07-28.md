@@ -38,12 +38,12 @@ HR 지시 스냅샷: score=46.7 / completion=50% / sample=48h·2 / cycle=1/3
 | task | status | assigned | response | provenance | 판정 |
 |---|---|---|---|---|---|
 | `task_EbTqTcR3_iFzfMQB` | completed | agy | 891B+ 본문 실재 | `spawned_by_cli=team-runner`, `metadata_json` SET, heartbeat_seq=8 | **유효 성공** |
-| `task_trend_collector` | completed | mlx | null/0B | metadata/system_prompt/spawned_by_cli null, orphan=0, team_id 유지 | **phantom completed (외부 주입)** |
+| `task_trend_collector` | completed | retired-local-provider | null/0B | metadata/system_prompt/spawned_by_cli null, orphan=0, team_id 유지 | **phantom completed (외부 주입)** |
 
 `GET /api/tasks/task_trend_collector` 본문 발췌 (verbatim 필드):
 
 ```
-id=task_trend_collector status=completed assigned_to=mlx progress=0
+id=task_trend_collector status=completed assigned_to=retired-local-provider progress=0
 response=null result_json=null evidence_json=null error=null
 metadata_json=null system_prompt=null spawned_by_cli=null
 orphan_requeue_count=0 team_id=team_content-strategy-2026

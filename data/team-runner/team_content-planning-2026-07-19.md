@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-19, ai=mlx, taskId=task_PcKvNdIFIydG6eEK)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-19, ai=retired-local-provider, taskId=task_PcKvNdIFIydG6eEK)
 
 1) 오늘 관찰·분석:  
 - 최근 3일간 AI 기반 부수입 관련 검색량이 23% 증가 (Google Trends 기준, 2026-07-16~18).  

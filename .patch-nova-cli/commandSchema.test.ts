@@ -120,7 +120,7 @@ describe('structured command schema', () => {
     const result = validateStructuredCommand(
       structuredInvocation('/model', ['nova-cli-default']),
       entries,
-      { providerIds: ['mlx', 'codex'] }
+      { providerIds: ['ollama', 'codex'] }
     );
     expect(result).toEqual(expect.objectContaining({ ok: false, kind: 'clarify' }));
   });
@@ -170,7 +170,7 @@ describe('structured command schema', () => {
 
   it('validates literal, variant, optional, and subcommand forms used by built-ins', () => {
     const context = {
-      providerIds: ['claude-code', 'mlx', 'codex', 'agy'],
+      providerIds: ['claude-code', 'retired-local-provider', 'codex', 'agy'],
       peerNames: ['nova-a'],
       mcpServerNames: ['filesystem']
     };
@@ -220,7 +220,7 @@ describe('structured command schema', () => {
   });
 
   it('clarifies unknown explicit task and parallel providers instead of changing prompt meaning', () => {
-    const context = { providerIds: ['mlx', 'codex', 'agy'] };
+    const context = { providerIds: ['retired-local-provider', 'codex', 'agy'] };
     expect(validateStructuredCommand(
       structuredInvocation('/task', ['made-up', '버그 수정']),
       commandRegistry.values(),
@@ -259,7 +259,7 @@ describe('structured command schema', () => {
     expect(Object.keys(VALID_BUILTIN_ARGS).sort()).toEqual(builtInNames);
 
     const context = {
-      providerIds: ['claude-code', 'mlx', 'codex', 'agy'],
+      providerIds: ['claude-code', 'retired-local-provider', 'codex', 'agy'],
       peerNames: ['nova-a'],
       mcpServerNames: ['filesystem']
     };
@@ -283,7 +283,7 @@ describe('structured command schema', () => {
 
   it('recognizes requests to modify nova-cli itself as implementation work', () => {
     expect(isCliImplementationRequest('nova cli에서 provider를 생략하면 기본값을 쓰도록 로직을 수정해')).toBe(true);
-    expect(isCliImplementationRequest('현재 모델을 mlx로 바꿔줘')).toBe(false);
+    expect(isCliImplementationRequest('현재 모델을 retired-local-provider로 바꿔줘')).toBe(false);
   });
 
   it('searches installed command usage and help without a hand-written route table', () => {

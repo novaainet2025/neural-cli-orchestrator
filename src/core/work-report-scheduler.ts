@@ -16,7 +16,7 @@ const KST_OFFSET_HOURS = 9;
 const KST_TIMEZONE = 'Asia/Seoul';
 const POLL_INTERVAL_MS = 60_000;
 const MISSED_GRACE_MS = 30 * 60 * 1000;
-// 태스크 발행 간 지연 — 일괄발사가 단일스레드 로컬 LLM 서버(mlx)를 크래시시킨 실측(2026-07-08 ↺6) 완화
+// 태스크 발행 간 지연 — 일괄발사가 단일스레드 로컬 LLM 서버(retired-local-provider)를 크래시시킨 실측(2026-07-08 ↺6) 완화
 export const TASK_DISPATCH_STAGGER_MS = 5_000;
 // 링크 해제(실패)·미발행 보고의 태스크 재발행 상한 (틱당)
 const REDISPATCH_LIMIT = 20;

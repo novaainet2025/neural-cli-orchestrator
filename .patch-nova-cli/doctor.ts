@@ -1,6 +1,6 @@
 /**
  * doctor — 로컬 nova-cli 런타임 진단 (이식 2026-07-12, codex `doctor` 이식).
- * NCO/Nova-AX/ollama/mlx 엔드포인트 + git/node 런타임을 점검해 구조화 결과를 반환한다.
+ * NCO/Nova-AX/ollama 엔드포인트 + git/node 런타임을 점검해 구조화 결과를 반환한다.
  * TUI(/doctor)와 스크립트모드(nova-cli doctor) 양쪽에서 공유한다.
  */
 import { exec } from 'node:child_process';
@@ -119,14 +119,12 @@ export const runDoctorChecks = async (): Promise<DoctorCheck[]> => {
   const ncoBase = endpoint('nco.baseUrl', 'http://localhost:6200');
   const axBase = endpoint('ax.baseUrl', 'http://localhost:6300');
   const ollamaBase = endpoint('ollama.baseUrl', 'http://localhost:11434');
-  const mlxBase = endpoint('mlx.baseUrl', 'http://localhost:8000');
 
-  const [git, nco, ax, ollama, mlx] = await Promise.all([
+  const [git, nco, ax, ollama] = await Promise.all([
     checkGit(),
     httpProbe(`${ncoBase}/health`),
     httpProbe(`${axBase}/api/health`),
-    httpProbe(`${ollamaBase}/api/tags`),
-    httpProbe(`${mlxBase}/v1/models`)
+    httpProbe(`${ollamaBase}/api/tags`)
   ]);
 
   const toCheck = (name: string, r: { ok: boolean; detail: string }, optional = false): DoctorCheck => ({
@@ -140,8 +138,7 @@ export const runDoctorChecks = async (): Promise<DoctorCheck[]> => {
     git,
     toCheck('NCO :6200', nco),
     toCheck('Nova-AX :6300', ax, true),
-    toCheck('ollama :11434', ollama, true),
-    toCheck('mlx :8000', mlx, true)
+    toCheck('ollama :11434', ollama, true)
   ];
 };
 

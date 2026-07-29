@@ -595,7 +595,7 @@ HEAD_SOURCE_RECOMPUTE={"teamId":"team_content-planning","slug":"content-planning
 
 ```console
 $ sqlite3 -readonly db/nco.db "SELECT id,status,assigned_to,LENGTH(CAST(COALESCE(response,'') AS BLOB)),substr(COALESCE(error,''),1,60),created_at FROM tasks WHERE team_id='team_content-planning' AND created_at >= datetime('now','-48 hours') ORDER BY created_at DESC;"
-task_trend_collector|completed|mlx|0||2026-07-27 20:18:15
+task_trend_collector|completed|retired-local-provider|0||2026-07-27 20:18:15
 task_content_generation|failed|cursor-agent|0|cursor-agent: CLI failed exit=unknown — Command failed with |2026-07-27 17:10:06
 task_NTFmch7UjbcOYnqh|completed|agy|3443||2026-07-27 15:00:06
 task_wbmNJYskCFXrjmCE|completed|agy|3199||2026-07-27 05:12:09
@@ -1104,7 +1104,7 @@ $ git log -1 --format='%h %cI' -- tests/근거.test.ts
 
 ```console
 $ sqlite3 -readonly db/nco.db "SELECT id,status,assigned_to,LENGTH(CAST(COALESCE(response,'') AS BLOB)),substr(COALESCE(error,''),1,55),created_at FROM tasks WHERE team_id='team_content-planning' AND created_at >= datetime('now','-48 hours') ORDER BY created_at DESC;"
-task_trend_collector|completed|mlx|0||2026-07-27 21:00:03
+task_trend_collector|completed|retired-local-provider|0||2026-07-27 21:00:03
 task_content_generation|failed|cursor-agent|0|cursor-agent: CLI failed exit=unknown — Command failed |2026-07-27 17:10:06
 task_NTFmch7UjbcOYnqh|completed|agy|3443||2026-07-27 15:00:06
 task_wbmNJYskCFXrjmCE|completed|agy|3199||2026-07-27 05:12:09
@@ -1552,7 +1552,7 @@ task_bdP-dIFNni_P814l    completed  agy           2278                          
 task_wbmNJYskCFXrjmCE    completed  agy           3199                                                          2026-07-27 05:12:09
 task_NTFmch7UjbcOYnqh    completed  agy           3443                                                          2026-07-27 15:00:06
 task_content_generation  failed     cursor-agent  0       cursor-agent: CLI failed exit=unknown — Command fail  2026-07-27 17:10:06
-task_trend_collector     completed  mlx           0                                                             2026-07-27 21:00:03
+task_trend_collector     completed  retired-local-provider           0                                                             2026-07-27 21:00:03
 ```
 
 원시 표본 9건에 두 수식을 각각 적용하면:

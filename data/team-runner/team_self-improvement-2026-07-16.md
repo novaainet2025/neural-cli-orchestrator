@@ -1,4 +1,4 @@
-# 자가개선팀 — 일일 산출물 (2026-07-16, ai=mlx, taskId=task_G0LWLHeNo-7X74FF)
+# 자가개선팀 — 일일 산출물 (2026-07-16, ai=retired-local-provider, taskId=task_G0LWLHeNo-7X74FF)
 
 (1) 오늘 관찰·분석  
 - 자가진단 리포트의 핵심 파일 경로인 `/Users/nova-ai/project/nco/docs/obsidian-improvement-no`가 2026-07-13부터 지속적으로 언급됨.  

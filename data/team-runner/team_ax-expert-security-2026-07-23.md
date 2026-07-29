@@ -13,7 +13,7 @@ done: [Evidence Tier 1] 주입된 실데이터 내용을 확인했습니다. 원
 2) 현재 상태
 
 - 담당: security, audit
-- 기반 모델·프로바이더: mlx
+- 기반 모델·프로바이더: retired-local-provider
 - 진행 중 팀 태스크: 0건
 - 대기 팀 태스크: 10건
 - codex 누적 태스크: 2,175건

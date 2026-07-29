@@ -10,7 +10,7 @@
 
 - 오전 점검 내용을 기준으로 제공자 실행 경로 변경을 재확인했다. `config/ai-providers.json`에서 `hermes`는 로컬 API 방식에서 `codex` 명령 방식으로 바뀌었고, 모델은 `gpt-5.6-terra`, 헬스 검사는 `codex --version`으로 설정됐다.
 - `src/agent/agent-manager.ts`에서 내부 호출에 `PROJECT_DIR` 기본값을 전달하고, `hermes` 실행에 읽기 전용 샌드박스와 모델 지정 인수를 추가한 변경을 확인했다.
-- `src/agent/orchestrated-loop.ts`에서 `hermes`가 `codex`와 같은 표준 입력 종료 및 최종 응답 파일 처리 규칙을 따르도록 변경됐으며, `src/utils/mlx-models.ts`에서 `hermes`가 MLX 모델 별칭 적용 대상에서 제외된 것을 확인했다.
+- `src/agent/orchestrated-loop.ts`에서 `hermes`가 `codex`와 같은 표준 입력 종료 및 최종 응답 파일 처리 규칙을 따르도록 변경됐으며, `src/utils/retired-local-provider-models.ts`에서 `hermes`가 retired-local-provider 모델 별칭 적용 대상에서 제외된 것을 확인했다.
 - `npm run build`를 실행해 타입 검사 명령이 종료 코드 `0`으로 완료된 것을 확인했다.
 
 ## 진행 중 이슈와 다음 조치

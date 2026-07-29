@@ -3,7 +3,7 @@
 - 팀: Docs & Spec Agent (`ax-docs`)
 - 조직 경로: `nova-ax/ax-docs`
 - 담당 영역: 명세 추적, 변경 이력 감시, 연동 규격 검토, 이전 안내서
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 
@@ -35,5 +35,5 @@
 
 ## 미검증·남은 항목
 
-- `copilot`과 `mlx`의 현재 가용 상태 및 실제 응답 본문은 확인하지 못했다.
+- `copilot`과 `retired-local-provider`의 현재 가용 상태 및 실제 응답 본문은 확인하지 못했다.
 - 프로바이더 수 불일치를 해소할 기준과 공식 변경 이력 문서 신설 승인 여부는 확인하지 못했다.

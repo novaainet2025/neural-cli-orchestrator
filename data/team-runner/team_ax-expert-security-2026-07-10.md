@@ -1,4 +1,4 @@
-# 보안 전문가 Expert (ax-expert-보안-전문가) — 일일 산출물 (2026-07-10, ai=mlx, taskId=task_A_QIr4Y-yrlfJE4F)
+# 보안 전문가 Expert (ax-expert-보안-전문가) — 일일 산출물 (2026-07-10, ai=retired-local-provider, taskId=task_A_QIr4Y-yrlfJE4F)
 
 ### 📊 2026년 7월 10일 보안 전문가 Expert 일일 산출물
 

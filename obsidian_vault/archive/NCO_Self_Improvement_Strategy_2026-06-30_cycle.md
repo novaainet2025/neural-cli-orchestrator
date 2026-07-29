@@ -8,21 +8,21 @@ tags:
 ## 긴급 Subnote
 
 - **일시**: 2026-06-30 KST
-- **상태**: `remote-mlx` provider crash-loop 버그 수정 완료, `origin/main` 푸시 완료
-- **커밋**: `2740be4` (`fix: healthCheck 없는 provider(remote-mlx) → NCO crash-loop 수정`)
-- **원인**: `remote-mlx` provider에 `healthCheck` 필드가 없을 때 `src/agent/agent-manager.ts`가 `TypeError`로 크래시 루프 진입
+- **상태**: `retired-local-provider` provider crash-loop 버그 수정 완료, `origin/main` 푸시 완료
+- **커밋**: `2740be4` (`fix: healthCheck 없는 provider(retired-local-provider) → NCO crash-loop 수정`)
+- **원인**: `retired-local-provider` provider에 `healthCheck` 필드가 없을 때 `src/agent/agent-manager.ts`가 `TypeError`로 크래시 루프 진입
 - **수정 파일**:
   - `src/agent/agent-manager.ts` — `healthCheck` 없으면 `status=online` 처리 가드 추가
-  - `cli-installs/mlx-watchdog.sh` — `_set_provider`가 `healthCheck: { url, timeout }` 자동 주입
-  - `config/ai-providers.json` — `remote-mlx` 기본 `healthCheck` 추가
+  - `cli-installs/retired-local-provider-watchdog.sh` — `_set_provider`가 `healthCheck: { url, timeout }` 자동 주입
+  - `config/ai-providers.json` — `retired-local-provider` 기본 `healthCheck` 추가
 - **WSL 노드 적용 순서**:
   - `cd ~/project/nco && git pull origin main`
-  - `pm2 restart mlx-watchdog || pm2 start cli-installs/mlx-watchdog.sh --name mlx-watchdog --interpreter bash`
+  - `pm2 restart retired-local-provider-watchdog || pm2 start cli-installs/retired-local-provider-watchdog.sh --name retired-local-provider-watchdog --interpreter bash`
   - `pm2 save`
 - **검증 포인트**:
-  - `config/ai-providers.json`의 `remote-mlx.healthCheck.url` 존재 확인
-  - `pm2 logs mlx-watchdog` 에서 enable/disable 토글 후 NCO crash-loop 미발생 확인
-  - MLX 온라인 시 `remote-mlx enabled=true`, 오프라인 시 자동 fallback 동작 확인
+  - `config/ai-providers.json`의 `retired-local-provider.healthCheck.url` 존재 확인
+  - `pm2 logs retired-local-provider-watchdog` 에서 enable/disable 토글 후 NCO crash-loop 미발생 확인
+  - retired-local-provider 온라인 시 `retired-local-provider enabled=true`, 오프라인 시 자동 fallback 동작 확인
 
 ## 현재 상태 진단
 

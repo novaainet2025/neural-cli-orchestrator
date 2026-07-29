@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_55IS4CmZsbxLBqUY)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_55IS4CmZsbxLBqUY)
 
 1. **Title**: AI-Powered Passive Income Strategies in 2026  
 **Target Audience**: Early-career professionals and side-hustlers aged 25–40 interested in leveraging AI tools for financial growth.  

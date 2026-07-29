@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-19, ai=mlx, taskId=task_CClF97lvofcHO998)
+# 품질 검수팀 — 일일 산출물 (2026-07-19, ai=retired-local-provider, taskId=task_CClF97lvofcHO998)
 
 **Pinterest Pin 1**  
 - 과장/거짓수치: FIX  

@@ -4,7 +4,7 @@
 - 팀명: `Docs & Spec Agent (ax-docs)`
 - 조직 경로: `nova-ax/ax-docs`
 - 상시 임무: `spec-tracking`, `changelog-monitoring`, `api-review`, `migration-guide`
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 - 변경 이력 재점검: `git log --oneline --since='2026-07-15 09:00' -- src/ scripts/ config/ docs/ CLAUDE.md` 결과, 오전 보고 이후 이 범위에 해당하는 커밋은 `44226c4`(ax-discuss 오전 보고서 생성) 1건뿐이었고 소스·설정·문서 코드 변경은 없었다. 오전 보고서에서 확인한 스펙 상태가 오후 시점에도 동일하게 유지되는지를 이월 항목 중심으로 재검증했다.

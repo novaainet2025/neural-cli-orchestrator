@@ -3,7 +3,7 @@
 - **팀**: Marketing Lead (marketing-lead)
 - **조직 경로**: nova-ax/marketing-lead
 - **담당 영역**: 캠페인, 브랜드 전략, 콘텐츠 마케팅, 분석, 성장(growth)
-- **기반 모델**: internal (NCO 프로바이더 openrouter, mlx 경유)
+- **기반 모델**: internal (NCO 프로바이더 openrouter, retired-local-provider 경유)
 
 ---
 

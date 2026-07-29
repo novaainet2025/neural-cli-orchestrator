@@ -21,7 +21,7 @@ DB: `db/nco.db` (readonly 연결), scorer: `dist/core/team-scorer.js`
 | task_mUctLweT5Iuokwf9 | completed | agy | — | 1689B |
 | task_bdP-dIFNni_P814l | completed | agy | — | 1424B |
 | task_wbmNJYskCFXrjmCE | completed | agy | — | 1633B |
-| task_trend_collector | completed | mlx | — | 0B |
+| task_trend_collector | completed | retired-local-provider | — | 0B |
 | task_NTFmch7UjbcOYnqh | completed | agy | — | 1742B |
 | **task_content_generation** | **failed** | **cursor-agent** | **`cursor-agent: CLI failed exit=unknown — Command failed with ENOENT: cursor-agent …`** | **0B** |
 

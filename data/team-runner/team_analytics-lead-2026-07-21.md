@@ -1,4 +1,4 @@
-# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-21, ai=mlx, taskId=task_PADktYeaac_u24Ru)
+# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-21, ai=retired-local-provider, taskId=task_PADktYeaac_u24Ru)
 
 오늘 관찰·분석:  
 - 2026년 7월 14일 오후 보고서 작성 요청이 5건 중복으로 기록됨.  

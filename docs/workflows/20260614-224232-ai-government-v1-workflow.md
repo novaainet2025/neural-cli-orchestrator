@@ -69,7 +69,7 @@ AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경�
 - `.claude/settings.json`
 - `CLAUDE.md`
 - `README.md`
-- `cli-installs/anthropic-mlx-proxy.py`
+- `cli-installs/anthropic-retired-local-provider-proxy.py`
 - `cli-installs/install-all.sh`
 - `config/ai-providers.json`
 - `config/topology.json`

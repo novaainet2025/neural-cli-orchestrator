@@ -3,7 +3,7 @@
 ## 팀 정보
 - 팀: 분석 리더팀
 - 조직 경로: `nova-ax/analytics-lead`
-- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Analytics Lead'(analytics-lead) 전담팀. 담당 영역: data-analysis, bi-reporting, kpi-tracking, insights, visualization. 기반 모델: internal. NCO 프로바이더(retired-provider, mlx)를 통해 해당 역할 작업을 수행한다.
+- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Analytics Lead'(analytics-lead) 전담팀. 담당 영역: data-analysis, bi-reporting, kpi-tracking, insights, visualization. 기반 모델: internal. NCO 프로바이더(retired-provider, retired-local-provider)를 통해 해당 역할 작업을 수행한다.
 
 ## 오늘 수행한 핵심 업무
 - 데이터 분석 파이프라인 최적화: 주간 KPI 보고서 생성 로직을 재구성하여 평균 처리 시간을 32% 감소시켰음.

@@ -23,7 +23,7 @@ index de19743..f1071f1 100644
 +  it('dead-letters an externally injected row instead of requeueing it', () => {
 +    expect(decideOrphanRecovery({
 +      status: 'running',
-+      assignedTo: 'mlx',
++      assignedTo: 'retired-local-provider',
 +      recoveryCount: 0,
 +      maxRecoveryCount: 2,
 +      externallyInjected: true,

@@ -3,7 +3,7 @@
 ## 팀 정보
 - 팀: Docs & Spec Agent (ax-docs)
 - 조직 경로: `nova-ax/ax-docs`
-- 상시 임무: 명세 추적(spec-tracking), 변경 이력 감시(changelog-monitoring), 인터페이스 점검(api-review), 마이그레이션 가이드(migration-guide) 담당. 기반 모델 copilot·mlx.
+- 상시 임무: 명세 추적(spec-tracking), 변경 이력 감시(changelog-monitoring), 인터페이스 점검(api-review), 마이그레이션 가이드(migration-guide) 담당. 기반 모델 copilot·retired-local-provider.
 
 ## 오늘 수행한 핵심 업무
 - 변경 이력 감시: 최신 커밋 `f3e07e4`(feat(fleet): sessionsCapable 보존 — 구버전 기기 판별)를 확인하고, 이번 오전 문서화 대상이 함대(fleet) 보고 인터페이스 변경이라는 점을 특정했다.

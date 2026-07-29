@@ -47,7 +47,7 @@ describe('orphan recovery policy', () => {
   it('dead-letters an externally injected row instead of requeueing it', () => {
     expect(decideOrphanRecovery({
       status: 'running',
-      assignedTo: 'mlx',
+      assignedTo: 'ollama',
       recoveryCount: 0,
       maxRecoveryCount: 2,
       externallyInjected: true,

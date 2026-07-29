@@ -22,7 +22,7 @@ echo "[download_models] 작업 디렉터리: ${LIB_DIR}"
 
 mkdir -p "${LIB_DIR}/models/mlx-turbo" "${LIB_DIR}/models/ggml"
 
-echo "[download_models] MLX 커뮤니티 모델 다운로드..."
+echo "[download_models] retired-local-provider 커뮤니티 모델 다운로드..."
 huggingface-cli download mlx-community/whisper-large-v3-turbo --local-dir "${LIB_DIR}/models/mlx-turbo/"
 
 echo "[download_models] whisper.cpp GGML 가중치 다운로드..."

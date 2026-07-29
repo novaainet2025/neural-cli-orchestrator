@@ -1,4 +1,4 @@
-# CLI 코어 개발팀 — 일일 산출물 (2026-07-16, ai=mlx, taskId=task_0FRLS8SLxFgbzgQR)
+# CLI 코어 개발팀 — 일일 산출물 (2026-07-16, ai=retired-local-provider, taskId=task_0FRLS8SLxFgbzgQR)
 
 ```markdown
 # 2026-07-16 NCO 및 Nova-AX 엔진 개발 관찰 보고서

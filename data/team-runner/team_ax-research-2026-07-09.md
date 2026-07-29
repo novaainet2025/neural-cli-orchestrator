@@ -1,4 +1,4 @@
-# Research Agent (ax-research) — 일일 산출물 (2026-07-09, ai=mlx, taskId=task_ldBvEOkzPoU-33g3)
+# Research Agent (ax-research) — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_ldBvEOkzPoU-33g3)
 
 ### 📊 2026년 7월 9일 Research Agent 일일 산출물
 

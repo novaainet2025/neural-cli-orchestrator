@@ -1,4 +1,4 @@
-# Git Manager (ax-git) — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_8e-6vf3PzdR2snpZ)
+# Git Manager (ax-git) — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_8e-6vf3PzdR2snpZ)
 
 변경 파일 목록: 미확인  
 핵심 diff 요약: 미확인  

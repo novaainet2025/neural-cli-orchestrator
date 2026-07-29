@@ -1,4 +1,4 @@
-# Discussion Lead (ax-discuss) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_B8csab3gCHnH5vRq)
+# Discussion Lead (ax-discuss) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_B8csab3gCHnH5vRq)
 
 # 2026년 7월 12일 오전 보고서  
 ## 핵심 업무 요약  

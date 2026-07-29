@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-16, ai=mlx, taskId=task_xrWTbyNrk17DUMOu)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-16, ai=retired-local-provider, taskId=task_xrWTbyNrk17DUMOu)
 
 1) 오늘 관찰·분석:  
 - 최근 3일간의 검색 트렌드 분석 결과, AI 기반 부수입(예: AI 아트 판매, AI 콘텐츠 생성)과 저비용 ETF 투자에 대한 관심이 급증 중임.  

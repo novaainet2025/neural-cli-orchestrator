@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_j6H9NuqdQ7pHpATj)
+# 품질 검수팀 — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_j6H9NuqdQ7pHpATj)
 
 PASS: Pinterest Pin 1 - Title: "10 Proven ChatGPT Prompts to Make Money in 2026"  
 - 문구 길이: 62자 < 280자 → PASS  

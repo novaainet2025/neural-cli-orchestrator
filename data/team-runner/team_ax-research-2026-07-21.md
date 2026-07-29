@@ -1,4 +1,4 @@
-# Research Agent (ax-research) — 일일 산출물 (2026-07-21, ai=mlx, taskId=task_Wf8EGZESx-gEy6CJ)
+# Research Agent (ax-research) — 일일 산출물 (2026-07-21, ai=retired-local-provider, taskId=task_Wf8EGZESx-gEy6CJ)
 
 (1) 오늘 관찰·분석:  
 - 2026년 7월 21일 현재, Research Agent(ax-research)는 웹 검색, 트렌드 추적, 사양 모니터링, 논문 분석 업무를 수행 중이다.  

@@ -1,4 +1,4 @@
-# Support Lead (support-lead) — 일일 산출물 (2026-07-17, ai=mlx, taskId=task_cWwy8ONhYxUS3ZGl)
+# Support Lead (support-lead) — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task_cWwy8ONhYxUS3ZGl)
 
 오늘 관찰·분석:  
 - 2026-07-17 현재, Support Lead 역할 에이전트는 기존의 daily-2 보고서 파일을 기반으로 운영 중이며, 최근 변경 이력이 없음.  

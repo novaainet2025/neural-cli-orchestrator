@@ -5,7 +5,7 @@
 - 팀명: `Docs & Spec Agent (ax-docs)`
 - 조직 경로: `nova-ax/ax-docs`
 - 상시 임무: `spec-tracking`, `changelog-monitoring`, `api-review`, `migration-guide`
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 
@@ -38,6 +38,6 @@
 
 ## 미확인 항목
 
-- `copilot`과 `mlx` 프로바이더의 실제 실행·상태는 이번 정적 점검으로 확인하지 못했다.
+- `copilot`과 `retired-local-provider` 프로바이더의 실제 실행·상태는 이번 정적 점검으로 확인하지 못했다.
 - `discussion:provider_failed`가 저장소 밖 소비자에서 처리되는지와 실제 대시보드 표시 결과는 확인하지 못했다.
 - `997ff45`의 모든 변경에 대한 명세·호환성 검토는 아직 수행하지 못했다.

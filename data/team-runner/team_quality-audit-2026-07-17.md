@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-17, ai=mlx, taskId=task_Izi5mguHUPY4JVOO)
+# 품질 검수팀 — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task_Izi5mguHUPY4JVOO)
 
 - **Pinterest Pin 1**  
   - 과장/거짓 수치: FIX ("10 Proven ChatGPT Prompts" → "10 AI Prompt Templates for Income Generation")  

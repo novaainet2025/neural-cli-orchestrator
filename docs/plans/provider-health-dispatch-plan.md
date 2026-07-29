@@ -1,7 +1,7 @@
 # 프로바이더 헬스 기반 디스패치 완전화 설계 (2026-07-08, claude-3)
 
 목표: 리밋/장애 프로바이더의 자동 제외·폴백·복구를 완전하게 만들어 위임 병목 제거.
-근거: 최근 300태스크 실측 — mlx 실패 32(커넥션13+서킷11), codex quota 6, claude-code silent 5+미로그인 3, ollama 큐대기 타임아웃 5건 전멸.
+근거: 최근 300태스크 실측 — retired-local-provider 실패 32(커넥션13+서킷11), codex quota 6, claude-code silent 5+미로그인 3, ollama 큐대기 타임아웃 5건 전멸.
 
 ## 소유권/경계 (claude-2 합의, msg 2fd10929)
 - work-report-scheduler.ts 수정 금지 (claude-2 소유)

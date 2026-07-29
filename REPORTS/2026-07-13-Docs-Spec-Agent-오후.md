@@ -4,7 +4,7 @@
 - 팀명: `Docs & Spec Agent (ax-docs)`
 - 조직 경로: `nova-ax/ax-docs`
 - 상시 임무: `spec-tracking`, `changelog-monitoring`, `api-review`, `migration-guide`
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 - 변경 이력 점검: `git log --oneline --since='2026-07-12 14:00' -- src/ scripts/ config/` 결과를 기준으로 오늘 오후 범위의 코드 커밋을 확인했다. 코드 변경 커밋은 `0d01bee` 한 건이었고, 메시지는 `feat(fleet): 원격 프로바이더 리밋/서킷 상세를 fleet push에 포함`이었다.

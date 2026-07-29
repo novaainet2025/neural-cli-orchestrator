@@ -1,4 +1,4 @@
-# 자가개선팀 — 일일 산출물 (2026-07-10, ai=mlx, taskId=task_a22RP7ss-2Lv-yaD)
+# 자가개선팀 — 일일 산출물 (2026-07-10, ai=retired-local-provider, taskId=task_a22RP7ss-2Lv-yaD)
 
 ### 📊 2026년 7월 10일 자가개선팀 일일 산출물 ####  
 ✅ 수행 내역  

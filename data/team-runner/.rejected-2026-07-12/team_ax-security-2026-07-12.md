@@ -1,4 +1,4 @@
-# Security Agent (ax-security) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_fqOjFYLuLbp1QHuT)
+# Security Agent (ax-security) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_fqOjFYLuLbp1QHuT)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/security/reports/vulnerability-scan-20260712.md → 2026-07-12 취약점 스캔 결과 업데이트 (고위험 항목 3건 추가)  

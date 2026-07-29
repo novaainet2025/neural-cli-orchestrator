@@ -3,12 +3,12 @@
 - 팀: Docs & Spec Agent (`ax-docs`)
 - 조직 경로: `nova-ax/ax-docs`
 - 담당 영역: 명세 추적, 변경 이력 감시, 연동 규격 검토, 이전 안내서
-- 기반 모델: `copilot`, `mlx`
+- 기반 모델: `copilot`, `retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 
 - 미커밋 변경을 검토했습니다. `hermes` 프로바이더의 실행 방식이 API에서 `codex` 명령 기반 CLI로 바뀌었고, 구성 모델은 `qwen3:30b-a3b`에서 `gpt-5.6-terra`로 변경되었습니다. 구성의 비용 표기도 무료에서 유료로 변경되었습니다.
-- `src/agent/agent-manager.ts`와 `src/agent/orchestrated-loop.ts`에서 `hermes`가 읽기 전용 샌드박스와 `codex` 계열의 표준 입력·최종 응답 파일 처리 규칙을 사용하도록 추가된 것을 확인했습니다. `src/utils/mlx-models.ts`에서는 `hermes`가 MLX 별칭 처리 대상에서 제외되었습니다.
+- `src/agent/agent-manager.ts`와 `src/agent/orchestrated-loop.ts`에서 `hermes`가 읽기 전용 샌드박스와 `codex` 계열의 표준 입력·최종 응답 파일 처리 규칙을 사용하도록 추가된 것을 확인했습니다. `src/utils/retired-local-provider-models.ts`에서는 `hermes`가 retired-local-provider 별칭 처리 대상에서 제외되었습니다.
 - 문서와 구성의 정합성을 점검했습니다. `config/ai-providers.json`에는 식별자 13개가 있으나 `CLAUDE.md`에는 9개 에이전트로 설명되어 있어 수량 설명 불일치를 확인했습니다.
 - `CHANGELOG`로 시작하는 파일과 `src/server/monitor.ts`의 `provider_failed` 참조를 검색했으나 결과가 없었습니다. 따라서 변경 이력과 실패 이벤트 표시의 구현 여부는 이 검색 범위에서 확인되지 않았습니다.
 

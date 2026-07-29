@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-20, ai=mlx, taskId=task__KWaId0DxEIEmcG9)
+# 품질 검수팀 — 일일 산출물 (2026-07-20, ai=retired-local-provider, taskId=task__KWaId0DxEIEmcG9)
 
 [항목별 검토]
 

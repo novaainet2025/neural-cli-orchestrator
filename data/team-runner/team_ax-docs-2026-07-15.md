@@ -6,9 +6,9 @@
 (1) 오늘 관찰·분석 - 오늘 날짜: 2026-07-15  
 - 프로젝트 경로: /Users/nova-ai/project/nco  
 - 담당 영역: spec-tracking, changelog-monitoring, api-review, migration-guide  
-- 기반 모델: copilot+mlx  
+- 기반 모델: copilot+retired-local-provider  
 - 작업 유형: bugfix  
-- NCO 프로바이더(copilot, mlx)를 통해 작업 수행 중  
+- NCO 프로바이더(copilot, retired-local-provider)를 통해 작업 수행 중  
 
 (2) 현재 상태  
 - 변경 파일 목록: 미확인 (도구 사용 금지로 인해 파일 리스트 확인 불가)  

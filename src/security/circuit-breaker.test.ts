@@ -417,7 +417,7 @@ describe('isExternalInjectionPhantom (GATE-CONTENT-STRAT-R1)', () => {
   });
 
   // Live HTTP body (2026-07-28T09:16Z): team_id 유지, response/result/evidence null,
-  // metadata_json/system_prompt/spawned_by_cli null, orphan_requeue_count=0, assigned_to=mlx.
+  // metadata_json/system_prompt/spawned_by_cli null, orphan_requeue_count=0, assigned_to=retired-local-provider.
   const trendCollectorRow = {
     teamId: 'team_content-strategy-2026',
     metadataJson: null,
@@ -428,7 +428,7 @@ describe('isExternalInjectionPhantom (GATE-CONTENT-STRAT-R1)', () => {
 
   it('flags the live task_trend_collector provenance snapshot without opening the provider circuit', () => {
     process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = 'on';
-    const breaker = new CircuitBreaker('mlx');
+    const breaker = new CircuitBreaker('ollama');
     breaker.reset();
 
     expect(breaker.isExternalInjectionPhantom(trendCollectorRow)).toBe(true);
@@ -439,7 +439,7 @@ describe('isExternalInjectionPhantom (GATE-CONTENT-STRAT-R1)', () => {
   it('is a strict no-op when the orphan external-injection guard is disabled', () => {
     for (const off of ['off', 'false', '0']) {
       process.env.NCO_ORPHAN_EXTERNAL_INJECTION_GUARD = off;
-      const breaker = new CircuitBreaker('mlx-off');
+      const breaker = new CircuitBreaker('ollama-off');
       expect(breaker.isExternalInjectionPhantom(trendCollectorRow)).toBe(false);
     }
   });

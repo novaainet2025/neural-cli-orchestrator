@@ -1,4 +1,4 @@
-# 자가개선팀 — 일일 산출물 (2026-07-08, ai=mlx, taskId=task_42Flf8zh7BoOmH18)
+# 자가개선팀 — 일일 산출물 (2026-07-08, ai=retired-local-provider, taskId=task_42Flf8zh7BoOmH18)
 
 今日任务完成情况：
 
@@ -8,7 +8,7 @@ NCO团队自检报告：
 
 当前状态：
 - 工作中正在处理的任务包括Task_DM5d9O7bU7K6l8MN和Task_42Flf8zh7BoOmH18。
-- Task_42Flf8zh7BoOmH18涉及MLX运行环境及Qwen3-Coder-30B模型部署配置检查。
+- Task_42Flf8zh7BoOmH18涉及retired-local-provider运行环境及Qwen3-Coder-30B模型部署配置检查。
 - Task_DM5d9O7bU7K6l8MN为构建流程自动化脚本开发。
 
 明日计划：

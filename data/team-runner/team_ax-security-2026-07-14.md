@@ -1,4 +1,4 @@
-# Security Agent (ax-security) — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_Warjxtyv1V4qWQoW)
+# Security Agent (ax-security) — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_Warjxtyv1V4qWQoW)
 
 (1) 오늘 관찰·분석  
 - 보안 모니터링 대상 경로(/Users/nova-ai/project/nco)에 최근 변경 내역 미확인  

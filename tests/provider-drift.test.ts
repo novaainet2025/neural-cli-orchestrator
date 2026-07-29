@@ -28,14 +28,17 @@ const SRC = resolve(import.meta.dirname, '../src');
 /**
  * config 에 없지만 src 에 아직 남아 있는 id 들(2026-07-29 기준 스냅샷).
  *
- * 대부분 과거 프로바이더(aider/copilot/openrouter/mlx/openclaw)이거나
+ * 대부분 과거 프로바이더(aider/copilot/openrouter/openclaw)이거나
  * 프로바이더가 아닌 토큰(openai=SDK 벤더명, vllm=로컬 서버 종류)이다.
+ *
+ * 2026-07-29: nvidia 에 이어 mlx·remote-mlx 도 사용자 지시로 퇴출됐다. 두 id 는
+ * 목록에서 아예 뺐으므로, 코드에 다시 등장하면 아래 감시 테스트가 실패한다.
  * 이 목록은 "이미 알고 있는 빚"이고, 여기 없는 새 id 가 등장하면 테스트가 깨진다.
  * 정리할 때는 목록에서 지우면 된다 — 다시 들어오면 실패한다.
  */
 const KNOWN_LEGACY_IDS = new Set([
-  'aider', 'copilot', 'openrouter', 'mlx', 'openclaw', 'openai', 'vllm',
-  'gemini', 'gemini-deep', 'mithosis', 'miso', 'remote-mlx',
+  'aider', 'copilot', 'openrouter', 'openclaw', 'openai', 'vllm',
+  'gemini', 'gemini-deep', 'mithosis', 'miso',
 ]);
 
 /** 따옴표 안의 id 꼴 리터럴. */
@@ -117,7 +120,7 @@ describe('provider registry — 라우팅 결과에 미등록 프로바이더가
   it('resolvePreference 는 퇴출 id 를 떨어뜨리고 신규 id 를 편입한다', () => {
     const anyRegistered = [...registeredProviderIds()][0];
     // 퇴출된 id 는 선언돼 있어도 결과에 남지 않는다
-    expect(resolvePreference(['nvidia', anyRegistered])).toEqual([anyRegistered]);
+    expect(resolvePreference(['nvidia', 'mlx', anyRegistered])).toEqual([anyRegistered]);
     // 선언에 없어도 역량이 맞는 등록 프로바이더는 뒤에 편입된다
     const research = resolvePreference([anyRegistered], 'research');
     expect(research[0]).toBe(anyRegistered);
@@ -130,8 +133,10 @@ describe('provider registry — 라우팅 결과에 미등록 프로바이더가
     for (const id of registeredProviderIds()) {
       expect(tierOf(id), `${id} 의 tier 를 판정하지 못했다`).not.toBe('unknown');
     }
-    expect(derivedTier('nvidia')).toBe('unknown');
-    expect(isRegistered('nvidia')).toBe(false);
+    for (const retired of ['nvidia', 'mlx', 'remote-mlx']) {
+      expect(derivedTier(retired), `${retired} 는 퇴출됐다`).toBe('unknown');
+      expect(isRegistered(retired), `${retired} 는 퇴출됐다`).toBe(false);
+    }
   });
 });
 

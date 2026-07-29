@@ -1,4 +1,4 @@
-# HR Director (hr-director) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_p8ElKPHXqMfgclfl)
+# HR Director (hr-director) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_p8ElKPHXqMfgclfl)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/docs/hr-director/daily-output-2026-07-12.md  

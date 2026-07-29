@@ -156,7 +156,7 @@ $ npm run provider:remove -- zzz-probe --apply
 
 ## 4. 남은 것
 
-- `src`의 유령 id 70건(`aider`·`copilot`·`openrouter`·`mlx`·`openclaw`·`openai`·`vllm`)은
+- `src`의 유령 id 70건(`aider`·`copilot`·`openrouter`·`retired-local-provider`·`openclaw`·`openai`·`vllm`)은
   `KNOWN_LEGACY_IDS`로 동결만 했다. 정리할 때 목록에서 지우면 재유입이 차단된다.
 - `adaptive-scorer`의 cold-start prior는 손으로 관리하는 경험값이라 표 자체는 이력으로
   남겼다(후보 목록이 등록된 것만 담으므로 유령 prior는 자연히 무시된다).

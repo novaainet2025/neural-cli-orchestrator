@@ -54,7 +54,7 @@ cycle2 산출물(`...-cycle2-evidence.md` §1~§7)
 |---|---|---|
 | team_id | team_content-planning | team_content-planning |
 | status | failed | completed |
-| assigned_to | cursor-agent | mlx |
+| assigned_to | cursor-agent | retired-local-provider |
 | progress | 0.0 | 0.0 |
 | response / result_json / evidence | 0 / 0 / 0 | 0 / 0 / 0 |
 | orphan_requeue_count | 1 | 0 |

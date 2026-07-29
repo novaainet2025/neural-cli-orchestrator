@@ -3,7 +3,7 @@
 - 팀: `Docs & Spec Agent (ax-docs)`
 - 조직 경로: `nova-ax/ax-docs`
 - 담당 영역: 명세 추적, 변경 기록 감시, `API` 검토, 마이그레이션 안내
-- 기반 모델: `copilot+mlx`
+- 기반 모델: `copilot+retired-local-provider`
 
 ## 오늘 수행한 핵심 업무
 

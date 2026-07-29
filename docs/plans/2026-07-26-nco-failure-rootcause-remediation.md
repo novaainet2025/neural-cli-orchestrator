@@ -109,10 +109,10 @@ Baseline 스냅샷: `nco_baseline_20260726_1755.txt` (git HEAD `d2943828`)
 
 ### P1-5. 페일오버 체인 결손 보완
 - 파일: `config/failover-chains.json`
-- 현황: 키 9개뿐 — **`claude-code`, `mlx`, `higgsfield` 부재**.
+- 현황: 키 9개뿐 — **`claude-code`, `retired-local-provider`, `higgsfield` 부재**.
   `gateway.ts:1134`의 `chains[assigned_to]`가 undefined → 즉시 null.
   **실패 1위 에이전트 claude-code의 페일오버 성공률이 구조적으로 0%**
-- 변경: `"claude-code": ["codex","cursor-agent","opencode"]`, `"mlx": ["ollama","hermes"]` 추가
+- 변경: `"claude-code": ["codex","cursor-agent","opencode"]`, `"retired-local-provider": ["ollama","hermes"]` 추가
   + `defaultChain` 폴백(같은 role의 건강한 프로바이더)
 
 ### P1-6. retry 카운터 감쇠

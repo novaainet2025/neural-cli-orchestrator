@@ -1,4 +1,4 @@
-# HR Director (hr-director) — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_lbtnnKrGP7HBpd8a)
+# HR Director (hr-director) — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_lbtnnKrGP7HBpd8a)
 
 **1) 오늘 관찰·분석**  
 - 변경 파일 목록: 미확인 (이전 기록의 '/Users/nova-ai/project/nco/docs/hr-director/daily-output' 관련 파일 수정 내역 외에 새로운 정보 없음)  

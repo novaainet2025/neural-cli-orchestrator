@@ -21,7 +21,7 @@
 | S2 프로세스/라이프사이클/메시 | **claude-2**(세션) | ✅ | 15 (CRIT 1) |
 | S3 `src/security/*` 샌드박스/가드 | claude-1 큐잉→**codex 재배정** | ✅ (claude-1 독립 2차 대기) | 11 (CRIT 2) |
 
-**프로바이더 가용성 실태(T1, `/api/agents`):** copilot 월쿼터 초과, cursor-agent 사용한도, opencode API키 오류, ollama/mlx 오류, retired-provider 빈응답, hermes 실패 — **9개 중 6개 즉시 실패**(opencode 포함). codex·agy·openrouter만 안정. 실패분(A2·A4·A5·A6·A9·S3·A3)은 안정 프로바이더 재배정 + 코디 자체분석으로 **전량 커버(12/12)**. codex가 재배정 워크호스(단일 프로바이더 다수 슬라이스 → 독립성은 그만큼 낮음, §5 미검증항목).
+**프로바이더 가용성 실태(T1, `/api/agents`):** copilot 월쿼터 초과, cursor-agent 사용한도, opencode API키 오류, ollama/retired-local-provider 오류, retired-provider 빈응답, hermes 실패 — **9개 중 6개 즉시 실패**(opencode 포함). codex·agy·openrouter만 안정. 실패분(A2·A4·A5·A6·A9·S3·A3)은 안정 프로바이더 재배정 + 코디 자체분석으로 **전량 커버(12/12)**. codex가 재배정 워크호스(단일 프로바이더 다수 슬라이스 → 독립성은 그만큼 낮음, §5 미검증항목).
 
 ---
 

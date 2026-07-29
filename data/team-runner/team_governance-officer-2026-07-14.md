@@ -1,4 +1,4 @@
-# Governance Officer (governance-officer) — 일일 산출물 (2026-07-14, ai=mlx, taskId=task_dyjSC33kLkXO4rlR)
+# Governance Officer (governance-officer) — 일일 산출물 (2026-07-14, ai=retired-local-provider, taskId=task_dyjSC33kLkXO4rlR)
 
 changed files: []  
 key diffs: []  

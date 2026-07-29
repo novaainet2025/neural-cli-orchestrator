@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_BPASgUDY-L5Zf7p6)
+# 자가학습팀 — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_BPASgUDY-L5Zf7p6)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/docs/obsidian-improvement-note.md  

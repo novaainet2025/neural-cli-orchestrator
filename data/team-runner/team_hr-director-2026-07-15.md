@@ -1,4 +1,4 @@
-# HR Director (hr-director) — 일일 산출물 (2026-07-15, ai=mlx, taskId=task_1snD5eZeCZ66aoJE)
+# HR Director (hr-director) — 일일 산출물 (2026-07-15, ai=retired-local-provider, taskId=task_1snD5eZeCZ66aoJE)
 
 **1) 오늘 관찰·분석**  
 - 변경 파일 목록: 미확인  

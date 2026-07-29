@@ -1,4 +1,4 @@
-# 품질 검수팀 — 일일 산출물 (2026-07-13, ai=mlx, taskId=task_cGaU4Pfd4iOyGqEC)
+# 품질 검수팀 — 일일 산출물 (2026-07-13, ai=retired-local-provider, taskId=task_cGaU4Pfd4iOyGqEC)
 
 (1) 과장/거짓 수치 여부: FIX  
 - 문제: "These 10 ChatGPT prompts made someone $5k/month" → 구체적 근거 없음. 수치가 검증되지 않아 과장으로 간주됨.  

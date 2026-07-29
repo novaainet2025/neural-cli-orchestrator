@@ -1,4 +1,4 @@
-# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-19, ai=mlx, taskId=task_lJJGI8t448TfCCch)
+# Analytics Lead (analytics-lead) — 일일 산출물 (2026-07-19, ai=retired-local-provider, taskId=task_lJJGI8t448TfCCch)
 
 오늘 관찰·분석:  
 - 2026년 7월 19일 현재, Analytics Lead 팀의 작업 기록은 2026년 7월 14일 오후 보고서에 기반한 복수의 동일한 업무보고 요청(예: task_bVP4M_BjD7nwSDji 등)이 반복되어 존재함.  

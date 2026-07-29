@@ -1,4 +1,4 @@
-# 중복에러방지팀 — 일일 산출물 (2026-07-08, ai=mlx, taskId=task_f66PvPPxFESmcabq)
+# 중복에러방지팀 — 일일 산출물 (2026-07-08, ai=retired-local-provider, taskId=task_f66PvPPxFESmcabq)
 
 Today’s Daily Task Output – Duplicate Error Prevention Team:
 

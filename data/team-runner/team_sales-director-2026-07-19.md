@@ -1,4 +1,4 @@
-# Sales Director (sales-director) — 일일 산출물 (2026-07-19, ai=mlx, taskId=task_g6ycNCgNpH3vA5mx)
+# Sales Director (sales-director) — 일일 산출물 (2026-07-19, ai=retired-local-provider, taskId=task_g6ycNCgNpH3vA5mx)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/docs/obsidian-improvement-no  

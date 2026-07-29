@@ -1,4 +1,4 @@
-# 자가학습팀 — 일일 산출물 (2026-07-17, ai=mlx, taskId=task__c5owKGKJkwibuVl)
+# 자가학습팀 — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task__c5owKGKJkwibuVl)
 
 (1) 오늘 관찰·분석  
 - 2026-07-15 및 2026-07-13의 자가진단 리포트 기반 작업 이력에서, `/Users/nova-ai/project/nco/docs/obsidian-improvement-no` 파일이 반복적으로 언급됨. 이는 Obsidian 개선 노트의 초안 또는 중간 저장본으로 보이며, 지속적인 수정이 이루어지고 있음을 시사함.  

@@ -1,4 +1,4 @@
-# 자가개선팀 — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_Wv3bdwFFzUnoLq95)
+# 자가개선팀 — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_Wv3bdwFFzUnoLq95)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/src/optimization/bottleneck-detector.ts  

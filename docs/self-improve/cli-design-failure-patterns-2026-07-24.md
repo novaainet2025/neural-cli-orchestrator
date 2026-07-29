@@ -75,7 +75,7 @@ UI/UX 작업이 아니라, 필수 목표 수치가 없는 상태에서 실제 HT
 
 - 기준 48시간 raw 8행에서 `qualityRejected` 또는 `FORMAT_MISMATCH`는 **0건**이다.
 - 전체 이력에는 과거 2건이 있다:
-  - `task_KqTC-pUQRGLL0ixL` — 2026-07-13 15:01:38 UTC, mlx,
+  - `task_KqTC-pUQRGLL0ixL` — 2026-07-13 15:01:38 UTC, retired-local-provider,
     completed, `qualityHeuristics=["FORMAT_MISMATCH"]`
   - `task_wncrR9LzcCMxB3Ut` — 2026-07-15 15:01:17 UTC, ollama,
     completed, `qualityHeuristics=["FORMAT_MISMATCH"]`

@@ -70,7 +70,7 @@
 - `.claude/settings.json`
 - `CLAUDE.md`
 - `README.md`
-- `cli-installs/anthropic-mlx-proxy.py`
+- `cli-installs/anthropic-retired-local-provider-proxy.py`
 - `cli-installs/install-all.sh`
 - `config/ai-providers.json`
 - `config/topology.json`

@@ -1,33 +1,33 @@
-diff --git a/.claude/commands/nco-mlx.md b/.claude/commands/nco-mlx.md
+diff --git a/.claude/commands/nco-retired-local-provider.md b/.claude/commands/nco-retired-local-provider.md
 deleted file mode 100644
 index e1bfd26..0000000
---- a/.claude/commands/nco-mlx.md
+--- a/.claude/commands/nco-retired-local-provider.md
 +++ /dev/null
 @@ -1,293 +0,0 @@
--# MLX 로컬 서버를 관리합니다 (시작/중지/상태/테스트/설정 등). macOS Apple Silicon 전용.
+-# retired-local-provider 로컬 서버를 관리합니다 (시작/중지/상태/테스트/설정 등). macOS Apple Silicon 전용.
 -
 -# 사용법:
--#   /nco-mlx                          — 현재 상태 확인 (기본)
--#   /nco-mlx status                   — 상세 상태 + 메모리 사용량
--#   /nco-mlx start                    — MLX 서버 시작 (pm2)
--#   /nco-mlx stop                     — MLX 서버 중지
--#   /nco-mlx restart                  — 재시작
--#   /nco-mlx ensure                   — 실행 중이면 유지, 아니면 자동 시작
--#   /nco-mlx logs [줄수]              — 서버 로그 출력 (기본 50줄)
--#   /nco-mlx models                   — 로드된 모델 목록
--#   /nco-mlx test                     — 추론 동작 테스트
--#   /nco-mlx chat <프롬프트>          — 직접 채팅 (단발성 추론)
--#   /nco-mlx config                   — 현재 MLX 설정 출력
--#   /nco-mlx enable                   — NCO 프로바이더 활성화
--#   /nco-mlx disable                  — NCO 프로바이더 비활성화
--#   /nco-mlx proxy start             — Anthropic-MLX 프록시 시작 (port 4100)
--#   /nco-mlx proxy stop              — 프록시 중지
--#   /nco-mlx proxy status            — 프록시 상태 확인
+-#   /nco-retired-local-provider                          — 현재 상태 확인 (기본)
+-#   /nco-retired-local-provider status                   — 상세 상태 + 메모리 사용량
+-#   /nco-retired-local-provider start                    — retired-local-provider 서버 시작 (pm2)
+-#   /nco-retired-local-provider stop                     — retired-local-provider 서버 중지
+-#   /nco-retired-local-provider restart                  — 재시작
+-#   /nco-retired-local-provider ensure                   — 실행 중이면 유지, 아니면 자동 시작
+-#   /nco-retired-local-provider logs [줄수]              — 서버 로그 출력 (기본 50줄)
+-#   /nco-retired-local-provider models                   — 로드된 모델 목록
+-#   /nco-retired-local-provider test                     — 추론 동작 테스트
+-#   /nco-retired-local-provider chat <프롬프트>          — 직접 채팅 (단발성 추론)
+-#   /nco-retired-local-provider config                   — 현재 retired-local-provider 설정 출력
+-#   /nco-retired-local-provider enable                   — NCO 프로바이더 활성화
+-#   /nco-retired-local-provider disable                  — NCO 프로바이더 비활성화
+-#   /nco-retired-local-provider proxy start             — Anthropic-retired-local-provider 프록시 시작 (port 4100)
+-#   /nco-retired-local-provider proxy stop              — 프록시 중지
+-#   /nco-retired-local-provider proxy status            — 프록시 상태 확인
 -
 -# 예:
--#   /nco-mlx start
--#   /nco-mlx chat "한국어로 안녕하세요를 영어로 번역해줘"
--#   /nco-mlx logs 100
+-#   /nco-retired-local-provider start
+-#   /nco-retired-local-provider chat "한국어로 안녕하세요를 영어로 번역해줘"
+-#   /nco-retired-local-provider logs 100
 -
 -export ARGUMENTS
 -
@@ -36,11 +36,11 @@ index e1bfd26..0000000
 -_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 -NCO_DIR="${NCO_DIR:-$(cd "$_SCRIPT_DIR/../.." 2>/dev/null && pwd)}"
 -
--PM2_NAME="mlx-server"
+-PM2_NAME="retired-local-provider-server"
 -PORT=8000
--MLX_API="http://localhost:${PORT}/v1"
--MODEL_PATH="${MLX_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
--MLX_BIN="${HOME}/.local/bin/mlx_lm.server"
+-retired-local-provider_API="http://localhost:${PORT}/v1"
+-MODEL_PATH="${retired-local-provider_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
+-MLX_BIN="${HOME}/.local/bin/retired-local-provider_lm.server"
 -CONFIG_FILE="${NCO_DIR}/config/ai-providers.json"
 -
 -ACTION=$(echo $ARGUMENTS | cut -d' ' -f1)
@@ -52,7 +52,7 @@ index e1bfd26..0000000
 -case "$ACTION" in
 -  status)
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
--    echo "  MLX 서버 상태"
+-    echo "  retired-local-provider 서버 상태"
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 -    PM2_LINE=$(pm2 jlist 2>/dev/null | python3 -c "
 -import sys, json
@@ -68,7 +68,7 @@ index e1bfd26..0000000
 -      ST=$(echo "$PM2_LINE" | awk '{print $2}')
 -      MEM=$(echo "$PM2_LINE" | awk '{print $3}')
 -      MEM_GB=$(awk "BEGIN{printf \"%.2f\", $MEM/1073741824}")
--      HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "${MLX_API}/models" 2>/dev/null)
+-      HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "${retired-local-provider_API}/models" 2>/dev/null)
 -      echo "  ● PM2 상태  : $ST (PID: $PID)"
 -      echo "  ✓ 헬스      : HTTP $HEALTH"
 -      echo "  메모리      : ${MEM_GB} GB (unified)"
@@ -77,69 +77,69 @@ index e1bfd26..0000000
 -    fi
 -    SYS_MEM=$(vm_stat 2>/dev/null | awk '/Pages free/{f=$3} /Pages active/{a=$3} /Pages wired/{w=$4} END{printf "%.1f / %.1f GB free", f*4096/1073741824, (f+a+w)*4096/1073741824}')
 -    echo "  시스템 메모리: $SYS_MEM"
--    echo "  엔드포인트  : ${MLX_API}"
+-    echo "  엔드포인트  : ${retired-local-provider_API}"
 -    echo "  모델 경로   : $MODEL_PATH"
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 -    ;;
 -
 -  start)
--    echo "MLX 서버 시작 중..."
+-    echo "retired-local-provider 서버 시작 중..."
 -    pm2 describe $PM2_NAME >/dev/null 2>&1 && pm2 start $PM2_NAME 2>&1 | tail -3 \
--      || pm2 start "$MLX_BIN" --name $PM2_NAME --interpreter none --max-memory-restart 30G \
+-      || pm2 start "$retired-local-provider_BIN" --name $PM2_NAME --interpreter none --max-memory-restart 30G \
 -           -- --model "$MODEL_PATH" --port $PORT --host 127.0.0.1 2>&1 | tail -3
 -    ;;
 -
 -  stop)
--    echo "MLX 서버 중지 중..."
+-    echo "retired-local-provider 서버 중지 중..."
 -    pm2 stop $PM2_NAME 2>&1 | tail -3
 -    ;;
 -
 -  restart)
--    echo "MLX 서버 재시작 중..."
+-    echo "retired-local-provider 서버 재시작 중..."
 -    pm2 restart $PM2_NAME 2>&1 | tail -3
 -    ;;
 -
 -  ensure)
 -    if pm2 jlist 2>/dev/null | grep -q "\"name\":\"$PM2_NAME\"" && \
--       curl -sf "${MLX_API}/models" >/dev/null 2>&1; then
--      echo "✓ MLX 서버 정상 실행 중"
+-       curl -sf "${retired-local-provider_API}/models" >/dev/null 2>&1; then
+-      echo "✓ retired-local-provider 서버 정상 실행 중"
 -    else
--      echo "MLX 서버 시작..."
+-      echo "retired-local-provider 서버 시작..."
 -      pm2 describe $PM2_NAME >/dev/null 2>&1 && pm2 restart $PM2_NAME 2>&1 | tail -3 \
--        || pm2 start "$MLX_BIN" --name $PM2_NAME --interpreter none --max-memory-restart 30G \
+-        || pm2 start "$retired-local-provider_BIN" --name $PM2_NAME --interpreter none --max-memory-restart 30G \
 -             -- --model "$MODEL_PATH" --port $PORT --host 127.0.0.1 2>&1 | tail -3
 -    fi
 -    ;;
 -
 -  logs)
 -    LINES=${ARG2:-50}
--    echo "━━━ MLX 로그 (최근 ${LINES}줄) ━━━"
+-    echo "━━━ retired-local-provider 로그 (최근 ${LINES}줄) ━━━"
 -    pm2 logs $PM2_NAME --lines $LINES --nostream 2>&1 | tail -n $((LINES+5))
 -    ;;
 -
 -  models)
 -    echo "━━━ 로드된 모델 ━━━"
--    curl -s "${MLX_API}/models" 2>/dev/null | python3 -c "
+-    curl -s "${retired-local-provider_API}/models" 2>/dev/null | python3 -c "
 -import sys, json
 -try:
 -  d = json.load(sys.stdin)
 -  for m in d.get('data', []):
 -    print(f'  • {m[\"id\"]}')
 -except:
--  print('  MLX 서버 미실행. /nco-mlx start')"
+-  print('  retired-local-provider 서버 미실행. /nco-retired-local-provider start')"
 -    ;;
 -
 -  test)
--    echo "━━━ MLX 추론 테스트 ━━━"
--    MODEL=$(curl -s "${MLX_API}/models" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
+-    echo "━━━ retired-local-provider 추론 테스트 ━━━"
+-    MODEL=$(curl -s "${retired-local-provider_API}/models" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
 -    if [ -z "$MODEL" ]; then
--      echo "  ✗ 서버 미실행. /nco-mlx start 후 다시 시도하세요."
+-      echo "  ✗ 서버 미실행. /nco-retired-local-provider start 후 다시 시도하세요."
 -      exit 1
 -    fi
 -    echo "  모델: $MODEL"
 -    echo "  프롬프트: '안녕하세요, 자기소개를 해주세요.' (한 문장)"
 -    echo ""
--    curl -s -X POST "${MLX_API}/chat/completions" \
+-    curl -s -X POST "${retired-local-provider_API}/chat/completions" \
 -      -H "Content-Type: application/json" \
 -      -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"안녕하세요, 자기소개를 한 문장으로.\"}],\"max_tokens\":100,\"temperature\":0.7}" \
 -      2>/dev/null | python3 -c "
@@ -158,20 +158,20 @@ index e1bfd26..0000000
 -  chat)
 -    PROMPT="$REST"
 -    if [ -z "$PROMPT" ]; then
--      echo "사용법: /nco-mlx chat <프롬프트>"
+-      echo "사용법: /nco-retired-local-provider chat <프롬프트>"
 -      exit 1
 -    fi
--    MODEL=$(curl -s "${MLX_API}/models" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
+-    MODEL=$(curl -s "${retired-local-provider_API}/models" 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null)
 -    if [ -z "$MODEL" ]; then
--      echo "  ✗ 서버 미실행. /nco-mlx start 후 다시 시도하세요."
+-      echo "  ✗ 서버 미실행. /nco-retired-local-provider start 후 다시 시도하세요."
 -      exit 1
 -    fi
--    echo "━━━ MLX 채팅 ━━━"
+-    echo "━━━ retired-local-provider 채팅 ━━━"
 -    echo "  모델: $MODEL"
 -    echo "  프롬프트: $PROMPT"
 -    echo ""
 -    ESCAPED=$(echo "$PROMPT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")
--    curl -s -X POST "${MLX_API}/chat/completions" \
+-    curl -s -X POST "${retired-local-provider_API}/chat/completions" \
 -      -H "Content-Type: application/json" \
 -      -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":$ESCAPED}],\"max_tokens\":512,\"temperature\":0.7}" \
 -      2>/dev/null | python3 -c "
@@ -189,13 +189,13 @@ index e1bfd26..0000000
 -    ;;
 -
 -  config)
--    echo "━━━ MLX 설정 ━━━"
+-    echo "━━━ retired-local-provider 설정 ━━━"
 -    python3 -c "
 -import json
 -with open('$CONFIG_FILE') as f:
 -    d = json.load(f)
 -for p in d.get('providers', []):
--    if p['id'] == 'mlx':
+-    if p['id'] == 'retired-local-provider':
 -        print(f'  ID        : {p[\"id\"]}')
 -        print(f'  이름      : {p[\"name\"]}')
 -        print(f'  활성화    : {\"예\" if p.get(\"enabled\") else \"아니오\"}')
@@ -225,11 +225,11 @@ index e1bfd26..0000000
 -with open('$CONFIG_FILE', 'r') as f:
 -    d = json.load(f)
 -for p in d.get('providers', []):
--    if p['id'] == 'mlx':
+-    if p['id'] == 'retired-local-provider':
 -        p['enabled'] = True
 -with open('$CONFIG_FILE', 'w') as f:
 -    json.dump(d, f, indent=2, ensure_ascii=False)
--print('✓ MLX 프로바이더 활성화됨')
+-print('✓ retired-local-provider 프로바이더 활성화됨')
 -print('  NCO 서버 재시작 필요: /nco-start')
 -" 2>/dev/null || echo "설정 파일 변경 실패"
 -    ;;
@@ -240,11 +240,11 @@ index e1bfd26..0000000
 -with open('$CONFIG_FILE', 'r') as f:
 -    d = json.load(f)
 -for p in d.get('providers', []):
--    if p['id'] == 'mlx':
+-    if p['id'] == 'retired-local-provider':
 -        p['enabled'] = False
 -with open('$CONFIG_FILE', 'w') as f:
 -    json.dump(d, f, indent=2, ensure_ascii=False)
--print('○ MLX 프로바이더 비활성화됨')
+-print('○ retired-local-provider 프로바이더 비활성화됨')
 -print('  NCO 서버 재시작 필요: /nco-start')
 -" 2>/dev/null || echo "설정 파일 변경 실패"
 -    ;;
@@ -252,12 +252,12 @@ index e1bfd26..0000000
 -  proxy)
 -    SUB=$ARG2
 -    PROXY_PORT=4100
--    PROXY_SCRIPT="${NCO_DIR}/cli-installs/anthropic-mlx-proxy.py"
--    PROXY_LOG="/tmp/anthropic-mlx-proxy.log"
+-    PROXY_SCRIPT="${NCO_DIR}/cli-installs/anthropic-retired-local-provider-proxy.py"
+-    PROXY_LOG="/tmp/anthropic-retired-local-provider-proxy.log"
 -    case "$SUB" in
 -      start)
 -        if curl -sf "http://localhost:${PROXY_PORT}/health" >/dev/null 2>&1; then
--          PID=$(pgrep -f "anthropic-mlx-proxy" | head -1)
+-          PID=$(pgrep -f "anthropic-retired-local-provider-proxy" | head -1)
 -          echo "✓ 프록시 이미 실행 중 (port ${PROXY_PORT}, PID: ${PID})"
 -        else
 -          nohup python3 "$PROXY_SCRIPT" $PROXY_PORT >> "$PROXY_LOG" 2>&1 &
@@ -269,20 +269,20 @@ index e1bfd26..0000000
 -        echo "  사용: ANTHROPIC_BASE_URL=http://localhost:${PROXY_PORT} ANTHROPIC_API_KEY=dummy claude"
 -        ;;
 -      stop)
--        pkill -f "anthropic-mlx-proxy.py" 2>/dev/null && echo "✓ 프록시 중지됨" || echo "실행 중인 프록시 없음"
+-        pkill -f "anthropic-retired-local-provider-proxy.py" 2>/dev/null && echo "✓ 프록시 중지됨" || echo "실행 중인 프록시 없음"
 -        ;;
 -      status|"")
 -        if curl -sf "http://localhost:${PROXY_PORT}/health" >/dev/null 2>&1; then
--          PID=$(pgrep -f "anthropic-mlx-proxy" | head -1)
+-          PID=$(pgrep -f "anthropic-retired-local-provider-proxy" | head -1)
 -          echo "● 프록시 실행 중 (port ${PROXY_PORT}, PID: ${PID})"
--          curl -s "http://localhost:${PROXY_PORT}/health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  mlx_base: {d.get(\"mlx_base\",\"-\")}')" 2>/dev/null
+-          curl -s "http://localhost:${PROXY_PORT}/health" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  retired-local-provider_base: {d.get(\"retired-local-provider_base\",\"-\")}')" 2>/dev/null
 -        else
 -          echo "○ 프록시 중지됨"
--          echo "  시작: /nco-mlx proxy start"
+-          echo "  시작: /nco-retired-local-provider proxy start"
 -        fi
 -        ;;
 -      *)
--        echo "사용법: /nco-mlx proxy {start|stop|status}"
+-        echo "사용법: /nco-retired-local-provider proxy {start|stop|status}"
 -        ;;
 -    esac
 -    ;;
@@ -412,37 +412,37 @@ index c8f0a0d..514c818 100644
  
  ## 진행 중 이슈와 다음 액션
  - **이슈**: 지식베이스 카테고리화 불완전 (현재 20% 미분류 항목 존재)
-diff --git a/cli-installs/__pycache__/anthropic-mlx-proxy.cpython-314.pyc b/cli-installs/__pycache__/anthropic-mlx-proxy.cpython-314.pyc
+diff --git a/cli-installs/__pycache__/anthropic-retired-local-provider-proxy.cpython-314.pyc b/cli-installs/__pycache__/anthropic-retired-local-provider-proxy.cpython-314.pyc
 deleted file mode 100644
 index 329d294..0000000
-Binary files a/cli-installs/__pycache__/anthropic-mlx-proxy.cpython-314.pyc and /dev/null differ
-diff --git a/cli-installs/anthropic-mlx-proxy.py b/cli-installs/anthropic-mlx-proxy.py
+Binary files a/cli-installs/__pycache__/anthropic-retired-local-provider-proxy.cpython-314.pyc and /dev/null differ
+diff --git a/cli-installs/anthropic-retired-local-provider-proxy.py b/cli-installs/anthropic-retired-local-provider-proxy.py
 deleted file mode 100644
 index bc763ff..0000000
---- a/cli-installs/anthropic-mlx-proxy.py
+--- a/cli-installs/anthropic-retired-local-provider-proxy.py
 +++ /dev/null
 @@ -1,537 +0,0 @@
 -#!/usr/bin/env python3
 -"""
--Anthropic-to-MLX Proxy  (anthropic-mlx-proxy.py)
+-Anthropic-to-retired-local-provider Proxy  (anthropic-retired-local-provider-proxy.py)
 -================================================
--Converts Anthropic API ↔ OpenAI-compatible format for MLX server (Apple Silicon)
+-Converts Anthropic API ↔ OpenAI-compatible format for retired-local-provider server (Apple Silicon)
 -
 -Architecture:
 -  Claude Code
 -    → ANTHROPIC_BASE_URL=http://localhost:4100
 -      → This proxy  (port 4100)
--        → MLX server (port 8000, OpenAI-compatible; model path from pm2 mlx-server)
+-        → retired-local-provider server (port 8000, OpenAI-compatible; model path from pm2 retired-local-provider-server)
 -
 -Usage:
--  python3 anthropic-mlx-proxy.py [port]   # default port 4100
+-  python3 anthropic-retired-local-provider-proxy.py [port]   # default port 4100
 -  then:
 -  ANTHROPIC_BASE_URL=http://localhost:4100 ANTHROPIC_API_KEY=dummy claude
 -
 -Endpoints proxied:
 -  POST /v1/messages            → /v1/chat/completions
 -  POST /v1/messages/count_tokens → estimated locally
--  GET  /v1/models              → forwarded from MLX + reformatted
+-  GET  /v1/models              → forwarded from retired-local-provider + reformatted
 -  GET  /health                 → liveness check
 -"""
 -
@@ -457,7 +457,7 @@ index bc763ff..0000000
 -from urllib.error import URLError
 -
 -PROXY_PORT   = 4100
--MLX_BASE     = "http://localhost:8000/v1"
+-retired-local-provider_BASE     = "http://localhost:8000/v1"
 -# Gemma 4 26B on MLX (4K safe, 8K max)
 -MAX_TOKENS   = 4096
 -
@@ -604,18 +604,18 @@ index bc763ff..0000000
 -    }
 -
 -
--def get_mlx_model():
--    """Pick a chat-capable model from MLX server.
+-def get_retired-local-provider_model():
+-    """Pick a chat-capable model from retired-local-provider server.
 -
 -    /v1/models 목록에는 TTS·embedding 등 chat 불가 모델이 섞여 있고, 이런
--    모델로 /chat/completions를 치면 MLX가 404를 반환한다. env MLX_MODEL로
+-    모델로 /chat/completions를 치면 retired-local-provider가 404를 반환한다. env retired-local-provider_MODEL로
 -    강제 지정 가능하며, 없으면 chat 불가 모델을 제외하고 선택한다.
 -    """
--    forced = os.environ.get("MLX_MODEL")
+-    forced = os.environ.get("retired-local-provider_MODEL")
 -    if forced:
 -        return forced
 -    try:
--        r = urlopen(f"{MLX_BASE}/models", timeout=5)
+-        r = urlopen(f"{retired-local-provider_BASE}/models", timeout=5)
 -        data = json.loads(r.read())
 -        ids = [m["id"] for m in data.get("data", [])]
 -        non_chat = ("tts", "embed", "whisper", "rerank")
@@ -662,12 +662,12 @@ index bc763ff..0000000
 -        path = self.path.split("?")[0]
 -
 -        if path in ("/health", "/v1/health"):
--            self._send_json(200, {"status": "ok", "proxy": "anthropic-mlx", "mlx_base": MLX_BASE})
+-            self._send_json(200, {"status": "ok", "proxy": "anthropic-retired-local-provider", "retired-local-provider_base": retired-local-provider_BASE})
 -            return
 -
 -        if path == "/v1/models":
 -            try:
--                r = urlopen(f"{MLX_BASE}/models", timeout=5)
+-                r = urlopen(f"{retired-local-provider_BASE}/models", timeout=5)
 -                data = json.loads(r.read())
 -                models = [
 -                    {"id": m["id"], "type": "model",
@@ -677,7 +677,7 @@ index bc763ff..0000000
 -                ]
 -                self._send_json(200, {"data": models})
 -            except Exception as e:
--                self._error(503, "service_unavailable_error", f"MLX not available: {e}")
+-                self._error(503, "service_unavailable_error", f"retired-local-provider not available: {e}")
 -            return
 -
 -        self._error(404, "not_found_error", f"GET {path} not found")
@@ -722,15 +722,15 @@ index bc763ff..0000000
 -    # ── /v1/messages ──────────────────────────────────────────────────────────
 -
 -    def _handle_messages(self, req):
--        # ── MLX 헬스 프리체크 (재시도 1회, 3초 대기) ─────────────────────────────
--        mlx_model = get_mlx_model()
--        if mlx_model is None:
+-        # ── retired-local-provider 헬스 프리체크 (재시도 1회, 3초 대기) ─────────────────────────────
+-        retired-local-provider_model = get_retired-local-provider_model()
+-        if retired-local-provider_model is None:
 -            time.sleep(3)
--            mlx_model = get_mlx_model()
--        if mlx_model is None:
+-            retired-local-provider_model = get_retired-local-provider_model()
+-        if retired-local-provider_model is None:
 -            self._error(503, "service_unavailable_error",
--                        "MLX server not running. Start with: pm2 start mlx-server  "
--                        "or /nco-mlx start")
+-                        "retired-local-provider server not running. Start with: pm2 start retired-local-provider-server  "
+-                        "or /nco-retired-local-provider start")
 -            return
 -
 -        # Parse system prompt
@@ -745,7 +745,7 @@ index bc763ff..0000000
 -        streaming = req.get("stream", False)
 -
 -        openai_req = {
--            "model":       mlx_model,
+-            "model":       retired-local-provider_model,
 -            "messages":    messages,
 -            "max_tokens":  max_tok,
 -            "temperature": float(req.get("temperature", 0.7)),
@@ -757,8 +757,8 @@ index bc763ff..0000000
 -        if req.get("stop_sequences"):
 -            openai_req["stop"] = req["stop_sequences"]
 -
--        mlx_http_req = Request(
--            f"{MLX_BASE}/chat/completions",
+-        retired-local-provider_http_req = Request(
+-            f"{retired-local-provider_BASE}/chat/completions",
 -            data=json.dumps(openai_req).encode(),
 -            headers={"Content-Type": "application/json"},
 -            method="POST"
@@ -768,16 +768,16 @@ index bc763ff..0000000
 -        acquired = _gpu_semaphore.acquire(timeout=_gpu_lock_timeout)
 -        if not acquired:
 -            self._error(503, "service_unavailable_error",
--                        "MLX GPU busy (timeout waiting for semaphore). Try again.")
+-                        "retired-local-provider GPU busy (timeout waiting for semaphore). Try again.")
 -            return
 -
 -        try:
 -            if streaming:
--                self._stream(mlx_http_req, mlx_model)
+-                self._stream(retired-local-provider_http_req, retired-local-provider_model)
 -            else:
--                self._non_stream(mlx_http_req, mlx_model)
+-                self._non_stream(retired-local-provider_http_req, retired-local-provider_model)
 -        except URLError as e:
--            self._error(503, "service_unavailable_error", f"MLX error: {e}")
+-            self._error(503, "service_unavailable_error", f"retired-local-provider error: {e}")
 -        except Exception as e:
 -            self._error(500, "api_error", f"Proxy internal error: {e}")
 -        finally:
@@ -785,14 +785,14 @@ index bc763ff..0000000
 -
 -    # ── non-streaming ─────────────────────────────────────────────────────────
 -
--    def _non_stream(self, mlx_req, model):
--        with urlopen(mlx_req, timeout=120) as resp:
+-    def _non_stream(self, retired-local-provider_req, model):
+-        with urlopen(retired-local-provider_req, timeout=120) as resp:
 -            openai_resp = json.loads(resp.read())
 -        self._send_json(200, openai_response_to_anthropic(openai_resp, model))
 -
 -    # ── streaming ─────────────────────────────────────────────────────────────
 -
--    def _stream(self, mlx_req, model):
+-    def _stream(self, retired-local-provider_req, model):
 -        msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 -
 -        self.send_response(200)
@@ -834,7 +834,7 @@ index bc763ff..0000000
 -        tool_calls = {}   # openai index -> {"id","name","args"}
 -
 -        try:
--            with urlopen(mlx_req, timeout=180) as resp:
+-            with urlopen(retired-local-provider_req, timeout=180) as resp:
 -                for raw_line in resp:
 -                    line = raw_line.decode("utf-8", errors="replace").strip()
 -                    if not line.startswith("data: "):
@@ -949,30 +949,30 @@ index bc763ff..0000000
 -if __name__ == "__main__":
 -    port = int(sys.argv[1]) if len(sys.argv) > 1 else PROXY_PORT
 -    server = ThreadedHTTPServer(("0.0.0.0", port), ProxyHandler)
--    print(f"[anthropic-mlx-proxy] Listening on http://localhost:{port}")
--    print(f"[anthropic-mlx-proxy] Forwarding → {MLX_BASE}")
--    print(f"[anthropic-mlx-proxy] Use:")
+-    print(f"[anthropic-retired-local-provider-proxy] Listening on http://localhost:{port}")
+-    print(f"[anthropic-retired-local-provider-proxy] Forwarding → {retired-local-provider_BASE}")
+-    print(f"[anthropic-retired-local-provider-proxy] Use:")
 -    print(f"  ANTHROPIC_BASE_URL=http://localhost:{port} ANTHROPIC_API_KEY=dummy claude")
 -    sys.stdout.flush()
 -    try:
 -        server.serve_forever()
 -    except KeyboardInterrupt:
--        print("\n[anthropic-mlx-proxy] Stopped.")
+-        print("\n[anthropic-retired-local-provider-proxy] Stopped.")
 -        server.shutdown()
-diff --git a/cli-installs/mlx-chat-liveness.sh b/cli-installs/mlx-chat-liveness.sh
+diff --git a/cli-installs/retired-local-provider-chat-liveness.sh b/cli-installs/retired-local-provider-chat-liveness.sh
 deleted file mode 100755
 index 40065e5..0000000
---- a/cli-installs/mlx-chat-liveness.sh
+--- a/cli-installs/retired-local-provider-chat-liveness.sh
 +++ /dev/null
 @@ -1,59 +0,0 @@
 -#!/bin/bash
--# mlx-chat-liveness.sh — 로컬 mlx-server(:8000) 추론 웨지 자가치유 워치독
+-# retired-local-provider-chat-liveness.sh — 로컬 retired-local-provider-server(:8000) 추론 웨지 자가치유 워치독
 -# (claude-5, 2026-07-09 / 2026-07-10 자해루프 근본수정 by claude-1)
 -#
 -# 문제(기존): 20s 타임아웃 chat 프로브 5회 실패 시 pm2 restart. 그러나 모델 로드 중
 -#   (재시작 직후 17GB 로딩)이나 실제 추론 부하 중에도 프로브가 타임아웃 → 재시작 →
 -#   또 로딩 → 또 타임아웃 → **무한 재시작 루프**. 2026-07-10 하루 35회 WEDGE 재시작
--#   확인(T1: mlx-chat-liveness-out.log). 매 재시작마다 "Fetching 10 files"(캐시 재로드)가
+-#   확인(T1: retired-local-provider-chat-liveness-out.log). 매 재시작마다 "Fetching 10 files"(캐시 재로드)가
 -#   사용자에겐 "다운로드"로 보였음.
 -#
 -# 수정: 2단계 프로브로 "서버 다운/로딩"과 "진짜 추론 웨지"를 구분한다.
@@ -980,8 +980,8 @@ index 40065e5..0000000
 -#      (프로세스 크래시는 pm2 autorestart가 복구. 워치독은 추론 웨지 전용).
 -#   2) 서버가 살아있을(1단계 통과) 때만 1-token chat 프로브(90s): 이게 실패해야 진짜 웨지.
 -#   THRESHOLD회 연속 '진짜 웨지'일 때만 pm2 restart, 이후 GRACE초 유예로 로드 완료 대기.
--# 실행: pm2 start cli-installs/mlx-chat-liveness.sh --name mlx-chat-liveness --interpreter bash
--MODEL="/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit"
+-# 실행: pm2 start cli-installs/retired-local-provider-chat-liveness.sh --name retired-local-provider-chat-liveness --interpreter bash
+-MODEL="/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit"
 -BASE="http://127.0.0.1:8000"
 -HEALTH_URL="$BASE/v1/models"
 -CHAT_URL="$BASE/v1/chat/completions"
@@ -990,10 +990,10 @@ index 40065e5..0000000
 -CHAT_TIMEOUT=90      # chat 프로브 타임아웃(s) — 부하 중 큐 대기 여유(기존 20s가 오탐 원인)
 -THRESHOLD=3          # '진짜 웨지'(서버는 살아있는데 추론 무응답) 연속 횟수
 -GRACE=120            # 재시작 후 모델 로드 유예(s)
--STARTUP_GRACE=90     # 워치독 기동 직후 유예(s) — mlx도 방금 떴을 수 있음
+-STARTUP_GRACE=90     # 워치독 기동 직후 유예(s) — retired-local-provider도 방금 떴을 수 있음
 -FAILS=0
 -
--echo "[$(date '+%F %T')] mlx-chat-liveness start (interval=${INTERVAL}s chat_timeout=${CHAT_TIMEOUT}s threshold=${THRESHOLD} 2-stage)"
+-echo "[$(date '+%F %T')] retired-local-provider-chat-liveness start (interval=${INTERVAL}s chat_timeout=${CHAT_TIMEOUT}s threshold=${THRESHOLD} 2-stage)"
 -sleep "$STARTUP_GRACE"
 -
 -while true; do
@@ -1016,36 +1016,36 @@ index 40065e5..0000000
 -    FAILS=$((FAILS+1))
 -    echo "[$(date '+%F %T')] TRUE inference wedge signal #$FAILS (서버 up, chat ${CHAT_TIMEOUT}s 무응답)"
 -    if [ "$FAILS" -ge "$THRESHOLD" ]; then
--      echo "[$(date '+%F %T')] WEDGE confirmed — pm2 restart mlx-server (grace ${GRACE}s)"
--      pm2 restart mlx-server >/dev/null 2>&1
+-      echo "[$(date '+%F %T')] WEDGE confirmed — pm2 restart retired-local-provider-server (grace ${GRACE}s)"
+-      pm2 restart retired-local-provider-server >/dev/null 2>&1
 -      FAILS=0
 -      sleep "$GRACE"
 -    fi
 -  fi
 -  sleep "$INTERVAL"
 -done
-diff --git a/cli-installs/mlx-chat-liveness.sh.bak-174023 b/cli-installs/mlx-chat-liveness.sh.bak-174023
+diff --git a/cli-installs/retired-local-provider-chat-liveness.sh.bak-174023 b/cli-installs/retired-local-provider-chat-liveness.sh.bak-174023
 deleted file mode 100755
 index 0f7caec..0000000
---- a/cli-installs/mlx-chat-liveness.sh.bak-174023
+--- a/cli-installs/retired-local-provider-chat-liveness.sh.bak-174023
 +++ /dev/null
 @@ -1,35 +0,0 @@
 -#!/bin/bash
--# mlx-chat-liveness.sh — 로컬 mlx-server(:8000) 추론 웨지 자가치유 워치독 (claude-5, 2026-07-09)
+-# retired-local-provider-chat-liveness.sh — 로컬 retired-local-provider-server(:8000) 추론 웨지 자가치유 워치독 (claude-5, 2026-07-09)
 -#
--# 문제: mlx_lm.server는 임의 모델 경로 요청을 동적 로드하다 Metal 메모리 대기에 걸리면
+-# 문제: retired-local-provider_lm.server는 임의 모델 경로 요청을 동적 로드하다 Metal 메모리 대기에 걸리면
 -#       추론 스레드가 조용히 웨지된다. 이때 /v1/models(메타데이터)는 계속 200을 반환하므로
--#       기존 헬스체크(mlx-watchdog.sh 포함)로는 감지 불가 — 실제 chat 프로브가 필요하다.
+-#       기존 헬스체크(retired-local-provider-watchdog.sh 포함)로는 감지 불가 — 실제 chat 프로브가 필요하다.
 -# 대응: 1-token chat completion 프로브(45s 간격, 20s 타임아웃). 연속 3회 실패(~155s 블록)
--#       → pm2 restart mlx-server. 프로브는 모델 웜 유지 부수효과도 있다.
--# 실행: pm2 start cli-installs/mlx-chat-liveness.sh --name mlx-chat-liveness --interpreter bash
--MODEL="/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit"
+-#       → pm2 restart retired-local-provider-server. 프로브는 모델 웜 유지 부수효과도 있다.
+-# 실행: pm2 start cli-installs/retired-local-provider-chat-liveness.sh --name retired-local-provider-chat-liveness --interpreter bash
+-MODEL="/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit"
 -URL="http://127.0.0.1:8000/v1/chat/completions"
 -INTERVAL=20
 -THRESHOLD=5
 -FAILS=0
 -
--echo "[$(date '+%F %T')] mlx-chat-liveness start (interval=${INTERVAL}s threshold=${THRESHOLD})"
+-echo "[$(date '+%F %T')] retired-local-provider-chat-liveness start (interval=${INTERVAL}s threshold=${THRESHOLD})"
 -while true; do
 -  RESP=$(curl -s --max-time 20 "$URL" -H 'Content-Type: application/json' \
 -    -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"ping\"}],\"max_tokens\":1,\"temperature\":0}" \
@@ -1057,62 +1057,62 @@ index 0f7caec..0000000
 -    FAILS=$((FAILS+1))
 -    echo "[$(date '+%F %T')] chat probe fail #$FAILS"
 -    if [ "$FAILS" -ge "$THRESHOLD" ]; then
--      echo "[$(date '+%F %T')] WEDGE detected — pm2 restart mlx-server"
--      pm2 restart mlx-server >/dev/null 2>&1
+-      echo "[$(date '+%F %T')] WEDGE detected — pm2 restart retired-local-provider-server"
+-      pm2 restart retired-local-provider-server >/dev/null 2>&1
 -      FAILS=0
 -      sleep 90
 -    fi
 -  fi
 -  sleep "$INTERVAL"
 -done
-diff --git a/cli-installs/mlx-ctl.sh b/cli-installs/mlx-ctl.sh
+diff --git a/cli-installs/retired-local-provider-ctl.sh b/cli-installs/retired-local-provider-ctl.sh
 deleted file mode 100755
 index 81aa12b..0000000
---- a/cli-installs/mlx-ctl.sh
+--- a/cli-installs/retired-local-provider-ctl.sh
 +++ /dev/null
 @@ -1,178 +0,0 @@
 -#!/usr/bin/env bash
--# MLX 서버 제어 (start/stop/status/logs/use/models)
+-# retired-local-provider 서버 제어 (start/stop/status/logs/use/models)
 -# macOS Apple Silicon 전용 — pm2 기반
 -#
 -# Usage:
--#   ./mlx-ctl.sh start              — MLX 서버 시작
--#   ./mlx-ctl.sh stop               — MLX 서버 중지 (VRAM 해제)
--#   ./mlx-ctl.sh restart            — 재시작
--#   ./mlx-ctl.sh ensure             — 실행 중이면 유지, 아니면 자동 시작
--#   ./mlx-ctl.sh status             — 상태 + 헬스 확인
--#   ./mlx-ctl.sh logs [줄수]        — 최근 로그 출력
--#   ./mlx-ctl.sh models             — 로드된 모델 목록
--#   ./mlx-ctl.sh use                — 마지막 사용 시간 갱신 (auto-idle 용)
--#   ./mlx-ctl.sh proxy start|stop|status  — Anthropic 프록시 제어
+-#   ./retired-local-provider-ctl.sh start              — retired-local-provider 서버 시작
+-#   ./retired-local-provider-ctl.sh stop               — retired-local-provider 서버 중지 (VRAM 해제)
+-#   ./retired-local-provider-ctl.sh restart            — 재시작
+-#   ./retired-local-provider-ctl.sh ensure             — 실행 중이면 유지, 아니면 자동 시작
+-#   ./retired-local-provider-ctl.sh status             — 상태 + 헬스 확인
+-#   ./retired-local-provider-ctl.sh logs [줄수]        — 최근 로그 출력
+-#   ./retired-local-provider-ctl.sh models             — 로드된 모델 목록
+-#   ./retired-local-provider-ctl.sh use                — 마지막 사용 시간 갱신 (auto-idle 용)
+-#   ./retired-local-provider-ctl.sh proxy start|stop|status  — Anthropic 프록시 제어
 -
 -set -euo pipefail
 -
--PM2_NAME="mlx-server"
+-PM2_NAME="retired-local-provider-server"
 -PORT=8000
--MLX_API="http://localhost:${PORT}/v1"
--LAST_USE_FILE="/tmp/mlx-last-use"
+-retired-local-provider_API="http://localhost:${PORT}/v1"
+-LAST_USE_FILE="/tmp/retired-local-provider-last-use"
 -
 -SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 -NCO_DIR="${NCO_DIR:-$(dirname "$SCRIPT_DIR")}"
--MODEL_PATH_RAW="${MLX_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
--MLX_BIN="${HOME}/.local/bin/mlx_lm.server"
--PROXY_SCRIPT="${NCO_DIR}/cli-installs/anthropic-mlx-proxy.py"
+-MODEL_PATH_RAW="${retired-local-provider_MODEL_PATH:-$HOME/project/LM-models/mlx/gemma-4-26b-a4b-it-4bit}"
+-MLX_BIN="${HOME}/.local/bin/retired-local-provider_lm.server"
+-PROXY_SCRIPT="${NCO_DIR}/cli-installs/anthropic-retired-local-provider-proxy.py"
 -PROXY_PORT=4100
--PROXY_LOG="/tmp/anthropic-mlx-proxy.log"
+-PROXY_LOG="/tmp/anthropic-retired-local-provider-proxy.log"
 -
 -_resolve_model_path() {
 -  local key
 -  key="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
 -  case "$key" in
 -    qwen3|qwen3-30b|qwen3-instruct|qwen3-30b-instruct)
--      echo "$HOME/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit"
+-      echo "$HOME/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit"
 -      ;;
 -    qwen3-coder|qwen3-coder-30b)
--      echo "$HOME/project/LM-models/mlx/Qwen3-Coder-30B-A3B-Instruct-4bit"
+-      echo "$HOME/project/LM-models/retired-local-provider/Qwen3-Coder-30B-A3B-Instruct-4bit"
 -      ;;
 -    glm-5)
--      echo "$HOME/project/LM-models/mlx/GLM-5-4bit"
+-      echo "$HOME/project/LM-models/retired-local-provider/GLM-5-4bit"
 -      ;;
 -    *)
 -      echo "$1"
@@ -1123,11 +1123,11 @@ index 81aa12b..0000000
 -MODEL_PATH="$(_resolve_model_path "$MODEL_PATH_RAW")"
 -
 -_is_running() { pm2 jlist 2>/dev/null | grep -q "\"name\":\"$PM2_NAME\""; }
--_is_healthy()  { curl -sf "${MLX_API}/models" >/dev/null 2>&1; }
+-_is_healthy()  { curl -sf "${retired-local-provider_API}/models" >/dev/null 2>&1; }
 -_pm2_start() {
 -  pm2 describe "$PM2_NAME" >/dev/null 2>&1 \
 -    && pm2 start "$PM2_NAME" 2>&1 | tail -3 \
--    || pm2 start "$MLX_BIN" --name "$PM2_NAME" --interpreter none --max-memory-restart 30G \
+-    || pm2 start "$retired-local-provider_BIN" --name "$PM2_NAME" --interpreter none --max-memory-restart 30G \
 -         -- --model "$MODEL_PATH" --port $PORT --host 0.0.0.0 2>&1 | tail -3
 -}
 -
@@ -1136,42 +1136,42 @@ index 81aa12b..0000000
 -
 -case "$CMD" in
 -  start)
--    echo "▶ MLX 서버 시작 중..."
+-    echo "▶ retired-local-provider 서버 시작 중..."
 -    _pm2_start
 -    echo "  모델 로딩 대기 (최대 60초)..."
 -    for i in $(seq 1 12); do
 -      sleep 5
--      _is_healthy && echo "✓ MLX 서버 준비됨 (${MLX_API})" && exit 0
+-      _is_healthy && echo "✓ retired-local-provider 서버 준비됨 (${retired-local-provider_API})" && exit 0
 -      echo "  ...${i}번째 확인 ($((i*5))s)"
 -    done
 -    echo "✗ 타임아웃 — 로그 확인: pm2 logs $PM2_NAME"
 -    exit 1
 -    ;;
 -  stop)
--    echo "■ MLX 서버 중지 중..."
+-    echo "■ retired-local-provider 서버 중지 중..."
 -    pm2 stop "$PM2_NAME" 2>&1 | tail -3 && echo "  VRAM 해제됨"
 -    ;;
 -  restart)
--    echo "↺ MLX 서버 재시작 중..."
+-    echo "↺ retired-local-provider 서버 재시작 중..."
 -    pm2 restart "$PM2_NAME" 2>&1 | tail -3
 -    ;;
 -  ensure)
 -    if _is_running && _is_healthy; then
--      echo "✓ MLX 서버 정상 실행 중"
+-      echo "✓ retired-local-provider 서버 정상 실행 중"
 -    else
--      echo "MLX 서버 시작 중..."; _pm2_start
+-      echo "retired-local-provider 서버 시작 중..."; _pm2_start
 -    fi
 -    ;;
 -  status)
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
--    echo "  MLX 서버 상태"
+-    echo "  retired-local-provider 서버 상태"
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 -    PM2_INFO=$(pm2 jlist 2>/dev/null | python3 -c "
 -import sys,json
 -try:
 -  apps=json.load(sys.stdin)
 -  for a in apps:
--    if a['name']=='mlx-server':
+-    if a['name']=='retired-local-provider-server':
 -      print(a['pid'],a['pm2_env']['status'],a['monit']['memory']); break
 -except: pass" 2>/dev/null)
 -    if [ -n "$PM2_INFO" ]; then
@@ -1179,11 +1179,11 @@ index 81aa12b..0000000
 -      ST=$(echo "$PM2_INFO"|awk '{print $2}')
 -      MEM=$(echo "$PM2_INFO"|awk '{print $3}')
 -      MEM_GB=$(awk "BEGIN{printf \"%.2f\",$MEM/1073741824}" 2>/dev/null||echo "?")
--      HC=$(curl -s -o /dev/null -w "%{http_code}" "${MLX_API}/models" 2>/dev/null)
+-      HC=$(curl -s -o /dev/null -w "%{http_code}" "${retired-local-provider_API}/models" 2>/dev/null)
 -      echo "  ● PM2 상태  : $ST (PID: $PID)"
 -      echo "  ✓ 헬스      : HTTP $HC"
 -      echo "  메모리      : ${MEM_GB} GB (unified)"
--      curl -s "${MLX_API}/models" 2>/dev/null | python3 -c "
+-      curl -s "${retired-local-provider_API}/models" 2>/dev/null | python3 -c "
 -import sys,json
 -try:
 -  d=json.load(sys.stdin)
@@ -1197,22 +1197,22 @@ index 81aa12b..0000000
 -      || echo "  ○ 프록시    : 중지됨 (port ${PROXY_PORT})"
 -    SYS_MEM=$(vm_stat 2>/dev/null | awk '/Pages free/{f=$3}/Pages active/{a=$3}/Pages wired/{w=$4}END{printf"%.1f GB free / %.1f GB total",f*4096/1073741824,(f+a+w)*4096/1073741824}')
 -    echo "  시스템 메모리: $SYS_MEM"
--    echo "  엔드포인트  : ${MLX_API}"
+-    echo "  엔드포인트  : ${retired-local-provider_API}"
 -    echo "  모델 경로   : $MODEL_PATH"
 -    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 -    ;;
 -  logs)
 -    LINES="${ARG2:-50}"
--    echo "━━━ MLX 로그 (최근 ${LINES}줄) ━━━"
+-    echo "━━━ retired-local-provider 로그 (최근 ${LINES}줄) ━━━"
 -    pm2 logs "$PM2_NAME" --lines "$LINES" --nostream 2>&1 | tail -n $((LINES+5))
 -    ;;
 -  models)
--    curl -s "${MLX_API}/models" 2>/dev/null | python3 -c "
+-    curl -s "${retired-local-provider_API}/models" 2>/dev/null | python3 -c "
 -import sys,json
 -try:
 -  d=json.load(sys.stdin)
 -  for m in d.get('data',[]): print(f'  • {m[\"id\"]}')
--except: print('  MLX 서버 미실행. ./mlx-ctl.sh start')"
+-except: print('  retired-local-provider 서버 미실행. ./retired-local-provider-ctl.sh start')"
 -    ;;
 -  use)
 -    date +%s > "$LAST_USE_FILE"
@@ -1230,10 +1230,10 @@ index 81aa12b..0000000
 -            && echo "✓ 프록시 시작됨 (port ${PROXY_PORT})" \
 -            || echo "✗ 프록시 시작 실패 (로그: $PROXY_LOG)"
 -        fi
--        echo "  claude-mlx  →  ANTHROPIC_BASE_URL=http://localhost:${PROXY_PORT} ANTHROPIC_API_KEY=dummy claude"
+-        echo "  claude-retired-local-provider  →  ANTHROPIC_BASE_URL=http://localhost:${PROXY_PORT} ANTHROPIC_API_KEY=dummy claude"
 -        ;;
 -      stop)
--        pkill -f "anthropic-mlx-proxy.py" 2>/dev/null && echo "✓ 프록시 중지됨" || echo "실행 중인 프록시 없음"
+-        pkill -f "anthropic-retired-local-provider-proxy.py" 2>/dev/null && echo "✓ 프록시 중지됨" || echo "실행 중인 프록시 없음"
 -        ;;
 -      status|"")
 -        curl -sf "http://localhost:${PROXY_PORT}/health" >/dev/null 2>&1 \
@@ -1249,23 +1249,23 @@ index 81aa12b..0000000
 -    exit 1
 -    ;;
 -esac
-diff --git a/cli-installs/mlx-heartbeat.sh b/cli-installs/mlx-heartbeat.sh
+diff --git a/cli-installs/retired-local-provider-heartbeat.sh b/cli-installs/retired-local-provider-heartbeat.sh
 deleted file mode 100755
 index 57cf33c..0000000
---- a/cli-installs/mlx-heartbeat.sh
+--- a/cli-installs/retired-local-provider-heartbeat.sh
 +++ /dev/null
 @@ -1,63 +0,0 @@
 -#!/usr/bin/env bash
--# mlx-heartbeat.sh — Mac MLX 가용성을 inter-session으로 브로드캐스트
--# pm2로 상시 실행: pm2 start mlx-heartbeat --name mlx-heartbeat --interpreter bash
+-# retired-local-provider-heartbeat.sh — Mac retired-local-provider 가용성을 inter-session으로 브로드캐스트
+-# pm2로 상시 실행: pm2 start retired-local-provider-heartbeat --name retired-local-provider-heartbeat --interpreter bash
 -#
--# 온라인: 60초마다 "mlx_up: url=... model=..." 브로드캐스트
--# 오프라인 감지 시: "mlx_down: nova-macstudio" 1회 전송 후 대기
--# WSL 노드의 mlx-watchdog.sh가 이 메시지를 받아 provider ON/OFF 처리
+-# 온라인: 60초마다 "retired-local-provider_up: url=... model=..." 브로드캐스트
+-# 오프라인 감지 시: "retired-local-provider_down: nova-macstudio" 1회 전송 후 대기
+-# WSL 노드의 retired-local-provider-watchdog.sh가 이 메시지를 받아 provider ON/OFF 처리
 -
 -set -euo pipefail
 -
--MLX_PORT=8000
+-retired-local-provider_PORT=8000
 -PROXY_PORT=4100
 -INTERVAL=60          # 온라인 heartbeat 간격 (초)
 -OFFLINE_WAIT=30      # 오프라인 상태 재확인 간격 (초)
@@ -1283,8 +1283,8 @@ index 57cf33c..0000000
 -  fi
 -}
 -
--_mlx_healthy() {
--  curl -sf "http://localhost:${MLX_PORT}/v1/models" >/dev/null 2>&1
+-_retired-local-provider_healthy() {
+-  curl -sf "http://localhost:${retired-local-provider_PORT}/v1/models" >/dev/null 2>&1
 -}
 -
 -_broadcast() {
@@ -1292,79 +1292,79 @@ index 57cf33c..0000000
 -}
 -
 -WAS_ONLINE=false
--echo "[mlx-heartbeat] 시작됨 (간격: ${INTERVAL}초)"
+-echo "[retired-local-provider-heartbeat] 시작됨 (간격: ${INTERVAL}초)"
 -
 -while true; do
 -  IP=$(_get_ip)
--  MLX_URL="http://${IP}:${MLX_PORT}"
+-  retired-local-provider_URL="http://${IP}:${retired-local-provider_PORT}"
 -  PROXY_URL="http://${IP}:${PROXY_PORT}"
--  MODEL=$(curl -s "http://localhost:${MLX_PORT}/v1/models" 2>/dev/null \
+-  MODEL=$(curl -s "http://localhost:${retired-local-provider_PORT}/v1/models" 2>/dev/null \
 -    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null \
 -    || echo "unknown")
 -
--  if _mlx_healthy; then
--    MSG="mlx_up: url=${MLX_URL} proxy=${PROXY_URL} model=${MODEL} host=nova-macstudio ts=$(date +%s)"
--    echo "[mlx-heartbeat] 브로드캐스트: $MSG"
+-  if _retired-local-provider_healthy; then
+-    MSG="retired-local-provider_up: url=${retired-local-provider_URL} proxy=${PROXY_URL} model=${MODEL} host=nova-macstudio ts=$(date +%s)"
+-    echo "[retired-local-provider-heartbeat] 브로드캐스트: $MSG"
 -    _broadcast "$MSG"
 -    WAS_ONLINE=true
 -    sleep "$INTERVAL"
 -  else
 -    if [ "$WAS_ONLINE" = "true" ]; then
--      echo "[mlx-heartbeat] MLX 오프라인 감지 — 다운 알림 전송"
--      _broadcast "mlx_down: host=nova-macstudio ts=$(date +%s)"
+-      echo "[retired-local-provider-heartbeat] retired-local-provider 오프라인 감지 — 다운 알림 전송"
+-      _broadcast "retired-local-provider_down: host=nova-macstudio ts=$(date +%s)"
 -      WAS_ONLINE=false
 -    fi
--    echo "[mlx-heartbeat] MLX 오프라인 대기 중..."
+-    echo "[retired-local-provider-heartbeat] retired-local-provider 오프라인 대기 중..."
 -    sleep "$OFFLINE_WAIT"
 -  fi
 -done
-diff --git a/cli-installs/mlx-watchdog.sh b/cli-installs/mlx-watchdog.sh
+diff --git a/cli-installs/retired-local-provider-watchdog.sh b/cli-installs/retired-local-provider-watchdog.sh
 deleted file mode 100755
 index 0556eae..0000000
---- a/cli-installs/mlx-watchdog.sh
+--- a/cli-installs/retired-local-provider-watchdog.sh
 +++ /dev/null
 @@ -1,141 +0,0 @@
 -#!/usr/bin/env bash
--# mlx-watchdog.sh — Tailscale HTTP 직접 폴링으로 MLX 가용성 감지 → NCO provider 동적 ON/OFF
+-# retired-local-provider-watchdog.sh — Tailscale HTTP 직접 폴링으로 retired-local-provider 가용성 감지 → NCO provider 동적 ON/OFF
 -# WSL 노드에서 실행 (subnote, snt, kangnote)
--# 사용법: bash mlx-watchdog.sh
+-# 사용법: bash retired-local-provider-watchdog.sh
 -#
 -# 구조: messages.log 의존 제거 — Tailscale HTTP 직접 폴링 방식
--#   온라인 감지 → remote-mlx provider enabled=true → NCO 재로드
--#   오프라인 감지 → remote-mlx provider enabled=false → NCO 재로드
+-#   온라인 감지 → retired-local-provider provider enabled=true → NCO 재로드
+-#   오프라인 감지 → retired-local-provider provider enabled=false → NCO 재로드
 -#
 -# 환경변수:
--#   MLX_WATCHDOG_CONFIG  — ai-providers.json 경로 (기본: ../config/ai-providers.json)
--#   MLX_REMOTE_HOST      — MLX 서버 Tailscale IP (기본: 100.88.88.69)
--#   MLX_REMOTE_PORT      — MLX 서버 포트 (기본: 8000)
--#   MLX_POLL_INTERVAL    — 폴링 간격(초) (기본: 60)
+-#   retired-local-provider_WATCHDOG_CONFIG  — ai-providers.json 경로 (기본: ../config/ai-providers.json)
+-#   retired-local-provider_REMOTE_HOST      — retired-local-provider 서버 Tailscale IP (기본: 100.88.88.69)
+-#   retired-local-provider_REMOTE_PORT      — retired-local-provider 서버 포트 (기본: 8000)
+-#   retired-local-provider_POLL_INTERVAL    — 폴링 간격(초) (기본: 60)
 -#
--# 실행 방법: pm2 start mlx-watchdog.sh --name mlx-watchdog --interpreter bash
+-# 실행 방법: pm2 start retired-local-provider-watchdog.sh --name retired-local-provider-watchdog --interpreter bash
 -
 -set -euo pipefail
 -
--CONFIG="${MLX_WATCHDOG_CONFIG:-$(dirname "$(dirname "${BASH_SOURCE[0]}")")/config/ai-providers.json}"
--MLX_HOST="${MLX_REMOTE_HOST:-100.88.88.69}"
--MLX_PORT="${MLX_REMOTE_PORT:-8000}"
--POLL_INTERVAL="${MLX_POLL_INTERVAL:-60}"
--MLX_URL="http://${MLX_HOST}:${MLX_PORT}"
+-CONFIG="${retired-local-provider_WATCHDOG_CONFIG:-$(dirname "$(dirname "${BASH_SOURCE[0]}")")/config/ai-providers.json}"
+-retired-local-provider_HOST="${retired-local-provider_REMOTE_HOST:-100.88.88.69}"
+-retired-local-provider_PORT="${retired-local-provider_REMOTE_PORT:-8000}"
+-POLL_INTERVAL="${retired-local-provider_POLL_INTERVAL:-60}"
+-retired-local-provider_URL="http://${retired-local-provider_HOST}:${retired-local-provider_PORT}"
 -CURRENT_STATE="unknown"  # "online" | "offline" | "unknown"
 -
--log() { echo "[mlx-watchdog] $(date '+%H:%M:%S') $*"; }
+-log() { echo "[retired-local-provider-watchdog] $(date '+%H:%M:%S') $*"; }
 -
--# MLX 서버 헬스 체크 — /v1/models 응답 여부
--_mlx_healthy() {
--  curl -sf --max-time 5 "${MLX_URL}/v1/models" >/dev/null 2>&1
+-# retired-local-provider 서버 헬스 체크 — /v1/models 응답 여부
+-_retired-local-provider_healthy() {
+-  curl -sf --max-time 5 "${retired-local-provider_URL}/v1/models" >/dev/null 2>&1
 -}
 -
--# MLX 모델명 조회
+-# retired-local-provider 모델명 조회
 -_get_model() {
--  curl -s --max-time 5 "${MLX_URL}/v1/models" 2>/dev/null \
+-  curl -s --max-time 5 "${retired-local-provider_URL}/v1/models" 2>/dev/null \
 -    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data'][0]['id'])" 2>/dev/null \
 -    || echo "unknown"
 -}
 -
--# remote-mlx provider enabled 상태 변경
+-# retired-local-provider provider enabled 상태 변경
 -_set_provider() {
 -  local ENABLED="$1"   # true | false
 -  local URL="$2"
@@ -1385,7 +1385,7 @@ index 0556eae..0000000
 -
 -found = False
 -for p in data["providers"]:
--    if p.get("id") == "remote-mlx":
+-    if p.get("id") == "retired-local-provider":
 -        p["enabled"] = enabled
 -        if enabled and url != "keep":
 -            p["baseUrl"] = url + "/v1"
@@ -1396,8 +1396,8 @@ index 0556eae..0000000
 -if not found and enabled:
 -    # 신규 추가
 -    data["providers"].insert(0, {
--        "id": "remote-mlx",
--        "name": "Mac MLX (Tailscale)",
+-        "id": "retired-local-provider",
+-        "name": "Mac retired-local-provider (Tailscale)",
 -        "enabled": True,
 -        "type": "api",
 -        "role": "Local LLM",
@@ -1409,12 +1409,12 @@ index 0556eae..0000000
 -        "cost": "free",
 -        "capabilities": ["code", "analysis", "reasoning"],
 -        "healthCheck": {"url": url + "/v1/models", "timeout": 5000},
--        "note": "Mac MLX via Tailscale — auto-managed by mlx-watchdog.sh"
+-        "note": "Mac retired-local-provider via Tailscale — auto-managed by retired-local-provider-watchdog.sh"
 -    })
 -elif found and enabled and url != "keep":
 -    # 기존 항목 업데이트 시 healthCheck도 갱신
 -    for p in data["providers"]:
--        if p.get("id") == "remote-mlx":
+-        if p.get("id") == "retired-local-provider":
 -            p["healthCheck"] = {"url": url + "/v1/models", "timeout": 5000}
 -            break
 -
@@ -1423,7 +1423,7 @@ index 0556eae..0000000
 -    f.write("\n")
 -
 -action = "ON" if enabled else "OFF"
--print(f"remote-mlx {action} (url={url} model={model})")
+-print(f"retired-local-provider {action} (url={url} model={model})")
 -PY
 -}
 -
@@ -1441,23 +1441,23 @@ index 0556eae..0000000
 -}
 -
 -log "시작됨 — config: $CONFIG"
--log "MLX 대상: ${MLX_URL} (폴링 간격: ${POLL_INTERVAL}초)"
+-log "retired-local-provider 대상: ${retired-local-provider_URL} (폴링 간격: ${POLL_INTERVAL}초)"
 -log "직접 HTTP 폴링 모드 (messages.log 의존 없음)"
 -
 -# 메인 폴링 루프
 -while true; do
--  if _mlx_healthy; then
+-  if _retired-local-provider_healthy; then
 -    if [ "$CURRENT_STATE" != "online" ]; then
 -      MODEL=$(_get_model)
--      log "MLX 온라인 감지! url=${MLX_URL} model=${MODEL}"
--      _set_provider "true" "$MLX_URL" "$MODEL" && log "remote-mlx ENABLED"
+-      log "retired-local-provider 온라인 감지! url=${retired-local-provider_URL} model=${MODEL}"
+-      _set_provider "true" "$retired-local-provider_URL" "$MODEL" && log "retired-local-provider ENABLED"
 -      _reload_nco
 -      CURRENT_STATE="online"
 -    fi
 -  else
 -    if [ "$CURRENT_STATE" != "offline" ]; then
--      log "MLX 오프라인 감지 (${MLX_URL} 응답 없음)"
--      _set_provider "false" "keep" "keep" && log "remote-mlx DISABLED"
+-      log "retired-local-provider 오프라인 감지 (${retired-local-provider_URL} 응답 없음)"
+-      _set_provider "false" "keep" "keep" && log "retired-local-provider DISABLED"
 -      _reload_nco
 -      CURRENT_STATE="offline"
 -    fi
@@ -1474,7 +1474,7 @@ index b724e1b..6f6359a 100644
      "codex",
      "hermes"
 -  ],
--  "mlx": [
+-  "retired-local-provider": [
 -    "hermes",
 -    "codex"
    ]
@@ -1489,8 +1489,8 @@ index a3d1a0b..51edcca 100755
  # 플랫폼 정책 (WSL 기준)
  ENABLE  = {"opencode","agy","codex","cursor-agent","copilot",
             "higgsfield","hermes","openclaw","retired-provider","claude-code","openrouter"}
--DISABLE = {"mlx"}  # Mac 전용
-+DISABLE = set()  # mlx 완전제거(2026-07-21) — Mac 전용 disable 대상 없음
+-DISABLE = {"retired-local-provider"}  # Mac 전용
++DISABLE = set()  # retired-local-provider 완전제거(2026-07-21) — Mac 전용 disable 대상 없음
  # Ollama: GPU 노드만 활성화
  if gpu_mode:
      ENABLE.add("ollama")
@@ -1498,7 +1498,7 @@ index a3d1a0b..51edcca 100755
  
      if pid in ENABLE or any(k in pid for k in ["opencode","codex","cursor","copilot","higgsfield","hermes","openclaw","retired-provider","openrouter"]):
          p["enabled"] = True
--    if pid in DISABLE or "mlx" in pid.lower():
+-    if pid in DISABLE or "retired-local-provider" in pid.lower():
 +    if pid in DISABLE:
          p["enabled"] = False
      if pid == "claude-code":
@@ -1696,14 +1696,14 @@ Binary files a/db/hnsw-indices/hermes.hnsw and b/db/hnsw-indices/hermes.hnsw dif
 diff --git a/db/hnsw-indices/higgsfield.hnsw b/db/hnsw-indices/higgsfield.hnsw
 index e0b7824..a9db9c2 100644
 Binary files a/db/hnsw-indices/higgsfield.hnsw and b/db/hnsw-indices/higgsfield.hnsw differ
-diff --git a/db/hnsw-indices/mlx-instruct.hnsw b/db/hnsw-indices/mlx-instruct.hnsw
+diff --git a/db/hnsw-indices/retired-local-provider.hnsw b/db/hnsw-indices/retired-local-provider.hnsw
 deleted file mode 100644
 index f247512..0000000
-Binary files a/db/hnsw-indices/mlx-instruct.hnsw and /dev/null differ
-diff --git a/db/hnsw-indices/mlx.hnsw b/db/hnsw-indices/mlx.hnsw
+Binary files a/db/hnsw-indices/retired-local-provider.hnsw and /dev/null differ
+diff --git a/db/hnsw-indices/retired-local-provider.hnsw b/db/hnsw-indices/retired-local-provider.hnsw
 deleted file mode 100644
 index e131aa2..0000000
-Binary files a/db/hnsw-indices/mlx.hnsw and /dev/null differ
+Binary files a/db/hnsw-indices/retired-local-provider.hnsw and /dev/null differ
 diff --git a/db/hnsw-indices/retired-provider.hnsw b/db/hnsw-indices/retired-provider.hnsw
 index 7cb3ac9..39af6bd 100644
 Binary files a/db/hnsw-indices/retired-provider.hnsw and b/db/hnsw-indices/retired-provider.hnsw differ
@@ -1721,11 +1721,11 @@ index c8689a6..2ffe956 100644
        "model": "qwen3:14b",
        "note": "2026-07-09 재활성(사용자 지시: ollama 에이전트 능력 95%+): qwen3:14b(9GB) 설치, 콜드 9.9s·웜 5.2s·도구포맷 정상 T1 확인. KEEP_ALIVE=45m 유지. 이 파일 변경 시 fleet 공지 필수."
      },
--    "mlx": {
+-    "retired-local-provider": {
 -      "enabled": true,
--      "model": "/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit",
--      "name": "MLX Local (Qwen3-30B-A3B-Instruct-2507)",
--      "note": "2026-07-09 모델 통일(claude-5): :8000 30B 2개 스왑이 Metal OOM 크래시(누적 8회)+스왑 재로드 30-50s 레이턴시의 근본원인(T1: mlx-server-error.log kIOGPUCommandBufferCallbackErrorOutOfMemory). mlx→Instruct-2507로 hermes/mlx-instruct와 단일화, 스왑 제거. Coder-30B는 디스크 보존. 이 파일 변경 시 fleet 공지 필수.",
+-      "model": "/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit",
+-      "name": "retired-local-provider Local (Qwen3-30B-A3B-Instruct-2507)",
+-      "note": "2026-07-09 모델 통일(claude-5): :8000 30B 2개 스왑이 Metal OOM 크래시(누적 8회)+스왑 재로드 30-50s 레이턴시의 근본원인(T1: retired-local-provider-server-error.log kIOGPUCommandBufferCallbackErrorOutOfMemory). retired-local-provider→Instruct-2507로 hermes/retired-local-provider와 단일화, 스왑 제거. Coder-30B는 디스크 보존. 이 파일 변경 시 fleet 공지 필수.",
 -      "concurrency": 1
 -    },
      "hermes": {
@@ -1736,7 +1736,7 @@ index c8689a6..2ffe956 100644
        "enabled": true,
        "model": "meta/llama-3.3-70b-instruct"
 -    },
--    "mlx-instruct": {
+-    "retired-local-provider": {
 -      "enabled": true,
 -      "concurrency": 1,
 -      "note": "2026-07-09 명시(claude-5→advisor): 동시성 상한선 검증 — :8000 총동시 3 보증(mlx1+hermes1+instruct1). 기본값 미설정 시 OOM 위험."
@@ -1753,10 +1753,10 @@ index 1ec0bdd..762ded5 100755
  LAST_POST_FILE="${DATA_DIR}/.last-post"
  API_BASE="http://localhost:6200/api"
  TEAM="team_sns"
--# 무료 모델 우선 체인 (2026-07-07 사용자 지시): 로컬 무료(mlx/hermes/ollama) 먼저,
+-# 무료 모델 우선 체인 (2026-07-07 사용자 지시): 로컬 무료(retired-local-provider/hermes/ollama) 먼저,
 -# 다음 무료 크레딧(openrouter), 마지막 유료(opencode). 미등록/비활성 프로바이더는
 -# 태스크 생성이 즉시 거부되므로 자동으로 다음 후보로 넘어간다.
--AI_CHAIN="mlx hermes ollama openrouter opencode"
+-AI_CHAIN="retired-local-provider hermes ollama openrouter opencode"
 +QUALITY_TEAM="team_content-quality"
 +QUALITY_LEAD="cursor-agent"
 +# config/ai-providers.json 활성 프로바이더만 사용: 무료 ollama 우선,
@@ -1882,7 +1882,7 @@ index 1ec0bdd..762ded5 100755
        completed)
          python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["task"].get("response") or "")' \
            "${TMP_DIR}/task.json" > "${TMP_DIR}/response.md"
--        # 품질 게이트: mlx 툴콜 루프 등 쓰레기 응답이 completed로 저장되는 것 방지
+-        # 품질 게이트: retired-local-provider 툴콜 루프 등 쓰레기 응답이 completed로 저장되는 것 방지
 +        # 품질 게이트: 로컬 LLM 툴콜 루프 등 쓰레기 응답이 completed로 저장되는 것 방지
          # package: 500자+Pinterest 섹션 필수 / review: 200자만
          if [ "${kind}" = "package" ]; then
@@ -2214,7 +2214,7 @@ index 71f7f25..7f902e1 100755
  # 관리 주체: organizations.manager(두뇌 세션)가 charter를 정의, 이 러너가 대행 실행.
  #
  # ⚠ 로컬 LLM 순차 실행 규칙 (2026-07-07 사용자 지시, 통합 메모리 Mac):
--#   mlx/ollama 등 로컬 모델의 동시 추론은 통합 메모리를 고갈시킨다.
+-#   retired-local-provider/ollama 등 로컬 모델의 동시 추론은 통합 메모리를 고갈시킨다.
 +#   ollama 등 로컬 모델의 동시 추론은 통합 메모리를 고갈시킨다.
  #   - 팀별로 "순차" 실행: 이전 팀 태스크가 종료(completed/failed)한 후에만 다음 팀 진행
  #   - /tmp/nova-local-llm.lock 파일락으로 다른 스크립트(daily-blog-promo 등)와도 직렬화
@@ -2223,7 +2223,7 @@ index 71f7f25..7f902e1 100755
  # 로컬 모델 우선 체인 (무료·로컬 우선 — 두뇌는 유료, 워커는 로컬 원칙)
  # 2026-07-12: ollama가 현재 에이전트 레지스트리에 미등록(POST /api/task → "Unknown agent 'ollama'")이라
  #   전 체인 실패의 원인이었다. 게이트 가용한 로컬 무료 워커 hermes로 교체. ollama 재등록 시 되돌릴 것.
--AI_CHAIN="mlx hermes openrouter"
+-AI_CHAIN="retired-local-provider hermes openrouter"
 +AI_CHAIN="ollama hermes openrouter"
  
  mkdir -p "${STATE_DIR}" "$(dirname "${LOG_FILE}")"
@@ -2630,7 +2630,7 @@ index 1ece1fc..c7e3259 100755
  RUNTIME_DOC="${RUNTIME_DOC:-/Users/nova-ai/obsidian/mac-obsidian/00-SYSTEM/PROVIDER-RUNTIME.md}"
  KNOWN_PATHS=("/opt/homebrew/bin" "/Users/nova-ai/.local/bin")
  TOOLS=(claude gemini codex opencode cursor-agent copilot hermes hermes-nco openclaw higgsfield aider)
--PROVIDERS=(openrouter mlx retired-provider gemini-deep)
+-PROVIDERS=(openrouter retired-local-provider retired-provider gemini-deep)
 +PROVIDERS=(openrouter ollama retired-provider gemini-deep)
  
  for extra_path in "${KNOWN_PATHS[@]}"; do
@@ -2643,7 +2643,7 @@ index bd39c91..a1d2288 100644
      method: 'POST',
      headers: buildHeaders(),
      body: JSON.stringify({
--      ai: 'mlx',
+-      ai: 'retired-local-provider',
 +      ai: 'ollama',
        prompt: '검증: 팀 발사 테스트 — 1+1은?',
        metadata: {
@@ -2656,11 +2656,11 @@ index fa9bb59..cac5809 100644
  alias claude-gemma='claude-vllm-gemma --dangerously-skip-permissions'
  alias claude-qwen='claude-vllm-qwen --dangerously-skip-permissions'
  
--# MLX 로컬 LLM (macOS Apple Silicon 전용)
--# 사용 전: /nco-mlx start  또는  bash "$NCO_DIR/cli-installs/mlx-ctl.sh" start
--alias claude-mlx='ANTHROPIC_BASE_URL=http://localhost:4100 ANTHROPIC_API_KEY=dummy claude --dangerously-skip-permissions'
--alias mlx-proxy-start='bash "$NCO_DIR/cli-installs/mlx-ctl.sh" proxy start'
--alias mlx-proxy-stop='bash "$NCO_DIR/cli-installs/mlx-ctl.sh" proxy stop'
+-# retired-local-provider 로컬 LLM (macOS Apple Silicon 전용)
+-# 사용 전: /nco-retired-local-provider start  또는  bash "$NCO_DIR/cli-installs/retired-local-provider-ctl.sh" start
+-alias claude-retired-local-provider='ANTHROPIC_BASE_URL=http://localhost:4100 ANTHROPIC_API_KEY=dummy claude --dangerously-skip-permissions'
+-alias retired-local-provider-proxy-start='bash "$NCO_DIR/cli-installs/retired-local-provider-ctl.sh" proxy start'
+-alias retired-local-provider-proxy-stop='bash "$NCO_DIR/cli-installs/retired-local-provider-ctl.sh" proxy stop'
  # ── NCO end ────────────────────────────────────────────────────────────────
  RCEOF
    ok "Shell RC 업데이트 완료 ($SHELL_RC)"
@@ -2807,9 +2807,9 @@ index a3ee32c..0645e85 100644
    openAiConfigs,
  } = vi.hoisted(() => {
    const providers = new Map<string, any>([
--    ['mlx', {
--      id: 'mlx',
--      name: 'MLX',
+-    ['retired-local-provider', {
+-      id: 'retired-local-provider',
+-      name: 'retired-local-provider',
 -      enabled: true,
 -      type: 'api',
 -      role: 'Coder',
@@ -2826,7 +2826,7 @@ index a3ee32c..0645e85 100644
 -      cost: 'free',
 -      capabilities: ['code'],
 -      permissions: {},
--      persona: { systemPrompt: 'mlx prompt', tone: 'efficient', style: 'practical' },
+-      persona: { systemPrompt: 'retired-local-provider prompt', tone: 'efficient', style: 'practical' },
 -      healthCheck: {},
 -      apiConfig: { fallback: { provider: 'ollama' } },
 -    }],
@@ -2837,19 +2837,19 @@ index a3ee32c..0645e85 100644
      ]);
    });
  
--  it('resolves mlx aliases before sending the model name', async () => {
+-  it('resolves retired-local-provider aliases before sending the model name', async () => {
 -    const handler = vi.fn().mockResolvedValue({
--      choices: [{ message: { content: 'mlx-ok' } }],
+-      choices: [{ message: { content: 'retired-local-provider-ok' } }],
 -      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
 -    });
 -    completionHandlers.set('http://127.0.0.1:8000/v1', handler);
 -
--    const executor = new ApiExecutor(providerMap.get('mlx'), sandbox);
+-    const executor = new ApiExecutor(providerMap.get('retired-local-provider'), sandbox);
 -    const result = await executor.run('task-3', 'prompt');
 -
--    expect(result.model).toBe('/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit');
+-    expect(result.model).toBe('/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit');
 -    expect(handler).toHaveBeenCalledWith(expect.objectContaining({
--      model: '/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit',
+-      model: '/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit',
 -      temperature: 0.5,
 -      repetition_penalty: 1,
 -    }));
@@ -2881,7 +2881,7 @@ index 4a3e54c..8aedfc6 100644
  import { createLogger } from '../utils/logger.js';
  import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
  import { trajectoryGuard } from '../security/trajectory-guard.js';
--import { resolveProviderModel } from '../utils/mlx-models.js';
+-import { resolveProviderModel } from '../utils/retired-local-provider-models.js';
  
  const log = createLogger('api-executor');
  
@@ -2952,9 +2952,9 @@ index 4a3e54c..8aedfc6 100644
              stream: false,
            };
 -          // [2026-07-09] rep_penalty 1.25는 구 Qwen3-Coder EOS 폭주 대응책 — Instruct-2507로
--          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. MLX는 temp를 올리고
+-          // 단일화된 현재는 과도해 정밀 답변(숫자·조건 필터)을 왜곡한다. retired-local-provider는 temp를 올리고
 -          // rep penalty를 기본치로 복귀시켜 경직된 응답을 완화한다.
--          if (this.provider.id === 'mlx') {
+-          if (this.provider.id === 'retired-local-provider') {
 -            (createParams as unknown as Record<string, unknown>).repetition_penalty = 1.0;
 -            (createParams as unknown as Record<string, unknown>).repetition_context_size = 4096;
 -            createParams.temperature = 0.5;
@@ -2975,8 +2975,8 @@ index 4a3e54c..8aedfc6 100644
      const teamState = await this.buildTeamContext();
      let systemContent = buildApiAgentSystemPrompt(base, teamState);
      // 로컬 툴유저는 도구 호출 예산을 소폭 완화하되 루프는 막는다.
--    if (['mlx', 'ollama', 'mlx-instruct', 'hermes'].includes(this.provider.id)) {
--      const maxToolUses = ['mlx', 'ollama'].includes(this.provider.id) ? 4 : 3;
+-    if (['retired-local-provider', 'ollama', 'retired-local-provider', 'hermes'].includes(this.provider.id)) {
+-      const maxToolUses = ['retired-local-provider', 'ollama'].includes(this.provider.id) ? 4 : 3;
 +    // (hermes는 2026-07-18 codex CLI(Type B)로 전환 — ApiExecutor 미경유이므로 제외)
 +    if (this.provider.id === 'ollama') {
 +      const maxToolUses = 4;
@@ -2987,7 +2987,7 @@ index 4a3e54c..8aedfc6 100644
    }
  
    private getCredentialPreflightError(): string | null {
--    // 키 불필요 프로바이더(ollama/mlx 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
+-    // 키 불필요 프로바이더(ollama/retired-local-provider 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
 +    // 키 불필요 프로바이더(ollama 등 apiKeyRef·keyRotation 미선언 로컬)는 preflight 대상 아님 —
      // 없으면 'no API keys configured'→auth immediateOpen 오분류 (2026-07-03 ollama 부팅 트립 실측)
      const requiresKey = Boolean(this.provider.keyRotation?.enabled || this.provider.apiKeyRef);
@@ -2996,9 +2996,9 @@ index 4a3e54c..8aedfc6 100644
      const apiKey = this.getNextKey();
      const baseURL = this.provider.endpoint || this.provider.apiConfig?.primary.baseUrl;
  
--    // 로컬 엔드포인트(mlx/ollama)는 단일스레드 서버 경합으로 일시적 connection
+-    // 로컬 엔드포인트(retired-local-provider/ollama)는 단일스레드 서버 경합으로 일시적 connection
 +    // 로컬 엔드포인트(ollama)는 단일스레드 서버 경합으로 일시적 connection
-     // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: mlx-server
+     // refused가 정상 범주 — SDK 재시도 2회로 흡수 (2026-07-08 실측: retired-local-provider-server
      // POST 200인데 동시요청 경합으로 "Connection error." 실패, circuit open 유발).
      // 원격 API는 기존대로 0: 429 Retry-After(최대 수시간) sleep hang 방지.
 diff --git a/src/agent/orchestrated-loop.ts b/src/agent/orchestrated-loop.ts
@@ -3518,7 +3518,7 @@ index 40834c9..247e887 100644
   *
   * Management Layer (두뇌/유료): 계획·최종 종합 (claude-code, opencode)
   * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/retired-provider)
-- * Execution Layer (워커/무료 로컬): 대량 구현 (mlx, ollama, hermes, aider → codex escalation)
+- * Execution Layer (워커/무료 로컬): 대량 구현 (retired-local-provider, ollama, hermes, aider → codex escalation)
 + * Execution Layer (워커/무료 로컬): 대량 구현 (ollama, aider → codex escalation)
   * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/retired-provider QA)
   */
@@ -3830,7 +3830,7 @@ index f419d12..554c551 100644
      logDecision({
        taskId: 'task_abc',
        phase: 'routing',
--      decision: 'route:codex->mlx',
+-      decision: 'route:codex->retired-local-provider',
 +      decision: 'route:codex->ollama',
        reason: 'gated:quota',
      });
@@ -3838,7 +3838,7 @@ index f419d12..554c551 100644
      const row = db.prepare('SELECT * FROM decision_log').get() as Record<string, unknown>;
      expect(row.task_id).toBe('task_abc');
      expect(row.phase).toBe('routing');
--    expect(row.decision).toBe('route:codex->mlx');
+-    expect(row.decision).toBe('route:codex->retired-local-provider');
 +    expect(row.decision).toBe('route:codex->ollama');
      expect(row.reason).toBe('gated:quota');
      expect(row.actor).toBe('system');
@@ -3981,8 +3981,8 @@ index dcc4d4d..d5d8415 100644
  
  // 자가 검증에 사용할 로컬 LLM (ollama)
  const OLLAMA_CHAT_URL = 'http://localhost:11434/api/chat';
--// MLX 서버 (고성능 자가 검증용, 옵션)
--const MLX_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
+-// retired-local-provider 서버 (고성능 자가 검증용, 옵션)
+-const retired-local-provider_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
  
  // 환각 위험 패턴 (정규식)
  const HALLUCINATION_RISK_PATTERNS = [
@@ -3990,9 +3990,9 @@ index dcc4d4d..d5d8415 100644
      }
    } catch { /* fallthrough */ }
  
--  // Try MLX (higher quality, slower)
+-  // Try retired-local-provider (higher quality, slower)
 -  try {
--    const res = await fetch(MLX_CHAT_URL, {
+-    const res = await fetch(retired-local-provider_CHAT_URL, {
 -      method: 'POST',
 -      headers: { 'Content-Type': 'application/json' },
 -      body: JSON.stringify({
@@ -4024,7 +4024,7 @@ index 3638b06..32d37d5 100644
      getDb().prepare(`
        INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
        VALUES (?, 'task', ?, ?, 'completed', ?)
--    `).run(taskId, 'prompt', 'mlx', JSON.stringify({ requestedProvider: 'codex' }));
+-    `).run(taskId, 'prompt', 'retired-local-provider', JSON.stringify({ requestedProvider: 'codex' }));
 +    `).run(taskId, 'prompt', 'ollama', JSON.stringify({ requestedProvider: 'codex' }));
      const invocationId = await invocationTracker.recordInvocation(
        'caller-session',
@@ -4033,7 +4033,7 @@ index 3638b06..32d37d5 100644
        'nco-system',
        'nco',
        'caller-session',
--      expect.stringContaining('[task] mlx 완료 (codex 요청→mlx 대행)'),
+-      expect.stringContaining('[task] retired-local-provider 완료 (codex 요청→retired-local-provider 대행)'),
 +      expect.stringContaining('[task] ollama 완료 (codex 요청→ollama 대행)'),
        'info',
      );
@@ -4049,7 +4049,7 @@ index f5658db..3198076 100644
 -// 자가 평가용 LLM
 +// 자가 평가용 LLM (로컬 Ollama)
  const OLLAMA_CHAT_URL = 'http://localhost:11434/api/chat';
--const MLX_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
+-const retired-local-provider_CHAT_URL = 'http://127.0.0.1:8000/v1/chat/completions';
  
  export interface ReflexionTurn {
    attempt: number;
@@ -4057,9 +4057,9 @@ index f5658db..3198076 100644
      }
    } catch { /* fallthrough */ }
  
--  // Fallback to MLX
+-  // Fallback to retired-local-provider
 -  try {
--    const res = await fetch(MLX_CHAT_URL, {
+-    const res = await fetch(retired-local-provider_CHAT_URL, {
 -      method: 'POST',
 -      headers: { 'Content-Type': 'application/json' },
 -      body: JSON.stringify({
@@ -4140,7 +4140,7 @@ index 42e01a2..59dc059 100644
  import { beforeEach, describe, expect, it, vi } from 'vitest';
  
  const { listEnabledIds, getAgentState, dbGet } = vi.hoisted(() => ({
--  listEnabledIds: vi.fn(() => ['openrouter', 'mlx', 'vllm', 'claude-code', 'unknown-provider']),
+-  listEnabledIds: vi.fn(() => ['openrouter', 'retired-local-provider', 'vllm', 'claude-code', 'unknown-provider']),
 +  listEnabledIds: vi.fn(() => ['openrouter', 'ollama', 'vllm', 'claude-code', 'unknown-provider']),
    getAgentState: vi.fn(async (id: string) => {
      if (id === 'vllm') {
@@ -4149,18 +4149,18 @@ index 42e01a2..59dc059 100644
  
    describe('sortProvidersByCostOrder', () => {
      it('sorts providers based on cost order', () => {
--      const input = ['openrouter', 'mlx', 'claude-code', 'aider'];
--      const expected = ['mlx', 'openrouter', 'aider', 'claude-code'];
+-      const input = ['openrouter', 'retired-local-provider', 'claude-code', 'aider'];
+-      const expected = ['retired-local-provider', 'openrouter', 'aider', 'claude-code'];
 +      const input = ['openrouter', 'ollama', 'claude-code', 'aider'];
 +      const expected = ['ollama', 'openrouter', 'aider', 'claude-code'];
        expect(sortProvidersByCostOrder(input)).toEqual(expected);
      });
  
      it('places unknown providers at the end', () => {
--      const input = ['unknown1', 'mlx', 'unknown2', 'vllm'];
+-      const input = ['unknown1', 'retired-local-provider', 'unknown2', 'vllm'];
 +      const input = ['unknown1', 'ollama', 'unknown2', 'vllm'];
        const sorted = sortProvidersByCostOrder(input);
--      expect(sorted[0]).toBe('mlx');
+-      expect(sorted[0]).toBe('retired-local-provider');
 +      expect(sorted[0]).toBe('ollama');
        expect(sorted[1]).toBe('vllm');
        expect(sorted.slice(2)).toContain('unknown1');
@@ -4169,23 +4169,23 @@ index 42e01a2..59dc059 100644
  
    describe('selectProviders', () => {
      it('filters out rate-limited or circuit-broken providers and sorts by cost', async () => {
--      // Available providers from mock: ['openrouter', 'mlx', 'vllm', 'claude-code', 'unknown-provider']
+-      // Available providers from mock: ['openrouter', 'retired-local-provider', 'vllm', 'claude-code', 'unknown-provider']
 +      // Available providers from mock: ['openrouter', 'ollama', 'vllm', 'claude-code', 'unknown-provider']
        // openrouter: rate-limited (db returning is_limited: 1)
        // vllm: circuit-broken (sharedState returning circuitState: 'open')
--      // Available for routing should be: ['mlx', 'claude-code', 'unknown-provider']
--      // Sorted by cost order: ['mlx', 'claude-code', 'unknown-provider']
+-      // Available for routing should be: ['retired-local-provider', 'claude-code', 'unknown-provider']
+-      // Sorted by cost order: ['retired-local-provider', 'claude-code', 'unknown-provider']
 +      // Available for routing should be: ['ollama', 'claude-code', 'unknown-provider']
 +      // Sorted by cost order: ['ollama', 'claude-code', 'unknown-provider']
        
        const providers = await smartRouter.selectProviders('task', 3);
--      expect(providers).toEqual(['mlx', 'claude-code', 'unknown-provider']);
+-      expect(providers).toEqual(['retired-local-provider', 'claude-code', 'unknown-provider']);
 +      expect(providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
      });
  
      it('fails explicitly when available providers do not meet the mode minimum', async () => {
--      // openrouter is rate-limited, vllm is circuit-open → only mlx remains (1 < discussion minimum 3)
--      listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'mlx']);
+-      // openrouter is rate-limited, vllm is circuit-open → only retired-local-provider remains (1 < discussion minimum 3)
+-      listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'retired-local-provider']);
 +      // openrouter is rate-limited, vllm is circuit-open → only ollama remains (1 < discussion minimum 3)
 +      listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'ollama']);
        await expect(smartRouter.selectProviders('discussion', 3)).rejects.toBeInstanceOf(ProviderSelectionError);
@@ -4195,10 +4195,10 @@ index 42e01a2..59dc059 100644
      it('dispatches simple prompt to optimal provider', async () => {
        const decision = await smartRouter.dispatch('간단한 테스트');
        // '테스트' keyword triggers 'parallel' mode, which requests 3 providers.
--      // Available: 'mlx', 'claude-code', 'unknown-provider'
+-      // Available: 'retired-local-provider', 'claude-code', 'unknown-provider'
 +      // Available: 'ollama', 'claude-code', 'unknown-provider'
        expect(decision.mode).toBe('parallel');
--      expect(decision.providers).toEqual(['mlx', 'claude-code', 'unknown-provider']);
+-      expect(decision.providers).toEqual(['retired-local-provider', 'claude-code', 'unknown-provider']);
 +      expect(decision.providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
      });
    });
@@ -4219,7 +4219,7 @@ index 8a609cf..500f8b2 100644
  });
  
  const log = createLogger('task-queue');
--const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['mlx', 'ollama', 'hermes']);
+-const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['retired-local-provider', 'ollama', 'hermes']);
 +// hermes는 2026-07-18 codex CLI로 전환 — 로컬 OOM 동시성 하향 대상 아님(정적 동시성 사용).
 +const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['ollama']);
  
@@ -4689,7 +4689,7 @@ index 107f1cd..f7f05b0 100644
    { name: 'cursor-agent',role: 'Reviewer',        didSuffix: 'cursor-agent-001' },
    { name: 'agy',         role: 'Designer',        didSuffix: 'agy-001' },
    { name: 'copilot',     role: 'Researcher',      didSuffix: 'copilot-001' },
--  { name: 'mlx',         role: 'Engineer',        didSuffix: 'mlx-001' },
+-  { name: 'retired-local-provider',         role: 'Engineer',        didSuffix: 'retired-local-provider-001' },
    { name: 'retired-provider',      role: 'Reasoner',        didSuffix: 'retired-provider-001' },
    { name: 'higgsfield',  role: 'Media',           didSuffix: 'higgsfield-001' },
    { name: 'hermes',      role: 'ToolUser',        didSuffix: 'hermes-001' },
@@ -5102,7 +5102,7 @@ index 885eb92..17d264f 100644
  }
  
  // 로컬 추론 프로바이더 — 프롬프트 처리+생성이 클라우드 API보다 느려 별도 타임아웃 필요
--const LOCAL_LLM_IDS = new Set(['mlx', 'mlx-instruct', 'hermes', 'ollama']);
+-const LOCAL_LLM_IDS = new Set(['retired-local-provider', 'retired-local-provider', 'hermes', 'ollama']);
 +// (hermes는 2026-07-18 codex CLI로 전환 — codex와 동일하게 로컬 타임아웃 대상 아님)
 +const LOCAL_LLM_IDS = new Set(['ollama']);
  
@@ -5382,7 +5382,7 @@ index 81da3e3..1df94f9 100644
      readFileSync,
      statSync,
      execFileAsyncMock: vi.fn(async () => {
--      return { stdout: '[mlx-keepalive] 12:34:56', stderr: '' };
+-      return { stdout: '[retired-local-provider-keepalive] 12:34:56', stderr: '' };
 +      return { stdout: 'ok', stderr: '' };
      }),
      listProviders: vi.fn(() => [{ id: 'codex', name: 'Codex', role: 'Engineer', enabled: true }]),
@@ -5391,8 +5391,8 @@ index 81da3e3..1df94f9 100644
      });
    });
  
--  describe('GET /api/mlx/latency', () => {
--    it('pings local and remote MLX and reads keepalive log', async () => {
+-  describe('GET /api/retired-local-provider/latency', () => {
+-    it('pings local and remote retired-local-provider and reads keepalive log', async () => {
 -      const originalFetch = global.fetch;
 -      global.fetch = vi.fn(async () => {
 -        return { ok: true } as any;
@@ -5400,7 +5400,7 @@ index 81da3e3..1df94f9 100644
 -
 -      const response = await app.inject({
 -        method: 'GET',
--        url: '/api/mlx/latency',
+-        url: '/api/retired-local-provider/latency',
 -      });
 -
 -      expect(response.statusCode).toBe(200);
@@ -5516,7 +5516,7 @@ index e399310..7e00b4f 100644
    /queue_wait_timeout/i,
    // executor 레벨 AbortSignal 타임아웃 — status=failed로 귀결되는 실전 최다 패턴 (E2E task_Iu1JtUsJR6tf8auo에서 실측)
    /aborted due to timeout/i,
--  // 로컬 LLM(ollama/mlx) 백엔드 다운/미기동 시 OpenAI SDK가 던지는 연결 실패 —
+-  // 로컬 LLM(ollama/retired-local-provider) 백엔드 다운/미기동 시 OpenAI SDK가 던지는 연결 실패 —
 +  // 로컬 LLM(ollama) 백엔드 다운/미기동 시 OpenAI SDK가 던지는 연결 실패 —
    // 이게 retryable로 안 잡히면 로컬 primary → CLI 폴백이 발화하지 않는다 (2026-07-03 실측: hermes 로컬화)
    /connection error/i,
@@ -5564,7 +5564,7 @@ index f5fc2e9..f033430 100644
      getDb().prepare(`
        INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
        VALUES (?, 'task', ?, ?, 'completed', ?)
--    `).run('route-task-provider-mismatch', 'prompt', 'mlx', JSON.stringify({ requestedProvider: 'codex' }));
+-    `).run('route-task-provider-mismatch', 'prompt', 'retired-local-provider', JSON.stringify({ requestedProvider: 'codex' }));
 +    `).run('route-task-provider-mismatch', 'prompt', 'ollama', JSON.stringify({ requestedProvider: 'codex' }));
  
      const response = await server.inject({
@@ -5573,7 +5573,7 @@ index f5fc2e9..f033430 100644
  
      expect(response.statusCode).toBe(200);
      expect(response.json().task).toMatchObject({
--      assigned_to: 'mlx',
+-      assigned_to: 'retired-local-provider',
 +      assigned_to: 'ollama',
        requestedProvider: 'codex',
        providerMismatch: true,
@@ -5582,8 +5582,8 @@ index f5fc2e9..f033430 100644
      persistTaskReassignment(
        'route-task-reassignment',
        'codex',
--      'mlx',
--      { attemptedAgents: ['codex', 'mlx'] },
+-      'retired-local-provider',
+-      { attemptedAgents: ['codex', 'retired-local-provider'] },
 +      'ollama',
 +      { attemptedAgents: ['codex', 'ollama'] },
      );
@@ -5593,10 +5593,10 @@ index f5fc2e9..f033430 100644
      const decision = db.prepare('SELECT decision FROM decision_log WHERE task_id = ?')
        .get('route-task-reassignment') as { decision: string };
  
--    expect(task.assigned_to).toBe('mlx');
+-    expect(task.assigned_to).toBe('retired-local-provider');
 +    expect(task.assigned_to).toBe('ollama');
      expect(JSON.parse(task.metadata_json)).toMatchObject({ reassignedFrom: 'codex' });
--    expect(decision.decision).toBe('reassign:codex->mlx');
+-    expect(decision.decision).toBe('reassign:codex->retired-local-provider');
 +    expect(decision.decision).toBe('reassign:codex->ollama');
    });
  });
@@ -5901,7 +5901,7 @@ index 37d11f9..6077031 100644
  import { readFileSync, existsSync } from 'fs';
  import { resolve, dirname } from 'path';
  import { fileURLToPath } from 'url';
--import { resolveProviderModel } from './mlx-models.js';
+-import { resolveProviderModel } from './retired-local-provider-models.js';
  
  const __dirname = dirname(fileURLToPath(import.meta.url));
  const ROOT = resolve(__dirname, '../..');
@@ -6101,36 +6101,36 @@ index 0b1ecab..d4facd1 100644
      this.capacity = capacity;
      this.map = new Map();
    }
-diff --git a/src/utils/mlx-models.test.ts b/src/utils/mlx-models.test.ts
+diff --git a/src/utils/retired-local-provider-models.test.ts b/src/utils/retired-local-provider-models.test.ts
 deleted file mode 100644
 index 4ba9022..0000000
---- a/src/utils/mlx-models.test.ts
+--- a/src/utils/retired-local-provider-models.test.ts
 +++ /dev/null
 @@ -1,32 +0,0 @@
 -import { describe, expect, it } from 'vitest';
--import { resolveMlxModelAlias, resolveProviderModel } from './mlx-models.js';
+-import { resolveMlxModelAlias, resolveProviderModel } from './retired-local-provider-models.js';
 -
--describe('mlx-models', () => {
+-describe('retired-local-provider-models', () => {
 -  it('maps qwen3 aliases to the instruct model path', () => {
 -    expect(resolveMlxModelAlias('qwen3-30b')).toBe(
--      '/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit',
+-      '/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit',
 -    );
 -    expect(resolveMlxModelAlias('qwen3-instruct')).toBe(
--      '/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit',
+-      '/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit',
 -    );
 -  });
 -
 -  it('keeps absolute model paths unchanged', () => {
--    const modelPath = '/Users/nova-ai/project/LM-models/mlx/Qwen3-Coder-30B-A3B-Instruct-4bit';
+-    const modelPath = '/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-Coder-30B-A3B-Instruct-4bit';
 -    expect(resolveMlxModelAlias(modelPath)).toBe(modelPath);
 -  });
 -
--  it('resolves only mlx-family providers', () => {
+-  it('resolves only retired-local-provider-family providers', () => {
 -    expect(resolveProviderModel({
--      id: 'mlx',
+-      id: 'retired-local-provider',
 -      model: 'qwen3-30b',
 -      endpoint: 'http://127.0.0.1:8000/v1',
--    })).toBe('/Users/nova-ai/project/LM-models/mlx/Qwen3-30B-A3B-Instruct-2507-4bit');
+-    })).toBe('/Users/nova-ai/project/LM-models/retired-local-provider/Qwen3-30B-A3B-Instruct-2507-4bit');
 -
 -    expect(resolveProviderModel({
 -      id: 'openrouter',
@@ -6139,25 +6139,25 @@ index 4ba9022..0000000
 -    })).toBe('qwen3-30b');
 -  });
 -});
-diff --git a/src/utils/mlx-models.ts b/src/utils/mlx-models.ts
+diff --git a/src/utils/retired-local-provider-models.ts b/src/utils/retired-local-provider-models.ts
 deleted file mode 100644
 index 1554093..0000000
---- a/src/utils/mlx-models.ts
+--- a/src/utils/retired-local-provider-models.ts
 +++ /dev/null
 @@ -1,40 +0,0 @@
--const MLX_MODEL_ROOT = '/Users/nova-ai/project/LM-models/mlx';
+-const retired-local-provider_MODEL_ROOT = '/Users/nova-ai/project/LM-models/retired-local-provider';
 -
--export const MLX_MODEL_ALIASES: Record<string, string> = {
--  'glm-5': `${MLX_MODEL_ROOT}/GLM-5-4bit`,
--  'qwen3': `${MLX_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
--  'qwen3-30b': `${MLX_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
--  'qwen3-30b-instruct': `${MLX_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
--  'qwen3-coder': `${MLX_MODEL_ROOT}/Qwen3-Coder-30B-A3B-Instruct-4bit`,
--  'qwen3-coder-30b': `${MLX_MODEL_ROOT}/Qwen3-Coder-30B-A3B-Instruct-4bit`,
--  'qwen3-instruct': `${MLX_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
+-export const retired-local-provider_MODEL_ALIASES: Record<string, string> = {
+-  'glm-5': `${retired-local-provider_MODEL_ROOT}/GLM-5-4bit`,
+-  'qwen3': `${retired-local-provider_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
+-  'qwen3-30b': `${retired-local-provider_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
+-  'qwen3-30b-instruct': `${retired-local-provider_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
+-  'qwen3-coder': `${retired-local-provider_MODEL_ROOT}/Qwen3-Coder-30B-A3B-Instruct-4bit`,
+-  'qwen3-coder-30b': `${retired-local-provider_MODEL_ROOT}/Qwen3-Coder-30B-A3B-Instruct-4bit`,
+-  'qwen3-instruct': `${retired-local-provider_MODEL_ROOT}/Qwen3-30B-A3B-Instruct-2507-4bit`,
 -};
 -
--const MLX_PROVIDER_IDS = new Set(['mlx', 'mlx-instruct', 'hermes']);
+-const retired-local-provider_PROVIDER_IDS = new Set(['retired-local-provider', 'retired-local-provider', 'hermes']);
 -
 -export interface MlxModelProviderLike {
 -  id: string;
@@ -6175,12 +6175,12 @@ index 1554093..0000000
 -
 -export function resolveMlxModelAlias(model: string | null | undefined): string | null {
 -  if (!model) return null;
--  return MLX_MODEL_ALIASES[normalizeAliasKey(model)] ?? model;
+-  return retired-local-provider_MODEL_ALIASES[normalizeAliasKey(model)] ?? model;
 -}
 -
 -export function resolveProviderModel(provider: MlxModelProviderLike): string | null {
 -  if (!provider.model) return null;
--  if (!MLX_PROVIDER_IDS.has(provider.id) && !usesLocalMlxEndpoint(provider.endpoint)) {
+-  if (!retired-local-provider_PROVIDER_IDS.has(provider.id) && !usesLocalMlxEndpoint(provider.endpoint)) {
 -    return provider.model;
 -  }
 -  return resolveMlxModelAlias(provider.model);
@@ -6193,7 +6193,7 @@ index 6213679..e60ae05 100644
        const { sortProvidersByCostOrder } = await import('../core/smart-router.js');
        
        const cheapAgents = sortProvidersByCostOrder(agentManager.listEnabledIds());
--      const agentId = options.agentId || cheapAgents[0]; // mlx, openrouter, etc.
+-      const agentId = options.agentId || cheapAgents[0]; // retired-local-provider, openrouter, etc.
 +      const agentId = options.agentId || cheapAgents[0]; // ollama, openrouter, etc.
  
        if (agentId) {

@@ -1,11 +1,11 @@
-# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-09, ai=mlx, taskId=task_DuqP464Ugf6t1DjF)
+# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_DuqP464Ugf6t1DjF)
 
 ### 📊 2026년 7월 9일 Autonomy Controller 일일 산출물 ####
 
 ✅ 수행 내역  
-- **AI 조정 (ai-coordination)**: 에이전트 간 작업 흐름의 중복 및 충돌 가능성 분석 완료. 현재 활성화된 3개의 에이전트(claude-code, ollama, mlx) 간 의존성 맵 재검토 중.  
+- **AI 조정 (ai-coordination)**: 에이전트 간 작업 흐름의 중복 및 충돌 가능성 분석 완료. 현재 활성화된 3개의 에이전트(claude-code, ollama, retired-local-provider) 간 의존성 맵 재검토 중.  
 - **자원 할당 (resource-allocation)**: 메모리 및 GPU 리소스 사용률 모니터링 결과, 현재 3개의 에이전트가 동시 실행 중이며, 평균 GPU 사용률 68% (기준: 75% 이상 시 경고). 리소스 우선순위 재조정 중.  
-- **자율성 정책 (autonomy-policy)**: 자율 결정 권한 부여 기준 점검 완료. 2개의 에이전트(ollama, mlx)에 대해 정책 재검토 요청 발송.  
+- **자율성 정책 (autonomy-policy)**: 자율 결정 권한 부여 기준 점검 완료. 2개의 에이전트(ollama, retired-local-provider)에 대해 정책 재검토 요청 발송.  
 - **에이전트 감시 (agent-oversight)**: 모든 에이전트의 최근 1시간 동안의 작업 로그 검토 완료. 오류 발생 없음.  
 - **결정 중재 (decision-arbitration)**: 두 에이전트 간 작업 우선순위 충돌 1건 발생. 중재 요청 처리 완료.  
 

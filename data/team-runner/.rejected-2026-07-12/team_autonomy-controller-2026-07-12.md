@@ -1,4 +1,4 @@
-# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_vUG-UttlDyRrU11T)
+# Autonomy Controller (autonomy-controller) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_vUG-UttlDyRrU11T)
 
 ### 📊 2026년 7월 12일 Autonomy Controller 일일 산출물  
 #### ✅ 수행 내역  

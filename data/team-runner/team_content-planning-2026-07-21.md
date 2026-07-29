@@ -1,4 +1,4 @@
-# 콘텐츠 기획팀 — 일일 산출물 (2026-07-21, ai=mlx, taskId=task_zd5TL_ApK2T_9JnJ)
+# 콘텐츠 기획팀 — 일일 산출물 (2026-07-21, ai=retired-local-provider, taskId=task_zd5TL_ApK2T_9JnJ)
 
 1) 오늘 관찰·분석:  
 - 최근 3일간 AI 기반 부수입 관련 검색 트렌드 분석 결과, "AI side hustles 2026", "passive income with AI tools", "automated income streams" 등 키워드의 월간 검색량이 평균 23% 증가.  

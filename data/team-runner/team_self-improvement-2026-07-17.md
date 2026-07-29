@@ -1,4 +1,4 @@
-# 자가개선팀 — 일일 산출물 (2026-07-17, ai=mlx, taskId=task_FQLFQsIHt3P7qNDQ)
+# 자가개선팀 — 일일 산출물 (2026-07-17, ai=retired-local-provider, taskId=task_FQLFQsIHt3P7qNDQ)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/docs/obsidian-improvement-no  

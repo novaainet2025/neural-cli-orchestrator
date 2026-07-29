@@ -1,4 +1,4 @@
-# Support Lead (support-lead) — 일일 산출물 (2026-07-12, ai=mlx, taskId=task_viu94vneEaeN_R2G)
+# Support Lead (support-lead) — 일일 산출물 (2026-07-12, ai=retired-local-provider, taskId=task_viu94vneEaeN_R2G)
 
 변경 파일 목록:  
 - /Users/nova-ai/project/nco/REPORTS/support-lead/daily-2026-07-12.md  

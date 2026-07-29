@@ -1,4 +1,4 @@
-# 홍보 패키지 (backlog, mlx)
+# 홍보 패키지 (backlog, retired-local-provider)
 
 taskId: task_nBZKrizZIOqhjuUD
 

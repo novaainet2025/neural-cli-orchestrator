@@ -67,5 +67,5 @@ ChatGPT Prompts to Make Money in 2024 / AI Automation Side Income in 2024 (No Co
 ## 4. 미검증항목
 - 키워드 검색량·경쟁도·현재 랭킹 (Search Console/Ahrefs/SEMrush 미연동 — 제안 키워드는 실측 제목 기반 도출일 뿐 수요 정량화 안 됨)
 - 게시글 본문 내부의 키워드 밀도/메타디스크립션 (피드는 제목·라벨만 제공, 본문 전수 분석 미수행)
-- content-planning 팀 보고서(2026-07-21)의 "검색량 23%/15% 증가" 수치 — mlx 생성 T4, 근거 데이터 없음, 본 분석에 미사용
+- content-planning 팀 보고서(2026-07-21)의 "검색량 23%/15% 증가" 수치 — retired-local-provider 생성 T4, 근거 데이터 없음, 본 분석에 미사용
 - 게시글 삭제/리다이렉트 실행 — 외부 시스템 변경이므로 사람 승인 전 미실행

@@ -6,7 +6,7 @@ done: [Evidence Tier 1] `git diff --name-only`, `git diff --stat`, 기존 `data/
 
 ## 오늘 수행한 핵심 업무
 - 저장소 변경 파일을 기준으로 작업 흐름 영향 구간을 점검했다. 확인된 변경 축은 작업 임대 추적 관련 파일(`db/migrations/073_tasks_lease_tracking.sql`, `src/core/task-queue.ts`, `src/storage/database.ts`)과 작업 인입·에스컬레이션 관련 파일(`src/server/task-intake.ts`, `src/core/task-escalation.ts`, `src/core/lease-sweeper.ts`)이다.
-- 실행 안정성 관점에서 폴백·재시도·모델 해석 보강 변경을 확인했다. 관련 파일은 `src/agent/api-executor.ts`, `src/utils/mlx-models.ts`, `src/security/sandbox-manager.ts`다.
+- 실행 안정성 관점에서 폴백·재시도·모델 해석 보강 변경을 확인했다. 관련 파일은 `src/agent/api-executor.ts`, `src/utils/retired-local-provider-models.ts`, `src/security/sandbox-manager.ts`다.
 - `ax-git` 담당 범위 기준으로 오늘 변경 세트가 브랜치 운영, 머지 순서, 릴리스 영향 점검이 필요한 후보임을 정리했다.
 
 ## 진행 중 이슈

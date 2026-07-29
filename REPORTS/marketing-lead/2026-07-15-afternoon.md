@@ -3,7 +3,7 @@
 ## 팀 정보
 - 팀: Marketing Lead (marketing-lead)
 - 조직 경로: `nova-ax/marketing-lead`
-- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Marketing Lead'(marketing-lead) 전담팀. 담당 영역: campaigns, brand-strategy, content-marketing, analytics, growth. 기반 모델: internal. NCO 프로바이더(openrouter, mlx)를 통해 해당 역할 작업을 수행한다.
+- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Marketing Lead'(marketing-lead) 전담팀. 담당 영역: campaigns, brand-strategy, content-marketing, analytics, growth. 기반 모델: internal. NCO 프로바이더(openrouter, retired-local-provider)를 통해 해당 역할 작업을 수행한다.
 
 ## ✅ 오늘 수행한 핵심 업무
 - 오늘 오전 보고서(`REPORTS/marketing-lead/2026-07-15.md`)와 오늘자 team-runner 산출 파일(`data/team-runner/team_marketing-lead-2026-07-15.md`)을 다시 확인해, 오후 시점에 인계 항목이 갱신되었는지 점검했다.

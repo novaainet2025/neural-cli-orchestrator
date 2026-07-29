@@ -1,4 +1,4 @@
-# Sales Director (sales-director) — 일일 산출물 (2026-07-09, ai=mlx, taskId=task_mxS7eEbF6TzfOnTn)
+# Sales Director (sales-director) — 일일 산출물 (2026-07-09, ai=retired-local-provider, taskId=task_mxS7eEbF6TzfOnTn)
 
 ### 📊 2026년 7월 9일 Sales Director 일일 산출물 #### ✅ 수행 내역  
 - **Pipeline Management**  

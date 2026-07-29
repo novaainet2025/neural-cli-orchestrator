@@ -1,4 +1,4 @@
-# Docs & Spec Agent (ax-docs) — 일일 산출물 (2026-07-12 오전, ai=copilot+mlx)
+# Docs & Spec Agent (ax-docs) — 일일 산출물 (2026-07-12 오전, ai=copilot+retired-local-provider)
 
 ### 2026년 7월 12일 오전 Docs & Spec Agent 업무보고
 
@@ -43,7 +43,7 @@
 - 변경 추적: `git log --since='2026-07-12 00:00' --stat` 기준 오늘 오후 실제 기능 커밋은 `18c898f`, `7ea676a` 두 건이 추가됐다. 오전 이후 문서 전용 상태에서 벗어나 게이트웨이·러너·오케스트레이션 동작이 바뀐 점을 오후 핵심 변경으로 반영했다.
 - 인터페이스 점검: `src/server/gateway.ts`에 `POST /api/cli-session`, `GET /api/cli-sessions`가 추가됐다. `cli_sessions` 테이블에 세션 상태, 현재 작업, 하트비트 시각을 올리고 조회하는 흐름이 생겨 운영 관측용 인터페이스가 확장됐다.
 - 명세 영향 분류: 같은 파일에서 `parentTaskId`가 있을 때 부모 태스크의 `spawned_by_cli`를 상속해 `callerAgentId`, `callerSessionId`의 `unknown` 귀속을 줄이도록 바뀌었다. 파생 태스크 귀속 규칙이 달라졌으므로 호출자 추적 규약과 관측 문서의 설명 보강이 필요 항목으로 분류됐다.
-- 작업 러너 검토: `scripts/team-runner.sh`에서 기본 체인이 `mlx hermes openrouter`로 바뀌었고, `metadata.projectDir` 주입, 미등록 에이전트 건너뛰기, 허위 파일 변경·빌드 성공·커밋 완료 주장 반려 규칙이 추가됐다. 텍스트 전용 워커 산출물 검수 규칙이 강화된 것으로 확인했다.
+- 작업 러너 검토: `scripts/team-runner.sh`에서 기본 체인이 `retired-local-provider hermes openrouter`로 바뀌었고, `metadata.projectDir` 주입, 미등록 에이전트 건너뛰기, 허위 파일 변경·빌드 성공·커밋 완료 주장 반려 규칙이 추가됐다. 텍스트 전용 워커 산출물 검수 규칙이 강화된 것으로 확인했다.
 - 마이그레이션 안내 검토: `src/agent/orchestrated-loop.ts`는 종료 코드가 `0`이어도 `stderr`에 `usage limit`, `quota exceeded`, `rate limit exceeded`가 있으면 실패로 처리하도록 바뀌었다. 사용량 소진 신호를 성공으로 오인하지 않게 되어 운영 가이드의 장애 분류 문구 보정이 필요한 변경으로 기록했다.
 
 #### 진행 중 이슈
