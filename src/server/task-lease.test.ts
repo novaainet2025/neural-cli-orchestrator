@@ -123,6 +123,54 @@ describe.sequential('task lease routes', () => {
     });
   });
 
+  it('projects active discussion round, response count, and liveness onto task status routes', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, progress)
+      VALUES (?, 'discussion', ?, ?, 'assigned', 0)
+    `).run('route-task-discussion-progress', 'compare implementations', 'opencode');
+    db.prepare(`
+      INSERT INTO discussions (
+        id, topic, mode, status, participants_json, initiator, current_round,
+        max_rounds, task_id
+      ) VALUES (?, ?, 'discussion', 'active', ?, 'claude-code', 0, 3, ?)
+    `).run(
+      'discussion-progress-route',
+      'compare implementations',
+      JSON.stringify(['opencode', 'agy', 'cursor-agent']),
+      'route-task-discussion-progress',
+    );
+    db.prepare(`
+      INSERT INTO discussion_messages (
+        id, discussion_id, agent_id, round, message_type, content
+      ) VALUES (?, ?, 'opencode', 1, 'proposal', 'proposal complete')
+    `).run('discussion-progress-message', 'discussion-progress-route');
+
+    const statusResponse = await server.inject({
+      method: 'GET',
+      url: '/api/tasks/route-task-discussion-progress/status',
+    });
+    expect(statusResponse.statusCode).toBe(200);
+    expect(statusResponse.json()).toMatchObject({
+      status: 'running',
+      progress: 11,
+      currentStep: '토론 1/3 · 응답 1/3 수집',
+      liveness: 'working',
+    });
+
+    const taskResponse = await server.inject({
+      method: 'GET',
+      url: '/api/task/route-task-discussion-progress',
+    });
+    expect(taskResponse.statusCode).toBe(200);
+    expect(taskResponse.json().task).toMatchObject({
+      status: 'running',
+      progress: 11,
+      currentStep: '토론 1/3 · 응답 1/3 수집',
+      liveness: 'working',
+    });
+  });
+
   it('records runtime provider reassignment in task metadata and decision log', () => {
     const db = getDb();
     db.prepare(`

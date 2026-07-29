@@ -71,6 +71,12 @@ import { refreshWorkReportPromptSnapshot } from '../core/work-report-scheduler.j
 import { registerTriadRoutes } from './routes/triad.js';
 import { markTaskQualityRejected } from './task-quality-state.js';
 import { reserveRetry, rollbackRetryReservation } from './retry-budget.js';
+import { buildConductorDiscussionOptions } from './conductor-dispatch.js';
+import {
+  projectDiscussionTaskProgress,
+  projectSingleTaskProgress,
+  type DiscussionProgressRow,
+} from '../core/discussion-progress.js';
 
 type TaskFailureContext = {
   mode?: string | null;
@@ -241,12 +247,57 @@ export function resolveTaskTerminalOutcome(
   };
 }
 
-function withTaskRuntime<T extends { id: string; last_activity_at?: string | null }>(task: T) {
+function readActiveDiscussionProgress(taskId: string): DiscussionProgressRow | undefined {
+  return getDb().prepare(`
+    SELECT
+      d.status,
+      d.current_round,
+      d.max_rounds,
+      d.participants_json,
+      d.created_at AS updated_at,
+      MAX(dm.created_at) AS latest_message_at,
+      COALESCE(SUM(
+        CASE
+          WHEN dm.round = MIN(d.max_rounds, d.current_round + 1) THEN 1
+          ELSE 0
+        END
+      ), 0) AS active_round_response_count
+    FROM discussions d
+    LEFT JOIN discussion_messages dm ON dm.discussion_id=d.id
+    WHERE d.task_id=? AND d.status='active'
+    GROUP BY d.id
+    ORDER BY d.created_at DESC
+    LIMIT 1
+  `).get(taskId) as DiscussionProgressRow | undefined;
+}
+
+function withTaskRuntime<T extends {
+  id: string;
+  status?: string | null;
+  progress?: number | null;
+  last_activity_at?: string | null;
+  assigned_to?: string | null;
+  heartbeat_seq?: number | null;
+}>(task: T) {
   const runtime = taskQueue.getTaskSnapshot(task.id);
+  const discussion = readActiveDiscussionProgress(task.id);
+  if (discussion) {
+    return {
+      ...task,
+      ...projectDiscussionTaskProgress(discussion),
+    };
+  }
+  const terminal = projectSingleTaskProgress({
+    status: task.status,
+    progress: task.progress,
+    liveness: runtime.liveness,
+    provider: task.assigned_to,
+    heartbeatSeq: task.heartbeat_seq,
+  });
   return {
     ...task,
+    ...terminal,
     lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
-    liveness: runtime.liveness,
   };
 }
 
@@ -539,6 +590,7 @@ const DiscussionRouteBodySchema = z.object({
   mode: z.enum(['discussion', 'consensus', 'hive']).optional().default('discussion'),
   initiator: z.string().min(1).optional(),
   sessionId: z.string().min(1).optional(),
+  projectDir: z.string().min(1).optional(),
 }).refine(value => !(value.participants && value.providers), {
   message: 'Use either participants or providers, not both',
   path: ['participants'],
@@ -2082,16 +2134,28 @@ export async function createGateway() {
       ? (metadata as Record<string, unknown>).requestedProvider as string
       : undefined;
 
+    const projected = withTaskRuntime({
+      id: task.id,
+      status: task.status,
+      progress: typeof task.progress === 'number' ? task.progress : Number(task.progress ?? 0),
+      last_activity_at: task.last_heartbeat_at ?? task.created_at,
+      assigned_to: task.assigned_to,
+      heartbeat_seq: task.heartbeat_seq,
+    });
+
     return {
       task: {
         id: task.id,
-        status: task.status,
+        status: projected.status,
         assigned_to: task.assigned_to,
         ...(requestedProvider ? { requestedProvider } : {}),
         ...(requestedProvider && task.assigned_to && requestedProvider !== task.assigned_to
           ? { providerMismatch: true }
           : {}),
-        progress: task.progress,
+        progress: projected.progress,
+        ...('currentStep' in projected ? { currentStep: projected.currentStep } : {}),
+        lastActivityAt: projected.lastActivityAt,
+        liveness: projected.liveness,
         prompt: task.prompt?.slice(0, 200) ?? null,
         response: task.response?.slice(0, 20_000) ?? null,
         error: task.error,
@@ -2199,17 +2263,25 @@ export async function createGateway() {
   app.get('/api/tasks/:id/status', async (req, reply) => {
     const { id } = req.params as any;
     const db = getDb();
-    const task = db.prepare('SELECT id, status, progress, response, error, updated_at, last_activity_at FROM tasks WHERE id=?').get(id) as any;
+    const task = db.prepare(`
+      SELECT id, status, assigned_to, progress, response, error, updated_at,
+             last_activity_at, heartbeat_seq
+      FROM tasks
+      WHERE id=?
+    `).get(id) as any;
     if (!task) { reply.code(404); return { error: 'Task not found' }; }
-    const runtime = taskQueue.getTaskSnapshot(task.id);
+    const projected = withTaskRuntime(task);
     return {
       taskId: task.id,
-      status: task.status,
-      progress: task.progress,
+      status: projected.status,
+      progress: projected.progress,
+      ...('currentStep' in projected ? { currentStep: projected.currentStep } : {}),
+      assigned_to: task.assigned_to,
+      heartbeatSeq: task.heartbeat_seq,
       result: task.response,
       updatedAt: task.updated_at,
-      lastActivityAt: runtime.lastActivityAt ?? task.last_activity_at ?? null,
-      liveness: runtime.liveness,
+      lastActivityAt: projected.lastActivityAt,
+      liveness: projected.liveness,
     };
   });
 
@@ -2422,6 +2494,7 @@ export async function createGateway() {
       consensusThreshold: body.consensusThreshold,
       initiator: body.initiator,
       sessionId,
+      projectDir: body.projectDir,
     }).catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
 
     reply.code(202);
@@ -2648,6 +2721,7 @@ export async function createGateway() {
       maxRounds: body.maxRounds ?? body.rounds,
       consensusThreshold: body.consensusThreshold,
       sessionId,
+      projectDir: body.projectDir,
     }).catch(err => log.error({ err: err.message, sessionId }, 'Discussion failed'));
     return { sessionId, status: 'started', mode, wsUrl: `ws://localhost:${env.WS_PORT}/discussion/${sessionId}` };
   });
@@ -3844,18 +3918,22 @@ export async function createGateway() {
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     } else {
-      const { discussionEngine: de } = await import('../core/discussion-engine.js');
-      de.startDiscussion({
-        topic: prompt,
-        mode: effectiveMode as any,
-        providers: decision.providers,
-        maxRounds: effectiveMode === 'consensus' ? 5 : 3,
-        sessionId,
-        taskId,
-        teamId: teamId ?? undefined,
-        companyRunId: companyRunId ?? undefined,
-        workflowRunId,
-      })
+      discussionEngine.startDiscussion(
+        buildConductorDiscussionOptions(
+          {
+            topic: prompt,
+            mode: effectiveMode as any,
+            providers: decision.providers,
+            maxRounds: effectiveMode === 'consensus' ? 5 : 3,
+            sessionId,
+            taskId,
+            teamId: teamId ?? undefined,
+            companyRunId: companyRunId ?? undefined,
+            workflowRunId,
+          },
+          taskMetadata,
+        ),
+      )
         .then(report => {
           try {
             db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)

@@ -94,6 +94,39 @@ export function isNonCircuitCancellation(
     || NON_CIRCUIT_CANCELLATION_RE.test(signal);
 }
 
+export function classifyIncompleteAnswer(
+  prompt: string,
+  output: string,
+): string | undefined {
+  const normalizedPrompt = prompt.trim().toLowerCase();
+  const normalizedOutput = output.trim();
+  if (
+    /(?:return|reply|respond)\s+exactly\s+unknown\b/i.test(normalizedPrompt)
+    || /정확히\s*['"`]?unknown['"`]?(?:만|으로)?\s*(?:답|출력)/i.test(prompt)
+  ) {
+    return undefined;
+  }
+  if (/^unknown\b/i.test(normalizedOutput)) {
+    return 'answer stopped at unknown without resolving the requested evidence';
+  }
+  if (
+    normalizedOutput.length < 320
+    && /^(?:(?:before|to)\b.{0,100}?\b)?(?:let me|i(?:'ll| will| need to))\s+(?:look|check|inspect|review|analy[sz]e|explore|read|scan|investigate|verify)\b/i.test(normalizedOutput)
+  ) {
+    return 'answer stopped at a future-intent preamble';
+  }
+  if (
+    normalizedOutput.length < 320
+    && (
+      /^(?:먼저|우선|이제).{0,100}(?:살펴보겠|확인하겠|검토하겠|분석하겠|조사하겠|읽어보겠|탐색하겠)/.test(normalizedOutput)
+      || /^(?:discussion|토론|분석|답변|제안).{0,30}(?:시작\s*전|전에).{0,120}(?:탐색|확인|검토|분석|조사|검증|파악)(?:하|해|하여)/i.test(normalizedOutput)
+    )
+  ) {
+    return 'answer stopped at a future-intent preamble';
+  }
+  return undefined;
+}
+
 function killProcessGroup(pid: number | undefined): void {
   if (!pid) return;
   if (process.platform === 'win32') return;
@@ -193,8 +226,8 @@ class AgentManager {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
 
-    const sandbox = this.sandboxes.get(agentId)!;
     const taskId = options?.taskId || createTaskId();
+    const originalPrompt = prompt;
     const teamMemoryScope = resolveTaskTeamMemoryScope(taskId);
     const startTime = Date.now();
 
@@ -202,8 +235,16 @@ class AgentManager {
     // codex(Type B, assertTaskProjectDir)가 즉시 실패하지 않도록 env.PROJECT_DIR 로 기본값 채움.
     // 외부 /api/task 는 task-intake 에서 projectDir 를 필수 검증하므로 이 기본값의 영향 없음(내부 전용).
     const effectiveProjectDir = options?.projectDir || env.PROJECT_DIR;
+    const admissionSandbox = this.sandboxes.get(agentId)!;
+    // Provider sandbox는 서버 시작 시 env.PROJECT_DIR 하나로 만들어진다. 다른 repository를
+    // 명시한 conductor/task에서 그 인스턴스를 재사용하면 실행 cwd는 맞아도 readFile/listFiles가
+    // PathGuard에 막힌다. 회로차단 admission은 장기 인스턴스에 유지하고, 파일·명령 정책만
+    // 해당 task의 projectDir를 루트로 갖는 task-scoped sandbox로 격리한다.
+    const executionSandbox = effectiveProjectDir === env.PROJECT_DIR
+      ? admissionSandbox
+      : createSandbox(agentId, provider.role, effectiveProjectDir);
 
-    if (!sandbox.canExecute()) {
+    if (!admissionSandbox.canExecute()) {
       const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
       return {
         taskId,
@@ -329,7 +370,7 @@ class AgentManager {
         case 'B':
         case 'B_SINGLE_PROMPT': {
           // Type B: NCO orchestrated loop
-          const loop = new OrchestratedLoop(provider, sandbox, signal);
+          const loop = new OrchestratedLoop(provider, executionSandbox, signal);
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
@@ -350,7 +391,7 @@ class AgentManager {
 
         case 'C': {
           // Type C: API executor
-          const executor = new ApiExecutor(provider, sandbox);
+          const executor = new ApiExecutor(provider, executionSandbox);
           const result = await executor.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
@@ -390,6 +431,12 @@ class AgentManager {
           error: `Provider failure detected: ${classified.reason}`,
           durationMs,
         };
+      }
+      const incompleteAnswer = classifyIncompleteAnswer(originalPrompt, output);
+      if (incompleteAnswer) {
+        const failure = new Error(`silent-failure: ${incompleteAnswer}`);
+        (failure as Error & { partialOutput?: string }).partialOutput = output;
+        throw failure;
       }
 
       circuitBreakerRegistry.recordSuccess(agentId);

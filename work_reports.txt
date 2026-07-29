@@ -1,0 +1,20 @@
+# 업무보고
+## 팀 정보
+* 팀: Security Privacy and Safety
+* 조직 경로: nova-ax/nco-assurance/gov-assurance-safety
+* 팀 상시 임무: 위협모델, 접근권한, 비밀정보, 개인정보, 공급망, 오용과 인간 영향의 위험을 심사한다. 치명적 위험·동의 부재·복구 불가 변경은 거부하며 예외는 범위·기간·책임자·보상통제가 명시돼야 한다.
+
+## 최근 7일 활동
+* [tasks] 최근 7일: 전체=9, 완료=9, 실패성=0, 진행=0, 완료율=100.0%
+* [work_reports] 최근 7일: submitted=5
+
+## 성과 요약
+* [agent_performance_summary] opencode/code: 실행=26, 성공률=80.8%, 평균품질=68.47, 평균소요ms=33154.73
+* [agent_performance_summary] cursor-agent/code: 실행=19, 성공률=100.0%, 평균품질=98.42, 평균소요ms=24404.16
+* [agent_performance_summary] cursor-agent/design: 실행=9, 성공률=100.0%, 평균품질=86.65, 평균소요ms=27100.89
+* [agent_performance_summary] cursor-agent/verify: 실행=8, 성공률=100.0%, 평균품질=88.16, 평균소요ms=28054.63
+* [agent_performance_summary] nvidia/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
+* [agent_performance_summary] nvidia/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
+* [agent_performance_summary] cursor-agent/review: 실행=5, 성공률=100.0%, 평균품질=92.80, 평균소요ms=15632.40
+* [agent_performance_summary] nvidia/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
+* [agent_performance_summary] opencode/design: 실행=1, 성공률=100.0%, 평균품질=82.57, 평균소요ms=50112

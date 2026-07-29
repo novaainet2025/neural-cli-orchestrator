@@ -97,6 +97,66 @@ export const requireDiscussionOutput = (
   return output;
 };
 
+export const DISCUSSION_MIN_RESPONSE_LENGTH = {
+  proposal: 160,
+  evaluation: 160,
+  synthesis: 120,
+} as const;
+
+export const requireSubstantiveDiscussionOutput = (
+  providerId: string,
+  result: DiscussionTaskOutput,
+  messageType: keyof typeof DISCUSSION_MIN_RESPONSE_LENGTH,
+): string => {
+  const output = requireDiscussionOutput(providerId, result);
+  const minimumLength = DISCUSSION_MIN_RESPONSE_LENGTH[messageType];
+  if (output.length < minimumLength) {
+    throw new Error(
+      `${providerId}: silent-failure: non-substantive ${messageType} response `
+      + `(${output.length}/${minimumLength} chars)`,
+    );
+  }
+  return output;
+};
+
+export const DISCUSSION_EVENT_CONTENT_LIMIT = 16_000;
+
+export const buildDiscussionEventContent = (
+  output: string,
+): {
+  content: string;
+  contentLength: number;
+  contentTruncated: boolean;
+} => ({
+  content: output.slice(0, DISCUSSION_EVENT_CONTENT_LIMIT),
+  contentLength: output.length,
+  contentTruncated: output.length > DISCUSSION_EVENT_CONTENT_LIMIT,
+});
+
+export const formatDiscussionProposalContent = (
+  content: string,
+  maxLength: number,
+): string => {
+  const limit = Math.max(200, Math.floor(maxLength));
+  if (content.length <= limit) {
+    return content;
+  }
+
+  const marker = `\n\n... [중간 ${content.length - limit}자 생략 · 원문은 DB에 보존] ...\n\n`;
+  const available = Math.max(2, limit - marker.length);
+  const headLength = Math.ceil(available * 0.7);
+  const tailLength = available - headLength;
+  return `${content.slice(0, headLength)}${marker}${content.slice(-tailLength)}`;
+};
+
+export const selectDiscussionSynthesisProvider = (
+  responsiveParticipants: string[],
+): string | undefined => {
+  const priority = ['claude-code', 'codex', 'agy', 'nvidia', 'opencode', 'cursor-agent'];
+  return priority.find(provider => responsiveParticipants.includes(provider))
+    ?? responsiveParticipants[0];
+};
+
 export function selectDiscussionConclusion(
   rounds: DiscussionRoundResult[],
   participants: string[],
@@ -104,18 +164,21 @@ export function selectDiscussionConclusion(
   const firstRound = rounds[0];
   const proposals = Object.entries(firstRound?.responses ?? {})
     .filter(([, content]) => content.trim().length > 0);
-  if (proposals.length === 0) {
-    throw new Error('discussion_no_valid_proposals');
+  if (proposals.length < 2) {
+    throw new Error(`discussion_insufficient_valid_proposals:${proposals.length}/2`);
   }
 
   // 최종 synthesis가 성공했다면 이것이 토론 전체의 산출물이다. 기존 구현은 마지막
   // synthesis round에서 evaluations가 없다는 이유로 participants[0]의 R1을 되돌려,
   // higgsfield UUID 같은 무효 제안을 최종 응답으로 저장했다.
   const synthesis = rounds.slice(1).reverse()
-    .map(round => round.responses['claude-code']?.trim())
-    .find(output => Boolean(output));
+    .filter(round => !round.evaluations)
+    .map(round => Object.entries(round.responses)
+      .map(([agent, output]) => [agent, output.trim()] as const)
+      .find(([, output]) => Boolean(output)))
+    .find((entry): entry is readonly [string, string] => Boolean(entry));
   if (synthesis) {
-    return { adoptedAgent: 'claude-code', adoptedProposal: synthesis };
+    return { adoptedAgent: synthesis[0], adoptedProposal: synthesis[1] };
   }
 
   const evaluationRound = [...rounds].reverse().find(round => round.evaluations);
@@ -211,10 +274,11 @@ class DiscussionEngine {
         });
         try {
           const result = await agentManager.executeTask(pid, prompt);
-          const output = requireDiscussionOutput(pid, result);
+          const output = requireSubstantiveDiscussionOutput(pid, result, 'proposal');
           await eventBus.publish({
             type: 'discussion:provider_completed', sessionId, agentId: pid,
-            content: output.slice(0, 500),
+            messageType: 'parallel',
+            ...buildDiscussionEventContent(output),
           });
           return { pid, output };
         } catch (error) {
@@ -324,21 +388,33 @@ class DiscussionEngine {
       options.topic,
       projectDir
     );
-    if (Object.keys(proposals).length === 0) {
+    const successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
+    const excludedParticipants = participants.filter(pid => !proposals[pid]);
+    const validProposalsCount = successfulParticipants.length;
+    if (validProposalsCount < 2) {
+      const failure = `discussion_insufficient_valid_proposals:${validProposalsCount}/2`;
       db.prepare(`
         UPDATE discussions
-        SET status='failed', report='discussion_no_valid_proposals', ended_at=datetime('now')
+        SET status='failed', report=?, ended_at=datetime('now')
         WHERE id=?
-      `).run(sessionId);
+      `).run(failure, sessionId);
       if (options.workflowRunId) {
         markWorkflowStage(options.workflowRunId, 'discussion', 'failed', {
           teamId: options.teamId,
           discussionId: sessionId,
-          error: 'discussion_no_valid_proposals',
+          error: failure,
         }, db);
       }
+      await eventBus.publish({
+        type: 'discussion:failed',
+        sessionId,
+        round: 1,
+        error: failure,
+        activeParticipants: successfulParticipants,
+        excludedParticipants,
+      });
       this.cleanupSessionState(sessionId);
-      throw new Error('discussion_no_valid_proposals');
+      throw new Error(failure);
     }
     rounds.push({ round: 1, responses: proposals, consensusRate: 0 });
 
@@ -347,28 +423,30 @@ class DiscussionEngine {
     await eventBus.publish({
       type: 'discussion:round_completed', sessionId, round: 1,
       consensusRate: 0, responseCount: Object.keys(proposals).length,
+      activeParticipants: successfulParticipants,
+      excludedParticipants,
     });
 
     // ─── Round 2: 순차 평가 (이전 응답 참조) ──────────────
-    if (participants.length > 1 && maxRounds >= 2) {
+    if (successfulParticipants.length > 1 && maxRounds >= 2) {
       const round = 2;
       await eventBus.publish({
         type: 'discussion:round_started', sessionId, round, totalRounds: maxRounds,
       });
 
-      const allProposals = this.formatProposals(proposals, 1200); // 1200자 제한
+      const allProposals = this.formatProposals(proposals, 6000);
       const evalPrompt = `Evaluate other agents' proposals:\n\n${allProposals}\n\nAnalyze pros/cons, score 1-10. Pick winner & reason.\n\nJSON block:\n\`\`\`json\n{"scores": {"agentId": score}, "winner": "agentId", "reason": "why"}\n\`\`\``;
 
-      // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음
-      const nonClaude = participants.filter(p => p !== 'claude-code');
+      // 순차 실행: 각 에이전트가 이전 에이전트의 평가를 볼 수 있음 (성공한 에이전트만)
+      const nonClaude = successfulParticipants.filter(p => p !== 'claude-code');
       const evaluations = await this.collectResponsesSequential(
         sessionId, round, 'evaluation', nonClaude, evalPrompt, allProposals, projectDir,
       );
 
-      const scores = this.extractScores(evaluations, participants);
-      consensusRate = this.calculateConsensus(sessionId, scores, participants);
-      this.updateTrustScores(sessionId, scores, participants);
-      this.updateReputation(sessionId, scores, participants);
+      const scores = this.extractScores(evaluations, successfulParticipants);
+      consensusRate = this.calculateConsensus(sessionId, scores, successfulParticipants);
+      this.updateTrustScores(sessionId, scores, successfulParticipants);
+      this.updateReputation(sessionId, scores, successfulParticipants);
       rounds.push({ round, responses: evaluations, evaluations: scores, consensusRate });
       this.saveRound(sessionId, round, 'evaluation', evaluations, scores, consensusRate);
 
@@ -377,56 +455,112 @@ class DiscussionEngine {
 
       await eventBus.publish({
         type: 'discussion:round_completed', sessionId, round, consensusRate,
+        responseCount: Object.keys(evaluations).length,
+        activeParticipants: nonClaude,
       });
       log.info({ sessionId, round, consensusRate, threshold }, 'Round 2 (sequential) completed');
     }
 
-    // ─── Final: claude-code 최종 결론 생성 ───────────
+    // ─── Final: R1에서 실제 응답한 건강한 provider가 최종 결론 생성 ───────────
     {
       const finalRound = maxRounds;
+      const synthesisProvider = selectDiscussionSynthesisProvider(successfulParticipants);
+      let synthesisResponseCount = 0;
       await eventBus.publish({
         type: 'discussion:round_started', sessionId, round: finalRound, totalRounds: maxRounds,
       });
 
-      const r1Summary = this.formatProposals(rounds[0]?.responses || {}, 1500);
-      const r2Summary = this.formatProposals(rounds[1]?.responses || {}, 1500);
+      const r1Summary = this.formatProposals(rounds[0]?.responses || {}, 6000);
+      const r2Summary = this.formatProposals(rounds[1]?.responses || {}, 6000);
       const synthPrompt = `Synthesize team discussion results into a final conclusion.\n\n=== R1 Proposals ===\n${r1Summary}\n\n=== R2 Evaluations ===\n${r2Summary}\n\nConclusion should be concise and clear.`;
 
-      try {
-        const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
-          systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
-          projectDir,
-          signal: AbortSignal.timeout(90_000),
+      if (synthesisProvider) {
+        await eventBus.publish({
+          type: 'discussion:provider_started',
+          sessionId,
+          agentId: synthesisProvider,
+          round: finalRound,
+          messageType: 'synthesis',
         });
-
-        if (synthResult.success && synthResult.output.trim()) {
-          const db2 = getDb();
-          db2.prepare(`
-            INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
-            VALUES (?, ?, ?, ?, ?, ?)
-          `).run(createMessageId(), sessionId, 'claude-code', finalRound, 'synthesis', synthResult.output);
-
-          await eventBus.publish({
-            type: 'discussion:provider_completed', sessionId, agentId: 'claude-code', round: finalRound,
-            content: synthResult.output.slice(0, 500),
+        try {
+          const synthResult = await agentManager.executeTask(synthesisProvider, synthPrompt, {
+            systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
+            projectDir,
+            signal: AbortSignal.timeout(90_000),
           });
 
-          rounds.push({ round: finalRound, responses: { 'claude-code': synthResult.output }, consensusRate: 1 });
-          this.saveRound(sessionId, finalRound, 'synthesis', { 'claude-code': synthResult.output });
-          consensusRate = Math.max(consensusRate, 0.8); // 최종 합성 시 최소 80% 합의
+          if (synthResult.success && synthResult.output.trim()) {
+            const synthesisOutput = requireSubstantiveDiscussionOutput(
+              synthesisProvider,
+              synthResult,
+              'synthesis',
+            );
+            const db2 = getDb();
+            db2.prepare(`
+              INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
+              VALUES (?, ?, ?, ?, ?, ?)
+            `).run(createMessageId(), sessionId, synthesisProvider, finalRound, 'synthesis', synthesisOutput);
+
+            await eventBus.publish({
+              type: 'discussion:provider_completed',
+              sessionId,
+              agentId: synthesisProvider,
+              round: finalRound,
+              messageType: 'synthesis',
+              ...buildDiscussionEventContent(synthesisOutput),
+            });
+
+            rounds.push({
+              round: finalRound,
+              responses: { [synthesisProvider]: synthesisOutput },
+              consensusRate: 1,
+            });
+            this.saveRound(
+              sessionId,
+              finalRound,
+              'synthesis',
+              { [synthesisProvider]: synthesisOutput },
+            );
+            synthesisResponseCount = 1;
+            consensusRate = Math.max(consensusRate, 0.8);
+          } else {
+            await eventBus.publish({
+              type: 'discussion:provider_failed',
+              sessionId,
+              agentId: synthesisProvider,
+              round: finalRound,
+              error: synthResult.error || 'empty synthesis',
+            });
+          }
+        } catch (err: any) {
+          await eventBus.publish({
+            type: 'discussion:provider_failed',
+            sessionId,
+            agentId: synthesisProvider,
+            round: finalRound,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          log.warn({ agentId: synthesisProvider, err: err.message }, 'Discussion synthesis failed');
         }
-      } catch (err: any) {
-        log.warn({ err: err.message }, 'Commander synthesis failed');
       }
 
       await eventBus.publish({
         type: 'discussion:round_completed', sessionId, round: finalRound, consensusRate,
+        responseCount: synthesisResponseCount,
+        activeParticipants: synthesisProvider ? [synthesisProvider] : [],
       });
       log.info({ sessionId, round: finalRound, consensusRate }, 'Final synthesis completed');
     }
 
     // ─── 최종 보고서 생성 ─────────────────────────
-    const report = this.generateReport(sessionId, options, participants, rounds, consensusRate, startTime);
+    const report = this.generateReport(
+      sessionId,
+      options,
+      successfulParticipants,
+      rounds,
+      consensusRate,
+      startTime,
+    );
 
     // Save to DB
     const resultState = this.readDiscussionResultState(sessionId);
@@ -524,7 +658,8 @@ class DiscussionEngine {
           `).run(createMessageId(), sessionId, pid, output);
           await eventBus.publish({
             type: 'discussion:provider_completed', sessionId, agentId: pid, round: 1,
-            content: output.slice(0, 500),
+            messageType: 'hive_response',
+            ...buildDiscussionEventContent(output),
           });
           return { pid, output, success: true };
         } catch (error) {
@@ -578,7 +713,7 @@ class DiscussionEngine {
       log.warn({ sessionId, err: err.message }, 'Commander synthesis failed — using best individual response');
     }
 
-    await eventBus.publish({ type: 'discussion:round_completed', sessionId, round: 2, consensusRate: 1 });
+    await eventBus.publish({ type: 'discussion:round_completed', sessionId, round: 2, consensusRate: 1, responseCount: 1 });
 
     const rounds: DiscussionRoundResult[] = [
       { round: 1, responses, consensusRate: 0 },
@@ -728,7 +863,8 @@ class DiscussionEngine {
 
           await eventBus.publish({
             type: 'discussion:provider_completed', sessionId, agentId: pid, round,
-            content: output.slice(0, 500),
+            messageType: type,
+            ...buildDiscussionEventContent(output),
           });
 
           return { pid, output };
@@ -836,7 +972,7 @@ class DiscussionEngine {
           projectDir,
           signal: AbortSignal.timeout(60_000),
         });
-        const output = requireDiscussionOutput(pid, result);
+        const output = requireSubstantiveDiscussionOutput(pid, result, 'evaluation');
 
         responses[pid] = output;
         accumulated.push(`[${pid}]: ${output.slice(0, 400)}`);
@@ -849,7 +985,8 @@ class DiscussionEngine {
 
         await eventBus.publish({
           type: 'discussion:provider_completed', sessionId, agentId: pid, round,
-          content: output.slice(0, 500),
+          messageType: type,
+          ...buildDiscussionEventContent(output),
         });
       } catch (err: any) {
         await eventBus.publish({
@@ -938,12 +1075,8 @@ class DiscussionEngine {
   // ─── Internal: Format proposals for evaluation (truncated for efficiency) ──
   private formatProposals(proposals: Record<string, string>, maxLength = 2000): string {
     return Object.entries(proposals)
-      .map(([pid, content]) => {
-        const truncated = content.length > maxLength 
-          ? content.slice(0, maxLength) + '... (truncated)' 
-          : content;
-        return `### ${pid}:\n${truncated}`;
-      })
+      .map(([pid, content]) =>
+        `### ${pid}:\n${formatDiscussionProposalContent(content, maxLength)}`)
       .join('\n\n---\n\n');
   }
 

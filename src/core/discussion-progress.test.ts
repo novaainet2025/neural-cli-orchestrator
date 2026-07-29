@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   projectDiscussionTaskProgress,
+  projectSingleTaskProgress,
   projectTerminalTaskActivity,
 } from './discussion-progress.js';
 
@@ -71,6 +72,39 @@ describe('discussion task progress projection', () => {
     expect(projectTerminalTaskActivity('running', 40, 'working')).toEqual({
       progress: 40,
       liveness: 'working',
+    });
+  });
+
+  it('reports observed provider heartbeat without inventing completion progress', () => {
+    expect(projectSingleTaskProgress({
+      status: 'running',
+      progress: 0,
+      liveness: 'working',
+      provider: 'codex',
+      heartbeatSeq: 5,
+    })).toEqual({
+      progress: 0,
+      liveness: 'working',
+      currentStep: 'codex 응답 생성 중 · 생존신호 #5',
+    });
+  });
+
+  it('labels stalled and terminal single-agent tasks explicitly', () => {
+    expect(projectSingleTaskProgress({
+      status: 'running',
+      progress: 0,
+      liveness: 'stalled',
+      provider: 'opencode',
+      heartbeatSeq: 9,
+    }).currentStep).toBe('opencode 응답 지연 · 생존신호 #9');
+    expect(projectSingleTaskProgress({
+      status: 'completed',
+      progress: 0,
+      liveness: 'dead',
+    })).toEqual({
+      progress: 100,
+      liveness: 'finished',
+      currentStep: '작업 완료',
     });
   });
 });

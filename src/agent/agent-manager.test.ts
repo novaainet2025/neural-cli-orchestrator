@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const {
   mockExeca,
@@ -166,6 +168,7 @@ vi.mock('../utils/logger.js', () => ({
 
 import {
   agentManager,
+  classifyIncompleteAnswer,
   formatProviderUnavailableError,
   isNonCircuitCancellation,
 } from './agent-manager.js';
@@ -253,6 +256,47 @@ describe('AgentManager', () => {
       undefined,
       'SIGINT',
     )).toBe(true);
+  });
+
+  it('rejects non-answers while preserving an explicitly requested unknown literal', () => {
+    expect(
+      classifyIncompleteAnswer(
+        'nova-cli 장단점 알려줘',
+        'Let me look at the nova-cli project to understand what it is',
+      ),
+    ).toContain('future-intent');
+    expect(
+      classifyIncompleteAnswer(
+        'nova-cli 장단점 알려줘',
+        'Let me explore the codebase first.',
+      ),
+    ).toContain('future-intent');
+    expect(
+      classifyIncompleteAnswer(
+        'nova-cli 장단점 알려줘',
+        '먼저 저장소를 살펴보겠습니다.',
+      ),
+    ).toContain('future-intent');
+    expect(
+      classifyIncompleteAnswer(
+        'nova-use 개선안을 토론해',
+        'Discussion 시작 전, nova-use 프로젝트를 탐색하여 현재 상태를 파악합니다',
+      ),
+    ).toContain('future-intent');
+    expect(
+      classifyIncompleteAnswer(
+        'nova-use 개선안을 토론해',
+        'Before I provide the analysis, let me verify the key claims in the actual project files',
+      ),
+    ).toContain('future-intent');
+    expect(
+      classifyIncompleteAnswer(
+        'nova-cli 장단점 알려줘',
+        'unknown [Evidence Tier 3] No verified source',
+      ),
+    ).toContain('unknown');
+    expect(classifyIncompleteAnswer('Return exactly unknown', 'unknown')).toBeUndefined();
+    expect(classifyIncompleteAnswer('상태를 알려줘', '현재 상태는 정상입니다.')).toBeUndefined();
   });
 
   it('injects NCO_HOOK_DISABLED environment variable when spawning claude-code subprocess', async () => {
@@ -478,6 +522,53 @@ describe('AgentManager', () => {
       agentId: 'api-tools',
     }));
     expect(circuitBreakerRegistry.getSnapshot('api-tools').state).toBe('closed');
+  });
+
+  it('builds a task-scoped PathGuard for an explicit projectDir', async () => {
+    await agentManager.init();
+    const projectDir = mkdtempSync(join(process.cwd(), '.tmp-nco-task-project-'));
+    writeFileSync(
+      join(projectDir, 'package.json'),
+      JSON.stringify({ name: 'nova-sandbox-fixture' }),
+      'utf8',
+    );
+    let secondRequest: any;
+    mockChatCreate
+      .mockResolvedValueOnce({
+        choices: [{
+          message: {
+            content: null,
+            tool_calls: [{
+              id: 'read-project-package',
+              type: 'function',
+              function: {
+                name: 'readFile',
+                arguments: JSON.stringify({ path: 'package.json' }),
+              },
+            }],
+          },
+        }],
+      })
+      .mockImplementationOnce((request: any) => {
+        secondRequest = request;
+        return Promise.resolve({
+          choices: [{ message: { content: 'project inspected' } }],
+        });
+      });
+
+    try {
+      await expect(
+        agentManager.executeTask('api-tools', 'inspect the selected project', { projectDir }),
+      ).resolves.toMatchObject({
+        success: true,
+        output: 'project inspected',
+        toolCalls: 1,
+      });
+      expect(JSON.stringify(secondRequest?.messages)).toContain('nova-sandbox-fixture');
+      expect(JSON.stringify(secondRequest?.messages)).not.toContain('PathGuard');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it('passes only the exact original prompt to higgsfield without vector-memory lookup', async () => {

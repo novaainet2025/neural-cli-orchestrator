@@ -1,0 +1,33 @@
+{
+  "operation": "vectorMemory.add",
+  "status": "verified",
+  "evidenceTier": "T1",
+  "sourceTaskId": "task_k2QXx3V5oC6Lnx55",
+  "teamId": "team_hr-director",
+  "agentId": "team:team_hr-director",
+  "memoryId": "mem0-1785289443475-13px1x",
+  "contentSha256": "a3f7f001fc149cbc9ceb967505c01f40cc385226f8f05724ce3eaa923cd79101",
+  "createdAt": "2026-07-29T01:44:03.475Z",
+  "embedded": 1,
+  "semantic": 0,
+  "hnswLabel": 3,
+  "importance": 1.3,
+  "databasePath": "/Users/nova-ai/project/nco/db/nco.db",
+  "indexPath": "/Users/nova-ai/project/nco/db/hnsw-indices/team:team_hr-director.hnsw",
+  "indexCountAfter": 4,
+  "indexSha256": "72aa26ff1ccaba7b7f6b18d7cf402cee3b28561298f1064144e1600b77f00cc7",
+  "retrievalVerification": {
+    "query": "task_41umGRQ-8CnSPQmG workReportId lifecycle retirement",
+    "rank": 1,
+    "score": 0.4001315474510193,
+    "semantic": false
+  },
+  "httpVerification": {
+    "status": "unavailable",
+    "error": "curl: (7) Failed to connect to localhost port 6200 after 0 ms: Couldn't connect to server"
+  },
+  "rollback": {
+    "executed": false,
+    "procedure": "After explicit approval, remove only this memory ID and rebuild the team:team_hr-director HNSW index."
+  }
+}

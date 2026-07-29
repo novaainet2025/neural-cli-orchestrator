@@ -21,9 +21,9 @@ export type Tier = 'brain' | 'worker';
  */
 export const BRAIN_TIER: readonly string[] = [
   'claude-code',  // Opus — Commander/최종 종합
-  'opencode',     // Architect — 설계·구조
-  'cursor-agent', // Reviewer — 코드 리뷰·보안
   'codex',        // Engineer(paid) — 어려운 구현 escalation
+  'cursor-agent', // Reviewer — 코드 리뷰·보안
+  'opencode',     // Architect — 설계·구조 (가용 모델별 편차가 커 후순위 fallback)
   'agy',          // Designer — UI·패턴
 ];
 
@@ -52,7 +52,7 @@ export function tierOf(id: string): Tier | 'unknown' {
 
 // 두뇌급 의도: 판단·설계·검토가 필요한 작업 → 유료 스마트
 const BRAIN_INTENT =
-  /(설계|아키텍처|architecture|design|계획|planning|\bplan\b|리뷰|review|검토|판단|decision|의사결정|종합|synthesi[sz]e?|분해|decompose|전략|strategy|취약|보안|security|audit|평가|evaluate|trade[- ]?off|근본원인|root cause)/i;
+  /(설계|아키텍처|architecture|design|계획|planning|\bplan\b|리뷰|review|검토|판단|decision|의사결정|종합|synthesi[sz]e?|분해|decompose|전략|strategy|분석|analysis|장단점|비교|compare|취약|보안|security|audit|평가|evaluate|trade[- ]?off|원인|근본원인|root cause)/i;
 // 워커급 의도: 대량·기계적 실행 작업 → 무료 로컬
 const WORKER_INTENT =
   /(구현|implement|코드\s*생성|generate|작성|스캐폴드|scaffold|보일러플레이트|boilerplate|수정\s*적용|apply|리팩토링\s*적용|테스트\s*생성|테스트\s*작성|번역|translate|포맷|format|정리|대량|bulk|반복|repeat|일괄|batch|마이그레이션\s*실행)/i;

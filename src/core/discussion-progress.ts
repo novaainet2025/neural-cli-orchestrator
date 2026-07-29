@@ -20,6 +20,20 @@ export interface DiscussionTaskProgress {
   discussionParticipants: number;
 }
 
+export interface SingleTaskProgressInput {
+  status?: string | null;
+  progress?: number | null;
+  liveness?: string | null;
+  provider?: string | null;
+  heartbeatSeq?: number | null;
+}
+
+export interface SingleTaskProgress {
+  progress: number | null | undefined;
+  liveness: string | null | undefined;
+  currentStep?: string;
+}
+
 export const projectTerminalTaskActivity = (
   status: string | null | undefined,
   progress: number | null | undefined,
@@ -33,6 +47,53 @@ export const projectTerminalTaskActivity = (
     return { progress, liveness: 'failed' };
   }
   return { progress, liveness };
+};
+
+/**
+ * Opaque CLI providers do not expose a trustworthy completion percentage while
+ * they are generating a response. Surface only observed facts (provider,
+ * liveness, heartbeat sequence) instead of inventing a percentage.
+ */
+export const projectSingleTaskProgress = (
+  input: SingleTaskProgressInput
+): SingleTaskProgress => {
+  const status = (input.status ?? '').trim().toLowerCase();
+  const terminal = projectTerminalTaskActivity(
+    input.status,
+    input.progress,
+    input.liveness
+  );
+  if (['completed', 'complete', 'done', 'success'].includes(status)) {
+    return { ...terminal, currentStep: '작업 완료' };
+  }
+  if (['failed', 'error', 'cancelled', 'canceled', 'timed_out'].includes(status)) {
+    return { ...terminal, currentStep: '작업 실패' };
+  }
+
+  const active = [
+    'assigned',
+    'accepted',
+    'running',
+    'streaming',
+    'in_progress',
+    'in-progress',
+  ].includes(status);
+  if (!active) return terminal;
+
+  const provider = input.provider?.trim() || '에이전트';
+  const heartbeat = Number.isFinite(input.heartbeatSeq)
+    && Number(input.heartbeatSeq) > 0
+    ? ` · 생존신호 #${Math.floor(Number(input.heartbeatSeq))}`
+    : '';
+  const state = input.liveness === 'stalled'
+    ? '응답 지연'
+    : input.liveness === 'dead'
+      ? '응답 중단'
+      : '응답 생성 중';
+  return {
+    ...terminal,
+    currentStep: `${provider} ${state}${heartbeat}`,
+  };
 };
 
 const parseParticipantCount = (value: string | null | undefined): number => {
