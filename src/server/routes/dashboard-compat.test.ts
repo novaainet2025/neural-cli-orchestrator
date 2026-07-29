@@ -220,4 +220,36 @@ describe('dashboard-compat routes', () => {
       });
     });
   });
+
+  // app.all('/api/*') 의 fallback 이 예전에 reply.code(200) 을 썼다. 그래서 오타나
+  // 단수/복수 실수가 전부 "성공"으로 보였다. 실제로 태스크 취소에 단수형
+  // /api/task/:id/cancel 을 호출하고 200 을 받아 취소된 줄 알았던 사고가 있었다
+  // (실구현은 복수형 /api/tasks/:id/cancel). 우리는 HTTP 응답을 증거로 쓰므로
+  // 200 + 빈 데이터는 기계가 만들어내는 거짓 성공이다.
+  describe('unmatched /api/* routes', () => {
+    it('answers 404 instead of a 200 that looks like success', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/definitely-not-a-real-route-zzz',
+      });
+
+      expect(response.statusCode).toBe(404);
+      const data = JSON.parse(response.payload);
+      expect(data.ok).toBe(false);
+      expect(data.error).toBe('route_not_found');
+      // 예전 본문이 남아 있으면 호출자가 여전히 성공으로 읽는다.
+      expect(response.payload).not.toContain('pending implementation');
+    });
+
+    it('does not swallow a singular/plural typo as success', async () => {
+      // 실구현은 POST /api/tasks/:id/cancel (복수형)이다.
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/task/some-id/cancel',
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(JSON.parse(response.payload).ok).toBe(false);
+    });
+  });
 });
