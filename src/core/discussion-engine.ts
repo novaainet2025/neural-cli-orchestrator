@@ -7,6 +7,7 @@ import { createSessionId, createMessageId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { sortProvidersByCostOrder } from './smart-router.js';
 import { env } from '../utils/config.js';
+import { resolvePreference } from './provider-registry.js';
 import {
   linkWorkflowDiscussion,
   markWorkflowStage,
@@ -103,6 +104,71 @@ export const DISCUSSION_MIN_RESPONSE_LENGTH = {
   synthesis: 120,
 } as const;
 
+/**
+ * 토론 단계별 참가자 실행 상한(wall-clock).
+ *
+ * 기존 상한(proposal 180s / evaluation 60s / synthesis 90s / hive 120s)은 실제 소요보다
+ * 짧아 참가자를 모델 오류가 아니라 **NCO가 스스로 취소**하는 것이 토론 실패의 지배적
+ * 원인이었다(2026-07-29 T1: 48h 참가자 실패 158건 중 취소 88건 = 56%).
+ *
+ * 근거 실측(7일, discussion_messages 라운드 간 경과):
+ *   - proposal   평균 74s  / 최대 186s → 상한 180s 를 이미 초과(우측 절단)
+ *   - evaluation 첫 평가자 평균 95s / 최대 412s → 114건 중 64건(56%)이 상한 60s 초과
+ *   - synthesis  평균 77s  / 최대 2977s
+ *   - hive       평균 72s  / 최대 122s → 상한 120s 를 이미 초과
+ *   - 비교) 일반 task 경로는 하드 컷이 아니라 idle 300s 슬라이딩(task-queue.ts)이고,
+ *     같은 에이전트들의 일반 실행 평균은 269s(성공)/493s(실패)였다.
+ *
+ * 상한 자체를 없애면 행(hang)이 무한정 자원을 잡으므로, 값은 항상
+ * [FLOOR, CEILING] 으로 클램프한다. 환경변수로만 조정 가능하며 클램프는 우회되지 않는다.
+ */
+const DISCUSSION_STAGE_TIMEOUT_DEFAULT_MS = {
+  proposal: 420_000,
+  evaluation: 300_000,
+  synthesis: 300_000,
+  hive: 300_000,
+} as const;
+
+export type DiscussionTimeoutStage = keyof typeof DISCUSSION_STAGE_TIMEOUT_DEFAULT_MS;
+
+export const DISCUSSION_TIMEOUT_FLOOR_MS = 60_000;
+export const DISCUSSION_TIMEOUT_CEILING_MS = 900_000;
+
+/** 단계별 상한을 해석한다. 환경변수 오버라이드는 항상 [floor, ceiling] 으로 클램프된다. */
+export function resolveDiscussionTimeoutMs(stage: DiscussionTimeoutStage): number {
+  const raw = Number(process.env[`NCO_DISCUSSION_${stage.toUpperCase()}_TIMEOUT_MS`]);
+  const base = Number.isFinite(raw) && raw > 0
+    ? raw
+    : DISCUSSION_STAGE_TIMEOUT_DEFAULT_MS[stage];
+  return Math.min(Math.max(base, DISCUSSION_TIMEOUT_FLOOR_MS), DISCUSSION_TIMEOUT_CEILING_MS);
+}
+
+/** 라운드 1이 성립하기 위한 최소 유효 제안 수. */
+export const DISCUSSION_MIN_VALID_PROPOSALS = 2;
+
+/**
+ * 정족수(DISCUSSION_MIN_VALID_PROPOSALS) 충족 후 낙오 참가자를 더 기다리는 유예.
+ *
+ * 라운드는 Promise.allSettled 로 **전원**을 기다리므로, 죽은 참가자 하나가 상한을
+ * 다 쓸 때까지 라운드 전체가 묶인다. 상한을 올린 뒤 이 대기가 그대로 길어졌다
+ * (2026-07-29 T1 sess_yxSpZPxja6ZCrm6k: 총 8분 12초 중 420초(85%)가 이미 실패한
+ * opencode 한 명을 기다린 시간. 나머지 둘은 31초 만에 제안을 냈다).
+ *
+ * 그렇다고 정족수 도달 즉시 끊으면 1초 뒤 도착할 제안까지 버려 품질이 깎인다.
+ * 따라서 "정족수 도달 → 유예만큼만 더 기다림 → 진행"으로 절충한다.
+ * 유예 0이면 즉시 진행이고, 상한(5분)을 넘길 수는 없다.
+ */
+const DISCUSSION_QUORUM_GRACE_DEFAULT_MS = 90_000;
+export const DISCUSSION_QUORUM_GRACE_CEILING_MS = 300_000;
+
+export function resolveDiscussionQuorumGraceMs(): number {
+  const raw = Number(process.env.NCO_DISCUSSION_QUORUM_GRACE_MS);
+  const base = Number.isFinite(raw) && raw >= 0
+    ? raw
+    : DISCUSSION_QUORUM_GRACE_DEFAULT_MS;
+  return Math.min(Math.max(base, 0), DISCUSSION_QUORUM_GRACE_CEILING_MS);
+}
+
 export const requireSubstantiveDiscussionOutput = (
   providerId: string,
   result: DiscussionTaskOutput,
@@ -152,7 +218,8 @@ export const formatDiscussionProposalContent = (
 export const selectDiscussionSynthesisProvider = (
   responsiveParticipants: string[],
 ): string | undefined => {
-  const priority = ['claude-code', 'codex', 'agy', 'nvidia', 'opencode', 'cursor-agent'];
+  // 순서는 정책이므로 자동 편입 없이 등록 여부만 화해시킨다.
+  const priority = resolvePreference(['claude-code', 'codex', 'agy', 'opencode', 'cursor-agent']);
   return priority.find(provider => responsiveParticipants.includes(provider))
     ?? responsiveParticipants[0];
 };
@@ -380,19 +447,48 @@ class DiscussionEngine {
       type: 'discussion:round_started', sessionId, round: 1, totalRounds: maxRounds,
     });
 
-    const proposals = await this.collectResponses(
+    // quorum: 유효 제안이 임계에 닿으면 유예 후 진행한다. 죽은 참가자 한 명이 상한을
+    // 다 쓸 때까지 라운드 전체가 묶이던 문제를 막는다(resolveDiscussionQuorumGraceMs 주석).
+    let proposals = await this.collectResponses(
       sessionId,
       1,
       'proposal',
       participants,
       options.topic,
-      projectDir
+      projectDir,
+      { quorum: DISCUSSION_MIN_VALID_PROPOSALS },
     );
-    const successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
+    let successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
+
+    // R1 단일 재시도. 기존 구현은 임계 미달 시 재시도 없이 토론 전체를 즉시 폐기했다
+    // (2026-07-29 T1: 48h insufficient 9건). 참가자 실패의 과반이 모델 오류가 아니라
+    // 상한 초과 취소였으므로, 한 번의 재시도만으로 회수되는 경우가 있다.
+    // 재시도 대상은 "제안이 하나도 없는" 참가자뿐이라 discussion_messages 중복 삽입이
+    // 발생하지 않으며, 재시도는 정확히 1회로 유계다(무한 루프 없음).
+    if (successfulParticipants.length < DISCUSSION_MIN_VALID_PROPOSALS) {
+      const retryTargets = participants.filter(pid => !proposals[pid]);
+      if (retryTargets.length > 0) {
+        log.warn(
+          { sessionId, retryTargets, validProposals: successfulParticipants.length },
+          'Retrying failed R1 participants once before failing the discussion',
+        );
+        const retried = await this.collectResponses(
+          sessionId,
+          1,
+          'proposal',
+          retryTargets,
+          options.topic,
+          projectDir
+        );
+        proposals = { ...proposals, ...retried };
+        successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
+      }
+    }
+
     const excludedParticipants = participants.filter(pid => !proposals[pid]);
     const validProposalsCount = successfulParticipants.length;
-    if (validProposalsCount < 2) {
-      const failure = `discussion_insufficient_valid_proposals:${validProposalsCount}/2`;
+    if (validProposalsCount < DISCUSSION_MIN_VALID_PROPOSALS) {
+      const failure = `discussion_insufficient_valid_proposals:${validProposalsCount}/${DISCUSSION_MIN_VALID_PROPOSALS}`;
       db.prepare(`
         UPDATE discussions
         SET status='failed', report=?, ended_at=datetime('now')
@@ -486,7 +582,7 @@ class DiscussionEngine {
           const synthResult = await agentManager.executeTask(synthesisProvider, synthPrompt, {
             systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
             projectDir,
-            signal: AbortSignal.timeout(90_000),
+            signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('synthesis')),
           });
 
           if (synthResult.success && synthResult.output.trim()) {
@@ -649,7 +745,7 @@ class DiscussionEngine {
           const result = await agentManager.executeTask(pid, options.topic, {
             systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
             projectDir,
-            signal: AbortSignal.timeout(120_000),
+            signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('hive')),
           });
           const output = requireDiscussionOutput(pid, result);
           db.prepare(`
@@ -700,7 +796,7 @@ class DiscussionEngine {
     try {
       const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
         projectDir,
-        signal: AbortSignal.timeout(90_000),
+        signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('synthesis')),
       });
       synthesis = requireDiscussionOutput('claude-code', synthResult);
       db.prepare(`
@@ -834,10 +930,23 @@ class DiscussionEngine {
     type: string,
     participants: string[],
     prompt: string,
-    projectDir: string
+    projectDir: string,
+    options: { quorum?: number } = {},
   ): Promise<Record<string, string>> {
-    const results = await Promise.allSettled(
+    const responses: Record<string, string> = {};
+    // 정족수 조기 진행용. quorum 이 없으면 기존과 동일하게 전원을 기다린다.
+    const quorum = options.quorum;
+    const controllers = new Map<string, AbortController>();
+    let releaseEarly: (() => void) | null = null;
+    const earlyExit = quorum === undefined
+      ? null
+      : new Promise<void>((resolve) => { releaseEarly = resolve; });
+    let graceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const settled = Promise.allSettled(
       participants.map(async (pid) => {
+        const controller = new AbortController();
+        controllers.set(pid, controller);
         await eventBus.publish({
           type: 'discussion:provider_started', sessionId, agentId: pid, round,
         });
@@ -848,10 +957,12 @@ class DiscussionEngine {
             // projectDir 필수: Type B CLI(codex)는 metadata.projectDir 없으면 즉시 실패
             // (orchestrated-loop.ts assertTaskProjectDir) → 토론에서 codex 탈락 원인이었음
             projectDir,
-            // 180s: Type A(claude-code nested `claude -p` spawn)는 콜드스타트가 무거워
-            // 120s abort로 "silent-failure: empty output" 발생 → 토론에서 claude-code 탈락 원인.
-            // Type B/C는 먼저 끝나면 조기 반환하므로 ceiling만 상향(저위험).
-            signal: AbortSignal.timeout(180_000),
+            // 상한(resolveDiscussionTimeoutMs)과 정족수 조기 종료(controller)를 함께 건다.
+            // 둘 중 먼저 발화한 쪽이 실행을 끊는다.
+            signal: AbortSignal.any([
+              AbortSignal.timeout(resolveDiscussionTimeoutMs('proposal')),
+              controller.signal,
+            ]),
           });
           const output = requireDiscussionOutput(pid, result);
 
@@ -867,32 +978,56 @@ class DiscussionEngine {
             ...buildDiscussionEventContent(output),
           });
 
+          responses[pid] = output;
+          // 정족수를 처음 채운 순간부터 유예 타이머를 건다. 유예가 끝나면 남은
+          // 참가자를 기다리지 않고 라운드를 진행한다(타이머는 라운드당 1개).
+          if (
+            quorum !== undefined
+            && graceTimer === null
+            && Object.keys(responses).length >= quorum
+          ) {
+            const graceMs = resolveDiscussionQuorumGraceMs();
+            log.info(
+              { sessionId, round, quorum, graceMs, responded: Object.keys(responses) },
+              'Discussion quorum reached — starting straggler grace window',
+            );
+            graceTimer = setTimeout(() => releaseEarly?.(), graceMs);
+            if (typeof graceTimer.unref === 'function') graceTimer.unref();
+          }
+
           return { pid, output };
         } catch (error) {
           await eventBus.publish({
             type: 'discussion:provider_failed', sessionId, agentId: pid, round,
             error: error instanceof Error ? error.message : String(error),
           });
+          const ex = error instanceof Error ? error : null;
+          const isTimeout = ex?.name === 'TimeoutError' || ex?.name === 'AbortError';
+          log.warn(
+            { reason: ex?.message ?? String(error), timeout: isTimeout },
+            'Agent failed in discussion',
+          );
           throw error;
         }
       })
     );
 
-    const responses: Record<string, string> = {};
-    for (const r of results) {
-      if (r.status === 'fulfilled') {
-        responses[r.value.pid] = r.value.output;
-      } else {
-        const err = r.reason;
-        const ex = err instanceof Error ? err : null;
-        const isTimeout =
-          ex?.name === 'TimeoutError' || ex?.name === 'AbortError';
-        log.warn(
-          { reason: ex?.message ?? String(err), timeout: isTimeout },
-          'Agent failed in discussion',
-        );
+    if (earlyExit) {
+      await Promise.race([settled, earlyExit]);
+    } else {
+      await settled;
+    }
+
+    if (graceTimer) clearTimeout(graceTimer);
+    // 아직 응답이 없는 참가자는 라운드 진행을 더 막지 않도록 정리한다. abort 하지 않으면
+    // 프로바이더 슬롯을 계속 점유하고, 늦게 도착한 출력이 다음 라운드 이후에 R1
+    // 메시지로 삽입되어 기록이 뒤섞인다.
+    for (const [pid, controller] of controllers) {
+      if (!(pid in responses)) {
+        controller.abort(new Error('discussion_quorum_reached'));
       }
     }
+    // allSettled 는 reject 하지 않으므로 미처리 거부는 발생하지 않는다.
     return responses;
   }
 
@@ -970,7 +1105,7 @@ class DiscussionEngine {
           systemPrompt: `R${round} (seq). Concisely build on evals.`,
           compact: true,
           projectDir,
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('evaluation')),
         });
         const output = requireSubstantiveDiscussionOutput(pid, result, 'evaluation');
 

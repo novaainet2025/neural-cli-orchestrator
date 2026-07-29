@@ -43,13 +43,13 @@ tags:
 |---|---:|---:|---:|---:|---|
 | `codex` | 3 | 0 | 0 | 100.0% | `task_oKEifL4S7YldmoJA`, `task_AFSNmyp9lc2gJHCO`, `task_8L00qmKQxhiqO41O` |
 | `agy` | 1 | 0 | 0 | 100.0% | `task_MYCufZt2vW1EXuJh` |
-| `nvidia` | 3 | 1 | 2 | 75.0% | `task_Mqmm4ZPMeCUp1r45`, `task_JeWCRJMlJnJXZC1r`, `task_NQnttzUV0hM-QQ0R`, `task_ROCbX9F5GvclOGiR` |
+| `retired-provider` | 3 | 1 | 2 | 75.0% | `task_Mqmm4ZPMeCUp1r45`, `task_JeWCRJMlJnJXZC1r`, `task_NQnttzUV0hM-QQ0R`, `task_ROCbX9F5GvclOGiR` |
 | `claude-code` | 0 | 4 | 0 | 0.0% | `task_a2yeB8hkpBXUhPAL`, `task_Zkfq4JCCwMGZd3aj`, `task_tsLca16rRfTKk-iJ`, `task_ujrEzMQMcyKrkzvG` |
 | **합계** | **7** | **5** | **2** | **58.3%** | 12건 |
 
 원 요청 기준으로는 `codex` 요청 7건 중 3건이 완료되고 4건이 위 failover
-패턴으로 실패했다. `nvidia` 요청 5건 중 4건이 완료됐으며, 그중 1건
-`task_MYCufZt2vW1EXuJh`는 nvidia timeout 후 `agy`가 완료했다.
+패턴으로 실패했다. `retired-provider` 요청 5건 중 4건이 완료됐으며, 그중 1건
+`task_MYCufZt2vW1EXuJh`는 retired-provider timeout 후 `agy`가 완료했다.
 
 ## 실패 유형별 빈도표
 
@@ -61,7 +61,7 @@ tags:
 | `codex` queue wait 1,800,000ms → `claude-code` 재할당 → circuit open 실패 | 4 | 33.3% | `task_a2yeB8hkpBXUhPAL`, `task_Zkfq4JCCwMGZd3aj`, `task_tsLca16rRfTKk-iJ`, `task_ujrEzMQMcyKrkzvG`; `metadata_json.escalationHistory`, `error` |
 | 서버 재시작 orphan poison, 재큐잉 2회 소진 | 1 | 8.3% | `task_ROCbX9F5GvclOGiR`; `error="orphaned: server restart (poison — requeued 2x)"`, `orphan_requeue_count=2` |
 | `FORMAT_MISMATCH` 품질 반려인데 상태는 `completed` | 2 | 16.7% | `task_JeWCRJMlJnJXZC1r`, `task_NQnttzUV0hM-QQ0R`; `metadata_json.qualityRejected=true` |
-| timeout/escalation 기록 | 5 | 41.7% | 위 circuit 4건 + `task_MYCufZt2vW1EXuJh`의 `nvidia → agy`, reason `The operation was aborted due to timeout` |
+| timeout/escalation 기록 | 5 | 41.7% | 위 circuit 4건 + `task_MYCufZt2vW1EXuJh`의 `retired-provider → agy`, reason `The operation was aborted due to timeout` |
 | 빈 산출물(`response IS NULL`) | 5 | 41.7% | 상태 실패 5건 전부 |
 | 안전·라이선스 구조화 근거 부재(`evidence_json IS NULL`) | 12 | 100.0% | 표본 12건 전부 |
 | verifier 결과 부재 | 9 | 75.0% | `verifier_result_json IS NULL`; 결과가 있는 3건도 공통 build 검증만 수행 |

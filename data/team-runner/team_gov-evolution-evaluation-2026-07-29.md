@@ -1,4 +1,4 @@
-# Evaluation and Simulation — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_DduTlkczIyGvR2QI)
+# Evaluation and Simulation — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_DduTlkczIyGvR2QI)
 
 ### 오늘 관찰·분석
 
@@ -10,7 +10,7 @@
 * [api/agents]에 제공된 데이터에 따르면, 현재 팀의 태스크 상태는 다음과 같습니다.
  + codex: 상태=working, 태스크=2652, 성공률=90%, 24시간실패=5
  + cursor-agent: 상태=idle, 태스크=3635, 성공률=95%, 24시간실패=17
- + nvidia: 상태=idle, 태스크=614, 성공률=79%, 24시간실패=6
+ + retired-provider: 상태=idle, 태스크=614, 성공률=79%, 24시간실패=6
 
 #### 3. 다음에 필요한 작업 제안
 * 태스크의 진행률을 모니터링하고, 실패 태스크를 분석하여 개선할 필요가 있습니다.

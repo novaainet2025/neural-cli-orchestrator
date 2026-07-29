@@ -143,7 +143,7 @@ export async function dispatchWebhook(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${TOKEN}` },
         body: JSON.stringify({
-          ai: ai || 'nvidia',
+          ai: ai || 'ollama',
           prompt,
           callerAgentId: 'webhook-manager',
           metadata: { projectDir: resolveInternalProjectDir() },

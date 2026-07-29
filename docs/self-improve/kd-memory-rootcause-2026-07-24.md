@@ -12,7 +12,7 @@
 |---|---|---|---|---|
 | `task_pKVM8hAZUmzskqwL` | failed | hermes | `curl: (7) Failed to connect to localhost port 6200 ... Couldn't connect to server`; 변경 파일 없음 | NCO 게이트웨이 인프라 실패 |
 | `task_WpB7UCfWLhPnwx-u` | failed | ollama | `targetValue, direction, reflection, improvement are unknown; cannot fabricate values` | 입력 계약의 필수값 미주입 |
-| `task_tnhlWTnnJz5dVshv` | lease_expired | nvidia→ollama | response 없음; escalation reason=`empty completion from provider 'nvidia'`; `lease_expires_at=2026-07-23 11:58:17` | provider/lease 인프라 실패 |
+| `task_tnhlWTnnJz5dVshv` | lease_expired | retired-provider→ollama | response 없음; escalation reason=`empty completion from provider 'retired-provider'`; `lease_expires_at=2026-07-23 11:58:17` | provider/lease 인프라 실패 |
 
 세 행에는 모두 실제 POST 작업과 무관한
 `verifier_json={"type":"run","command":"npm run build"}`가 붙었고 verifier 자체는

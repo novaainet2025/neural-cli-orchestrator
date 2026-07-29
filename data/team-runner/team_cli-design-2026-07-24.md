@@ -14,7 +14,7 @@ done: [Evidence Tier 1] 주입된 텍스트 실데이터 기반 분석 보고서
 ## 2. 현재 상태
 - **UI/UX 디자인 및 코드 상태**: 미확인 (도구 및 명령어 사용이 금지되어 터미널 REPL, Markdown 구문 강조, Diff 뷰어, 트리 그래프 등의 실제 렌더링 상태나 프로젝트 코드(/Users/nova-ai/project/nco)를 확인할 수 없습니다.)
 - **에이전트 가동 상태**: 
-  - 대기(idle): claude-code, opencode, codex, cursor-agent, ollama, hermes, higgsfield, nvidia
+  - 대기(idle): claude-code, opencode, codex, cursor-agent, ollama, hermes, higgsfield, retired-provider
   - 오프라인(offline): gemini, aider, openclaw
 - **팀 작업 큐**: 대기 중인 태스크 3건 존재. 진행 중인 태스크(진행=0)는 없는 것으로 보고됨.
 

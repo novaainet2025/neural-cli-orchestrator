@@ -97,7 +97,7 @@ HIGH 수정에 합류 가능분 흡수, 잔여는 후순위 백로그. 각 그�
 ## 담당/병렬 배정 (가용 실측 후 확정)
 | 우선 | 정상 프로바이더 | 폴백 |
 |---|---|---|
-| 설계(TH-1~3) | opencode | nvidia |
+| 설계(TH-1~3) | opencode | retired-provider |
 | 구현 | codex | openrouter |
 | 리뷰 | cursor-agent | agy |
 | 검증 | ollama | codex(재확인) |

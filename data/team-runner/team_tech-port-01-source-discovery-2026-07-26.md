@@ -1,4 +1,4 @@
-# 01 Source Discovery — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_qPItqlR3VRhCdGEv)
+# 01 Source Discovery — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_qPItqlR3VRhCdGEv)
 
 ### 오늘 관찰·분석
 
@@ -14,13 +14,13 @@
 #### 4. 팀 멤버 상태
 - opencode: 상태 idle, 태스크 1364, 성공률 26%
 - codex: 상태 working, 태스크 2392, 성공률 93%
-- nvidia: 상태 idle, 태스크 510, 성공률 77%
+- retired-provider: 상태 idle, 태스크 510, 성공률 77%
 
 #### 5. 다음 수집 액션
 다음 수집 액션으로는 다음이 있습니다.
 - opencode의 태스크 1364에 대한 자세한 정보 수집
 - codex의 태스크 2392에 대한 자세한 정보 수집
-- nvidia의 태스크 510에 대한 자세한 정보 수집
+- retired-provider의 태스크 510에 대한 자세한 정보 수집
 
 ### 현재 상태
 
@@ -31,5 +31,5 @@
 다음에 필요한 작업으로는 다음이 있습니다.
 - opencode의 태스크 1364에 대한 자세한 정보 수집
 - codex의 태스크 2392에 대한 자세한 정보 수집
-- nvidia의 태스크 510에 대한 자세한 정보 수집
+- retired-provider의 태스크 510에 대한 자세한 정보 수집
 - 팀 멤버의 상태를 자세히 파악하기 위한 수집 액션 수행

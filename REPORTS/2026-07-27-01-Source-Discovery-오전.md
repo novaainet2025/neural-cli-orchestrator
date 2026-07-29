@@ -19,9 +19,9 @@
 |---|---:|---:|---:|---:|
 | `opencode/code` | 26건 | 80.8% | 68.47 | 33154.73밀리초 |
 | `codex/code` | 15건 | 46.7% | 46.27 | 46602.67밀리초 |
-| `nvidia/code` | 8건 | 50.0% | 40.50 | 41017.13밀리초 |
-| `nvidia/design` | 6건 | 100.0% | 91.64 | 22118.17밀리초 |
-| `nvidia/verify` | 2건 | 100.0% | 82.50 | 31205밀리초 |
+| `retired-provider/code` | 8건 | 50.0% | 40.50 | 41017.13밀리초 |
+| `retired-provider/design` | 6건 | 100.0% | 91.64 | 22118.17밀리초 |
+| `retired-provider/verify` | 2건 | 100.0% | 82.50 | 31205밀리초 |
 | `opencode/design` | 1건 | 100.0% | 82.57 | 50112밀리초 |
 
 ## 진행 중 이슈
@@ -29,14 +29,14 @@
 - 진행 중 태스크는 0건이다.
 - 최근 7일 태스크 25건 중 실패성 태스크가 5건이지만, 실패 원인과 대상 태스크는 제공된 데이터만으로 확인할 수 없다.
 - 최근 7일 업무보고 1건이 누락됐지만, 누락 대상과 사유는 확인할 수 없다.
-- `codex/code`(46.7%)와 `nvidia/code`(50.0%)의 성공률이 `opencode/code`(80.8%), `nvidia/design`(100.0%), `nvidia/verify`(100.0%)보다 낮지만, 실패 유형과 원인은 제공되지 않아 성과 차이의 원인을 확정할 수 없다.
+- `codex/code`(46.7%)와 `retired-provider/code`(50.0%)의 성공률이 `opencode/code`(80.8%), `retired-provider/design`(100.0%), `retired-provider/verify`(100.0%)보다 낮지만, 실패 유형과 원인은 제공되지 않아 성과 차이의 원인을 확정할 수 없다.
 - 후보 기술의 버전·commit SHA·출처 URL·검증일·대안 기록 여부, 공식 저장소·릴리스/보안 공지·라이선스·논문 원문·재현 가능 벤치마크 확보 현황은 제공되지 않았다.
 
 ## 다음 조치
 
 1. 실패성 태스크 5건의 태스크 식별자, 오류 기록, 실패 단계와 재시도 결과를 수집해 원인을 분류한다.
 2. 누락된 업무보고 1건의 대상과 누락 사유를 확인하고 후속 처리 상태를 기록한다.
-3. `codex/code`와 `nvidia/code`의 실패 기록을 수집해 낮은 성공률의 원인을 점검하고, `opencode/code`·`nvidia/design`·`nvidia/verify` 대비 차이를 비교한다.
+3. `codex/code`와 `retired-provider/code`의 실패 기록을 수집해 낮은 성공률의 원인을 점검하고, `opencode/code`·`retired-provider/design`·`retired-provider/verify` 대비 차이를 비교한다.
 4. 탐색 중인 후보 기술의 공식 저장소 URL, 버전 또는 commit SHA, 검증일, 라이선스·보안 상태, 대안을 dossier 형식으로 수집한다.
 5. 출처 불명 코드나 재현 불가 수치가 있는지 점검하고, 있다면 채택 근거에서 제외한다.
 

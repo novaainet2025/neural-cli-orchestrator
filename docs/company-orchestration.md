@@ -13,7 +13,7 @@
 ## 동작
 
 1. **분배(LLM 매니저 분해)** — 회사의 manager LLM(후보 체인: manager→opencode→
-   claude-code→nvidia→codex→ollama, 후보당 120s 상한)이 목표를 읽고 각 팀 charter에
+   claude-code→retired-provider→codex→ollama, 후보당 120s 상한)이 목표를 읽고 각 팀 charter에
    맞는 하위작업을 JSON(`{slug: 하위작업}`)으로 생성. 실패 시 결정론적 템플릿으로 폴백.
 2. **실행 순서** — 팀을 역할 단계로 랭크(설계1→탐색·수집2→구현3→분석4→검증5→집필6→시각화7,
    slug+name 기준. charter는 타 단계 어휘 오염 때문에 랭킹에서 제외).

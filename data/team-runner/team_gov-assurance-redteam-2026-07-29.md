@@ -1,4 +1,4 @@
-# Red Team and Adversarial Review — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_Z0KrgjpjQe1flybQ)
+# Red Team and Adversarial Review — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_Z0KrgjpjQe1flybQ)
 
 ### 오늘 관찰·분석 ####
 1. 현재 팀의 태스크 누계
@@ -11,7 +11,7 @@
  * 현재 태스크 상태는 다음과 같다.
  * cursor-agent: 상태=idle, 태스크=3642, 성공률=95%, 24시간실패=0
  * hermes: 상태=idle, 태스크=2210, 성공률=57%, 24시간실패=3
- * nvidia: 상태=idle, 태스크=621, 성공률=79%, 24시간실패=6
+ * retired-provider: 상태=idle, 태스크=621, 성공률=79%, 24시간실패=6
 
 ### 다음에 필요한 작업 제안 ####
 1. 태스크 관리
@@ -21,7 +21,7 @@
  * 현재 태스크 상태는 다음과 같다.
  * cursor-agent: 상태=idle, 태스크=3642, 성공률=95%, 24시간실패=0
  * hermes: 상태=idle, 태스크=2210, 성공률=57%, 24시간실패=3
- * nvidia: 상태=idle, 태스크=621, 성공률=79%, 24시간실패=6
+ * retired-provider: 상태=idle, 태스크=621, 성공률=79%, 24시간실패=6
  * 태스크 상태를 확인하면, 다음 단계로 진행할 수 있을 것이다.
 3. 태스크 할당
  * 현재 태스크 누계는 8개로, 모두 완료된 상태이다. 하지만 태스크 할당에 대한 정보는 제공되지 않았기 때문에, 태스크 할당에 대한 추가 정보가 필요하다.

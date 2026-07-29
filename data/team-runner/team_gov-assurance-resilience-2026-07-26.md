@@ -1,4 +1,4 @@
-# Reliability and Resilience Review — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_XqLpCvA-Z499VcbQ)
+# Reliability and Resilience Review — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_XqLpCvA-Z499VcbQ)
 
 ### 오늘 관찰·분석
 #### 1. 현재 팀의 태스크 누계
@@ -14,7 +14,7 @@
 현재 팀의 상태는 다음과 같다.
 
 - cursor-agent: 상태 = idle, 태스크 = 3449, 성공률 = 96%, 24시간 실패 = 0
-- nvidia: 상태 = idle, 태스크 = 510, 성공률 = 77%, 24시간 실패 = 29
+- retired-provider: 상태 = idle, 태스크 = 510, 성공률 = 77%, 24시간 실패 = 29
 
 #### 3. 다음에 필요한 작업 제안
 - 태스크를 완료하고, 태스크 누계를 확인하는 것이 필요하다.
@@ -23,8 +23,8 @@
 
 ### 현재 상태
 - 태스크 누계는 1개로, 완료율은 100.0%로 나타난다.
-- cursor-agent와 nvidia agent의 상태는 idle로 나타난다.
-- cursor-agent의 성공률은 96%, nvidia agent의 성공률은 77%로 나타난다.
+- cursor-agent와 retired-provider agent의 상태는 idle로 나타난다.
+- cursor-agent의 성공률은 96%, retired-provider agent의 성공률은 77%로 나타난다.
 
 ### 다음에 필요한 작업
 - 태스크를 완료하고, 태스크 누계를 확인하는 것이 필요하다.

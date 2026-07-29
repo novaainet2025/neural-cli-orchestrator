@@ -12,9 +12,9 @@ const log = createLogger('commander');
  * Commander 4-Layer Hierarchy — Brain/Worker 2계층 정책 적용 (tier-policy.ts 단일 소스)
  *
  * Management Layer (두뇌/유료): 계획·최종 종합 (claude-code, opencode)
- * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/nvidia)
+ * Information Layer (두뇌+무료): 리서치 (opencode → hermes)
  * Execution Layer (워커/무료 로컬): 대량 구현 (ollama, aider → codex escalation)
- * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/nvidia QA)
+ * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama QA)
  */
 
 // 계층별 에이전트는 tier-policy.ts(LAYER_TIER_AGENTS)가 단일 소스.

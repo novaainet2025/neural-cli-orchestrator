@@ -1,14 +1,51 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   DISCUSSION_EVENT_CONTENT_LIMIT,
   DISCUSSION_MIN_RESPONSE_LENGTH,
+  DISCUSSION_TIMEOUT_CEILING_MS,
+  DISCUSSION_TIMEOUT_FLOOR_MS,
   buildDiscussionEventContent,
   formatDiscussionProposalContent,
   requireDiscussionOutput,
   requireSubstantiveDiscussionOutput,
+  resolveDiscussionTimeoutMs,
   selectDiscussionConclusion,
   selectDiscussionSynthesisProvider,
 } from './discussion-engine.js';
+
+describe('discussion stage timeout resolution', () => {
+  const overridden = [
+    'NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS',
+    'NCO_DISCUSSION_EVALUATION_TIMEOUT_MS',
+  ];
+  afterEach(() => {
+    for (const key of overridden) delete process.env[key];
+  });
+
+  // 하한이 실측 소요보다 짧으면 참가자가 모델 오류 없이 취소된다(2026-07-29 근본원인).
+  it('defaults every stage above the observed round durations', () => {
+    expect(resolveDiscussionTimeoutMs('proposal')).toBeGreaterThanOrEqual(420_000);
+    expect(resolveDiscussionTimeoutMs('evaluation')).toBeGreaterThanOrEqual(300_000);
+    expect(resolveDiscussionTimeoutMs('synthesis')).toBeGreaterThanOrEqual(300_000);
+    expect(resolveDiscussionTimeoutMs('hive')).toBeGreaterThanOrEqual(300_000);
+  });
+
+  // 상한을 없애면 hang이 자원을 무한정 잡는다 — 오버라이드도 반드시 클램프되어야 한다.
+  it('clamps an unbounded override down to the ceiling', () => {
+    process.env.NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS = String(24 * 60 * 60 * 1000);
+    expect(resolveDiscussionTimeoutMs('proposal')).toBe(DISCUSSION_TIMEOUT_CEILING_MS);
+  });
+
+  it('clamps a too-aggressive override up to the floor', () => {
+    process.env.NCO_DISCUSSION_EVALUATION_TIMEOUT_MS = '1000';
+    expect(resolveDiscussionTimeoutMs('evaluation')).toBe(DISCUSSION_TIMEOUT_FLOOR_MS);
+  });
+
+  it('ignores non-numeric overrides instead of producing NaN', () => {
+    process.env.NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS = 'not-a-number';
+    expect(resolveDiscussionTimeoutMs('proposal')).toBe(420_000);
+  });
+});
 
 describe('discussion provider output validation', () => {
   it('accepts a successful non-empty response and trims transport whitespace', () => {
@@ -76,7 +113,7 @@ describe('discussion provider output validation', () => {
   });
 
   it('selects synthesis only from providers that returned a valid R1 proposal', () => {
-    expect(selectDiscussionSynthesisProvider(['agy', 'nvidia'])).toBe('agy');
+    expect(selectDiscussionSynthesisProvider(['agy', 'hermes'])).toBe('agy');
     expect(selectDiscussionSynthesisProvider(['opencode', 'codex'])).toBe('codex');
     expect(selectDiscussionSynthesisProvider([])).toBeUndefined();
   });
@@ -122,13 +159,13 @@ describe('discussion conclusion selection', () => {
     const result = selectDiscussionConclusion([
       {
         round: 1,
-        responses: { agy: 'proposal A', nvidia: 'proposal B' },
+        responses: { agy: 'proposal A', hermes: 'proposal B' },
         consensusRate: 0,
       },
       {
         round: 2,
         responses: { agy: 'evaluation' },
-        evaluations: { agy: { nvidia: 8 } },
+        evaluations: { agy: { hermes: 8 } },
         consensusRate: 1,
       },
       {
@@ -136,7 +173,7 @@ describe('discussion conclusion selection', () => {
         responses: { agy: 'responsive-provider synthesis' },
         consensusRate: 1,
       },
-    ], ['agy', 'nvidia']);
+    ], ['agy', 'hermes']);
 
     expect(result).toEqual({
       adoptedAgent: 'agy',

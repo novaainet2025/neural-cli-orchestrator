@@ -1,4 +1,4 @@
-# 01 Source Discovery — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_8fX_G7guQq_4UE_l)
+# 01 Source Discovery — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_8fX_G7guQq_4UE_l)
 
 ### 오늘 관찰·분석
 
@@ -14,7 +14,7 @@
 #### 4. 에이전트 상태
 * opencode: 상태는 working이며, 현재 태스크는 1420개이고 성공률은 28%이다.
 * codex: 상태는 working이며, 현재 태스크는 2519개이고 성공률은 92%이다.
-* nvidia: 상태는 working이며, 현재 태스크는 553개이고 성공률은 78%이다.
+* retired-provider: 상태는 working이며, 현재 태스크는 553개이고 성공률은 78%이다.
 
 #### 5. 다음에 필요한 작업
 * 태스크의 완료율을 향상시키기 위해 더 많은 태스크를 완료하는 것이 필요하다.
@@ -32,7 +32,7 @@
 #### 2. 에이전트 상태
 * opencode: 상태는 working이며, 현재 태스크는 1420개이고 성공률은 28%이다.
 * codex: 상태는 working이며, 현재 태스크는 2519개이고 성공률은 92%이다.
-* nvidia: 상태는 working이며, 현재 태스크는 553개이고 성공률은 78%이다.
+* retired-provider: 상태는 working이며, 현재 태스크는 553개이고 성공률은 78%이다.
 
 ### 다음에 필요한 작업
 

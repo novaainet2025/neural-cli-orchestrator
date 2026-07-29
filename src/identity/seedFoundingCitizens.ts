@@ -17,7 +17,6 @@ const FOUNDING_CITIZENS = [
   { name: 'cursor-agent',role: 'Reviewer',        didSuffix: 'cursor-agent-001' },
   { name: 'agy',         role: 'Designer',        didSuffix: 'agy-001' },
   { name: 'copilot',     role: 'Researcher',      didSuffix: 'copilot-001' },
-  { name: 'nvidia',      role: 'Reasoner',        didSuffix: 'nvidia-001' },
   { name: 'higgsfield',  role: 'Media',           didSuffix: 'higgsfield-001' },
   { name: 'hermes',      role: 'ToolUser',        didSuffix: 'hermes-001' },
   { name: 'openclaw',    role: 'BrowserAgent',    didSuffix: 'openclaw-001' },

@@ -16,7 +16,7 @@ done: [Evidence Tier 1] 대화에 주입된 실데이터 원문과 계산값을 
 - 태스크: `integer/count`, 전체 169, 완료 17, 실패성 152, 진행 0.
 - 완료율: `decimal/percent`, 10.1%.
 - 보고서: `integer/count`, submitted 7, missed 3.
-- 에이전트 상태: `enum`, opencode·hermes·nvidia는 idle, codex는 working.
+- 에이전트 상태: `enum`, opencode·hermes·retired-provider는 idle, codex는 working.
 - 에이전트 태스크: `integer/count`, 각각 1,537 / 2,652 / 2,196 / 614.
 - 성공률: `integer/percent`, 각각 29% / 90% / 57% / 79%.
 - 24시간 실패: `integer/count per 24h`, 각각 38 / 5 / 4 / 6.

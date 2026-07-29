@@ -22,7 +22,7 @@
 - 팀 태스크 누계 = 26건
 - claude-code 개인 태스크 누계 = 1,238건
 - opencode = 2,034건
-- nvidia = 364건
+- retired-provider = 364건
 
 → **팀 aggregate(26건)는 전체 태스크의 극히 일부** (필터링된 뷰 또는 특정 채널/기간 한정). 어느 시간 범위에 해당하는지 실데이터에 명시 안 됨.
 
@@ -56,7 +56,7 @@ RQ0: 완료율 65.4% → 85%+ 개선 전략
 │   └── RQ2.2: work_report 미제출 태스크의 완료율 차이는?
 ├── RQ3: 에이전트별 역량 차이 분석
 │   ├── RQ3.1: claude-code 성공률 35%의 근본 원인은? (모델·프롬프트·빈도)
-│   └── RQ3.2: opencode(73%)·nvidia(73%)의 모범 사례 일반화 가능성?
+│   └── RQ3.2: opencode(73%)·retired-provider(73%)의 모범 사례 일반화 가능성?
 └── RQ4: 데이터 인프라 분석
     ├── RQ4.1: [tasks]와 [/api/teams] 불일치의 근본 원인은?
     └── RQ4.2: 태스크 26건 aggregate의 시간 범위와 필터 조건은?
@@ -110,7 +110,7 @@ P0 (차단 해소):
 P1 (가설 검증):
   GET /api/work_reports?days=7 → 4건 본문 수집 (서식 준수 여부 코딩)
   GET /api/agents/opencode → 상세 (모범사례)
-  GET /api/agents/nvidia → 상세
+  GET /api/agents/retired-provider → 상세
   
 P2 (인프라):
   DB 직접 쿼리: SELECT status, count(*) FROM tasks GROUP BY status

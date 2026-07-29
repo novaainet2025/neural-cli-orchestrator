@@ -18,13 +18,13 @@
 
 [agent_performance_summary] cursor-agent/verify: 실행=8, 성공률=100.0%, 평균품질=88.16, 평균소요ms=28054.63
 
-[agent_performance_summary] nvidia/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
+[agent_performance_summary] retired-provider/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
 
-[agent_performance_summary] nvidia/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
+[agent_performance_summary] retired-provider/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
 
 [agent_performance_summary] cursor-agent/review: 실행=5, 성공률=100.0%, 평균품질=92.80, 평균소요ms=15632.40
 
-[agent_performance_summary] nvidia/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
+[agent_performance_summary] retired-provider/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
 
 
 #### 요구사항:

@@ -8,10 +8,10 @@ const team = (p: Partial<TeamRow> & { slug: string; name: string }): TeamRow =>
 
 describe('resolveExecutorChain', () => {
   it('가용 우선 + 등록 후보 후행', () => {
-    const known = new Set(['opencode', 'nvidia', 'codex', 'ollama']);
+    const known = new Set(['opencode', 'agy', 'codex', 'ollama']);
     const avail = (id: string) => id !== 'opencode' && known.has(id);
-    expect(resolveExecutorChain(team({ slug: 'a', name: 'A', lead: 'opencode', members: ['nvidia', 'codex'] }), known, 'ollama', avail))
-      .toEqual(['nvidia', 'codex', 'ollama', 'opencode']);
+    expect(resolveExecutorChain(team({ slug: 'a', name: 'A', lead: 'opencode', members: ['agy', 'codex'] }), known, 'ollama', avail))
+      .toEqual(['agy', 'codex', 'ollama', 'opencode']);
   });
   it('chain[0] === resolveExecutor 반환(가용 lead)', () => {
     const known = new Set(['codex', 'ollama']);
@@ -21,10 +21,10 @@ describe('resolveExecutorChain', () => {
 
 describe('selectCapabilityExecutor', () => {
   it('code 유형 → codex, 제거 provider 미반환', () => {
-    expect(selectCapabilityExecutor('버그 수정·기능 구현', new Set(['ollama','nvidia','codex','opencode'])).executor).toBe('codex');
+    expect(selectCapabilityExecutor('버그 수정·기능 구현', new Set(['ollama','agy','codex','opencode'])).executor).toBe('codex');
   });
   it('codex 미등록이면 역량순 가용 폴백', () => {
-    const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','nvidia']));
+    const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','agy']));
     expect(['retired-provider','copilot','openrouter']).not.toContain(r.executor);
     expect(r.executor).toBe('ollama');
   });
@@ -34,7 +34,7 @@ describe('selectCapabilityExecutor', () => {
 });
 
 describe('reselectExecutor', () => {
-  const known = new Set(['opencode','codex','cursor-agent','ollama','agy','hermes','nvidia','claude-code']);
+  const known = new Set(['opencode','codex','cursor-agent','ollama','agy','hermes','claude-code']);
   it('lead 유효·가용 → 유지(note 없음)', () => {
     const r = reselectExecutor(team({ slug:'a', name:'A', lead:'codex' }), '코드 구현', known);
     expect(r.executor).toBe('codex'); expect(r.note).toBeUndefined();

@@ -4,7 +4,7 @@
 - 2026-07-14 오후 보고서 작성 작업이 5건 중복되어 기록됨. 동일한 업무보고 요청이 다수 반복됨.  
 - 현재 프로젝트 루트: `/Users/nova-ai/project/nco`  
 - 현재 작업 유형: bugfix  
-- NCO 프로바이더: nvidia, mlx 사용 중  
+- NCO 프로바이더: retired-provider, mlx 사용 중  
 - 파일 수정 및 커맨드 실행 권한 없음 → 변경 파일 목록 및 diff 요약 생성 불가.  
 
 (2) 현재 상태:  

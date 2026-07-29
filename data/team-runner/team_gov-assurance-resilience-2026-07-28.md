@@ -6,21 +6,21 @@
 - ollama 엔진 성공률 76% (24시간실패=1)로 주요 엔진 중 최하위 성능
 - agy 엔진 성공률 88% (24시간실패=0)로 안정성 우수한 상태
 - cursor-agent 성공률 96% (24시간실패=7)는 엔진 부하에 따른 불안정성 존재
-- nvidia 엔진 성공률 78% (24시간실패=1)로 ollama과 유사한 실패 패턴
+- retired-provider 엔진 성공률 78% (24시간실패=1)로 ollama과 유사한 실패 패턴
 
 (2) 현재 상태
 - [tasks] 진행 중인 태스크 1건 지속 보고 중 (완료율 83.3%)
 - [api/teams] 팀 태스크는 완료 상태로 관리 중
-- 주요 장애 위험점: ollama (76% 성공률), nvidia (78% 성공률) 엔진 실패율 22-24%
+- 주요 장애 위험점: ollama (76% 성공률), retired-provider (78% 성공률) 엔진 실패율 22-24%
 - 안정성 우수 엔진: agy (88% 성공률, 실패 0), cursor-agent (96% 성공률)
-- 대기 중인 엔진: cursor-agent, nvidia (status=idle)
+- 대기 중인 엔진: cursor-agent, retired-provider (status=idle)
 
 (3) 다음에 필요한 작업 제안
 - ollama 엔진 실패 원인 규명 (24시간실패=1 기록 확인)
-- nvidia 엔진 실패 패턴 분석 (24시간실패=1 동기 확인)
+- retired-provider 엔진 실패 패턴 분석 (24시간실패=1 동기 확인)
 - agy 엔진에 추가 작업 배분 (성공률 88% 안정성 활용)
 - cursor-agent (24시간실패=7) 부하 경감을 위한 재할당 검토
 
 미확인 항목:
-- ollama/nvidia 실패 사유 구체적 원인 (실데이터에 미기재)
+- ollama/retired-provider 실패 사유 구체적 원인 (실데이터에 미기재)
 - 진행 중인 [tasks] 1건의 구체적 태스크 식별자 (실데이터 미기재)

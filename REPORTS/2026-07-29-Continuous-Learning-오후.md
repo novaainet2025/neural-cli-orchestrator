@@ -45,12 +45,12 @@
 | codex/code | 15 | **46.7%** | 46.27 | 46,602.67 |
 | cursor-agent/design | 9 | 100.0% | 86.65 | 27,100.89 |
 | cursor-agent/verify | 8 | 100.0% | 88.16 | 28,054.63 |
-| nvidia/code | 8 | **50.0%** | 40.50 | 41,017.13 |
-| nvidia/design | 6 | 100.0% | 91.64 | 22,118.17 |
+| retired-provider/code | 8 | **50.0%** | 40.50 | 41,017.13 |
+| retired-provider/design | 6 | 100.0% | 91.64 | 22,118.17 |
 | cursor-agent/review | 5 | 100.0% | 92.80 | 15,632.40 |
-| nvidia/verify | 2 | 100.0% | 82.50 | 31,205 |
+| retired-provider/verify | 2 | 100.0% | 82.50 | 31,205 |
 
-- 총 실행 72회. 성공률 100% 미만인 행은 `codex/code`와 `nvidia/code` 두 개뿐이다.
+- 총 실행 72회. 성공률 100% 미만인 행은 `codex/code`와 `retired-provider/code` 두 개뿐이다.
 - 유형별로 묶으면 `code` 유형 42회(19+15+8), 비-`code` 유형(design·verify·review) 30회(9+8+6+5+2)다. **비-`code` 30회는 5개 행 전부 성공률 100%**다.
 - 성공률과 평균 품질이 같은 방향으로 움직인다. 성공률 100% 행의 평균 품질은 82.50~98.42인 반면, 46.7%·50.0% 행은 46.27·40.50이다.
 - 평균 소요 시간도 저성공 두 행이 41,017ms·46,603ms로, 100% 행 구간(15,632~28,055ms)보다 길다.
@@ -83,11 +83,11 @@
 - **파생 규칙**: 태스크 상태(T3)·`workReportId` 존재(T3)만으로 "보고서 작성 완료"를 주장하지 않는다. 파일 목록 조회(T1)를 동반해야 완료를 주장한다.
 
 ### 승격-2. 실패는 에이전트 단위가 아니라 에이전트 × 유형 조합에 국한된다
-- **근거 (T1)**: `agent_performance_summary` 8행. `nvidia`는 `code`에서 50.0%(8회)인데 `design` 100%(6회), `verify` 100%(2회)다. 동일 에이전트가 유형에 따라 갈린다. 반대로 `code` 유형 내부에서도 `cursor-agent/code`는 19회 100%다. 따라서 "에이전트가 나쁘다"도 "유형이 나쁘다"도 단독으로는 데이터를 설명하지 못하고, 조합만이 설명한다.
+- **근거 (T1)**: `agent_performance_summary` 8행. `retired-provider`는 `code`에서 50.0%(8회)인데 `design` 100%(6회), `verify` 100%(2회)다. 동일 에이전트가 유형에 따라 갈린다. 반대로 `code` 유형 내부에서도 `cursor-agent/code`는 19회 100%다. 따라서 "에이전트가 나쁘다"도 "유형이 나쁘다"도 단독으로는 데이터를 설명하지 못하고, 조합만이 설명한다.
 - **적용범위**: 주입된 8개 조합(총 72회 실행) 범위. 미주입 에이전트(예: claude-code, ollama, opencode)와 미주입 유형에는 적용하지 않는다.
-- **만료조건**: `nvidia/design` 또는 `nvidia/verify`의 누적 실행이 20회를 넘으면서 성공률이 90% 미만으로 떨어지면 무효화한다. 또는 `codex/code`·`nvidia/code`가 90% 이상으로 회복되면 무효화한다.
+- **만료조건**: `retired-provider/design` 또는 `retired-provider/verify`의 누적 실행이 20회를 넘으면서 성공률이 90% 미만으로 떨어지면 무효화한다. 또는 `codex/code`·`retired-provider/code`가 90% 이상으로 회복되면 무효화한다.
 - **재검증일**: 2026-08-05.
-- **파생 규칙**: 라우팅 제한은 에이전트 전체가 아니라 `codex/code`·`nvidia/code` 조합에만 걸어야 한다. 에이전트 단위로 차단하면 100% 성공 중인 `nvidia/design`(6회)·`nvidia/verify`(2회) 경로를 함께 잃는다.
+- **파생 규칙**: 라우팅 제한은 에이전트 전체가 아니라 `codex/code`·`retired-provider/code` 조합에만 걸어야 한다. 에이전트 단위로 차단하면 100% 성공 중인 `retired-provider/design`(6회)·`retired-provider/verify`(2회) 경로를 함께 잃는다.
 
 ### 승격-3. 팀 산출물의 구조화 근거 첨부율이 2회차 연속 0이다
 - **근거 (T1)**: 이번 회차 주입 `learning_task_evidence` 5행 전부 `result_json=없음`·`evidence_json=없음`. 오전 회차(`task_HZR7_F1-lm2rQ6Me`) 응답에도 "구조화 근거 첨부율 0/5(`result_json`·`evidence_json` 전부 공란)"이 승격-2로 기록되어 있다. 즉 오전에 식별한 결함이 오후 스냅샷에서도 동일하게 0/5로 재현됐다.
@@ -123,7 +123,7 @@
 |---|---|---|---|
 | I-1 | `[업무보고 작성]` 태스크가 completed로 종료되고 `workReportId`까지 부여됐으나 보고서 파일이 남지 않는 사례 존재 (07-28 오후, 관측 3회 중 1회 결측) | T1 (디렉터리 조회 + 태스크 행 대조) | 미해결 — 게이트 없음 |
 | I-2 | 팀 학습 산출물의 `result_json`·`evidence_json` 첨부율 0/5, 2회차 연속 재현 | T1 (주입 5행) | 미해결 — 오전 회차 식별 후 변화 없음 |
-| I-3 | `codex/code` 46.7%(15회), `nvidia/code` 50.0%(8회) 저성공 조합 지속. 평균 품질도 46.27·40.50으로 낮음 | T1 (`agent_performance_summary`) | 미해결 — 원인 미규명 |
+| I-3 | `codex/code` 46.7%(15회), `retired-provider/code` 50.0%(8회) 저성공 조합 지속. 평균 품질도 46.27·40.50으로 낮음 | T1 (`agent_performance_summary`) | 미해결 — 원인 미규명 |
 | I-4 | 실패 3건의 태스크 ID·시각·오류 필드가 미주입이라 실패 원인 분석이 회차마다 격리로 종료됨 | T1 (주입 데이터 부재 확인) | 데이터 수집 필요 |
 | I-5 | 태스크 완료 11건 대비 `work_reports` 제출 6건. 두 수치의 집계 대상·기간 정의가 주입되지 않아 차이 5의 해석 불가 | T1 (주입 수치) / 해석 불가 | 확인 불가 |
 
@@ -134,7 +134,7 @@
 - 실패성 3건의 태스크 ID, 발생 시각, `error` 필드 값 — 미주입.
 - `claude-code`, `ollama`, `opencode`, `copilot`, `agy`, `hermes` 등 주입 8행에 없는 에이전트의 성능 — 미주입.
 - `work_reports` 6건 각각의 팀 귀속과 태스크 매핑 — 미주입. 따라서 완료 11건과의 차이 5건이 다른 팀 몫인지, 미제출인지 판단 불가.
-- 저성공 조합(`codex/code`, `nvidia/code`)의 실패 사유 분포 — 미주입. 성공률·품질 수치만 있고 실패 유형 분해가 없다.
+- 저성공 조합(`codex/code`, `retired-provider/code`)의 실패 사유 분포 — 미주입. 성공률·품질 수치만 있고 실패 유형 분해가 없다.
 - `2026-07-28-Continuous-Learning-오후.md` 결측의 원인이 파일 쓰기 실패인지, 애초에 쓰기가 시도되지 않은 것인지 — 태스크 행에 도구 호출 이력이 없어 구분 불가. 응답 형태(본문 인라인 반환)로 후자를 시사할 뿐이다.
 
 ---
@@ -148,7 +148,7 @@
 | A-3 | 다음 회차 데이터 주입 요청: 실패 3건의 태스크 ID·생성/완료 시각·`error` 필드 | 데이터 주입 경로 | 3건 전부 T1으로 주입 | 다음 회차 |
 | A-4 | 다음 회차 데이터 주입 요청: `agent_performance_summary`에 `claude-code` 포함 전체 에이전트 행 | 데이터 주입 경로 | `claude-code` 행 주입 확인 | 다음 회차 |
 | A-5 | 학습 산출물에 `result_json`/`evidence_json` 구조화 근거를 첨부하는 경로 확보 (승격 항목의 근거·적용범위·만료조건·재검증일을 구조화 필드로 저장) | Continuous Learning | 임의 1회차에서 비공란 행 1건 이상 관측 | 2026-08-01 |
-| A-6 | 라우팅 제한 검토 시 에이전트 단위가 아닌 `codex/code`·`nvidia/code` 조합 단위로 한정할 것을 제안 | Continuous Learning 제안 | 제안 전달 및 회신 | 2026-08-05 |
+| A-6 | 라우팅 제한 검토 시 에이전트 단위가 아닌 `codex/code`·`retired-provider/code` 조합 단위로 한정할 것을 제안 | Continuous Learning 제안 | 제안 전달 및 회신 | 2026-08-05 |
 
 > A-2는 파일 재작성·덮어쓰기 판단이 필요한 사안이므로 팀 자체 판단으로 진행하지 않고 상위 결정을 대기한다.
 
@@ -167,5 +167,5 @@
   - 실패 3건의 실제 원인 (ID·시각·`error` 미주입).
   - `2026-07-28-Continuous-Learning-오후.md` 결측의 기술적 원인 (쓰기 실패인지 미시도인지).
   - `work_reports` 6건과 완료 11건의 차이 5건의 성격.
-  - 승격-2의 만료조건 도달 여부 (`nvidia/design`·`nvidia/verify` 누적 실행 20회 미도달, 현재 6회·2회).
+  - 승격-2의 만료조건 도달 여부 (`retired-provider/design`·`retired-provider/verify` 누적 실행 20회 미도달, 현재 6회·2회).
   - 주입 8행 외 에이전트·유형 조합의 성능.

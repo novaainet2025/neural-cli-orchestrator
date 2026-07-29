@@ -22,7 +22,7 @@
 - tasks 7일: 전체 9 / 완료 5 / 실패성 4 / 진행 0 / 완료율 **55.6%**
 - work_reports 7일: submitted **3**
 - /api/teams 누계: 전체 9 / 완료 5 / 실패 4 / 진행 0 / 대기 0 / 완료율 **55.6%** (tasks와 일치)
-- 에이전트: claude-code working·성공률 19%·24h실패 72; opencode idle·27%·5; cursor-agent idle·96%·7; nvidia idle·78%·1
+- 에이전트: claude-code working·성공률 19%·24h실패 72; opencode idle·27%·5; cursor-agent idle·96%·7; retired-provider idle·78%·1
 - 컨텍스트: 프로젝트 nco / 작업유형 **bugfix** (원인·영향 범위·수정 검증 영수증은 **미확인**)
 
 **충돌·가용성**

@@ -1,4 +1,4 @@
-# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_-2rGWIagynylNW8l)
+# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_-2rGWIagynylNW8l)
 
 ### 오늘 관찰·분석 #### 1. 현재 팀의 태스크 누계
 
@@ -9,7 +9,7 @@
 - claude-code: 상태는 working이며, 태스크는 2292개, 성공률은 19%, 24시간 실패는 72%입니다.
 - cursor-agent: 상태는 idle이며, 태스크는 3546개, 성공률은 96%, 24시간 실패는 7%입니다.
 - ollama: 상태는 working이며, 태스크는 988개, 성공률은 76%, 24시간 실패는 1%입니다.
-- nvidia: 상태는 idle이며, 태스크는 550개, 성공률은 78%, 24시간 실패는 1%입니다.
+- retired-provider: 상태는 idle이며, 태스크는 550개, 성공률은 78%, 24시간 실패는 1%입니다.
 
 ### 다음에 필요한 작업 제안
 

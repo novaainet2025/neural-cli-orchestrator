@@ -79,6 +79,8 @@ const {
 
 vi.mock('../utils/config.js', () => ({
   loadEnabledProviders,
+  // provider-registry(라우팅 SSOT)가 등록 전체 목록을 이 export 로 읽는다.
+  loadProviders: loadEnabledProviders,
   env,
   getApiKeys: (envVar: string, delimiter = ',') => {
     const raw = process.env[envVar] || '';

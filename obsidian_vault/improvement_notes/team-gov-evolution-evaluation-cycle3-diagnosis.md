@@ -1,6 +1,6 @@
 # team_gov-evolution-evaluation — 개선 사이클 3/3 근본원인 노트 (2026-07-26)
 
-- 대상: `team_gov-evolution-evaluation` (Evaluation and Simulation, lead=nvidia)
+- 대상: `team_gov-evolution-evaluation` (Evaluation and Simulation, lead=retired-provider)
 - HR 스냅샷: score=90, completion=100%, sample=all/1, cycle=3/3 (cycle 1-2에서도 동일 90점 정체)
 - 증거 등급: **T1** (SQLite `db/nco.db` 직접 조회 + `src/core/team-scorer.ts` 소스 직독)
 
@@ -10,7 +10,7 @@
 
 | task_id | status | assigned_to | created_at | completed_at |
 |---|---|---|---|---|
-| task_n3Z5Su49rSJQrY4N | completed | nvidia | 2026-07-26 05:54:06 | 2026-07-26 05:54:42 |
+| task_n3Z5Su49rSJQrY4N | completed | retired-provider | 2026-07-26 05:54:06 | 2026-07-26 05:54:42 |
 
 `SELECT COUNT(*) FROM tasks WHERE team_id='team_gov-evolution-evaluation'` → **1**.
 전체 팀 중 최대 표본은 `team_self-improvement` n=530, `team_self-learning` n=480 (실측, 2026-07-26 T1).

@@ -1,4 +1,4 @@
-# Reliability and Resilience Review — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_1GtyOw9uCu2rNF2G)
+# Reliability and Resilience Review — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_1GtyOw9uCu2rNF2G)
 
 ### 오늘 관찰·분석
 
@@ -12,7 +12,7 @@
 
 * cursor-agent: 상태 = working, 태스크 = 3502, 성공률 = 96%, 24시간 실패 = 4
 * ollama: 상태 = idle, 태스크 = 982, 성공률 = 76%, 24시간 실패 = 16
-* nvidia: 상태 = idle, 태스크 = 528, 성공률 = 77%, 24시간 실패 = 28
+* retired-provider: 상태 = idle, 태스크 = 528, 성공률 = 77%, 24시간 실패 = 28
 
 #### 3. 다음에 필요한 작업 제안
 
@@ -33,7 +33,7 @@
 * [api/teams] 팀 태스크 누계: 전체 = 2, 완료 = 2, 실패 = 0, 진행 = 0, 대기 = 0, 완료율 = 100.0%
 * [api/agents] cursor-agent: 상태 = working, 태스크 = 3502, 성공률 = 96%, 24시간 실패 = 4
 * [api/agents] ollama: 상태 = idle, 태스크 = 982, 성공률 = 76%, 24시간 실패 = 16
-* [api/agents] nvidia: 상태 = idle, 태스크 = 528, 성공률 = 77%, 24시간 실패 = 28
+* [api/agents] retired-provider: 상태 = idle, 태스크 = 528, 성공률 = 77%, 24시간 실패 = 28
 
 #### 2. 확인 불가 항목
 
@@ -43,7 +43,7 @@
 * [work_reports] 최근 7일: submitted = 1 (미확인)
 * [api/agents] cursor-agent: 24시간 실패 = 4 (미확인)
 * [api/agents] ollama: 24시간 실패 = 16 (미확인)
-* [api/agents] nvidia: 24시간 실패 = 28 (미확인)
+* [api/agents] retired-provider: 24시간 실패 = 28 (미확인)
 
 #### 3. 다음 수집 액션
 
@@ -51,4 +51,4 @@
 
 * [tasks] 최근 7일: 전체 = 2, 완료 = 2, 실패 = 0, 진행 = 0, 완료율 = 100.0%의 데이터를 수집하는 것이 필요합니다.
 * [work_reports] 최근 7일: submitted = 1의 데이터를 수집하는 것이 필요합니다.
-* [api/agents] cursor-agent, ollama, nvidia의 24시간 실패 횟수를 수집하는 것이 필요합니다.
+* [api/agents] cursor-agent, ollama, retired-provider의 24시간 실패 횟수를 수집하는 것이 필요합니다.

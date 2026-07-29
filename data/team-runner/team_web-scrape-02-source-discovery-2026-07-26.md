@@ -1,4 +1,4 @@
-# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_D7yGxkOKuK17zuPJ)
+# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_D7yGxkOKuK17zuPJ)
 
 ### 오늘 관찰·분석
 
@@ -11,13 +11,13 @@
 
 #### 3. 에이전트 상태
 - opencode: 상태 online, 태스크 2582개, 성공률 60%, 24시간 실패 451회
-- nvidia: 상태 idle, 태스크 576개, 성공률 80%, 24시간 실패 11회
+- retired-provider: 상태 idle, 태스크 576개, 성공률 80%, 24시간 실패 11회
 
 ### 현재 상태
 
 - 팀 태스크 누계: 전체 9개, 완료 8개, 실패 1개
 - 최근 7일간의 작업 보고서: 미제출 1건, 제출 5건
-- 에이전트 상태: opencode online, nvidia idle
+- 에이전트 상태: opencode online, retired-provider idle
 
 ### 다음에 필요한 작업 제안
 

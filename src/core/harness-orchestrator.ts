@@ -28,6 +28,7 @@ import { adaptiveScorer } from './adaptive-scorer.js';
 import { benchmarkSuite } from './benchmark-suite.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
+import { resolvePreference, type ProviderTaskType } from './provider-registry.js';
 
 const log = createLogger('harness-orchestrator');
 
@@ -63,12 +64,14 @@ const MODE_AGENTS: Record<string, string[]> = {
 };
 
 // ── taskType별 추천 에이전트 ──────────────────────────────────────────────
+// 아래 표는 큐레이션된 힌트다. 실제 후보는 resolveTaskAgents() 가
+// provider-registry 와 화해시켜 만든다(퇴출 자동 제거 + 신규 자동 편입).
 const TASK_AGENTS: Record<string, string[]> = {
   code:     ['codex', 'opencode', 'cursor-agent'],
   design:   ['opencode', 'agy', 'codex'],
   review:   ['cursor-agent', 'opencode'],
   verify:   ['cursor-agent', 'codex', 'opencode'],
-  research: ['opencode', 'nvidia'],
+  research: ['opencode', 'codex'],
   ui:       ['agy', 'codex', 'opencode'],
   media:    ['higgsfield', 'agy'],
   general:  ['opencode', 'codex', 'cursor-agent'],
@@ -303,7 +306,10 @@ class HarnessOrchestrator {
 
   // ── 내부: 에이전트 선택 ────────────────────────────────────────────────
   private selectAgents(taskType: string, mode: string): string[] {
-    const taskBased = TASK_AGENTS[taskType] ?? TASK_AGENTS.general;
+    const taskBased = resolvePreference(
+      TASK_AGENTS[taskType] ?? TASK_AGENTS.general,
+      (taskType in TASK_AGENTS ? taskType : 'general') as ProviderTaskType,
+    );
     const modeBased = MODE_AGENTS[mode] ?? MODE_AGENTS.balanced;
 
     // 교집합 우선, 없으면 task 기반

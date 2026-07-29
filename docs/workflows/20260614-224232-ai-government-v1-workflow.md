@@ -9,7 +9,7 @@
 ## 작업 요청
 
 ```
-AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경제모델, 선언문, 기술인프라 — 4개 에이전트 토론(sess_wWX-ntkNljlcYmcM) + nvidia 철학분석 종합 보고
+AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경제모델, 선언문, 기술인프라 — 4개 에이전트 토론(sess_wWX-ntkNljlcYmcM) + retired-provider 철학분석 종합 보고
 ```
 
 ---
@@ -31,7 +31,7 @@ AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경�
 | ✅ | Task시스템 | 10/10 | - | calls:8 agents:[codex,copilot,cursor-agent,discussion-engine |
 | ✅ | 병렬·협업 | 10/10 | - | pmodes:[hive,parallel] inter-session:8 nco-sess:20 |
 | ✅ | 워크플로우 | 10/10 | - | conductor:used workflow-full auto-report |
-| ✅ | 교차검증 | 10/10 | - | agents:5 reviewers:[cursor-agent,nvidia] reviews:3 |
+| ✅ | 교차검증 | 10/10 | - | agents:5 reviewers:[cursor-agent,retired-provider] reviews:3 |
 | ⚠️ | 시각검증 | 9/10 | +1 | health:ok agents:4 snapshots:2 ts-dep:ok(no-binary) |
 | ✅ | 갭분석 | 10/10 | - | score-ran nco-gap:cmd active:50 done:17 fail-rate:8% |
 | ✅ | 최종보고서 | 10/10 | - | report:20260614-222823-wf-score-v2-workflow.md receipt:ok le |
@@ -53,7 +53,7 @@ AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경�
 | 완료 | 17개 (34.0%) |
 | 대기 중 | 26개 |
 | 실패 | 4개 (실패율: 8.0%) ✅ |
-| 투입 에이전트 | claude-code, codex, copilot, cursor-agent, discussion-engine, higgsfield, nvidia, opencode |
+| 투입 에이전트 | claude-code, codex, copilot, cursor-agent, discussion-engine, higgsfield, retired-provider, opencode |
 | 사용 모드 | full-pipeline, hive, inter-session, mesh, nova-ax, parallel, task |
 
 > 실패율 기준: ≤10% 정상 | 현재 8.0% ✅

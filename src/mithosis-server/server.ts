@@ -15,15 +15,16 @@ const NCO_URL = 'http://localhost:6200';
 const NCO_AUTH = 'Bearer nco_secret_key_change_me_in_production';
 
 // ── 도메인별 에이전트 우선순위 (Mithosis 전략: 단일 최적 선택) ─────────────
+// 등록 여부는 provider-registry 가 정한다.
 const AGENT_PRIORITY: Record<string, string[]> = {
-  code:     ['cursor-agent', 'opencode', 'codex', 'nvidia'],
-  design:   ['opencode', 'agy', 'codex', 'nvidia'],
+  code:     ['cursor-agent', 'opencode', 'codex'],
+  design:   ['opencode', 'agy', 'codex'],
   review:   ['cursor-agent', 'opencode', 'codex'],
   verify:   ['cursor-agent', 'codex'],
-  research: ['nvidia', 'opencode'],
+  research: ['opencode', 'codex'],
   ui:       ['agy', 'opencode', 'codex'],
   media:    ['agy'],
-  general:  ['opencode', 'codex', 'nvidia'],
+  general:  ['opencode', 'codex'],
 };
 
 const QUALITY_THRESHOLD = 65;
@@ -90,7 +91,7 @@ async function orchestrate(prompt: string, taskType: TaskType = 'general'): Prom
 
   if (candidates.length === 0) {
     // 온라인 에이전트 없으면 첫 번째 시도
-    candidates.push(priority[0] ?? 'nvidia');
+    candidates.push(priority[0] ?? 'opencode');
   }
 
   const agentsTried: string[] = [];

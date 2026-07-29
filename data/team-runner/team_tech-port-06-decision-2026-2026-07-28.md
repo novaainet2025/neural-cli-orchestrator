@@ -1,4 +1,4 @@
-# 06 Porting Decision Council — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_4F6te1kgawHuDsBU)
+# 06 Porting Decision Council — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_4F6te1kgawHuDsBU)
 
 ### 오늘 관찰·분석
 
@@ -16,7 +16,7 @@
 
 * claude-code: 온라인 상태, 태스크: 2386, 성공률: 20%, 24시간 실패: 40
 * agy: 비활동 상태, 태스크: 632, 성공률: 89%, 24시간 실패: 0
-* nvidia: 작업 중, 태스크: 605, 성공률: 79%, 24시간 실패: 5
+* retired-provider: 작업 중, 태스크: 605, 성공률: 79%, 24시간 실패: 5
 
 #### 3. 다음에 필요한 작업 제안
 
@@ -24,16 +24,16 @@
 
 * 태스크 2386의 성공률을 개선하기 위한 조치
 * agy의 비활동 상태를 확인하고 필요에 따라 조치
-* nvidia의 태스크 605의 실패율을 개선하기 위한 조치
+* retired-provider의 태스크 605의 실패율을 개선하기 위한 조치
 
 ### 미확인 항목
 
 * 태스크 2386의 실패 원인
 * agy의 비활동 상태 원인
-* nvidia의 태스크 605의 실패 원인
+* retired-provider의 태스크 605의 실패 원인
 
 ### 다음 수집 액션
 
 * 태스크 2386의 실패 원인을 확인하기 위한 데이터 수집
 * agy의 비활동 상태 원인을 확인하기 위한 데이터 수집
-* nvidia의 태스크 605의 실패 원인을 확인하기 위한 데이터 수집
+* retired-provider의 태스크 605의 실패 원인을 확인하기 위한 데이터 수집

@@ -73,7 +73,7 @@ DB에는 시간창의 terminal 원시 행이 16건 있다. 당시 스코어러
 | `task_oU_2WmYSVRxtclr-` | 07-23 00:01:37 | claude-code | completed | 같은 `wr_XCUiFgjTeN-TiZWF`; `FORMAT_MISMATCH` |
 | `task_4101CDKT9fi_SHbR` | 07-23 05:01:54 | opencode | completed | `wr_irmW330C9uoePzq-`; 프로토콜 접두사 있음 |
 | `task_gZPQLtKQmPFSL2nu` | 07-23 05:02:04 | opencode | completed | 같은 `wr_irmW330C9uoePzq-`; `FORMAT_MISMATCH` |
-| `task_ce9XnQACRVYEVJRI` | 07-23 11:30:10 | nvidia | completed | `commander-perfgoal`; `FORMAT_MISMATCH`; 실제 호출 증거 없이 예시 HTTP 성공 본문을 출력 |
+| `task_ce9XnQACRVYEVJRI` | 07-23 11:30:10 | retired-provider | completed | `commander-perfgoal`; `FORMAT_MISMATCH`; 실제 호출 증거 없이 예시 HTTP 성공 본문을 출력 |
 | `task_0xiZg4I-uRBqI2So` | 07-23 15:19:06 | opencode | completed | 팀 일일 산출물; 품질반려 표식 없음 |
 | `task_qLyVkz5jiVmoaF8W` | 07-24 00:01:56 | opencode | timed_out | `wr_eZfmihgCSrbtQnSX`; `timeout(idle)`, 923초, 응답 14,538자 도구 이벤트 스트림 |
 | `task_vvo99V0aEDoJkure` | 07-24 00:01:56 | opencode | failed | 같은 `wr_eZfmihgCSrbtQnSX`; `silent-failure: empty output`, 22초 |

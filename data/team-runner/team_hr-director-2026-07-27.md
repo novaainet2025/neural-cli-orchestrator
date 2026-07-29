@@ -46,7 +46,7 @@ done: Team Lifecycle HR Director 상시 임무 — **텍스트 전용 관찰 보
 | 팀 생성·격상·복구·퇴출 실행 | **미수행**(도구 금지) | — |
 | 파일/코드/설정 변경 | **없음** | 제약 준수 |
 
-**에이전트 플릿(주입 Team 블록)**: claude-code·opencode·codex·ollama·agy·hermes·higgsfield·nvidia = idle; cursor-agent = working.
+**에이전트 플릿(주입 Team 블록)**: claude-code·opencode·codex·ollama·agy·hermes·higgsfield·retired-provider = idle; cursor-agent = working.
 
 ---
 

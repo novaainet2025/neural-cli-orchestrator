@@ -1,4 +1,4 @@
-# Evaluation and Simulation — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_dDTbH6UJxABIjj7V)
+# Evaluation and Simulation — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_dDTbH6UJxABIjj7V)
 
 (1) 오늘 관찰·분석:  
 - 실데이터는 태스크 완료율 100% 및 에이전트 성공률(코덱스 92%, 커서에이전트 96%)을 제공하지만, **개선 전 기준선(전체 미적용)**, **대표 시나리오 세부 사항**, **반례 정의**, **회귀 한계 허용 값**, **통계적 판정 기준(신뢰구간/표본 크기)** 등 평가 설계 필수 요소가 미제공됨.  

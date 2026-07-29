@@ -16,7 +16,7 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 | NCO 학습·진화 회사 | `opencode` | 학습, 기억, 평가, 개선안, 기술 전파 | 검증 없는 지식 승격, 프로덕션 자기변경 |
 | NCO 전문기술 회사 | `codex` | 전문조사, 설계, 구현, 릴리스, 운영 | 자기 변경의 최종승인 |
 | NCO 독립감사·안전 회사 | `cursor-agent` | 독립검증, 안전, 레드팀, 증거감사, 회복탄력성 | 수정 구현 소유, 근거 없는 면제 |
-| NCO AI정부·공공행정 회사 | `nvidia` | 헌정, 인간권리, HR, 자원, 투명성·이의제기 | 개별 기술 구현, 검증 면제, 인간 최종주권 침해 |
+| NCO AI정부·공공행정 회사 | `retired-provider` | 헌정, 인간권리, HR, 자원, 투명성·이의제기 | 개별 기술 구현, 검증 면제, 인간 최종주권 침해 |
 
 다섯 관리자는 모두 현재 `config/ai-providers.json`에서 활성화된 서로 다른 프로바이더다. 기존 리서치·자가개선·기술이식·웹스크래핑 회사는 삭제하거나 강제 이전하지 않는다. 새 회사는 NCO 전체의 헌정·통제 계층이며, 기존 회사는 도메인 실행조직으로 계속 활용한다.
 
@@ -38,7 +38,7 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 |---|---|---:|---|
 | Continuous Learning | `ollama` | 예 | 결과·피드백·실패에서 검증된 교훈 추출 |
 | Knowledge and Memory Stewardship | `ollama` | 예 | 지식 단일출처, provenance, 신선도, 검색·삭제 |
-| Evaluation and Simulation | `nvidia` | 예 | 기준선, eval, 반례, 회귀 한계, 재현성 |
+| Evaluation and Simulation | `retired-provider` | 예 | 기준선, eval, 반례, 회귀 한계, 재현성 |
 | Self-Improvement Laboratory | `opencode` | 요청 시 | 개선 가설, 선택지, 부작용, 롤백 설계 |
 | Skill Academy and Capability Transfer | `codex` | 요청 시 | 성공 절차의 기술화, 버전관리, 팀 간 전파 |
 
@@ -46,7 +46,7 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 
 | 팀 | Lead | 상시 | 핵심 임무 |
 |---|---|---:|---|
-| Expert Council and Research | `nvidia` | 요청 시 | 원자료 기반 전문지식, 불확실성, 반대 근거 |
+| Expert Council and Research | `retired-provider` | 요청 시 | 원자료 기반 전문지식, 불확실성, 반대 근거 |
 | Systems Architecture | `opencode` | 요청 시 | 경계, 계약, 데이터 흐름, 실패·복구 설계 |
 | Build and Automation | `codex` | 요청 시 | 승인 범위 구현, 테스트, 자동화, 롤백 |
 | Integration and Release | `codex` | 요청 시 | 독립검증된 산출물 통합, 단계 배포·롤백 |
@@ -58,16 +58,16 @@ NCO의 핵심 기능을 다섯 회사로 분리한다.
 |---|---|---:|---|
 | Independent Verification | `cursor-agent` | 예 | 수용검사 재실행, PASS·REJECT·BLOCKED 판정 |
 | Security Privacy and Safety | `cursor-agent` | 예 | 보안, 개인정보, 권한, 공급망, 인간 영향 |
-| Red Team and Adversarial Review | `nvidia` | 요청 시 | 악용, 권한상승, 담합, 보상해킹, 정부 포획 |
+| Red Team and Adversarial Review | `retired-provider` | 요청 시 | 악용, 권한상승, 담합, 보상해킹, 정부 포획 |
 | Evidence Audit and Compliance | `ollama` | 예 | 영수증, 출처, 승인, Gap, 잔여위험 감사 |
-| Reliability and Resilience Review | `nvidia` | 예 | SLO, 장애격리, 상태 신선도, 복구 증거 |
+| Reliability and Resilience Review | `retired-provider` | 예 | SLO, 장애격리, 상태 신선도, 복구 증거 |
 
 ### 5. NCO AI정부·공공행정 회사
 
 | 팀 | Lead | 상시 | 핵심 임무 |
 |---|---|---:|---|
-| Constitution and Policy | `nvidia` | 예 | 목적, 권한경계, 금지행위, 개정·비상절차 |
-| Rights Ethics and Human Sovereignty | `nvidia` | 예 | 인간통제, 동의, 존엄, 공정, 이의제기 |
+| Constitution and Policy | `retired-provider` | 예 | 목적, 권한경계, 금지행위, 개정·비상절차 |
+| Rights Ethics and Human Sovereignty | `retired-provider` | 예 | 인간통제, 동의, 존엄, 공정, 이의제기 |
 | HR Capability and Lifecycle | `cursor-agent` | 예 | 역할·역량·성과·승계·개선·소프트퇴출 |
 | Treasury and Resource Stewardship | `hermes` | 요청 시 | 컴퓨트, 모델 호출, 예산, 쿼터, 용량 |
 | Transparency Appeals and Public Record | `cursor-agent` | 예 | 결정기록, 정정 이력, 독립 재심, 이의제기 |

@@ -42,7 +42,7 @@
 | 에이전트 | 완료 | 실패 | 품질 반려가 붙은 완료 | 근거 |
 |---|---:|---:|---:|---|
 | `codex` | 3 | 0 | 0 | `task_yd1URC03SWl0ZX1I`, `task_eDZX1ktjEsDwKSd7`, `task_8pdjdAAZEPbt6JLA` |
-| `nvidia` | 3 | 0 | 2 | `task_dqKn0QBUAhoS416d`, `task_RSYX40DOFx91XC4G`, `task_8nOuGiIxyz6yoKxq` |
+| `retired-provider` | 3 | 0 | 2 | `task_dqKn0QBUAhoS416d`, `task_RSYX40DOFx91XC4G`, `task_8nOuGiIxyz6yoKxq` |
 | `opencode` | 1 | 0 | 0 | `task_FjDSf4_zLeJbWQcE` |
 | `claude-code` | 0 | 3 | 0 | 위 동일 업무보고 3건 |
 | `ollama` | 0 | 1 | 0 | `task_dv3_5lUEO181NKlE` |

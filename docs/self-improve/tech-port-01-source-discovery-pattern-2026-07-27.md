@@ -41,7 +41,7 @@ FORMAT_MISMATCH 오탐(계약 없이 protocol prefix 요구)은 `task-intake.ts`
 
 ## 근본 원인
 
-`task_oFksRs9zeIa0euYV` (assigned_to=`nvidia`, 2026-07-27 00:02:28):
+`task_oFksRs9zeIa0euYV` (assigned_to=`retired-provider`, 2026-07-27 00:02:28):
 
 - 프롬프트: `[업무보고 작성] 2026-07-27 오전 보고서를 작성하라...` — 독립 work-report
   스케줄러가 생성(companyRunId 없음, workReportId만 있음).
@@ -63,8 +63,8 @@ FORMAT_MISMATCH 오탐(계약 없이 protocol prefix 요구)은 `task-intake.ts`
 
 ## 에이전트별 실패 패턴 요약
 
-- 이번 48h 표본의 실 실패는 전량 `nvidia`(요청·최종 실행 모두)에서 발생 —
-  이전 cycle(2/3, 3/3)과 동일하게 nvidia가 이 팀의 주 실행 에이전트로 편중.
+- 이번 48h 표본의 실 실패는 전량 `retired-provider`(요청·최종 실행 모두)에서 발생 —
+  이전 cycle(2/3, 3/3)과 동일하게 retired-provider가 이 팀의 주 실행 에이전트로 편중.
 - 인프라 실패(queue_wait_timeout/circuit breaker) 2종은 `claude-code`·`ollama`
   가용성 이벤트로, 이미 team-scorer INFRA_EXCLUSION이 정확히 걷어낸다 — 재작업 불필요.
 

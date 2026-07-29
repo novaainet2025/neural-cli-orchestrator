@@ -1,4 +1,4 @@
-# 04 Baseline Benchmark — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_BHLYCsGs4zvmF8Ao)
+# 04 Baseline Benchmark — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_BHLYCsGs4zvmF8Ao)
 
 ### 오늘 관찰·분석
 
@@ -26,7 +26,7 @@
 [실데이터]에 제공된 에이전트 태스크 정보는 다음과 같다.
 - codex: 상태=working, 태스크=2519, 성공률=92%, 24시간실패=4
 - hermes: 상태=working, 태스크=2173, 성공률=57%, 24시간실패=2
-- nvidia: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
+- retired-provider: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
 
 ### 현재 상태
 
@@ -37,7 +37,7 @@
 에이전트 태스크 정보는 다음과 같다.
 - codex: 상태=working, 태스크=2519, 성공률=92%, 24시간실패=4
 - hermes: 상태=working, 태스크=2173, 성공률=57%, 24시간실패=2
-- nvidia: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
+- retired-provider: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
 
 ### 다음에 필요한 작업 제안
 

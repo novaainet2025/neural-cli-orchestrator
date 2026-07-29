@@ -87,5 +87,5 @@ tags:
 ## 미검증
 
 - `npm run build` 래퍼의 정상 완료
-- 실행 중 NCO HTTP 경로에서 동일 nvidia 응답을 다시 흘린 E2E 결과
+- 실행 중 NCO HTTP 경로에서 동일 retired-provider 응답을 다시 흘린 E2E 결과
 - 수정 이후 rolling-window 지표 개선의 인과성

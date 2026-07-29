@@ -50,7 +50,7 @@
 - data/team-runner/team_legal-counsel.last
 - db/hnsw-indices/codex.hnsw
 - db/hnsw-indices/hermes.hnsw
-- db/hnsw-indices/nvidia.hnsw
+- db/hnsw-indices/retired-provider.hnsw
 - db/hnsw-indices/opencode.hnsw
 
 ### 현재 상태

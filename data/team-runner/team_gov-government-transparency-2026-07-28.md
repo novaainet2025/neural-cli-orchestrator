@@ -19,13 +19,13 @@ done: Transparency Appeals and Public Record — **기록·이의제기 실태�
 - [/api/agents] cursor-agent: idle, 태스크=3546, 성공률=96%, 24h실패=7
 - [/api/agents] ollama: working, 태스크=988, 성공률=76%, 24h실패=1
 - [/api/agents] hermes: idle, 태스크=2172, 성공률=57%, 24h실패=2
-- [/api/agents] nvidia: idle, 태스크=550, 성공률=78%, 24h실패=1
+- [/api/agents] retired-provider: idle, 태스크=550, 성공률=78%, 24h실패=1
 
 **투명성·이의제기 관점 분석**
 - 팀 태스크 완료율 83.3%(6중 5완료·1실패)와 work_reports submitted=3은 **운영 산출물 존재**를 시사하나, **중요 결정의 목표·근거·반대의견·승인·검증·잔여위험**이 공개기록으로 남았는지는 **미확인** (해당 레코드/파일/API 응답 미주입).
 - work_reports(3) ≪ 완료 태스크(5) 및 전체(6) → **보고 누락 또는 보고≠결정기록** 가능성. 원인(미제출/미연동/범위 외)은 **미확인**.
 - 실패성 태스크=1에 대한 **이의제기 접수 여부·재심 주체(원결정 당사자 배제)·정정 이력(덮어쓰기 금지)** 는 **미확인**.
-- 에이전트 24h 실패 합계(주입분): cursor-agent 7 + ollama 1 + hermes 2 + nvidia 1 = **11**. 실패→공개기록 연계·항소 경로 존재 여부는 **미확인**.
+- 에이전트 24h 실패 합계(주입분): cursor-agent 7 + ollama 1 + hermes 2 + retired-provider 1 = **11**. 실패→공개기록 연계·항소 경로 존재 여부는 **미확인**.
 - hermes 성공률 57%는 상대적으로 낮으나, 이것이 결정 품질·재심 필요와 연결됐는지는 **미확인**.
 - **데이터 충돌**: 프롬프트 Team 블록은 `cursor-agent: working (task_pfsOaLx5SZCGUZPS)`, [/api/agents]는 `cursor-agent: idle`. 어느 쪽이 현시점 진실인지는 **미확인** (동시 관측 HTTP/프로세스 증거 없음).
 

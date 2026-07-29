@@ -19,7 +19,7 @@
 |---|---|---|---|
 | `task_pKVM8hAZUmzskqwL` | `failed` / hermes | `curl: (7) Failed to connect to localhost port 6200 ... Couldn't connect to server`; `error='unknown: failure pattern in output'`; 변경 파일 없음 | NCO gateway 연결거부 |
 | `task_WpB7UCfWLhPnwx-u` | `failed` / ollama | `targetValue, direction, reflection, improvement are unknown; cannot fabricate values`; `error='unknown: failure pattern in output'` | 목표·성과 입력 필수값 미주입 |
-| `task_tnhlWTnnJz5dVshv` | `lease_expired` / nvidia→ollama | response 없음; metadata의 escalation reason=`empty completion from provider 'nvidia' after 1 iteration(s)`; `heartbeat_seq=1`, `lease_expires_at=2026-07-23 11:58:17` | provider 응답 없음 이후 lease 만료 |
+| `task_tnhlWTnnJz5dVshv` | `lease_expired` / retired-provider→ollama | response 없음; metadata의 escalation reason=`empty completion from provider 'retired-provider' after 1 iteration(s)`; `heartbeat_seq=1`, `lease_expires_at=2026-07-23 11:58:17` | provider 응답 없음 이후 lease 만료 |
 
 세 행에 모두
 `verifier_json={"type":"run","command":"npm run build","timeoutMs":120000}`가

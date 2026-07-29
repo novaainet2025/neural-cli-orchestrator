@@ -1,4 +1,4 @@
-# 01 Source Discovery — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_OyUzSKnQ04BDJYNI)
+# 01 Source Discovery — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_OyUzSKnQ04BDJYNI)
 
 ### 오늘 관찰·분석
 
@@ -30,7 +30,7 @@
 [api/agents]에 제공된 데이터에 따르면 에이전트 상태는 다음과 같습니다.
 - opencode: 상태는 working, 태스크는 1369, 성공률은 26%, 24시간 실패는 14
 - codex: 상태는 idle, 태스크는 2404, 성공률은 93%, 24시간 실패는 8
-- nvidia: 상태는 idle, 태스크는 520, 성공률은 77%, 24시간 실패는 28
+- retired-provider: 상태는 idle, 태스크는 520, 성공률은 77%, 24시간 실패는 28
 
 ### 다음 수집 액션
 다음 수집 액션은 다음과 같습니다.

@@ -680,7 +680,7 @@ class AgentManager {
       }
       const availability = circuitBreakerRegistry.getAvailability(id);
       if (
-        id === 'cursor-agent'
+        this.supportsCliRecoveryProbe(id, provider)
         && availability.status === 'probe'
         && availability.reason === 'generic'
       ) {
@@ -688,6 +688,25 @@ class AgentManager {
       }
       await sharedState.heartbeat(id);
     }
+  }
+
+  /**
+   * half-open 고착 회로의 자가복구 프로브 대상 판정.
+   *
+   * getAvailability()가 half-open을 available:false 로 보고하므로 게이트웨이 라우팅
+   * (listAvailableProviders 등)은 해당 프로바이더를 절대 선택하지 않는다. 그런데
+   * closed 로 가는 유일한 경로인 recordSuccess()는 실제 실행을 요구한다 → 실행이
+   * 도달할 수 없어 영구 데드락이 된다. 5분 주기 reclaim 은 openedAt 만 재갱신하는
+   * no-op 이라 탈출구가 되지 못한다(2026-07-29 T1: opencode 06:08Z~, codex 10:00Z~
+   * 각각 6시간·2시간 고착, decision_log reclaim 76건+).
+   *
+   * 따라서 이 헬스체크 프로브가 유일한 탈출구다. cursor-agent 전용이던 대상을
+   * orchestrated CLI 전체로 넓힌다. claude-code(Type A native)는 프로브 1회가 곧
+   * 세션 1개 비용이라 제외한다. API 프로바이더는 위쪽 probeGatedProvider 분기가
+   * 담당한다(quota·rate-limit 한정 — completions 실증만 신뢰).
+   */
+  private supportsCliRecoveryProbe(id: string, provider: ProviderConfig): boolean {
+    return provider.type === 'cli' && id !== 'claude-code';
   }
 
   private async probeGatedCliProvider(id: string): Promise<void> {

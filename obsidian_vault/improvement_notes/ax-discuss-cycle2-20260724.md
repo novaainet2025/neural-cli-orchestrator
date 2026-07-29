@@ -89,7 +89,7 @@ control-plane task를 전 팀에서 제외했으므로, 현재 scorer를 과거 
 | `task_vvo99V0aEDoJkure` | opencode | failed | 없음 | 공백 2바이트, `silent-failure` |
 | `task_qLyVkz5jiVmoaF8W` | opencode | timed_out | 없음 | `timeout(idle)`; team 미귀속 retry 2건은 completed |
 | `task_0xiZg4I-uRBqI2So` | opencode | completed | 없음 | team-runner 일일 분석보고 |
-| `task_ce9XnQACRVYEVJRI` | nvidia | completed | `FORMAT_MISMATCH` | control-plane 목표·성과 입력 응답 |
+| `task_ce9XnQACRVYEVJRI` | retired-provider | completed | `FORMAT_MISMATCH` | control-plane 목표·성과 입력 응답 |
 | `task_gZPQLtKQmPFSL2nu` | opencode | completed | `FORMAT_MISMATCH` | 오후 업무보고; retry 2건은 team 미귀속 |
 | `task_4101CDKT9fi_SHbR` | opencode | completed | 없음 | 같은 오후 업무보고의 protocol 응답 |
 | `task_oU_2WmYSVRxtclr-` | claude-code | completed | `FORMAT_MISMATCH` | 오전 업무보고; retry 3건은 team 미귀속 |
@@ -109,7 +109,7 @@ DB terminal 상태를 뜻하며, 보고 내용·HTTP 입력·회의 결과의 �
 |---|---:|---:|---:|---:|---:|
 | opencode | 7 | 3 | 4 | 1 | 42.9% |
 | claude-code | 4 | 4 | 0 | 3 | 100.0% |
-| nvidia | 1 | 1 | 0 | 1 | 100.0% |
+| retired-provider | 1 | 1 | 0 | 1 | 100.0% |
 | agy | 1 | 1 | 0 | 1 | 100.0% |
 | cursor-agent | 1 | 1 | 0 | 0 | 100.0% |
 | **합계** | **14** | **10** | **4** | **6** | **71.4%** |

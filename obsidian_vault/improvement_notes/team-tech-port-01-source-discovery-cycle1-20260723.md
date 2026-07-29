@@ -6,7 +6,7 @@ tags:
   - improvement-note
   - category/team-quality
   - team/tech-port-01-source-discovery
-  - agent/nvidia
+  - agent/retired-provider
   - agent/codex
   - agent/opencode
   - evidence/T1
@@ -21,7 +21,7 @@ tags:
 - 지시 기준선과 lifecycle row: score `79.2`, completion `80%`, sample `48h/10`,
   improvement cycle `1/3`
 - 팀은 `is_active=1`, lifecycle status는 `improving`, 구성원은 `codex`,
-  `nvidia`, `opencode`다.
+  `retired-provider`, `opencode`다.
 - `team_goals`에는 이 팀의 row가 0건이다. 따라서 별도 목표값·목표 기한·목표 방향은
   미확인이고, 이번 개선에서 만들거나 추정하지 않는다.
 - 팀 삭제·비활성화·retirement·lifecycle·score·task status는 변경하지 않는다.
@@ -63,7 +63,7 @@ commit SHA와 파일 SHA-256, 공식 원문, 성공·실패가 함께 있는 검
 | Agent | Status counts | completed 중 qualityRejected | completed 중 `done:` | 보수적 도구서술 탐지 |
 |---|---|---:|---:|---:|
 | codex | completed 268, failed 35, queued 3 | 118 | 144 | 0 |
-| nvidia | completed 51, failed 4, lease_expired 1, cancelled 1, queued 7 | 34 | 0 | 28 |
+| retired-provider | completed 51, failed 4, lease_expired 1, cancelled 1, queued 7 | 34 | 0 | 28 |
 | opencode | completed 62, failed 17, lease_expired 1, timed_out 5, cancelled 3, queued 2 | 45 | 9 | 0 |
 
 도구서술은 `The ... function is used`, `The output of the ... function`,
@@ -75,7 +75,7 @@ commit SHA와 파일 SHA-256, 공식 원문, 성공·실패가 함께 있는 검
 1. 점수 `79.2`의 직접 원인은 source 품질이 아니라 status 기반 completion `80%`와
    상대 volume의 조합이다. scorer는 `qualityRejected`, `evidence_json`, 출처 정확성을
    점수에 반영하지 않는다.
-2. nvidia의 tool-call 결과가 최종 source dossier로 합성되지 않고 함수 설명으로
+2. retired-provider의 tool-call 결과가 최종 source dossier로 합성되지 않고 함수 설명으로
    반환되는 패턴이 반복됐다. build verifier는 NCO `tsc`만 확인하므로 의미 불일치를
    차단하지 못했다.
 3. source-discovery 완료 계약이 장기기억에 증류되지 않아, 가공 URL·광범위 완료 주장과
@@ -104,7 +104,7 @@ commit SHA와 파일 SHA-256, 공식 원문, 성공·실패가 함께 있는 검
 - knowledge base:
   `kb-team-tech-port-01-source-discovery-cycle1-20260723`
 - Mem0:
-  `mem0-team-tech-port-01-cycle1-20260723-nvidia`
+  `mem0-team-tech-port-01-cycle1-20260723-retired-provider`
 - Mem0:
   `mem0-team-tech-port-01-cycle1-20260723-codex`
 - Mem0:
@@ -125,7 +125,7 @@ commit SHA와 파일 SHA-256, 공식 원문, 성공·실패가 함께 있는 검
 - `[database rows]` `improvement_notes` 1건, `knowledge_base` 1건,
   `mem0_memories` 3건을 위 고정 ID로 직접 조회했다.
 - `[memory]` `NCO_MEM0_NO_EMBED=1`에서 build 산출물의 public `mem0Search`를
-  nvidia, codex, opencode 각각 호출했다.
+  retired-provider, codex, opencode 각각 호출했다.
   - mode: 세 agent 모두 `bm25`
   - 각 결과에 해당 agent의
     `mem0-team-tech-port-01-cycle1-20260723-*` ID 포함

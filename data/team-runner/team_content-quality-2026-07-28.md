@@ -18,7 +18,7 @@ done: nova-money-hub 블로그 게시 전 품질 게이트는 **원문 미주입
 | tasks 최근 7일 | 전체=96, 완료=27, 실패성=69, 진행=0, 완료율=28.1% | Tier 1(주입값) |
 | work_reports 최근 7일 | missed=2, submitted=7 | Tier 1(주입값) |
 | /api/teams 누계 | 전체=96, 완료=27, 실패=69, 진행=0, 대기=0, 완료율=28.1% | Tier 1(주입값) |
-| /api/agents | codex working·태스크=2519·성공률=92%·24h실패=4; cursor-agent working·태스크=3561·성공률=96%·24h실패=7; nvidia working·태스크=553·성공률=78%·24h실패=1 | Tier 1(주입값) |
+| /api/agents | codex working·태스크=2519·성공률=92%·24h실패=4; cursor-agent working·태스크=3561·성공률=96%·24h실패=7; retired-provider working·태스크=553·성공률=78%·24h실패=1 | Tier 1(주입값) |
 
 **게이트 대상(블로그)**
 - 게시 후보 원문·URL·제목·작성일·AI사용 고지문·1차데이터/출처 표기: **미주입 → 미확인**

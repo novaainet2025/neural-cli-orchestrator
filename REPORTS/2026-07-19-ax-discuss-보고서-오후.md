@@ -5,7 +5,7 @@
 - 팀: 논의 주도자 팀 (Discussion Lead)
 - 조직 경로: `nova-ax/ax-discuss`
 - 담당 영역: 논의 진행, 합의 형성, 회의록, 의사결정
-- 기반 모델: `claude-code` + `nvidia`
+- 기반 모델: `claude-code` + `retired-provider`
 
 ## 오늘 수행한 핵심 업무
 

@@ -92,7 +92,7 @@ const foundationCases = [
   },
   {
     slug: 'nco-government',
-    manager: 'nvidia',
+    manager: 'hermes',
     stages: [
       'gov-government-constitution',
       'gov-government-rights',
@@ -262,29 +262,29 @@ describe('validateCompanyPolicy (AI 정부 헌정 게이트)', () => {
 });
 
 describe('resolveExecutor', () => {
-  const known = new Set(['opencode', 'codex', 'ollama', 'nvidia']);
+  const known = new Set(['opencode', 'codex', 'ollama', 'agy']);
   it('lead 가 등록 프로바이더면 lead 사용', () => {
     expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'codex' }), known)).toBe('codex');
   });
   it('lead 가 미등록이면 등록된 첫 member 사용', () => {
-    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'retired-provider', members: ['bogus', 'nvidia'] }), known)).toBe('nvidia');
+    expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'retired-provider', members: ['bogus', 'agy'] }), known)).toBe('agy');
   });
   it('lead·member 모두 미등록이면 fallback(ollama)', () => {
     expect(resolveExecutor(team({ slug: 'a', name: 'A', lead: 'retired-provider', members: ['bogus'] }), known)).toBe('ollama');
   });
 
   it('리밋(서킷open) 걸린 lead 는 건너뛰고 가용한 member 사용', () => {
-    // opencode 는 등록됐지만 현재 불가용 → member nvidia 로 폴백
+    // opencode 는 등록됐지만 현재 불가용 → member agy 로 폴백
     const avail = (id: string) => id !== 'opencode' && known.has(id);
     expect(resolveExecutor(
-      team({ slug: 'a', name: 'A', lead: 'opencode', members: ['nvidia'] }), known, 'ollama', avail
-    )).toBe('nvidia');
+      team({ slug: 'a', name: 'A', lead: 'opencode', members: ['agy'] }), known, 'ollama', avail
+    )).toBe('agy');
   });
 
   it('lead·member·fallback 전원 리밋이면 등록된 lead 라도 반환(디스패치 failover 에 위임)', () => {
     const avail = (_id: string) => false; // 전원 차단
     expect(resolveExecutor(
-      team({ slug: 'a', name: 'A', lead: 'codex', members: ['nvidia'] }), known, 'ollama', avail
+      team({ slug: 'a', name: 'A', lead: 'codex', members: ['agy'] }), known, 'ollama', avail
     )).toBe('codex');
   });
 
@@ -295,7 +295,7 @@ describe('resolveExecutor', () => {
         slug: 'gov-evolution-learning',
         name: 'Continuous Learning',
         lead: 'opencode',
-        members: ['codex', 'nvidia', 'ollama'],
+        members: ['codex', 'agy', 'ollama'],
       }),
       known,
       'ollama',
@@ -305,16 +305,16 @@ describe('resolveExecutor', () => {
 });
 
 describe('resolveExecutorChain', () => {
-  const known = new Set(['claude-code', 'codex', 'nvidia', 'ollama']);
+  const known = new Set(['claude-code', 'codex', 'agy', 'ollama']);
 
   it('전용 토글 off 시 Continuous Learning의 선언된 member 순서를 복원', () => {
     expect(orderRecoveryMembers(
       {
         slug: 'gov-evolution-learning',
-        members: ['codex', 'nvidia', 'ollama'],
+        members: ['codex', 'agy', 'ollama'],
       },
       'off',
-    )).toEqual(['codex', 'nvidia', 'ollama']);
+    )).toEqual(['codex', 'agy', 'ollama']);
   });
 
   it('Continuous Learning lead는 유지하고 ollama를 첫 failover 후보로 둠', () => {
@@ -323,10 +323,10 @@ describe('resolveExecutorChain', () => {
         slug: 'gov-evolution-learning',
         name: 'Continuous Learning',
         lead: 'claude-code',
-        members: ['codex', 'nvidia', 'ollama'],
+        members: ['codex', 'agy', 'ollama'],
       }),
       known,
-    )).toEqual(['claude-code', 'ollama', 'codex', 'nvidia']);
+    )).toEqual(['claude-code', 'ollama', 'codex', 'agy']);
   });
 
   it('다른 팀의 선언된 member 순서는 바꾸지 않음', () => {
@@ -335,20 +335,20 @@ describe('resolveExecutorChain', () => {
         slug: 'gov-evolution-memory',
         name: 'Memory',
         lead: 'claude-code',
-        members: ['codex', 'nvidia', 'ollama'],
+        members: ['codex', 'agy', 'ollama'],
       }),
       known,
-    )).toEqual(['claude-code', 'codex', 'nvidia', 'ollama']);
+    )).toEqual(['claude-code', 'codex', 'agy', 'ollama']);
   });
 });
 
 describe('selectCompanyStageExecutor (team-only failover)', () => {
-  const known = new Set(['cursor-agent', 'nvidia', 'ollama']);
+  const known = new Set(['cursor-agent', 'agy', 'ollama']);
   const assuranceTeam = team({
     slug: 'gov-assurance-verification',
     name: '독립검증팀',
     lead: 'cursor-agent',
-    members: ['cursor-agent', 'nvidia'],
+    members: ['cursor-agent', 'agy'],
   });
 
   it('헌정 회사 lead 불가용 시 등록 팀원만 선택하고 외부 fallback을 사용하지 않음', () => {
@@ -360,7 +360,7 @@ describe('selectCompanyStageExecutor (team-only failover)', () => {
       known,
       available,
     );
-    expect(selected.executor).toBe('nvidia');
+    expect(selected.executor).toBe('agy');
     expect(assuranceTeam.members).toContain(selected.executor);
   });
 
@@ -405,8 +405,8 @@ describe('resolveDecomposer', () => {
 
 describe('resolveDecomposers (후보 체인)', () => {
   it('manager 우선 + 선호순서, 중복 제거', () => {
-    const known = new Set(['opencode', 'claude-code', 'nvidia', 'codex', 'ollama']);
-    expect(resolveDecomposers('nvidia', known)).toEqual(['nvidia', 'opencode', 'claude-code', 'codex', 'ollama']);
+    const known = new Set(['opencode', 'claude-code', 'agy', 'codex', 'ollama']);
+    expect(resolveDecomposers('agy', known)).toEqual(['agy', 'opencode', 'claude-code', 'codex', 'ollama']);
   });
   it('manager 가 비프로바이더면 선호순서만', () => {
     const known = new Set(['opencode', 'ollama']);
@@ -420,9 +420,9 @@ describe('resolveDecomposers (후보 체인)', () => {
   });
 
   it('리밋(서킷open) 걸린 후보는 제외 — opencode 불가용이면 다음 순위부터', () => {
-    const known = new Set(['opencode', 'claude-code', 'nvidia', 'ollama']);
+    const known = new Set(['opencode', 'claude-code', 'agy', 'ollama']);
     const avail = (id: string) => id !== 'opencode' && known.has(id);
-    expect(resolveDecomposers('opencode', known, avail)).toEqual(['claude-code', 'nvidia', 'ollama']);
+    expect(resolveDecomposers('opencode', known, avail)).toEqual(['claude-code', 'ollama']);
   });
 
   it('전원 리밋이면 등록된 것 중 하나라도 시도용으로 반환', () => {
@@ -433,7 +433,7 @@ describe('resolveDecomposers (후보 체인)', () => {
 });
 
 describe('resolveCompanyDecomposers (헌정 manager 권한)', () => {
-  const known = new Set(['claude-code', 'opencode', 'codex', 'cursor-agent', 'nvidia', 'ollama']);
+  const known = new Set(['claude-code', 'opencode', 'codex', 'cursor-agent', 'agy', 'hermes', 'ollama']);
 
   it('5개 헌정 회사는 각자 지정 manager만 분해자로 사용', () => {
     for (const company of foundationCases) {
@@ -449,8 +449,8 @@ describe('resolveCompanyDecomposers (헌정 manager 권한)', () => {
   });
 
   it('일반 회사는 기존 manager 우선 후보 체인과 failover를 유지', () => {
-    expect(resolveCompanyDecomposers('research', 'nvidia', known))
-      .toEqual(['nvidia', 'opencode', 'claude-code', 'codex', 'ollama']);
+    expect(resolveCompanyDecomposers('research', 'agy', known))
+      .toEqual(['agy', 'opencode', 'claude-code', 'codex', 'ollama']);
   });
 });
 

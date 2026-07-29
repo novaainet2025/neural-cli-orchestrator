@@ -2002,7 +2002,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     if (urlPath === '/api/memory/overview' && req.method === 'GET') {
       const { vectorMemory } = await import('../../core/vector-memory.js');
       const agentIds = ['agy','claude-2','claude-code','codex','cursor-agent',
-                        'hermes','nvidia','openclaw','opencode'];
+                        'hermes','openclaw','opencode'];
       const byAgent = agentIds.map(id => {
         try { return { agentId: id, ...(vectorMemory.stats(id) ?? {}) }; }
         catch { return { agentId: id, total: 0, semantic_count: 0, indexLoaded: false }; }

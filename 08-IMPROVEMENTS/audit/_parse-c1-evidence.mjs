@@ -49,7 +49,7 @@ console.log('TREND', JSON.stringify({
 }));
 
 for (const a of agents) {
-  if (['agy', 'nvidia', 'ollama', 'mlx', 'cursor-agent', 'opencode'].includes(a.id)) {
+  if (['agy', 'retired-provider', 'ollama', 'mlx', 'cursor-agent', 'opencode'].includes(a.id)) {
     console.log(
       'AGENT',
       a.id,

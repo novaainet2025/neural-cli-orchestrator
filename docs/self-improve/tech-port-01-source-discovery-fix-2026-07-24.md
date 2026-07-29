@@ -25,7 +25,7 @@ WHERE team_id='team_tech-port-01-source-discovery'
 
 | 에이전트 | 완료 | 실패 | 완료 중 품질 반려 | T1 task_id |
 |---|---:|---:|---:|---|
-| nvidia | 11 | 0 | 6 | `task_NKawqqiFpXLljVLL`, `task_0234WuBNjiGFESV4`, `task_Jq0FLMM0vk5GUwK2`, `task_9uDxncTJy9zqEXTw`, `task_vy2Ny2KU2cYiX0_G`, `task_3Rv3e25qX07enR1f`, `task_Fb04BOuy_oyxT5i5`, `task_5nxk46BW555YCZOF`, `task_clcf6LKHo7dSTMS_`, `task_02dHVv7xgJHs-FS5`, `task_j7eaD8UBVMf3jPtQ` |
+| retired-provider | 11 | 0 | 6 | `task_NKawqqiFpXLljVLL`, `task_0234WuBNjiGFESV4`, `task_Jq0FLMM0vk5GUwK2`, `task_9uDxncTJy9zqEXTw`, `task_vy2Ny2KU2cYiX0_G`, `task_3Rv3e25qX07enR1f`, `task_Fb04BOuy_oyxT5i5`, `task_5nxk46BW555YCZOF`, `task_clcf6LKHo7dSTMS_`, `task_02dHVv7xgJHs-FS5`, `task_j7eaD8UBVMf3jPtQ` |
 | agy | 1 | 0 | 0 | `task_DTAdlujVk6vhxlZI` |
 | ollama | 0 | 2 | 0 | `task_zrtJeLH7fGDdUfiP`, `task_whudc2vYe2g_1YHf` |
 

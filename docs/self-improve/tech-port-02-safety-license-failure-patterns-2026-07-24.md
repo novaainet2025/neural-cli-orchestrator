@@ -33,7 +33,7 @@ WHERE team_id='team_tech-port-02-safety-license'
 | 에이전트 | completed | failed | 품질반려(FORMAT_MISMATCH) | T1 task_id |
 |---|---:|---:|---:|---|
 | codex | 3 | 0 | 0 | `task_oKEifL4S7YldmoJA`, `task_AFSNmyp9lc2gJHCO`, `task_8L00qmKQxhiqO41O` |
-| nvidia | 3 | 1 | 0 | 완료 `task_Mqmm4ZPMeCUp1r45`, `task_JeWCRJMlJnJXZC1r`, `task_NQnttzUV0hM-QQ0R` / 실패 `task_ROCbX9F5GvclOGiR` |
+| retired-provider | 3 | 1 | 0 | 완료 `task_Mqmm4ZPMeCUp1r45`, `task_JeWCRJMlJnJXZC1r`, `task_NQnttzUV0hM-QQ0R` / 실패 `task_ROCbX9F5GvclOGiR` |
 | agy | 1 | 0 | 0 | `task_MYCufZt2vW1EXuJh` |
 | claude-code | 0 | 4 | 0 | `task_Zkfq4JCCwMGZd3aj`, `task_a2yeB8hkpBXUhPAL`, `task_ujrEzMQMcyKrkzvG`, `task_tsLca16rRfTKk-iJ` |
 
@@ -83,7 +83,7 @@ codex가 정상 완료했다.
 
 ### 가설 3 — 서버 재시작 orphan 1건 (기존 제외 대상, 잔여 영향 없음)
 
-- 근거(T1): `task_ROCbX9F5GvclOGiR` (nvidia), error `orphaned: server restart
+- 근거(T1): `task_ROCbX9F5GvclOGiR` (retired-provider), error `orphaned: server restart
   (poison — requeued 2x)`. 이미 `ORPHAN_EXCLUSION`으로 분모에서 제외되고 있어
   현재 완료율에는 영향 없음(7/11 시점 기준). 재시작 빈도 자체는 별도 인프라 이슈.
 

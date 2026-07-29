@@ -12,7 +12,7 @@
 | A2 `src/core` 오케스트레이션 | opencode→**codex 재배정** | ✅ | 12 (HIGH 10) |
 | A3 `src/server` API/미들웨어 | cursor-agent(409 한도)→**claude-3 자체** | ✅ | 6 (CRIT 2) |
 | A4 `src/core` 큐/상태 | copilot(쿼터)→**codex 재배정** | ✅ | 10 (CRIT 1) |
-| A5 `src/core` 품질/메모리 | nvidia(빈응답)→**codex 재배정** | ✅ | 9 (CRIT 3) |
+| A5 `src/core` 품질/메모리 | retired-provider(빈응답)→**codex 재배정** | ✅ | 9 (CRIT 3) |
 | A6 `src/verification`+`src/audit` | ollama(실패)→**agy 재배정** | ✅ | 11 (CRIT 1) |
 | A7 `src/monitoring`+`bridge`+`client` | agy | ✅ | 8 |
 | A8 `src/storage`+db | openrouter | ✅ | 8 (CRIT 1) |
@@ -21,7 +21,7 @@
 | S2 프로세스/라이프사이클/메시 | **claude-2**(세션) | ✅ | 15 (CRIT 1) |
 | S3 `src/security/*` 샌드박스/가드 | claude-1 큐잉→**codex 재배정** | ✅ (claude-1 독립 2차 대기) | 11 (CRIT 2) |
 
-**프로바이더 가용성 실태(T1, `/api/agents`):** copilot 월쿼터 초과, cursor-agent 사용한도, opencode API키 오류, ollama/mlx 오류, nvidia 빈응답, hermes 실패 — **9개 중 6개 즉시 실패**(opencode 포함). codex·agy·openrouter만 안정. 실패분(A2·A4·A5·A6·A9·S3·A3)은 안정 프로바이더 재배정 + 코디 자체분석으로 **전량 커버(12/12)**. codex가 재배정 워크호스(단일 프로바이더 다수 슬라이스 → 독립성은 그만큼 낮음, §5 미검증항목).
+**프로바이더 가용성 실태(T1, `/api/agents`):** copilot 월쿼터 초과, cursor-agent 사용한도, opencode API키 오류, ollama/mlx 오류, retired-provider 빈응답, hermes 실패 — **9개 중 6개 즉시 실패**(opencode 포함). codex·agy·openrouter만 안정. 실패분(A2·A4·A5·A6·A9·S3·A3)은 안정 프로바이더 재배정 + 코디 자체분석으로 **전량 커버(12/12)**. codex가 재배정 워크호스(단일 프로바이더 다수 슬라이스 → 독립성은 그만큼 낮음, §5 미검증항목).
 
 ---
 
@@ -161,4 +161,4 @@
 - [검증방법] `POST /api/task`×15 디스패치 후 `GET /api/tasks/:id/status` 폴링 결과 수집(`nco_audit_results.json`); claude-2 회신 `messages.log` 원문 확보; claude-3 자체분석 `authJwt.ts`/`ipRateLimit.ts`/`mcp/server.ts` 직접 Read; **CRIT spot-check 8건 소스 직접 Read 재현**(cross-validator·merkleLog·orchestrated-loop×2·sync-engine·sleep-consolidator·vector-memory·redis); 프로바이더 가용성 `/api/agents` lastError T1
 - [등급] T1(코디 직접 Read 재현: authJwt·ipRateLimit·mcp/server + spot-check cross-validator·merkleLog·redis 5파일 + API응답본문 + messages.log) + T4(그 외 프로바이더/세션 LLM 발견 — 파일:라인 근거 포함, 코디 미재현)
 - [Gap] ~99% — **12/12 영역 전량 커버**(S3 security 포함, codex 재배정 완료). CRIT spot-check 8건 중 **7 확정 + 1 정정(redis)** → 프로바이더 T4 신뢰도 실측(오차 1/8). 총 발견 ~101건(CRIT 11 확정+1정정, HIGH 다수)
-- [미검증항목] (1) S3 security의 claude-1 **독립 2차 검토**(단일 codex 결과만 — 회신 시 교차확인 예정) (2) 미재현 CRIT: `sandbox-manager:115`, `path-guard:53`, `event-bus`, `cross-validator:60 외 프로바이더 HIGH 다수` 등 파일:라인만 신뢰분(spot-check 8건 외) (3) 각 버그 런타임 PoC/재현 (4) nvidia/ollama/hermes/copilot/opencode 원 슬라이스의 독립 2차(단일 재배정 결과만). **결론: 코드 수정 착수 전 CRIT 개별 재현 필수 — 특히 보안 core 2건.**
+- [미검증항목] (1) S3 security의 claude-1 **독립 2차 검토**(단일 codex 결과만 — 회신 시 교차확인 예정) (2) 미재현 CRIT: `sandbox-manager:115`, `path-guard:53`, `event-bus`, `cross-validator:60 외 프로바이더 HIGH 다수` 등 파일:라인만 신뢰분(spot-check 8건 외) (3) 각 버그 런타임 PoC/재현 (4) retired-provider/ollama/hermes/copilot/opencode 원 슬라이스의 독립 2차(단일 재배정 결과만). **결론: 코드 수정 착수 전 CRIT 개별 재현 필수 — 특히 보안 core 2건.**

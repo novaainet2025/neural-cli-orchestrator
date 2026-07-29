@@ -15,7 +15,7 @@
 | M | `data/team-runner/team_tech-port-01-source-discovery.last` | 팀러너 커서 | 동일 |
 | M | `data/team-runner/team_tech-port-02-safety-license.last` | 팀러너 커서 | 동일 |
 | M | `db/hnsw-indices/claude-code.hnsw` | 벡터 인덱스(바이너리) | 재생성 가능성 있으나 **재빌드 비용 큼 → 백업 권장** |
-| M | `db/hnsw-indices/nvidia.hnsw` | 벡터 인덱스 | 동일 |
+| M | `db/hnsw-indices/retired-provider.hnsw` | 벡터 인덱스 | 동일 |
 | M | `db/hnsw-indices/ollama.hnsw` | 벡터 인덱스 | 동일 |
 | ?? | `data/team-runner/team_computer-use-queue-2026-07-25.md` | 신규 리포트 | **사용자/팀 산출물 가능 → 보존 필수** |
 | ?? | `data/team-runner/team_tech-port-01-source-discovery-2026-07-25.md` | 신규 리포트 | 보존 필수 |

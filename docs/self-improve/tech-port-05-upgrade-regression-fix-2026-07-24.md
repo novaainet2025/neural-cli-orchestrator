@@ -27,7 +27,7 @@ score `64.7`은 tasks 행에 계산 필드나 산식이 없어 독립 재계산�
 | 에이전트 | 완료 | 실패 | 완료 중 품질 반려 | T1 task_id |
 |---|---:|---:|---:|---|
 | codex | 3 | 0 | 0 | `task_yd1URC03SWl0ZX1I`, `task_eDZX1ktjEsDwKSd7`, `task_8pdjdAAZEPbt6JLA` |
-| nvidia | 3 | 0 | 2 | `task_dqKn0QBUAhoS416d`, `task_RSYX40DOFx91XC4G`, `task_8nOuGiIxyz6yoKxq` |
+| retired-provider | 3 | 0 | 2 | `task_dqKn0QBUAhoS416d`, `task_RSYX40DOFx91XC4G`, `task_8nOuGiIxyz6yoKxq` |
 | opencode | 1 | 0 | 0 | `task_FjDSf4_zLeJbWQcE` |
 | claude-code | 0 | 3 | 0 | `task_YFLrIEQLd1i6TO7X`, `task_wGQUej5jn9Cq4hB8`, `task_lrmDmI-hFYZIi8Rp` |
 | ollama | 0 | 1 | 0 | `task_dv3_5lUEO181NKlE` |
@@ -38,7 +38,7 @@ score `64.7`은 tasks 행에 계산 필드나 산식이 없어 독립 재계산�
    중복 생성된 뒤 codex 큐에서 30분 대기하고 claude-code로 재배정됐으나
    `Circuit breaker open for agent claude-code (generic)`로 실패했다.
 2. 나머지 실패 1건은 `orphaned: server restart (poison — requeued 2x)`다.
-3. 완료된 nvidia 작업 3건 중 2건은 `qualityRejected=true`,
+3. 완료된 retired-provider 작업 3건 중 2건은 `qualityRejected=true`,
    `qualityHeuristics=["FORMAT_MISMATCH"]`다.
    - `task_RSYX40DOFx91XC4G`: 현재 team 05 작업 대신 이전 단계의
      “The createFile function is used …” 도구 설명을 응답했다.

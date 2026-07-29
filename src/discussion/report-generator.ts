@@ -74,7 +74,7 @@ export const testReportGeneration = async (): Promise<string> => {
     'test-discussion-123',
     '테스트 보고서: 자동 생성 테스트',
     '이 보고서는 테스트용으로 생성되었습니다.',
-    ['claude-code', 'opencode', 'gemini-api'],
+    ['claude-code', 'opencode', 'codex'],
     '모든 팀원이 동의한 최종 결정입니다.',
     '2026-07-14T10:00:00Z'
   );

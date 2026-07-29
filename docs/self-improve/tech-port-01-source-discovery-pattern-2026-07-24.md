@@ -35,9 +35,9 @@ mem0_key: "tech-port-01 실패패턴"
 - 상태 실패 2건은 모두 `ollama`가 수행한 성과보고·목표설정 입력 task다.
   하나는 필수 필드 미확인 응답을 내고 `unknown: failure pattern in output`으로
   종료됐고, 하나는 서버 재시작 orphan 재큐잉 2회를 소진했다.
-- 요청 provider는 `nvidia`가 12/14(85.7%)로 편중됐다. 최종 executor도
-  `nvidia` 11건, `agy` 1건, `ollama` 2건이다. 품질 반려 6건은 모두
-  최종 `nvidia` task다.
+- 요청 provider는 `retired-provider`가 12/14(85.7%)로 편중됐다. 최종 executor도
+  `retired-provider` 11건, `agy` 1건, `ollama` 2건이다. 품질 반려 6건은 모두
+  최종 `retired-provider` task다.
 - 14건 모두 `evidence_json IS NULL`이다. 따라서 raw `completed`만으로
   URL·commit·라이선스·벤치마크 근거가 검증됐다고 판정하지 않는다.
 - 품질 반려 6건의 retry child는 모두 `team_id=NULL`이다. 교정 task
@@ -52,20 +52,20 @@ mem0_key: "tech-port-01 실패패턴"
 
 | task_id | 최종 에이전트 | DB 상태 | 관측 분류 |
 |---|---|---|---|
-| `task_NKawqqiFpXLljVLL` | `nvidia` | completed | 후보 dossier 대신 무관한 `createFile` 결과 설명; verifier 없음 |
-| `task_0234WuBNjiGFESV4` | `nvidia` | completed | 후보 dossier 대신 무관한 `createFile` 오류 설명; verifier 없음 |
-| `task_Jq0FLMM0vk5GUwK2` | `nvidia` | completed | 상시 임무 보고; `evidence_json=NULL`, 출처 검증은 `[미검증]` |
-| `task_DTAdlujVk6vhxlZI` | `agy` | completed | `nvidia` prompt-template 실패 뒤 `agy`가 완료; prefix 있음 |
-| `task_9uDxncTJy9zqEXTw` | `nvidia` | completed | 전체 pipeline 완료를 주장하나 `evidence_json=NULL` |
-| `task_vy2Ny2KU2cYiX0_G` | `nvidia` | completed | `FORMAT_MISMATCH`; 무관한 `createFile` 설명 92자 |
-| `task_3Rv3e25qX07enR1f` | `nvidia` | completed | `FORMAT_MISMATCH`; `searchFiles`/`readFile` 함수 설명 |
+| `task_NKawqqiFpXLljVLL` | `retired-provider` | completed | 후보 dossier 대신 무관한 `createFile` 결과 설명; verifier 없음 |
+| `task_0234WuBNjiGFESV4` | `retired-provider` | completed | 후보 dossier 대신 무관한 `createFile` 오류 설명; verifier 없음 |
+| `task_Jq0FLMM0vk5GUwK2` | `retired-provider` | completed | 상시 임무 보고; `evidence_json=NULL`, 출처 검증은 `[미검증]` |
+| `task_DTAdlujVk6vhxlZI` | `agy` | completed | `retired-provider` prompt-template 실패 뒤 `agy`가 완료; prefix 있음 |
+| `task_9uDxncTJy9zqEXTw` | `retired-provider` | completed | 전체 pipeline 완료를 주장하나 `evidence_json=NULL` |
+| `task_vy2Ny2KU2cYiX0_G` | `retired-provider` | completed | `FORMAT_MISMATCH`; 무관한 `createFile` 설명 92자 |
+| `task_3Rv3e25qX07enR1f` | `retired-provider` | completed | `FORMAT_MISMATCH`; `searchFiles`/`readFile` 함수 설명 |
 | `task_zrtJeLH7fGDdUfiP` | `ollama` | failed | 필수 목표/성과 필드 미확인, `unknown: failure pattern in output` |
 | `task_whudc2vYe2g_1YHf` | `ollama` | failed | 서버 재시작 orphan, 재큐잉 2회 소진, 최종 응답 없음 |
-| `task_Fb04BOuy_oyxT5i5` | `nvidia` | completed | `FORMAT_MISMATCH`; `<thinking>`으로 시작, `<done: ...>`을 본문에 삽입 |
-| `task_5nxk46BW555YCZOF` | `nvidia` | completed | 상시 임무 보고; verifier 없음 |
-| `task_clcf6LKHo7dSTMS_` | `nvidia` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 1/3 |
-| `task_02dHVv7xgJHs-FS5` | `nvidia` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 2/3 |
-| `task_j7eaD8UBVMf3jPtQ` | `nvidia` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 3/3 |
+| `task_Fb04BOuy_oyxT5i5` | `retired-provider` | completed | `FORMAT_MISMATCH`; `<thinking>`으로 시작, `<done: ...>`을 본문에 삽입 |
+| `task_5nxk46BW555YCZOF` | `retired-provider` | completed | 상시 임무 보고; verifier 없음 |
+| `task_clcf6LKHo7dSTMS_` | `retired-provider` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 1/3 |
+| `task_02dHVv7xgJHs-FS5` | `retired-provider` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 2/3 |
+| `task_j7eaD8UBVMf3jPtQ` | `retired-provider` | completed | `FORMAT_MISMATCH`; 동일 업무보고 중복 3/3 |
 
 ## 에이전트별 성공·실패 패턴
 
@@ -75,13 +75,13 @@ protocol 검사를 받지 않았다.
 
 | 최종 에이전트 | raw 완료 | 상태 실패 | 완료 중 `FORMAT_MISMATCH` | T1 task_id |
 |---|---:|---:|---:|---|
-| `nvidia` | 11 | 0 | 6 | 위 표의 `nvidia` 11건 |
+| `retired-provider` | 11 | 0 | 6 | 위 표의 `retired-provider` 11건 |
 | `agy` | 1 | 0 | 0 | `task_DTAdlujVk6vhxlZI` |
 | `ollama` | 0 | 2 | 0 | `task_zrtJeLH7fGDdUfiP`, `task_whudc2vYe2g_1YHf` |
 | **합계** | **12** | **2** | **6** | 14건 |
 
-원 요청 provider 기준으로는 `nvidia` 12건이 모두 raw 완료됐고, `ollama`
-2건이 모두 실패했다. `task_DTAdlujVk6vhxlZI`는 요청 `nvidia`에서
+원 요청 provider 기준으로는 `retired-provider` 12건이 모두 raw 완료됐고, `ollama`
+2건이 모두 실패했다. `task_DTAdlujVk6vhxlZI`는 요청 `retired-provider`에서
 `agy`로 failover된 건이므로 최종 executor 표와 요청 provider 표를 구분했다.
 
 ## 실패·품질 유형별 빈도표
@@ -118,10 +118,10 @@ protocol 검사를 받지 않았다.
 
 ### 패턴 2 — provider 편중과 품질 손실 집중
 
-- 요청 provider의 12/14(85.7%)가 `nvidia`이고, 최종 executor도
-  `nvidia` 11/14(78.6%)다.
+- 요청 provider의 12/14(85.7%)가 `retired-provider`이고, 최종 executor도
+  `retired-provider` 11/14(78.6%)다.
 - `FORMAT_MISMATCH` 6건과 도구 설명·무관 산출물 4건은 모두 최종
-  `nvidia` task다.
+  `retired-provider` task다.
 - 반면 raw 상태 실패 2건은 모두 `ollama`에 집중됐다.
 - T1: 위 에이전트 표의 14개 task와 `metadata_json.requestedProvider`.
 - 해석: 특정 provider가 원인이라고 단정할 표본은 부족하지만, 라우팅 편중 때문에
@@ -149,7 +149,7 @@ protocol 검사를 받지 않았다.
 | 우선순위 | 가설 | 근거 | 판정 |
 |---:|---|---|---|
 | 1 | verifier가 요구하는 protocol prefix를 prompt가 알려주지 않았다 | 반려 6/6 prompt의 `done:` 언급 0, 응답 prefix 0 | T1 확인 |
-| 2 | lead/provider 편중이 서로 다른 실패 모드를 팀 전체 지표에 집중시켰다 | 요청 `nvidia` 12/14, 모든 QR 6건은 nvidia; 상태 실패 2건은 ollama | 상관 T1, 인과 `[미검증]` |
+| 2 | lead/provider 편중이 서로 다른 실패 모드를 팀 전체 지표에 집중시켰다 | 요청 `retired-provider` 12/14, 모든 QR 6건은 retired-provider; 상태 실패 2건은 ollama | 상관 T1, 인과 `[미검증]` |
 | 3 | 중복 work report와 retry `team_id` 유실이 실패는 증폭하고 교정 피드백은 누락했다 | 동일 report 3건, quality child 6/6 `team_id=NULL` | T1 확인 |
 
 ## 구현한 범위 제한·가역적 수정
@@ -188,7 +188,7 @@ protocol 검사를 받지 않았다.
 - key: `tech-port-01 실패패턴`
 - summary: `48h/14 raw completed 12·failed 2. completed 중
   FORMAT_MISMATCH 6건은 prompt protocol 계약과 응답 prefix가 모두 없었다.
-  요청 nvidia 12/14 편중, ollama 상태 실패 2건. 동일 workReportId 업무보고
+  요청 retired-provider 12/14 편중, ollama 상태 실패 2건. 동일 workReportId 업무보고
   3건 중복, quality retry 6건은 team_id 유실.`
 - Mem0 row id: `mem0-1784861035346-j3tpjx`
 

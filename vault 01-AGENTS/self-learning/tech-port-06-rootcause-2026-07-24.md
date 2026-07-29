@@ -34,7 +34,7 @@
 | 에이전트 | 표본 | 완료 | 실패 | 임대 만료 | 명시적 형식 반려 |
 |---|---:|---:|---:|---:|---:|
 | `opencode` | 5 | 1 | 1 | 3 | 0 |
-| `nvidia` | 3 | 3 | 0 | 0 | 2 |
+| `retired-provider` | 3 | 3 | 0 | 0 | 2 |
 | `hermes` | 2 | 1 | 1 | 0 | 0 |
 | `claude-code` | 1 | 1 | 0 | 0 | 1 |
 | `cursor-agent` | 1 | 1 | 0 | 0 | 0 |
@@ -43,7 +43,7 @@
 해석:
 
 - `opencode`는 원시 완료 기준 1/5로 20.0%이며, 실패성 5건 중 4건을 차지한다.
-- `nvidia`의 세 작업은 모두 완료 상태지만, 그중 두 작업에는 `FORMAT_MISMATCH`가 명시돼 있다.
+- `retired-provider`의 세 작업은 모두 완료 상태지만, 그중 두 작업에는 `FORMAT_MISMATCH`가 명시돼 있다.
 - `claude-code`의 한 작업도 완료 상태와 `FORMAT_MISMATCH`가 동시에 기록돼 있다.
 - 에이전트별 표본이 작으므로 이 결과를 장기 성능으로 일반화하는 것은 **[미검증]**이다.
 
@@ -79,9 +79,9 @@
 | `task_zpPvDFRqCqWu4NUE` | `claude-code` | `completed` | 1,474 | `FORMAT_MISMATCH`, 구조화 근거 부재 |
 | `task_-JdHSjEtuok4zBx6` | `cursor-agent` | `completed` | 437 | 자유 형식 T1 주장, 구조화 근거 부재 |
 | `task_eTYAEfE-U8SP4X8F` | `hermes` | `failed` | 353 | 알 수 없는 출력 실패 패턴, 구조화 근거 부재 |
-| `task_Pe00dCrVyKbbWFcM` | `nvidia` | `completed` | 311 | `FORMAT_MISMATCH`, 구조화 근거 부재 |
-| `task_9NxxNDRueeHKplTB` | `nvidia` | `completed` | 134 | `FORMAT_MISMATCH`, 구조화 근거 부재 |
-| `task_53r-X8exdmIhmHco` | `nvidia` | `completed` | 266 | 구조화 근거 부재, 자동 검증 없음 |
+| `task_Pe00dCrVyKbbWFcM` | `retired-provider` | `completed` | 311 | `FORMAT_MISMATCH`, 구조화 근거 부재 |
+| `task_9NxxNDRueeHKplTB` | `retired-provider` | `completed` | 134 | `FORMAT_MISMATCH`, 구조화 근거 부재 |
+| `task_53r-X8exdmIhmHco` | `retired-provider` | `completed` | 266 | 구조화 근거 부재, 자동 검증 없음 |
 | `task_lue2DAqFKkmNm23z` | `hermes` | `completed` | 1,965 | 자유 형식 T1 주장, 구조화 근거 부재, 자동 검증 없음 |
 | `task_1SAeDCVfMO8FDlBz` | `opencode` | `failed` | 0 | 서버 재시작 고아 작업, 산출물 부재, 구조화 근거 부재, 자동 검증 없음 |
 

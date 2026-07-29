@@ -1,4 +1,4 @@
-# Constitution and Policy — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_VoYPgkb-IANytrAj)
+# Constitution and Policy — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_VoYPgkb-IANytrAj)
 
 ### 오늘 관찰·분석
 
@@ -18,7 +18,7 @@
 
 * claude-code: 상태는 idle이며, 태스크는 2146이며, 성공률은 18%이며, 24시간 실패는 84%입니다.
 * cursor-agent: 상태는 idle이며, 태스크는 3449이며, 성공률은 96%이며, 24시간 실패는 0%입니다.
-* nvidia: 상태는 idle이며, 태스크는 510이며, 성공률은 77%이며, 24시간 실패는 29%입니다.
+* retired-provider: 상태는 idle이며, 태스크는 510이며, 성공률은 77%이며, 24시간 실패는 29%입니다.
 
 #### 5. 다음 수집 액션
 

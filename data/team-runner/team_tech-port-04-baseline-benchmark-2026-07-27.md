@@ -1,4 +1,4 @@
-# 04 Baseline Benchmark — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_n8XylfK4T0AJXQYe)
+# 04 Baseline Benchmark — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_n8XylfK4T0AJXQYe)
 
 ### 오늘 관찰·분석
 
@@ -16,7 +16,7 @@
 
 * [api/agents] codex: 상태=idle, 태스크=2404, 성공률=93%, 24시간실패=8
 * [api/agents] hermes: 상태=idle, 태스크=2143, 성공률=56%, 24시간실패=36
-* [api/agents] nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+* [api/agents] retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
 
 #### 4. 다음 작업 제안
 

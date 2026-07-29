@@ -17,6 +17,7 @@ import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { smartRouter } from './smart-router.js';
+import { resolvePreference, type ProviderTaskType } from './provider-registry.js';
 import { classifyTier, type Tier } from './tier-policy.js';
 import type { TaskType } from './quality-gate.js';
 import { acquireComputerUseLease } from './computer-use-company.js';
@@ -222,7 +223,7 @@ export const NCO_FOUNDATION_COMPANY_POLICIES: Readonly<Record<string, NcoFoundat
   'nco-evolution': { manager: 'opencode', slugs: NCO_EVOLUTION_STAGE_SLUGS, name: '학습·진화' },
   'nco-engineering': { manager: 'codex', slugs: NCO_ENGINEERING_STAGE_SLUGS, name: '전문기술' },
   'nco-assurance': { manager: 'cursor-agent', slugs: NCO_ASSURANCE_STAGE_SLUGS, name: '독립검증·안전' },
-  'nco-government': { manager: 'nvidia', slugs: NCO_GOVERNMENT_STAGE_SLUGS, name: '헌정·행정' },
+  'nco-government': { manager: 'hermes', slugs: NCO_GOVERNMENT_STAGE_SLUGS, name: '헌정·행정' },
 };
 
 const NCO_FOUNDATION_STAGE_RANKS = new Map<string, number>(
@@ -327,11 +328,11 @@ export function resolveExecutorChain(
 
 // TaskType별 역량 우선순위 — 현재 가용 프로바이더만 역량 내림차순으로 나열.
 const CAPABILITY_CANDIDATES: Record<TaskType, string[]> = {
-  design:   ['opencode', 'claude-code', 'codex', 'agy', 'nvidia'],
+  design:   ['opencode', 'claude-code', 'codex', 'agy'],
   code:     ['codex', 'opencode', 'hermes', 'cursor-agent', 'ollama'],
-  review:   ['cursor-agent', 'codex', 'opencode', 'nvidia', 'ollama'],
-  verify:   ['ollama', 'hermes', 'nvidia', 'codex', 'cursor-agent'],
-  research: ['nvidia', 'hermes', 'opencode', 'ollama', 'codex'],
+  review:   ['cursor-agent', 'codex', 'opencode', 'ollama'],
+  verify:   ['ollama', 'hermes', 'codex', 'cursor-agent'],
+  research: ['hermes', 'opencode', 'ollama', 'codex'],
   ui:       ['agy', 'opencode', 'codex', 'cursor-agent'],
   media:    ['agy', 'opencode', 'codex'],
   general:  ['codex', 'opencode', 'claude-code', 'hermes', 'ollama'],
@@ -346,8 +347,12 @@ export function selectCapabilityExecutor(
   const taskType = smartRouter.inferTaskType(subtask);
   const complexity = smartRouter.analyzeComplexity(subtask);
   const tier = classifyTier(subtask, complexity);
-  const registered = (CAPABILITY_CANDIDATES[taskType] ?? CAPABILITY_CANDIDATES.general)
-    .filter((id) => knownAgents.has(id));
+  // 큐레이션 순서를 레지스트리와 화해시킨다: 퇴출 프로바이더는 사라지고,
+  // config 에 새로 추가된 프로바이더는 선언 capability 순으로 뒤에 편입된다.
+  const registered = resolvePreference(
+    CAPABILITY_CANDIDATES[taskType] ?? CAPABILITY_CANDIDATES.general,
+    taskType as ProviderTaskType,
+  ).filter((id) => knownAgents.has(id));
   const liveCandidates = registered.filter((id) => isAvailable(id));
   const weights = adaptiveScorer.getWeightsForTask(liveCandidates, taskType);
   // Capability order remains the role contract; adaptive telemetry may
@@ -408,7 +413,7 @@ export function selectCompanyStageExecutor(
 // 분해 담당 LLM 후보(우선순위 순). 앞에서부터 시도해 처음으로 파싱가능 JSON 을
 // 내는 프로바이더를 채택한다(프로바이더 서킷트립·CLI실패에 견디도록 체인화).
 // 순서: org.manager 토큰(등록 시) → 설계/구조에 강한 provider → 로컬 폴백.
-const DECOMPOSER_PREFS = ['opencode', 'claude-code', 'nvidia', 'codex', 'ollama'];
+const DECOMPOSER_PREFS = ['opencode', 'claude-code', 'codex', 'ollama'];
 
 export function resolveDecomposers(
   orgManager: string | null,
@@ -420,7 +425,7 @@ export function resolveDecomposers(
     const token = orgManager.trim().split(/[\s(]/)[0];
     if (token && isAvailable(token)) out.push(token);
   }
-  for (const pref of DECOMPOSER_PREFS) {
+  for (const pref of resolvePreference(DECOMPOSER_PREFS)) {
     if (isAvailable(pref) && !out.includes(pref)) out.push(pref);
   }
   if (out.length === 0) {
@@ -1272,7 +1277,7 @@ function ensureCompanyWorkflowRun(run: CompanyRun, teams: TeamRow[]): string {
 function selectWorkflowProviders(decomposers: string[]): string[] {
   const known = new Set(agentManager.listEnabledIds());
   const available = liveAvailability(known);
-  return [...new Set([...decomposers, ...DECOMPOSER_PREFS, ...known])]
+  return [...new Set([...decomposers, ...resolvePreference(DECOMPOSER_PREFS), ...known])]
     .filter(provider => known.has(provider) && available(provider))
     .slice(0, 3);
 }

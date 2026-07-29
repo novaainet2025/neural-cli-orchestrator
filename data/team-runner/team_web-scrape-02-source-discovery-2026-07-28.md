@@ -1,4 +1,4 @@
-# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_2yxNGQtA7YuK5aB8)
+# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_2yxNGQtA7YuK5aB8)
 
 ### 오늘 관찰·분석
 
@@ -9,7 +9,7 @@
 #### 2. 팀 멤버의 현재 상태
 * opencode: 상태=working, 태스크=1420, 성공률=28%, 24시간실패=8
 * agy: 상태=working, 태스크=581, 성공률=89%, 24시간실패=0
-* nvidia: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
+* retired-provider: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
 
 #### 3. 현재 작업과 다음 작업 제안
 * 현재 작업은 [팀 상시 임무 — 02 Source Discovery and Mapping] (텍스트만 응답, 도구/커맨드 사용 금지)입니다.

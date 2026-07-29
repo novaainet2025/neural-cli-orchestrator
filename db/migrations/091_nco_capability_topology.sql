@@ -68,7 +68,7 @@ VALUES
 ('org_nco-evolution', 'NCO Learning and Evolution Company', 'nco-evolution', 'nova-ax', 'opencode', 'org_nova-ax', 1, 1),
 ('org_nco-engineering', 'NCO Expert Engineering Company', 'nco-engineering', 'nova-ax', 'codex', 'org_nova-ax', 1, 1),
 ('org_nco-assurance', 'NCO Independent Assurance and Safety Company', 'nco-assurance', 'nova-ax', 'cursor-agent', 'org_nova-ax', 1, 1),
-('org_nco-government', 'NCO AI Governance and Public Administration Company', 'nco-government', 'nova-ax', 'nvidia', 'org_nova-ax', 1, 1)
+('org_nco-government', 'NCO AI Governance and Public Administration Company', 'nco-government', 'nova-ax', 'hermes', 'org_nova-ax', 1, 1)
 ON CONFLICT(id) DO UPDATE SET
   name=excluded.name,
   slug=excluded.slug,

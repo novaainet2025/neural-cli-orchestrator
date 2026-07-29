@@ -15,7 +15,7 @@
 - **Name**: Evolution Lab
 - **Slug**: `self-improvement`
 - **Lead**: `gemini` (심층 연구 및 UI/패턴 설계)
-- **Members**: `gemini`, `nvidia` (추론/분석)
+- **Members**: `gemini`, `retired-provider` (추론/분석)
 - **Charter**: 실패 패턴 분석, 시스템 프롬프트 최적화, 지식 베이스(Second Brain) 보강 및 자기 개선 알고리즘 적용
 - **Always-on**: `false` (주기적 배치 실행 또는 오류 발생 시 트리거)
 - **상호 견제 구조**: 제안된 개선안(Improvement)은 반드시 `independent-audit`의 시뮬레이션 테스트를 거쳐 안전성이 입증된 후 `autonomy-controller`의 승인 하에 적용됨.
@@ -41,8 +41,8 @@
 ## 5. 거버넌스 위원회 (AI Government Establishment)
 - **Name**: Governance Council
 - **Slug**: `governance-officer`
-- **Lead**: `nvidia` (논리 및 정책 분석)
-- **Members**: `nvidia`, `hermes` (도구 실행 및 프로토콜 관리), `claude-code` (자문)
+- **Lead**: `retired-provider` (논리 및 정책 분석)
+- **Members**: `retired-provider`, `hermes` (도구 실행 및 프로토콜 관리), `claude-code` (자문)
 - **Charter**: NCO 생태계 내 법률, 거버넌스, 생태계 정책 수립(ECOSYSTEM, PRIVACY 등) 및 AI 시민권 관리
 - **Always-on**: `true` (상시 정책 감시)
 - **상호 견제 구조**: 신규 정책 발의 시 `ax-collab`과 `autonomy-controller`의 다수결 합의(Consensus) 과정을 거쳐야 하며, 시스템 규칙 변경은 `independent-audit`의 최종 승인 필요.

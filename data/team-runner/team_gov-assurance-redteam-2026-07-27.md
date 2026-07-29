@@ -1,4 +1,4 @@
-# Red Team and Adversarial Review — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_0fuWGb23Tp-heJ0S)
+# Red Team and Adversarial Review — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_0fuWGb23Tp-heJ0S)
 
 ### 오늘 관찰·분석
 
@@ -19,7 +19,7 @@
 
 - cursor-agent: 상태 = working, 태스크 = 3482, 성공률 = 96%, 24시간실패 = 2
 - hermes: 상태 = idle, 태스크 = 2143, 성공률 = 56%, 24시간실패 = 36
-- nvidia: 상태 = idle, 태스크 = 520, 성공률 = 77%, 24시간실패 = 28
+- retired-provider: 상태 = idle, 태스크 = 520, 성공률 = 77%, 24시간실패 = 28
 
 #### 3. 현재 작업 보고서
 

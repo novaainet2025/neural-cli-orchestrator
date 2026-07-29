@@ -1,10 +1,10 @@
 # 중복에러방지팀 — 일일 산출물 (2026-07-27, ai=ollama, taskId=task_nYFMgk4lwKE6_Pr3)
 
-(1) 오늘 관찰·분석: [tasks] 최근 7일 실패율 34.0% (32/94)과 [/api/teams] 팀 누계 실패율 37.7% (60/159) 간 3.7%p 차이를 확인. ollama(76% 성공률) 24시간 실패율 1.65% (16/970), nvidia(77% 성공률) 24시간 실패율 5.4% (28/520)로 nvidia가 실패율이 높음. cursor-agent(96%)는 24시간 실패 2건으로 안정적 운영 중.
+(1) 오늘 관찰·분석: [tasks] 최근 7일 실패율 34.0% (32/94)과 [/api/teams] 팀 누계 실패율 37.7% (60/159) 간 3.7%p 차이를 확인. ollama(76% 성공률) 24시간 실패율 1.65% (16/970), retired-provider(77% 성공률) 24시간 실패율 5.4% (28/520)로 retired-provider가 실패율이 높음. cursor-agent(96%)는 24시간 실패 2건으로 안정적 운영 중.
 
-(2) 현재 상태: [api/agents] 데이터 기준 ollama와 nvidia는 성공률 70%대에서 운영 중이나, nvidia의 24시간 실패 비율(5.4%)이 ollama(1.65%)보다 높음. [work_reports]에서는 지각 1건, 누락 1건 기록. 전체 팀 완료율은 61.0%로, 2026-07-24 기록(61.0%)과 동일.
+(2) 현재 상태: [api/agents] 데이터 기준 ollama와 retired-provider는 성공률 70%대에서 운영 중이나, retired-provider의 24시간 실패 비율(5.4%)이 ollama(1.65%)보다 높음. [work_reports]에서는 지각 1건, 누락 1건 기록. 전체 팀 완료율은 61.0%로, 2026-07-24 기록(61.0%)과 동일.
 
 (3) 다음 작업 제안: 
-- nvidia 실패율(5.4% 24시간)과 ollama(1.65%)의 차이가 Circuit Breaker 규칙 적용 기준에 미치는 영향 검증 
+- retired-provider 실패율(5.4% 24시간)과 ollama(1.65%)의 차이가 Circuit Breaker 규칙 적용 기준에 미치는 영향 검증 
 - [/api/teams] 와 [tasks] 데이터의 시간 범위 일관성 확인 (7일 누계 vs 실제 데이터 정합성) 
 - False Report 판단을 위한 오류 패턴(실패 시점, 실패 유형) 추가 수집 필요 (미확인)

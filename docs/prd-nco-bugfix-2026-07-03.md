@@ -10,7 +10,7 @@
 - **동작 방식**: NCO는 `dist/`(컴파일본)에서 실행 → `src/` 편집은 **빌드+재시작 전까지 무해(inert)**. 위험 단일 지점 = **빌드+재시작**(라우팅 중인 오케스트레이터 중단). [[feedback_restart_inflight_check]] 준수: 재시작 전 in-flight 수 확인 + 공지.
 - **더티 트리**: 현재 `src/` tracked 12 + untracked 101 변경(내 세션 이전분). → 내 수정과 격리 위해 **작업 브랜치 필요**(§7).
 - **tsc 베이스라인**: 착수 시점 `npx tsc --noEmit` 결과를 기준선으로 고정(`scratchpad/tsc_baseline.txt`). 베이스라인이 이미 더럽다면 "내 수정이 tsc를 깼는가"는 **delta 기준**으로만 판정.
-- **프로바이더 가용성(변동적)**: 정상=codex·opencode·openrouter·agy·nvidia·hermes(가변). 불안정=cursor-agent·copilot·mlx. **병렬 폭은 실측 가용 수에 종속** — 매 티어 착수 전 `/api/agents` 재확인.
+- **프로바이더 가용성(변동적)**: 정상=codex·opencode·openrouter·agy·retired-provider·hermes(가변). 불안정=cursor-agent·copilot·mlx. **병렬 폭은 실측 가용 수에 종속** — 매 티어 착수 전 `/api/agents` 재확인.
 - **신뢰도**: 발견 ~101건 중 ~93건 T4(에이전트 보고). spot-check 실측 오차율 **1/8**. → **수정 전 항목별 confirm-real(소스 직접 Read) 필수.**
 
 ## 3. 개선 테마 (근본원인 — "개선사항"의 본체)

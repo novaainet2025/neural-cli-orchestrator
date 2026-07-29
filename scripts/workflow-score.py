@@ -193,9 +193,9 @@ def score_workflow():
 def score_crossval():
     s = 0
     agents = set(t.get("assigned_to") for t in recent_tasks if t.get("assigned_to"))
-    review_agents = agents & {"cursor-agent", "nvidia", "gemini"}
+    review_agents = agents & {"cursor-agent", "gemini"}
     reviews = [t for t in recent_tasks
-               if t.get("assigned_to") in ("cursor-agent", "nvidia", "gemini")
+               if t.get("assigned_to") in ("cursor-agent", "gemini")
                and any(kw in (t.get("prompt") or "") for kw in ("검증", "리뷰", "review", "verify"))]
     if len(agents) >= 3:
         s += 5

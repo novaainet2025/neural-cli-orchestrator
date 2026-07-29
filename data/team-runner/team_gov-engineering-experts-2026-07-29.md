@@ -1,4 +1,4 @@
-# Expert Council and Research — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_4I3SjpMNVFzqhrlI)
+# Expert Council and Research — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_4I3SjpMNVFzqhrlI)
 
 ### 오늘 관찰·분석
 
@@ -18,7 +18,7 @@
 
 * opencode: 상태-idle, 태스크-1537, 성공률-29%, 24시간실패-38
 * hermes: 상태-idle, 태스크-2196, 성공률-57%, 24시간실패-4
-* nvidia: 상태-idle, 태스크-614, 성공률-79%, 24시간실패-6
+* retired-provider: 상태-idle, 태스크-614, 성공률-79%, 24시간실패-6
 
 #### 3. 다음에 필요한 작업 제안
 
@@ -30,7 +30,7 @@
 
 * 태스크 현황: 9 (전체), 8 (완료), 1 (실패), 0 (진행)
 * 태스크의 성공률: 88.9%
-* 팀의 태스크 현황: opencode (idle, 1537, 29%), hermes (idle, 2196, 57%), nvidia (idle, 614, 79%)
+* 팀의 태스크 현황: opencode (idle, 1537, 29%), hermes (idle, 2196, 57%), retired-provider (idle, 614, 79%)
 
 ### 다음에 필요한 작업
 

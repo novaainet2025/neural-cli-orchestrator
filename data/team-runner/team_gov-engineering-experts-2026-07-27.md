@@ -1,4 +1,4 @@
-# Expert Council and Research — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_otGELlYWVMXsGSUH)
+# Expert Council and Research — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_otGELlYWVMXsGSUH)
 
 ### 오늘 관찰·분석
 
@@ -26,13 +26,13 @@
 * 팀 태스크 수행 현황은 다음과 같습니다.
  + opencode: 상태=working, 태스크=1369, 성공률=26%, 24시간실패=14
  + hermes: 상태=idle, 태스크=2143, 성공률=56%, 24시간실패=36
- + nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+ + retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
 
 ### 현재 상태
 
 * 현재 팀의 태스크 누계는 2개이며, 모두 완료 상태입니다.
 * 팀 태스크 제출 현황은 1개 제출된 태스크가 있습니다.
-* 팀 태스크 수행 현황은 opencode, hermes, nvidia의 상태와 태스크 정보가 제공됩니다.
+* 팀 태스크 수행 현황은 opencode, hermes, retired-provider의 상태와 태스크 정보가 제공됩니다.
 
 ### 다음에 필요한 작업 제안
 

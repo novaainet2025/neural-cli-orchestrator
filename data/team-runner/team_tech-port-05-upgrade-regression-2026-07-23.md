@@ -10,13 +10,13 @@ done: [Evidence Tier 1] 대화에 주입된 `/api/agents` 실데이터만 직접
 |---|---:|---:|---:|---:|
 | codex | idle | 2,284 | 95% | 7 |
 | cursor-agent | idle | 10,872 | 98% | 1 |
-| nvidia | working | 308 | 72% | 0 |
+| retired-provider | working | 308 | 72% | 0 |
 
 관찰:
 
 - cursor-agent가 가장 높은 성공률 98%와 가장 낮은 24시간 실패 1건을 기록했다.
 - codex 성공률은 95%, 24시간 실패는 7건이다.
-- nvidia 성공률은 72%로 세 에이전트 중 가장 낮지만, 24시간 실패는 0건이다.
+- retired-provider 성공률은 72%로 세 에이전트 중 가장 낮지만, 24시간 실패는 0건이다.
 - 성공률의 집계 기간·분모와 `24시간 실패`의 집계 기준이 제공되지 않아 두 지표를 직접 대조하거나 원인을 추론할 수 없다.
 - 전체 태스크 수는 서로 다른 집계 기간이나 정의일 가능성을 배제할 수 없어 처리량으로 해석할 수 없다.
 - 5단계 후보 프로토타입, baseline, A/B 실험 결과는 제공되지 않았다. 따라서 기능 증가, 정확도 향상 또는 회귀를 판정할 수 없다.
@@ -38,7 +38,7 @@ done: [Evidence Tier 1] 대화에 주입된 `/api/agents` 실데이터만 직접
 
 ## 2) 현재 상태
 
-- API 실데이터 기준: codex와 cursor-agent는 `idle`, nvidia는 `working`.
+- API 실데이터 기준: codex와 cursor-agent는 `idle`, retired-provider는 `working`.
 - 팀 메타데이터에는 codex가 `working`으로 표시되어 API 실데이터의 `idle`과 충돌한다. 두 값의 관측 시점이 없어 최신 상태는 미확인이다.
 - 후보 프로토타입 구현 여부: 미확인.
 - 격리 환경 및 baseline 고정 여부: 미확인.

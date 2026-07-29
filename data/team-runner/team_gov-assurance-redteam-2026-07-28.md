@@ -1,4 +1,4 @@
-# Red Team and Adversarial Review — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_UwRpCTkvktrZe7KJ)
+# Red Team and Adversarial Review — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_UwRpCTkvktrZe7KJ)
 
 ### 오늘 관찰·분석
 
@@ -26,7 +26,7 @@
 
 - cursor-agent: 상태가 idle이며, 태스크 3546, 성공률 96%, 24시간 실패 7회
 - hermes: 상태가 idle이며, 태스크 2172, 성공률 57%, 24시간 실패 2회
-- nvidia: 상태가 idle이며, 태스크 550, 성공률 78%, 24시간 실패 1회
+- retired-provider: 상태가 idle이며, 태스크 550, 성공률 78%, 24시간 실패 1회
 
 ### 다음에 필요한 작업 제안
 

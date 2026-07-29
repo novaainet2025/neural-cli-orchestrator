@@ -93,10 +93,10 @@
       "enabled": true
     },
     {
-      "id": "provider:nvidia",
+      "id": "provider:retired-provider",
       "category": "provider",
       "kind": "provider-live",
-      "ref": "nvidia",
+      "ref": "retired-provider",
       "priority": 4,
       "enabled": true
     },

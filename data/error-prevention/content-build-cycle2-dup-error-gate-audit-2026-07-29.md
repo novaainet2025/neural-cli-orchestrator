@@ -111,7 +111,7 @@ failed -> completed -> failed -> completed -> running
 | **G-CB-R2** | 지표 | gateway fingerprint ↔ orchestrator fingerprint **정규화 맵** 문서화 | 이중 문자열로 인한 집계 분열 | 문서만; 코드 불필요 |
 | **G-CB-R3** | `task-queue` / workflow | `(workflow_run_id, workflow_stage, prompt_sha3_256)` + blocker fingerprint 존재 시 **재dispatch 금지** | 동일 review 5회 dispatch (T1) | feature flag; migration 없음 |
 | **G-CB-R4** | `company-orchestrator` | **유지** — `dispatchStage` 전 `isCompanyRunBlocked` + 계약 주입 | duplicate dispatch 테스트 0건 (unit) | revert |
-| **G-CB-R5** | Circuit Breaker | **변경 없음** — `failureThreshold` 등 | nvidia CB 5건은 error-prevention 팀 범위; content-build 원인은 분류 | diff 0 |
+| **G-CB-R5** | Circuit Breaker | **변경 없음** — `failureThreshold` 등 | retired-provider CB 5건은 error-prevention 팀 범위; content-build 원인은 분류 | diff 0 |
 | **G-CB-R6** | Scorer | **소급 재분류 금지** 유지 | 점수 61.3 인위 상승 방지 | N/A |
 
 **적용 원칙**: G-CB-R3는 에이전트가 4필드를 **실제 emit**하는 E2E 관측 1건 이후에만 적용. 그 전에는 R1+R4만으로 재발 방지.

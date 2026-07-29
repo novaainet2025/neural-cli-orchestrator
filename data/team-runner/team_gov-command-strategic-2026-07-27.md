@@ -24,11 +24,11 @@
 | claude-code | idle · 태스크 2154 · 성공률 18% · 24h실패 82 |
 | opencode | working · 1369 · 26% · 24h실패 14 |
 | cursor-agent | working · 3482 · 96% · 24h실패 2 |
-| nvidia | idle · 520 · 77% · 24h실패 28 |
+| retired-provider | idle · 520 · 77% · 24h실패 28 |
 
 **분석(추론, 추측 표기)**  
 - 팀 단위: 소표본(n=5)에서 실패성>완료 → 운영 건강도 악화 신호.  
-- 에이전트: claude-code 24h실패 82·성공률 18%가 최악 집중; nvidia 28도 높음. cursor-agent는 상대적으로 안정(96%/실패 2).  
+- 에이전트: claude-code 24h실패 82·성공률 18%가 최악 집중; retired-provider 28도 높음. cursor-agent는 상대적으로 안정(96%/실패 2).  
 - work_reports=1은 산출·보고 대비 태스크 실패와 불균형 가능 — 원인 연결은 **미확인**.  
 - 장기기억의 다른 날짜·수치(예: tasks=24)는 본 주입과 불일치 → **채택하지 않음**.
 
@@ -56,7 +56,7 @@
 ## (3) 다음에 필요한 작업 제안
 
 1. Independent Verification: 실패성 3건의 task id·에러·증거 등급(T1) 재수집.  
-2. Incident/Assurance: claude-code 24h실패 82·nvidia 28 원인 분류(타임아웃/툴/모델/게이트).  
+2. Incident/Assurance: claude-code 24h실패 82·retired-provider 28 원인 분류(타임아웃/툴/모델/게이트).  
 3. 구현팀(비소유): bugfix 범위 한정 PR만 — Strategic Command는 파일 소유하지 않음.  
 4. 다음 수집: `/api/agents` 전 에이전트, 실패 task 상세, work_report 본문, 독립감사 승인 여부.  
 5. 성공기준 수치화는 독립감사·요청자 확정 후 — 본 턴에서는 미확정.

@@ -10,7 +10,7 @@ done: [Evidence Tier 1] 제공된 실데이터 본문을 직접 대조했으며 
 - opencode는 working, 누적 1,552건, 성공률 29%, 24시간 실패 20건이다. 원인과 산정 기간은 미확인이다.
 - cursor-agent는 `/api/agents`에서 idle·24시간 실패 0건이지만 주입된 Team 상태에서는 working이다. 관측 시각과 데이터 권위가 없어 어느 상태가 최신인지는 미확인이다.
 - agy는 성공률 89%, 24시간 실패 0건이다.
-- nvidia는 성공률 79%, 24시간 실패 6건이다.
+- retired-provider는 성공률 79%, 24시간 실패 6건이다.
 - 실패 2건의 유형·영향·재시도 가능 여부와 submitted 보고 5건의 품질은 제공 데이터만으로 판단할 수 없다.
 
 ## 2) 현재 상태
@@ -56,7 +56,7 @@ done: [Evidence Tier 1] 제공된 실데이터 본문을 직접 대조했으며 
 
 unverified/remaining:
 - 실제 API 응답 시각과 원본 본문
-- 실패 2건 및 opencode·nvidia 실패의 원인
+- 실패 2건 및 opencode·retired-provider 실패의 원인
 - 작업 보고 5건과 태스크의 연결 관계
 - 계약·복구경로의 실제 구현 여부
 - 빌드·테스트·운영 검증 결과

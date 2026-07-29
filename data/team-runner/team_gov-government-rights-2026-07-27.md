@@ -1,4 +1,4 @@
-# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_lQCsB7OpN0OVctZD)
+# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_lQCsB7OpN0OVctZD)
 
 ### 오늘 관찰·분석
 
@@ -16,7 +16,7 @@
 
 * cursor-agent: 상태는 working, 태스크는 3502, 성공률은 96%, 24시간 실패는 4
 * ollama: 상태는 idle, 태스크는 982, 성공률은 76%, 24시간 실패는 16
-* nvidia: 상태는 idle, 태스크는 528, 성공률은 77%, 24시간 실패는 28
+* retired-provider: 상태는 idle, 태스크는 528, 성공률은 77%, 24시간 실패는 28
 
 #### 3. 다음에 필요한 작업 제안
 다음에 필요한 작업 제안은 다음과 같다.

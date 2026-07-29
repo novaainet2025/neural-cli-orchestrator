@@ -482,7 +482,7 @@ W3C DID WG의 **AI-Agent-DID Profile (2024-09)** 기준: `service` 엔드포인�
 
 // governmentService.ts — 디지털 직위 체계 (v1.9)
 // Rank: 'architect_prime' | 'domain_architect' | 'field_guide' | 'deputy' | 'officer'
-// 7개 창립 공무원: Claude=architect_prime, OpenCode/Codex/Cursor=domain_architect, Gemini/Copilot/NVIDIA=field_guide
+// 7개 창립 공무원: Claude=architect_prime, OpenCode/Codex/Cursor=domain_architect, Gemini/Copilot/retired-provider=field_guide
 ```
 
 *Tech Stack v1.9 — 2026-06-16 (16차 정책 세션 완료: 파라미터 287개 | CS강등유예·디지털직위체계·THRESHOLD상수 구현)*

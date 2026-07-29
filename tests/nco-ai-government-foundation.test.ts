@@ -218,7 +218,9 @@ describe('086 NCO AI government foundation migration', () => {
       WHERE t.organization_id IN (${organizationPlaceholders})
     `).all(...FOUNDATION_ORG_IDS) as Array<{ member_ref: string }>;
 
-    expect(assignedProviders).toHaveLength(7);
+    // 6 since the nvidia provider was retired (098_retire_nvidia_provider.sql);
+    // its memberships moved to providers already on each team's roster.
+    expect(assignedProviders).toHaveLength(6);
     expect(assignedProviders.every((provider) => enabledProviders.has(provider.member_ref))).toBe(true);
   });
 

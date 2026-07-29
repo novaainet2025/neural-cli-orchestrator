@@ -4,8 +4,8 @@
 - 팀: Discussion Lead (ax-discuss)
 - 조직 경로: nova-ax/ax-discuss
 - 상시 임무: facilitation, consensus, minutes, decision-making
-- 기반 모델: claude-code+nvidia
-- NCO 프로바이더: claude-code, nvidia
+- 기반 모델: claude-code+retired-provider
+- NCO 프로바이더: claude-code, retired-provider
 
 ## 오늘 수행한 핵심 업무
 - 3개의 주요 회의 주재 및 논의 주도 (개발 팀, 디자인 팀, QA 팀 간 협업 방안 논의)

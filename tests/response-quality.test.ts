@@ -60,7 +60,7 @@ describe('response quality gate', () => {
   });
 
   it('accepts a JSON-string wrapper around an otherwise valid protocol response', () => {
-    // 실측 2026-07-28: nvidia가 정확한 단답을 `"done: ..."`로 직렬화해
+    // 실측 2026-07-28: API 프로바이더가 정확한 단답을 `"done: ..."`로 직렬화해
     // team_content-quality workflow gate가 FORMAT_MISMATCH로 오반려됐다.
     expect(checkResponseQuality(
       '"done: workflow implementation gate passed"',

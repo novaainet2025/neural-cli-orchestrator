@@ -1,4 +1,4 @@
-# Business Operations & Revenue Intelligence — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task__jkfpUY2JesZKepp)
+# Business Operations & Revenue Intelligence — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task__jkfpUY2JesZKepp)
 
 ### 오늘 관찰·분석
 
@@ -10,7 +10,7 @@
 
 * claude-code: 상태가 error로, 태스크 ID가 2387, 성공률이 20%, 24시간 실패 횟수가 33개입니다.
 * agy: 상태가 idle로, 태스크 ID가 646, 성공률이 89%, 24시간 실패 횟수가 0개입니다.
-* nvidia: 상태가 idle로, 태스크 ID가 621, 성공률이 79%, 24시간 실패 횟수가 6개입니다.
+* retired-provider: 상태가 idle로, 태스크 ID가 621, 성공률이 79%, 24시간 실패 횟수가 6개입니다.
 
 #### 3. 회사 KPI 및 비용 예산
 
@@ -26,7 +26,7 @@
 ### 현재 상태
 
 * 태스크 누계: 1개 (전체), 1개 (완료), 0개 (실패)
-* 팀 멤버의 상태: claude-code (error), agy (idle), nvidia (idle)
+* 팀 멤버의 상태: claude-code (error), agy (idle), retired-provider (idle)
 * 회사 KPI 및 비용 예산: 지표 정의와 분모를 명시하고 마케팅, 지원, 재무 데이터를 교차검증하며 근거 없는 매출 전망이나 비용 절감을 성과로 보고하지 않는다.
 
 ### 다음에 필요한 작업

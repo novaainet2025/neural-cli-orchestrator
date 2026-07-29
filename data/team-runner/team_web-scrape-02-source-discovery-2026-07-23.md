@@ -1,8 +1,8 @@
-# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-23, ai=nvidia, taskId=task_H5o1otzVnelFTeJS)
+# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-23, ai=retired-provider, taskId=task_H5o1otzVnelFTeJS)
 
 (1) 오늘 관찰·분석: 
 - [api/agents] 엔드포인트에 대한 공식 정보는 실데이터에서 제공된 상태/성능 지표만 확인 가능 (API 필드 스키마, 페이지 유형, CSS 선택자, 페이지네이션 등에 대한 직접적 데이터 없음)
-- opencode(태스크=2031, 성공률=73%, 24시간실패=13)와 nvidia(태스크=337, 성공률=73%, 24시간실패=2)의 성능 차이는 API 요청 패턴 차이 또는 시스템 부하 차이로 추정되나, 원인 분석은 미확인
+- opencode(태스크=2031, 성공률=73%, 24시간실패=13)와 retired-provider(태스크=337, 성공률=73%, 24시간실패=2)의 성능 차이는 API 요청 패턴 차이 또는 시스템 부하 차이로 추정되나, 원인 분석은 미확인
 
 (2) 현재 상태: 
 - [api/agents]엔드포인트의 정적/동적 여부 미확인 (실데이터에서 제공되지 않음)

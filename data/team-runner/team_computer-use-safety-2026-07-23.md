@@ -1,9 +1,9 @@
 # Computer Use 안전·감사팀 — 일일 산출물 (2026-07-23, ai=hermes, taskId=task_SnRBopF9TI99C13P)
 
-status: [Evidence Tier 1] 주입된 `/api/agents` 실데이터 확인: `nvidia: 상태=idle, 태스크=306, 성공률=72%, 24시간실패=0`.
+status: [Evidence Tier 1] 주입된 `/api/agents` 실데이터 확인: `retired-provider: 상태=idle, 태스크=306, 성공률=72%, 24시간실패=0`.
 
 (1) 오늘 관찰·분석  
-nvidia는 현재 `idle`이므로, 주입 데이터상 실행 중인 제어 작업은 확인되지 않는다. 다만 제어 코디네이터, 단일 제어자 지정, 잠금 상태, 유휴 만료, 회수 상태는 미확인이다.
+retired-provider는 현재 `idle`이므로, 주입 데이터상 실행 중인 제어 작업은 확인되지 않는다. 다만 제어 코디네이터, 단일 제어자 지정, 잠금 상태, 유휴 만료, 회수 상태는 미확인이다.
 
 (2) 현재 상태  
 승인 의견: 보류/거부. 신규 Computer Use 제어를 승인할 근거가 부족하다. 비밀 입력·삭제·결제·외부 전송에 대한 사용자 확인 여부도 미확인이다.

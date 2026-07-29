@@ -1,4 +1,4 @@
-# Business Operations & Revenue Intelligence — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_0JuZUk10ljdTzQEB)
+# Business Operations & Revenue Intelligence — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_0JuZUk10ljdTzQEB)
 
 ### 오늘 관찰·분석
 
@@ -16,7 +16,7 @@
 
 * ollama: idle, 태스크: 1039, 성공률: 76%, 24시간 실패: 6
 * agy: idle, 태스크: 632, 성공률: 89%, 24시간 실패: 0
-* nvidia: working, 태스크: 605, 성공률: 79%, 24시간 실패: 5
+* retired-provider: working, 태스크: 605, 성공률: 79%, 24시간 실패: 5
 
 #### 3. 지갑 및 거래 정보
 
@@ -28,7 +28,7 @@
 * 팀원 상태는 다음과 같습니다.
  + ollama: idle, 태스크: 1039, 성공률: 76%, 24시간 실패: 6
  + agy: idle, 태스크: 632, 성공률: 89%, 24시간 실패: 0
- + nvidia: working, 태스크: 605, 성공률: 79%, 24시간 실패: 5
+ + retired-provider: working, 태스크: 605, 성공률: 79%, 24시간 실패: 5
 * 지갑 및 거래 정보는 다음과 같습니다.
  + 지갑: 9개
  + 총 잔액: 801239
@@ -46,4 +46,4 @@
 * 미확인 항목은 다음과 같습니다.
  + ollama의 태스크 1039의 성공률과 24시간 실패의 정확한 값을 확인할 수 없습니다.
  + agy의 태스크 632의 성공률과 24시간 실패의 정확한 값을 확인할 수 없습니다.
- + nvidia의 태스크 605의 성공률과 24시간 실패의 정확한 값을 확인할 수 없습니다.
+ + retired-provider의 태스크 605의 성공률과 24시간 실패의 정확한 값을 확인할 수 없습니다.

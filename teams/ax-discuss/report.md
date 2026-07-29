@@ -12,6 +12,6 @@
   - 액션: 내일 오후 2시에 우선순위 재조정 회의 예약
 
 ## 기타 메모
-- 기반 모델: claude-code + nvidia
+- 기반 모델: claude-code + retired-provider
 - NCO 프로바이더를 통해 역할 수행 중
 - 변경 사항은 git으로 관리됨

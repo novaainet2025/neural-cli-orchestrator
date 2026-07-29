@@ -10,8 +10,8 @@
 [agent_performance_summary] cursor-agent/code: 실행=19, 성공률=100.0%, 평균품질=98.42, 평균소요ms=24404.16
 [agent_performance_summary] cursor-agent/design: 실행=9, 성공률=100.0%, 평균품질=86.65, 평균소요ms=27100.89
 [agent_performance_summary] cursor-agent/verify: 실행=8, 성공률=100.0%, 평균품질=88.16, 평균소요ms=28054.63
-[agent_performance_summary] nvidia/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
-[agent_performance_summary] nvidia/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
+[agent_performance_summary] retired-provider/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
+[agent_performance_summary] retired-provider/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
 [agent_performance_summary] cursor-agent/review: 실행=5, 성공률=100.0%, 평균품질=92.80, 평균소요ms=15632.40
 [agent_performance_summary] hermes/code: 실행=5, 성공률=0.0%, 평균품질=0, 평균소요ms=518.60
 [agent_performance_summary] hermes/design: 실행=4, 성공률=0.0%, 평균품질=0, 평균소요ms=0

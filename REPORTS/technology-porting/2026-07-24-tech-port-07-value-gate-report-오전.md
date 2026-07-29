@@ -32,18 +32,18 @@ PORT_DECISION: REJECT
 | 에이전트와 역할 | 실행 | 성공률 | 평균 품질 | 평균 소요 시간 |
 |---|---:|---:|---:|---:|
 | `codex/code` | 15회 | 46.7% | 46.27 | 46,602.67밀리초 |
-| `nvidia/code` | 8회 | 50.0% | 40.50 | 41,017.13밀리초 |
-| `nvidia/design` | 6회 | 100.0% | 91.64 | 22,118.17밀리초 |
+| `retired-provider/code` | 8회 | 50.0% | 40.50 | 41,017.13밀리초 |
+| `retired-provider/design` | 6회 | 100.0% | 91.64 | 22,118.17밀리초 |
 | `hermes/code` | 5회 | 0.0% | 0 | 518.60밀리초 |
 | `hermes/design` | 4회 | 0.0% | 0 | 0밀리초 |
 | `hermes/research` | 3회 | 0.0% | 0 | 0밀리초 |
 | `hermes/review` | 3회 | 0.0% | 0 | 0밀리초 |
 | `hermes/verify` | 3회 | 0.0% | 0 | 0밀리초 |
 | `hermes/ui` | 2회 | 0.0% | 0 | 0밀리초 |
-| `nvidia/verify` | 2회 | 100.0% | 82.50 | 31,205밀리초 |
+| `retired-provider/verify` | 2회 | 100.0% | 82.50 | 31,205밀리초 |
 
-- `nvidia/design`과 `nvidia/verify`는 제공된 집계에서 성공률 100.0%다.
-- `codex/code`는 성공률 46.7%, `nvidia/code`는 50.0%다.
+- `retired-provider/design`과 `retired-provider/verify`는 제공된 집계에서 성공률 100.0%다.
+- `codex/code`는 성공률 46.7%, `retired-provider/code`는 50.0%다.
 - 제공된 모든 `hermes` 역할은 성공률 0.0%로 집계되었으나 실패 원인과 측정 방식은 확인할 수 없다.
 
 ## 일곱 가지 가치판단 게이트

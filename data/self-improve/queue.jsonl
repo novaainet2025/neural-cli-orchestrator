@@ -19,7 +19,7 @@
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-23T21:20:00+0900", "id": "provider:nvidia", "category": "provider", "kind": "provider-live", "ref": "nvidia", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-23T21:20:00+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
 {"ts": "2026-07-23T22:20:00+0900", "id": "hook:nova-voice-tts-pretool.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh", "priority": 2, "detail": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 217: unexpected EOF while looking for matching `\"'\n/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh: line 220: syntax error: unexpected end of file"}
@@ -65,7 +65,7 @@
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-25T15:20:00+0900", "id": "provider:nvidia", "category": "provider", "kind": "provider-live", "ref": "nvidia", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-25T15:20:00+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T22:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc 오류 0건: "}
@@ -79,7 +79,7 @@
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T00:20:04+0900", "id": "provider:nvidia", "category": "provider", "kind": "provider-live", "ref": "nvidia", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T00:20:04+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: unknown encoding: idna"}
@@ -92,7 +92,7 @@
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T07:20:13+0900", "id": "provider:nvidia", "category": "provider", "kind": "provider-live", "ref": "nvidia", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T07:20:13+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: <urlopen error timed out>"}
@@ -104,7 +104,7 @@
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T08:20:03+0900", "id": "provider:nvidia", "category": "provider", "kind": "provider-live", "ref": "nvidia", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T08:20:03+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}

@@ -145,12 +145,12 @@ const FOUNDING_OFFICIALS = [
   },
   {
     did: 'did:nova:official-minister-justice',
-    name: 'NVIDIA (저스티스 가이드)',
+    name: 'Hermes (저스티스 가이드)',
     ministry: 'justice' as Ministry,
     title: '저스티스 가이드 (Justice Guide)',
     rank: 'field_guide' as Rank,
     autonomyLevel: 3,
-    ncoAgentId: 'nvidia',
+    ncoAgentId: 'hermes',
     policyFocus: ['dispute-resolution', 'legal-reasoning', 'constitution-interpretation'],
   },
 ];

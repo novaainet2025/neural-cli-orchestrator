@@ -1488,7 +1488,7 @@ index a3d1a0b..51edcca 100755
 @@ -19,7 +19,7 @@ with open(cfg_path) as f:
  # 플랫폼 정책 (WSL 기준)
  ENABLE  = {"opencode","agy","codex","cursor-agent","copilot",
-            "higgsfield","hermes","openclaw","nvidia","claude-code","openrouter"}
+            "higgsfield","hermes","openclaw","retired-provider","claude-code","openrouter"}
 -DISABLE = {"mlx"}  # Mac 전용
 +DISABLE = set()  # mlx 완전제거(2026-07-21) — Mac 전용 disable 대상 없음
  # Ollama: GPU 노드만 활성화
@@ -1496,7 +1496,7 @@ index a3d1a0b..51edcca 100755
      ENABLE.add("ollama")
 @@ -34,7 +34,7 @@ for p in data["providers"]:
  
-     if pid in ENABLE or any(k in pid for k in ["opencode","codex","cursor","copilot","higgsfield","hermes","openclaw","nvidia","openrouter"]):
+     if pid in ENABLE or any(k in pid for k in ["opencode","codex","cursor","copilot","higgsfield","hermes","openclaw","retired-provider","openrouter"]):
          p["enabled"] = True
 -    if pid in DISABLE or "mlx" in pid.lower():
 +    if pid in DISABLE:
@@ -1704,9 +1704,9 @@ diff --git a/db/hnsw-indices/mlx.hnsw b/db/hnsw-indices/mlx.hnsw
 deleted file mode 100644
 index e131aa2..0000000
 Binary files a/db/hnsw-indices/mlx.hnsw and /dev/null differ
-diff --git a/db/hnsw-indices/nvidia.hnsw b/db/hnsw-indices/nvidia.hnsw
+diff --git a/db/hnsw-indices/retired-provider.hnsw b/db/hnsw-indices/retired-provider.hnsw
 index 7cb3ac9..39af6bd 100644
-Binary files a/db/hnsw-indices/nvidia.hnsw and b/db/hnsw-indices/nvidia.hnsw differ
+Binary files a/db/hnsw-indices/retired-provider.hnsw and b/db/hnsw-indices/retired-provider.hnsw differ
 diff --git a/db/hnsw-indices/ollama.hnsw b/db/hnsw-indices/ollama.hnsw
 index f5f335f..89f5c71 100644
 Binary files a/db/hnsw-indices/ollama.hnsw and b/db/hnsw-indices/ollama.hnsw differ
@@ -1732,7 +1732,7 @@ index c8689a6..2ffe956 100644
        "enabled": true,
        "note": "2026-07-09 concurrency 2→1(claude-5): 업무보고 동시부하(hermes2+instruct1+mlx1=4동시)가 :8000 KV캐시 급증→Metal OOM 크래시(09:01 T1). :8000 계열 총동시 3으로 캡. 이 파일 변경 시 fleet 공지 필수.",
 @@ -31,11 +24,6 @@
-     "nvidia": {
+     "retired-provider": {
        "enabled": true,
        "model": "meta/llama-3.3-70b-instruct"
 -    },
@@ -2630,8 +2630,8 @@ index 1ece1fc..c7e3259 100755
  RUNTIME_DOC="${RUNTIME_DOC:-/Users/nova-ai/obsidian/mac-obsidian/00-SYSTEM/PROVIDER-RUNTIME.md}"
  KNOWN_PATHS=("/opt/homebrew/bin" "/Users/nova-ai/.local/bin")
  TOOLS=(claude gemini codex opencode cursor-agent copilot hermes hermes-nco openclaw higgsfield aider)
--PROVIDERS=(openrouter mlx nvidia gemini-deep)
-+PROVIDERS=(openrouter ollama nvidia gemini-deep)
+-PROVIDERS=(openrouter mlx retired-provider gemini-deep)
++PROVIDERS=(openrouter ollama retired-provider gemini-deep)
  
  for extra_path in "${KNOWN_PATHS[@]}"; do
    case ":$PATH:" in
@@ -3517,10 +3517,10 @@ index 40834c9..247e887 100644
 @@ -13,7 +13,7 @@ const log = createLogger('commander');
   *
   * Management Layer (두뇌/유료): 계획·최종 종합 (claude-code, opencode)
-  * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/nvidia)
+  * Information Layer (두뇌+무료): 리서치 (copilot → openrouter/retired-provider)
 - * Execution Layer (워커/무료 로컬): 대량 구현 (mlx, ollama, hermes, aider → codex escalation)
 + * Execution Layer (워커/무료 로컬): 대량 구현 (ollama, aider → codex escalation)
-  * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/nvidia QA)
+  * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama/retired-provider QA)
   */
  
 diff --git a/src/core/context-budget.test.ts b/src/core/context-budget.test.ts
@@ -4690,7 +4690,7 @@ index 107f1cd..f7f05b0 100644
    { name: 'agy',         role: 'Designer',        didSuffix: 'agy-001' },
    { name: 'copilot',     role: 'Researcher',      didSuffix: 'copilot-001' },
 -  { name: 'mlx',         role: 'Engineer',        didSuffix: 'mlx-001' },
-   { name: 'nvidia',      role: 'Reasoner',        didSuffix: 'nvidia-001' },
+   { name: 'retired-provider',      role: 'Reasoner',        didSuffix: 'retired-provider-001' },
    { name: 'higgsfield',  role: 'Media',           didSuffix: 'higgsfield-001' },
    { name: 'hermes',      role: 'ToolUser',        didSuffix: 'hermes-001' },
 diff --git a/src/mcp/server.ts b/src/mcp/server.ts

@@ -216,7 +216,7 @@ try:
     cutoff = now - datetime.timedelta(minutes=$CUTOFF_MIN)
     recent = [t for t in tasks if datetime.datetime.strptime(t.get('created_at','2000-01-01')[:19],'%Y-%m-%d %H:%M:%S') >= cutoff]
     # cursor-agent 리뷰 태스크 카운트
-    reviews = [t for t in recent if t.get('assigned_to') in ('cursor-agent','nvidia','gemini') and '검증' in (t.get('prompt','') or '') or '리뷰' in (t.get('prompt','') or '') or 'review' in (t.get('prompt','') or '').lower()]
+    reviews = [t for t in recent if t.get('assigned_to') in ('cursor-agent','gemini') and '검증' in (t.get('prompt','') or '') or '리뷰' in (t.get('prompt','') or '') or 'review' in (t.get('prompt','') or '').lower()]
     agents = set(t.get('assigned_to') for t in recent if t.get('assigned_to'))
     print(len(agents), len(reviews))
 except: print('1 0')

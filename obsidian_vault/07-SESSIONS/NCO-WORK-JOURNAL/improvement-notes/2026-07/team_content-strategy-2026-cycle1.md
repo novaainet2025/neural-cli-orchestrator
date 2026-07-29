@@ -32,7 +32,7 @@ completed 분자에서는 제외하므로 유효 완료가 1/2가 되어 complet
 - SQLite 확인 시각: 2026-07-28 08:31:46 UTC
 - 스코어러 직접 실행 결과:
   `{"teamId":"team_content-strategy-2026","slug":"content-planning","name":"콘텐츠 전략·근거기획팀","organizationId":"org_sns-blog","score":46.7,"grade":"F","completion":50,"n":2,"maxN":66,"sample":"48h"}`
-- 팀 row: `is_active=1`, 구성원은 `agy`, `nvidia`, `ollama`
+- 팀 row: `is_active=1`, 구성원은 `agy`, `retired-provider`, `ollama`
 - HR lifecycle 상태나 팀 활성 상태는 읽기만 했고 변경하지 않았다.
 
 ## 표본별 성공·실패 원인
@@ -47,7 +47,7 @@ completed 분자에서는 제외하므로 유효 완료가 1/2가 되어 complet
 - `agy`: 팀 표본 1건을 받아 1건 모두 검증 가능한 텍스트 산출물을 남겼다. 없는
   콘텐츠 근거를 만들지 않은 점은 charter와 일치한다. 다만 `done: [Evidence Tier 1]`은
   주입 텍스트와의 일치만 뜻하며, 원문·실사례·독자 결과를 검증했다는 뜻은 아니다.
-- `nvidia`, `ollama`: 구성원이지만 최근 48시간 이 팀 표본에 배정된 태스크가 0건이어서
+- `retired-provider`, `ollama`: 구성원이지만 최근 48시간 이 팀 표본에 배정된 태스크가 0건이어서
   이 팀에서의 성공/실패 패턴을 평가할 수 없다.
 - `mlx`: 구성원이 아닌데 외부 cron이 고정값으로 지정했다. 현 세대 NCO 실행은 0건이며
   0바이트 완료 행만 남았다. 따라서 이 표본으로 `mlx`의 모델 성능을 평가해서는 안 된다.
@@ -89,7 +89,7 @@ completed 분자에서는 제외하므로 유효 완료가 1/2가 되어 complet
    섞이지 않게 한다.
 3. team-runner 입력에 실제 검색의도·독자 문제·기존 글·원문/데이터 후보를 최소 1개씩
    넣고, 없으면 “근거 수집 task”로 명시해 결과를 제작팀에 전달한다.
-4. 다음 표본에서는 `nvidia`와 `ollama`도 실제 팀 task를 수행한 뒤에만 에이전트 간 패턴을
+4. 다음 표본에서는 `retired-provider`와 `ollama`도 실제 팀 task를 수행한 뒤에만 에이전트 간 패턴을
    비교한다.
 
 ## 검증 영수증

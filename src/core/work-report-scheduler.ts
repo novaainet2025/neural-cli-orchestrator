@@ -9,6 +9,7 @@ import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { allowQueueProviderFailover, resolveExecutor } from './company-orchestrator.js';
+import { resolvePreference } from './provider-registry.js';
 
 const log = createLogger('work-report-scheduler');
 const KST_OFFSET_HOURS = 9;
@@ -88,7 +89,6 @@ const REPORT_CAPABLE_FALLBACK_PRIORITY = [
   'hermes',
   'cursor-agent',
   'agy',
-  'nvidia',
 ] as const;
 
 export type WorkReportSlot = 'am' | 'pm';
@@ -1020,7 +1020,7 @@ function resolveOrgReportExecutor(
   }
 
   // 보고서 작성 가능 등록 실행자만, 고정 우선순위 (media/임의 knownAgents 순회 금지)
-  for (const agentId of REPORT_CAPABLE_FALLBACK_PRIORITY) {
+  for (const agentId of resolvePreference(REPORT_CAPABLE_FALLBACK_PRIORITY, 'general')) {
     if (!knownAgents.has(agentId) || NON_REPORT_EXECUTORS.has(agentId)) continue;
     try {
       if (circuitBreakerRegistry.getAvailability(agentId).available) return agentId;

@@ -45,7 +45,7 @@ tags:
 |---|---|---|---|---|
 | hermes | `task_pKVM8hAZUmzskqwL` | failed | `localhost:6200` 연결 거부, POST 미수행 | NCO gateway 인프라 실패 |
 | ollama | `task_WpB7UCfWLhPnwx-u` | failed | `targetValue`, `direction`, `reflection`, `improvement` 미주입을 밝히고 값 날조를 거부 | 입력 계약 실패; honesty-positive |
-| nvidia → ollama | `task_tnhlWTnnJz5dVshv` | lease_expired | nvidia empty completion 뒤 ollama 재배정, response 없음 | provider/lease 실패 |
+| retired-provider → ollama | `task_tnhlWTnnJz5dVshv` | lease_expired | retired-provider empty completion 뒤 ollama 재배정, response 없음 | provider/lease 실패 |
 
 따라서 저장된 completion `0%`는 감사 품질 실패율이 아니다. 제어면 태스크 3건을
 감사팀 표본으로 센 집계 오염이며, 실제 감사 표본은 아직 없다.
@@ -58,7 +58,7 @@ task를 에이전트별로 다시 집계했다. `completed`는 raw DB 상태이�
 
 | Agent | Observed rows | Quality/evidence pattern | Learning classification |
 |---|---:|---|---|
-| nvidia | raw completed 7 | 7/7 `qualityRejected=true`, 7/7 `evidence_json` 없음, 보수적 함수·도구 서술 5건 | 성공 지식에서 제외 |
+| retired-provider | raw completed 7 | 7/7 `qualityRejected=true`, 7/7 `evidence_json` 없음, 보수적 함수·도구 서술 5건 | 성공 지식에서 제외 |
 | ollama | completed 2, failed-like 2 | completed 2/2 `FORMAT_MISMATCH`, 증거 없음; 한 실패는 미주입 값을 정직하게 거부 | 정직한 미완료와 성공을 분리 |
 | hermes | failed 2 | gateway 연결 실패 1, corrective retry CLI/tool 실패 1 | 인프라/도구 실패 |
 | codex | 비종결 6 | 관측 시 assigned/queued/running이며 response 없음 | 성공·실패 판정 보류 |
@@ -72,7 +72,7 @@ task를 에이전트별로 다시 집계했다. `completed`는 raw DB 상태이�
   `docs/obsidian-improvement-no` 편집 호출 JSON을 응답으로 내보냈고,
   실제 task/agent 분석·Mem0 검증 영수증이 없었다. 두 응답은 길이도 각각
   8,547자로 같고 모두 `FORMAT_MISMATCH`로 반려됐다.
-- cycle 3의 nvidia 응답들은 `"Obsidian Note"` placeholder 생성 설명을
+- cycle 3의 retired-provider 응답들은 `"Obsidian Note"` placeholder 생성 설명을
   반복했다. 저장소에 생긴 동명 파일은 21바이트의
   `Obsidian Note content`뿐이라 개선 노트가 아니다.
 - 위 raw-completed 응답 전부에 `evidence_json`이 없으므로 성공 샘플로 장기
@@ -108,7 +108,7 @@ task를 에이전트별로 다시 집계했다. `completed`는 raw DB 상태이�
 | knowledge base | `kb-team-kd-memory-evidence-separation-cycle2-20260724` | 제어면/감사 표본과 raw/verified 성공 분리 |
 | Mem0/hermes | `mem0-team-kd-memory-cycle2-20260724-hermes` | gateway 실패를 감사 품질로 오학습하지 않음 |
 | Mem0/ollama | `mem0-team-kd-memory-cycle2-20260724-ollama` | 미주입 값을 날조하지 않고 미완료로 보존 |
-| Mem0/nvidia | `mem0-team-kd-memory-cycle2-20260724-nvidia` | tool narration·quality reject를 성공에서 제외 |
+| Mem0/retired-provider | `mem0-team-kd-memory-cycle2-20260724-retired-provider` | tool narration·quality reject를 성공에서 제외 |
 | Mem0/codex | `mem0-team-kd-memory-cycle2-20260724-codex` | 시점 있는 DB 근거와 검증 영수증을 요구 |
 
 증류 규칙:
@@ -140,7 +140,7 @@ task를 에이전트별로 다시 집계했다. `completed`는 raw DB 상태이�
   agent-scoped Mem0 4건을 단일 트랜잭션으로 추가한 뒤 직접 재조회했다.
   기존 행은 갱신·삭제하지 않았다.
 - `[Mem0 retrieval]` build 산출물의 public `mem0Service.search`를
-  `hermes`, `ollama`, `nvidia`, `codex`에 호출했다. 네 검색 모두 각 agent의
+  `hermes`, `ollama`, `retired-provider`, `codex`에 호출했다. 네 검색 모두 각 agent의
   `mem0-team-kd-memory-cycle2-20260724-*`를 첫 결과로 회수했다.
 - `[knowledge retrieval]` public `knowledgeBase.query`를
   `kd-memory commander-perfgoal FORMAT_MISMATCH evidence_json`으로 호출해

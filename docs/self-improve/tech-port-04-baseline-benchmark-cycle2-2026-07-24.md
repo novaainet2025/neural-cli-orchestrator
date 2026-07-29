@@ -54,15 +54,15 @@ poison 한도를 소진한 인프라 실패였다.
 
 | task_id | agent | 상태 | 소요시간 | 재큐잉 | 품질 판정 | retry 자식 |
 |---|---|---:|---:|---:|---|---|
-| `task_Hg8EAhPiofUYUoMn` | nvidia | completed | 16초 | 0 | 기록 없음 | 없음 |
-| `task_hdBl_7u7ln4fzhn0` | nvidia | completed | 63초 | 0 | 기록 없음 | 없음 |
+| `task_Hg8EAhPiofUYUoMn` | retired-provider | completed | 16초 | 0 | 기록 없음 | 없음 |
+| `task_hdBl_7u7ln4fzhn0` | retired-provider | completed | 63초 | 0 | 기록 없음 | 없음 |
 | `task_e-_rSc9NAVSHcEc9` | agy | completed | 192초 | 0 | `FORMAT_MISMATCH` | `task_rnCkWxvukesMtCbP` failed |
 | `task_GgQ8CwfGz1FFiE3i` | agy | failed | 392초 | 2 | 응답 없음 | 없음 |
-| `task_Gsr7Rm5UgWq47f4u` | nvidia | completed | 48초 | 0 | `FORMAT_MISMATCH` | `task_-1g-Qa9Nw3uerejV` failed |
-| `task_G177mycE5mbj6mNz` | nvidia | completed | 11초 | 0 | 기록 없음 | 없음 |
-| `task_FWap1nZvqohI_e6X` | nvidia | completed | 30초 | 0 | `FORMAT_MISMATCH` | `task_VchwQci_MQlNL6CW` failed |
-| `task_cPzZJoBgO4roKi_y` | nvidia | completed | 35초 | 0 | `FORMAT_MISMATCH` | `task_8fd4-Yx3d2pesT6P` failed |
-| `task_gbpQ8h-IsxsxHy_E` | nvidia | completed | 37초 | 0 | `FORMAT_MISMATCH` | `task_LRktC26-y4oyTOTy` failed |
+| `task_Gsr7Rm5UgWq47f4u` | retired-provider | completed | 48초 | 0 | `FORMAT_MISMATCH` | `task_-1g-Qa9Nw3uerejV` failed |
+| `task_G177mycE5mbj6mNz` | retired-provider | completed | 11초 | 0 | 기록 없음 | 없음 |
+| `task_FWap1nZvqohI_e6X` | retired-provider | completed | 30초 | 0 | `FORMAT_MISMATCH` | `task_VchwQci_MQlNL6CW` failed |
+| `task_cPzZJoBgO4roKi_y` | retired-provider | completed | 35초 | 0 | `FORMAT_MISMATCH` | `task_8fd4-Yx3d2pesT6P` failed |
+| `task_gbpQ8h-IsxsxHy_E` | retired-provider | completed | 37초 | 0 | `FORMAT_MISMATCH` | `task_LRktC26-y4oyTOTy` failed |
 
 소요시간은 `created_at`부터 `completed_at`까지의 DB timestamp 차이다.
 `updated_at`이 더 늦은 경우가 있으므로 실행 소요시간으로 혼합하지 않았다.
@@ -71,8 +71,8 @@ poison 한도를 소진한 인프라 실패였다.
 
 | agent | 완료 | 실패 | 표본 내 완료율 | 완료 태스크 평균 | 관찰 |
 |---|---:|---:|---:|---:|---|
-| nvidia | 7 | 0 | 100.0% | 34.286초 | 완료 7건 중 4건이 `FORMAT_MISMATCH`; 상태 성공과 산출물 품질은 다름 |
-| agy | 1 | 1 | 50.0% | 192초 | 완료 1건도 nvidia에서 failover된 뒤 `FORMAT_MISMATCH`; 실패 1건은 인프라 poison |
+| retired-provider | 7 | 0 | 100.0% | 34.286초 | 완료 7건 중 4건이 `FORMAT_MISMATCH`; 상태 성공과 산출물 품질은 다름 |
+| agy | 1 | 1 | 50.0% | 192초 | 완료 1건도 retired-provider에서 failover된 뒤 `FORMAT_MISMATCH`; 실패 1건은 인프라 poison |
 
 agy는 `n=2`이므로 일반적인 에이전트 성능 결론을 내리기에는 표본이 작다.
 타임아웃과 빈 산출물은 이 9건 표본에서 관찰되지 않았다.

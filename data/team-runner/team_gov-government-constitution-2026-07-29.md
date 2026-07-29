@@ -1,4 +1,4 @@
-# Constitution and Policy — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_J3vYlV89XU36FUgb)
+# Constitution and Policy — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_J3vYlV89XU36FUgb)
 
 ### 오늘 관찰·분석
 
@@ -15,7 +15,7 @@
 
 #### 2. 현재 팀의 상태
 
-- nvidia: idle, 태스크: 614, 성공률: 79%, 24시간 실패: 6
+- retired-provider: idle, 태스크: 614, 성공률: 79%, 24시간 실패: 6
 - cursor-agent: idle, 태스크: 3635, 성공률: 95%, 24시간 실패: 17
 - claude-code: error, 태스크: 2386, 성공률: 20%, 24시간 실패: 40
 
@@ -23,4 +23,4 @@
 
 1. 태스크 2386에 대한 에러를 확인하고 해결해야 합니다.
 2. cursor-agent의 태스크 3635의 성공률이 높아 보이지만, 24시간 실패율이 높습니다. 따라서 태스크 3635의 실패 원인을 확인하고 해결해야 합니다.
-3. nvidia의 태스크 614의 성공률이 79%로 낮습니다. 따라서 태스크 614의 실패 원인을 확인하고 해결해야 합니다.
+3. retired-provider의 태스크 614의 성공률이 79%로 낮습니다. 따라서 태스크 614의 실패 원인을 확인하고 해결해야 합니다.

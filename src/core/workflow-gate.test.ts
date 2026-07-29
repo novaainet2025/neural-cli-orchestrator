@@ -206,9 +206,9 @@ describe('durable workflow gate', () => {
     markWorkflowStage(runId, 'design', 'completed', { teamId: 'team-a' }, db);
     db.prepare(`
       INSERT INTO tasks (id, status, team_id, assigned_to)
-      VALUES ('task-quality', 'running', 'team-a', 'nvidia')
+      VALUES ('task-quality', 'running', 'team-a', 'hermes')
     `).run();
-    attachWorkflowTask('task-quality', runId, 'implementation', 'team-a', 'nvidia', db);
+    attachWorkflowTask('task-quality', runId, 'implementation', 'team-a', 'hermes', db);
     syncWorkflowTask('task-quality', 'completed', {}, db);
     db.prepare(`
       UPDATE tasks
@@ -239,9 +239,9 @@ describe('durable workflow gate', () => {
     markWorkflowStage(runId, 'design', 'completed', { teamId: 'team-a' }, db);
     db.prepare(`
       INSERT INTO tasks (id, status, team_id, assigned_to)
-      VALUES ('task-failed', 'failed', 'team-a', 'nvidia')
+      VALUES ('task-failed', 'failed', 'team-a', 'hermes')
     `).run();
-    attachWorkflowTask('task-failed', runId, 'implementation', 'team-a', 'nvidia', db);
+    attachWorkflowTask('task-failed', runId, 'implementation', 'team-a', 'hermes', db);
     syncWorkflowTask('task-failed', 'failed', {
       error: 'quality_rejected',
       evidence: { source: 'startup_terminal_task_reconciliation', taskStatus: 'failed' },

@@ -70,13 +70,13 @@ False Report다.
 
 ## 반복 실패 사슬
 
-| task_id | 생성 | task 최종상태 | ack / heartbeat | nvidia 오류 | ollama late action | task 산출물 |
+| task_id | 생성 | task 최종상태 | ack / heartbeat | retired-provider 오류 | ollama late action | task 산출물 |
 |---|---|---|---|---|---|---|
 | `task_gXcRlu7Ui41AtYar` | 05:02:45 | `lease_expired` 05:08:07 | ack 05:02:46 / HB 05:06:17, seq 16 | `503 ResourceExhausted: ... (19/16)` | `task:completed` 05:14:18, 본문 존재 | response/result NULL |
 | `task_HFKv-pgafAT8ADJZ` | 05:03:18 | `lease_expired` 05:06:32 | ack 05:03:18 / HB 05:04:52, seq 8 | `The operation was aborted due to timeout` | `task:completed` 05:13:12, 본문 존재 | response/result NULL |
 
 두 태스크의 `metadata_json.workReportId`는 동일하다. target `agent_actions`는
-각 태스크마다 `created → nvidia failed → ollama completed` 3행씩, 총 6행이다.
+각 태스크마다 `created → retired-provider failed → ollama completed` 3행씩, 총 6행이다.
 ollama 완료는 task가 이미 lease 만료 terminal이 된 뒤 6분 이상 늦게 도착했다.
 `work_reports.source_task_id`는 첫 태스크를 가리키지만 보고서 본문은 비어 있고
 최종 상태는 `missed`다.
@@ -104,7 +104,7 @@ ollama 완료는 task가 이미 lease 만료 terminal이 된 뒤 6분 이상 늦
 | 개선 pipeline 관련 `verification_gates` | 15 | typecheck/change-ratio pass, lint skip 기록 |
 | 최초 3개 stage의 `FORMAT_MISMATCH` | 3 | 모두 262자 도구 설명 에코 |
 
-`2026-07-24 06:04:30 UTC` 재조회에서 `nvidia`는
+`2026-07-24 06:04:30 UTC` 재조회에서 `retired-provider`는
 `closed/failure_count=0`, `ollama`는 `closed/failure_count=1`
 (`reason=generic`)이다. 둘 다 현재는 open 상태가 아니지만, 이 현재 snapshot은
 2026-07-22 당시 상태를 증명하지 않는다. 역사적 circuit snapshot은 `[미검증]`이다.

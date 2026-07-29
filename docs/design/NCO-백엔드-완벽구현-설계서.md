@@ -275,7 +275,7 @@ interface SandboxPolicy {
 ```
 모델:     gemma-4-26B-A4B-it-NVFP4
 원본:     google/gemma-4-27b-it (26B 파라미터, Active 4B, MoE)
-양자화:   NVFP4 (NVIDIA FP4, modelopt)
+양자화:   NVFP4 (retired-provider FP4, modelopt)
 GPU:     RTX 4090 24GB
 VRAM:    ~16GB 사용 (모델) + ~8GB KV cache
 포트:    http://localhost:11434/v1 (OpenAI 호환)

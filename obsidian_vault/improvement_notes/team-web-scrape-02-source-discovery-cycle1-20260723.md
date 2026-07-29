@@ -6,7 +6,7 @@ tags:
   - improvement-note
   - category/team-quality
   - team/web-scrape-02-source-discovery
-  - agent/nvidia
+  - agent/retired-provider
   - agent/opencode
   - evidence/T1
   - cycle/1
@@ -22,7 +22,7 @@ tags:
 매핑하지 못했다. 따라서 현재 90점은 검증된 source-discovery 품질 저하의 증거가
 아니라 `all/1` 저표본 상태다.
 
-동일 개선 run의 self-learning task 2건은 `nvidia`가 CSS 파일 검색 함수 설명 한 줄을
+동일 개선 run의 self-learning task 2건은 `retired-provider`가 CSS 파일 검색 함수 설명 한 줄을
 반환한 뒤 `completed`로 저장됐다. 두 task 모두 품질 메타데이터에서
 `FORMAT_MISMATCH`로 반려됐고 후속 retry가 생성됐다.
 
@@ -35,7 +35,7 @@ tags:
   - sample size: `1`
   - improvement cycle: `1`
 - target task: `task_H5o1otzVnelFTeJS`
-  - 최초 `nvidia` 실행: `empty completion from provider 'nvidia' after 1 iteration(s)`
+  - 최초 `retired-provider` 실행: `empty completion from provider 'retired-provider' after 1 iteration(s)`
   - failover `ollama` 실행: DB status `completed`, 약 47초
   - `evidence_json`: 없음
   - 응답은 실제 source 데이터가 없음을 주로 보고했지만, 실재 여부를 확인하지 않은
@@ -52,7 +52,7 @@ tags:
 
 | Agent | 전체 | completed | unsuccessful | queued | qualityRejected | 도구서술 completed |
 |---|---:|---:|---:|---:|---:|---:|
-| nvidia | 64 | 51 | 6 | 7 | 34 | 3 |
+| retired-provider | 64 | 51 | 6 | 7 | 34 | 3 |
 | opencode | 90 | 62 | 26 | 2 | 45 | 0 |
 | ollama | 117 | 94 | 22 | 1 | 53 | 0 |
 
@@ -75,7 +75,7 @@ tags:
 
 ## Fix action
 
-- 다음 검증 규칙을 target team 구성원 `nvidia`, `opencode`의 Mem0와 NCO
+- 다음 검증 규칙을 target team 구성원 `retired-provider`, `opencode`의 Mem0와 NCO
   `knowledge_base`에 저장한다.
   - `all/1`, score 90은 품질 저하로 단정하지 않고 저표본으로 표시한다.
   - source mapping을 완료하려면 허용된 실제 URL 또는 API/피드/sitemap/HTML 응답
@@ -98,7 +98,7 @@ tags:
   - knowledge base:
     `kb-team-web-scrape-02-source-discovery-cycle1-20260723`
   - Mem0:
-    `mem0-team-web-scrape-02-cycle1-20260723-nvidia`
+    `mem0-team-web-scrape-02-cycle1-20260723-retired-provider`
   - Mem0:
     `mem0-team-web-scrape-02-cycle1-20260723-opencode`
 
@@ -108,8 +108,8 @@ tags:
   고정 ID로 확인했다.
 - `NCO_MEM0_NO_EMBED=1`에서 build 산출물의 public `mem0Search`를 호출했다.
   - mode: `bm25`
-  - nvidia result:
-    `mem0-team-web-scrape-02-cycle1-20260723-nvidia`
+  - retired-provider result:
+    `mem0-team-web-scrape-02-cycle1-20260723-retired-provider`
   - opencode result:
     `mem0-team-web-scrape-02-cycle1-20260723-opencode`
 - build 산출물의 public `knowledgeBase.query`를 team ID와 `FORMAT_MISMATCH`로

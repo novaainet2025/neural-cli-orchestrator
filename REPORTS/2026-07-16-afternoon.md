@@ -3,7 +3,7 @@
 ## 팀 정보
 - 팀: 논의 주도자 팀 (Discussion Lead)
 - 조직 경로: `nova-ax/ax-discuss`
-- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Discussion Lead'(ax-discuss) 전담팀. 담당 영역: facilitation, consensus, minutes, decision-making. 기반 모델: claude-code+nvidia. NCO 프로바이더(claude-code, nvidia)를 통해 해당 역할 작업을 수행한다.
+- 팀 상시 임무: NOVA AX그룹 역할 에이전트 'Discussion Lead'(ax-discuss) 전담팀. 담당 영역: facilitation, consensus, minutes, decision-making. 기반 모델: claude-code+retired-provider. NCO 프로바이더(claude-code, retired-provider)를 통해 해당 역할 작업을 수행한다.
 
 ## 핵심 업무 요약
 - 오전 보고서 작성 후, 3개의 회의 결정 사항에 대한 이행 상태 점검 및 업데이트 완료

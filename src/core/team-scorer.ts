@@ -205,7 +205,7 @@ const CONTROL_PLANE_PERFGOAL_EXCLUSION = `AND NOT (
 //    result_json 모두 비어 있어 산출물이 전혀 없다 = 오프라인/행/레이트리밋으로 즉시 사망.
 //  - 반면 heartbeat가 하나라도 있는 lease_expired는 에이전트가 실제로 작업하다 시간초과된
 //    것이므로 정상 품질/성능 실패로 그대로 카운트한다(실측 2026-07-24 48h: heartbeat 있는
-//    lease_expired 4건은 research-analysis/kd-memory의 ollama·nvidia 실작업 타임아웃).
+//    lease_expired 4건은 research-analysis/kd-memory의 ollama 실작업 타임아웃).
 //  실측 근거: team_triad-command-judge는 48h 표본 6건 중 3건이 opencode에 acked됐으나
 //   heartbeat 0·response NULL로 만료된 never-ran(task_rhnUFXmH8w792YZR·task_7k_Ok1CKnoPTTPlX
 //   ·task_HCgj8ICR22wc7cIn, 모두 work-report-scheduler 발) → completion 50%(3/6) 오탐.
@@ -351,7 +351,7 @@ const WORK_REPORT_FANOUT_ALL_FAILED_EXCLUSION = `AND NOT (
 //   21:30:12에 정지, lease 21:31:42 만료, job-wait가 22:02:36 실패 마킹 = lease 만료 1854초
 //   후, 산출물 0). 이 1건이 team_ax-collab 48h completion 5/6=83.3% 오탐의 정확한 원인이며
 //   제외 시 5/5=100%로 실제 팀 품질을 반영한다. 동일 패턴이 hr-director·cfo·marketing-lead·
-//   self-learning 등 10개+ 팀, hermes·ollama·opencode·nvidia·agy 6개 에이전트에 걸쳐 있어
+//   self-learning 등 10개+ 팀, hermes·ollama·opencode·agy 5개 에이전트에 걸쳐 있어
 //   team-agnostic 인프라 이벤트임이 확인된다.
 // 안전 불변식: status<>'completed' 가드로 완료 행은 절대 제외되지 않으며(completed는 이
 //  error를 갖지 않음, 실측 0건) completed⊆terminal이 유지되어 completion>100% 회귀가 없다.

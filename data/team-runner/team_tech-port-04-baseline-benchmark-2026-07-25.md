@@ -1,4 +1,4 @@
-# 04 Baseline Benchmark — 일일 산출물 (2026-07-25, ai=nvidia, taskId=task_5iLpqmGkOuHmDesF)
+# 04 Baseline Benchmark — 일일 산출물 (2026-07-25, ai=retired-provider, taskId=task_5iLpqmGkOuHmDesF)
 
 ### 오늘 관찰·분석
 
@@ -23,7 +23,7 @@
 
 * codex: 상태: 온라인, 태스크: 2483, 성공률: 93%, 24시간 실패: 35
 * hermes: 상태: 온라인, 태스크: 1873, 성공률: 61%, 24시간 실패: 268
-* nvidia: 상태: idle, 태스크: 497, 성공률: 79%, 24시간 실패: 4
+* retired-provider: 상태: idle, 태스크: 497, 성공률: 79%, 24시간 실패: 4
 
 ### 현재 상태
 

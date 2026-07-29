@@ -7,7 +7,7 @@
 - [x] 3. Task — NCO 태스크 시스템 활성화 (50+)
 - [x] 4. 병렬·협업 — parallel/hive/inter-session 사용
 - [x] 5. 워크플로우 — conductor + auto-report 통합
-- [x] 6. 교차검증 — cursor-agent + nvidia 다중 리뷰
+- [x] 6. 교차검증 — cursor-agent + retired-provider 다중 리뷰
 - [x] 7. 시각검증 — health check + before/after 스냅샷
 - [x] 8. 갭분석 — nco-gap + workflow-score.py 실행
 - [x] 9. 최종보고서 — docs/workflows/ 검증 영수증 포함 보고서

@@ -66,7 +66,7 @@ API 응답과 현재 실행 중 서비스의 배포 버전은 T1로 확인하지
 | `task_Qx8pE8DTFnHMI7Xf` | completed | claude-code | work-report-scheduler | `SUCCESS_WITH_FORMAT_SIGNAL` | `qualityHeuristics=["FORMAT_MISMATCH"]`, 최종 completed |
 | `task_3TlVeMIGK2jZIDk7` | completed | opencode | work-report-scheduler | `SUCCESS_DELIVERED_SIBLING` | `workReportId=wr_iRaNIyiaBq7orx3I`, `completed_at=05:02:14` |
 | `task_nOh_b4GnVr1r1IuJ` | **timed_out** | opencode | work-report-scheduler | **`DUPLICATE_REPORT_ACTIVE_TIMEOUT`** | 같은 workReportId, `error=timeout(idle)`, heartbeat 61, `completed_at=05:17:11` |
-| `task_BYJVrzZ3grAGuUPR` | completed | nvidia | commander-perfgoal | `SUCCESS_CONTROL_PLANE` | `qualityHeuristics=["FORMAT_MISMATCH"]`, 최종 completed |
+| `task_BYJVrzZ3grAGuUPR` | completed | retired-provider | commander-perfgoal | `SUCCESS_CONTROL_PLANE` | `qualityHeuristics=["FORMAT_MISMATCH"]`, 최종 completed |
 | `task_JNne61TjU3P9_250` | completed | opencode | team-runner | `SUCCESS_TEAM_REPORT` | `error IS NULL`, heartbeat 5 |
 | `task_AP8JV8sKsZ3vaMnT` | completed | opencode | work-report-scheduler | `SUCCESS_DUPLICATE_REPORT` | `workReportId=wr_p2MGFBgnU1tsVLh1`, 최종 completed |
 | `task_GzzBfxCcaaWjuHb1` | completed | opencode | work-report-scheduler | `SUCCESS_DUPLICATE_REPORT` | 같은 `wr_p2MGFBgnU1tsVLh1`, 최종 completed |

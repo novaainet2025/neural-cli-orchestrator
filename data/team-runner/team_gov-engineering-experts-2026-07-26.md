@@ -1,4 +1,4 @@
-# Expert Council and Research — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_jzgPxKutNpGvwW3l)
+# Expert Council and Research — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_jzgPxKutNpGvwW3l)
 
 ### 오늘 관찰·분석
 
@@ -12,7 +12,7 @@
 
 - opencode: 상태 idle, 태스크 1364, 성공률 26%, 24시간 실패 20
 - hermes: 상태 idle, 태스크 2130, 성공률 56%, 24시간 실패 56
-- nvidia: 상태 idle, 태스크 510, 성공률 77%, 24시간 실패 29
+- retired-provider: 상태 idle, 태스크 510, 성공률 77%, 24시간 실패 29
 
 #### 3. 최근 7일간의 태스크 누계
 

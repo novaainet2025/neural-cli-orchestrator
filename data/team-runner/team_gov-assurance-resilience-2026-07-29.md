@@ -1,4 +1,4 @@
-# Reliability and Resilience Review — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_hI8oo4NiiIMNhb2q)
+# Reliability and Resilience Review — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_hI8oo4NiiIMNhb2q)
 
 ### 오늘 관찰·분석
 
@@ -13,7 +13,7 @@
 #### 2. 현재 팀의 상태
 * cursor-agent: idle, 태스크 3642, 성공률 95%, 24시간 실패 0
 * agy: idle, 태스크 646, 성공률 89%, 24시간 실패 0
-* nvidia: idle, 태스크 621, 성공률 79%, 24시간 실패 6
+* retired-provider: idle, 태스크 621, 성공률 79%, 24시간 실패 6
 
 #### 3. 다음에 필요한 작업 제안
 * 현재 태스크는 모두 완료되어 있지만, 태스크가 완료된 후에도 상태가 idle로 유지되는 것을 확인했습니다. 이에 따라 다음 작업으로는 태스크의 상태를 확인하고, 만약 태스크가 완료된 후에도 idle로 유지되는 경우를 확인하고, 이를 해결하기 위한 작업을 제안할 필요가 있습니다.
@@ -26,7 +26,7 @@
 #### 2. 태스크의 성공률
 * cursor-agent: 성공률 95%
 * agy: 성공률 89%
-* nvidia: 성공률 79%
+* retired-provider: 성공률 79%
 
 ### 다음에 필요한 작업 제안
 

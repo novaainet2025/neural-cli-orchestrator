@@ -43,10 +43,6 @@
     "hermes",
     "codex"
   ],
-  "nvidia": [
-    "codex",
-    "hermes"
-  ],
   "openrouter": [
     "codex",
     "hermes"

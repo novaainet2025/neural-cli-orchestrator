@@ -1,4 +1,4 @@
-# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_s4sLJ0XJ2EPt98p7)
+# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_s4sLJ0XJ2EPt98p7)
 
 ### 오늘 관찰·분석
 
@@ -22,7 +22,7 @@
 #### 3. 팀원들의 상태
 
 - cursor-agent: 상태는 idle이며, 현재 태스크는 3449번이고, 성공률은 96%, 24시간 동안 실패한 횟수는 0입니다.
-- nvidia: 상태는 idle이며, 현재 태스크는 510번이고, 성공률은 77%, 24시간 동안 실패한 횟수는 29입니다.
+- retired-provider: 상태는 idle이며, 현재 태스크는 510번이고, 성공률은 77%, 24시간 동안 실패한 횟수는 29입니다.
 
 #### 4. 다음에 필요한 작업 제안
 

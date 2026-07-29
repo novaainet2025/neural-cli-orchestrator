@@ -1,4 +1,4 @@
-# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task__-4f8tXzuvTN58vj)
+# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task__-4f8tXzuvTN58vj)
 
 ### 오늘 관찰·분석
 
@@ -17,7 +17,7 @@
 
 #### 5. 에이전트 상태
 * [api/agents] opencode: 상태=working, 태스크=1369, 성공률=26%, 24시간실패=14
-* [api/agents] nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+* [api/agents] retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
 
 #### 6. 다음 수집 액션
 * [api/teams]에 제공된 데이터를 기반으로 현재 태스크 누계를 확인하고, 최근 7일간의 태스크 누계를 확인할 수 있습니다.
@@ -31,7 +31,7 @@
 
 #### 2. 에이전트 상태
 * opencode 에이전트는 working 상태이며, 태스크 1369개를 처리하고 있습니다.
-* nvidia 에이전트는 idle 상태이며, 태스크 520개를 처리하고 있습니다.
+* retired-provider 에이전트는 idle 상태이며, 태스크 520개를 처리하고 있습니다.
 
 ### 다음에 필요한 작업 제안
 

@@ -88,7 +88,7 @@ RSS 원시는 scenario JSON에 있으나, command-level `max_rss_raw`는 `unknow
 연결 영수증:
 
 - improvement note: `team-tech-port-04-baseline-cycle1-20260723`
-- Mem0: `mem0-1784812541836-kia31s` (`agent_id=nvidia`, BM25 조회 확인)
+- Mem0: `mem0-1784812541836-kia31s` (`agent_id=retired-provider`, BM25 조회 확인)
 - knowledge base: `kb-team-tech-port-04-baseline-cycle1-20260723`
   (`category=bug_pattern`, lexical 조회 확인)
 

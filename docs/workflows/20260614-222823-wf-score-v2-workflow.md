@@ -28,10 +28,10 @@
 |:----:|------|:----:|:--:|------|
 | ✅ | 문서화 | 10/10 | - | plans:14 README reports:1 workflow-cmd |
 | ✅ | 계획 | 10/10 | - | checklist:10/10 pipeline.ts score-script |
-| ✅ | Task시스템 | 10/10 | - | calls:5 agents:[codex,cursor-agent,nvidia] |
+| ✅ | Task시스템 | 10/10 | - | calls:5 agents:[codex,cursor-agent,retired-provider] |
 | ⚠️ | 병렬·협업 | 7/10 | +3 | pmodes:[parallel] inter-session:8 |
 | ✅ | 워크플로우 | 10/10 | - | conductor:used workflow-full auto-report |
-| ✅ | 교차검증 | 10/10 | - | agents:3 reviewers:[cursor-agent,nvidia] reviews:3 |
+| ✅ | 교차검증 | 10/10 | - | agents:3 reviewers:[cursor-agent,retired-provider] reviews:3 |
 | ⚠️ | 시각검증 | 9/10 | +1 | health:ok agents:7 snapshots:2 ts-dep:ok(no-binary) |
 | ✅ | 갭분석 | 10/10 | - | score-ran nco-gap:cmd active:50 done:14 fail-rate:8% |
 | ✅ | 최종보고서 | 10/10 | - | report:20260614-213320-wf-score-improvement.md receipt:ok le |
@@ -54,7 +54,7 @@
 | 완료 | 14개 (28.0%) |
 | 대기 중 | 29개 |
 | 실패 | 4개 (실패율: 8.0%) ✅ |
-| 투입 에이전트 | claude-code, codex, cursor-agent, discussion-engine, higgsfield, nvidia, opencode |
+| 투입 에이전트 | claude-code, codex, cursor-agent, discussion-engine, higgsfield, retired-provider, opencode |
 | 사용 모드 | full-pipeline, hive, inter-session, mesh, nova-ax, parallel, task |
 
 > 실패율 기준: ≤10% 정상 | 현재 8.0% ✅

@@ -42,7 +42,7 @@ lease 만료(completed_at > lease_expires_at) 건은 전부 heartbeat 정지 후
 지나 마킹됨. 분포:
 - 팀: ax-collab, hr-director, cfo, marketing-lead, sales-director, autonomy-controller,
   content-planning, hr-incubator, web-scrape-05, self-learning … 10개+
-- 에이전트: hermes, ollama, opencode, nvidia, agy, claude-code (6종)
+- 에이전트: hermes, ollama, opencode, retired-provider, agy, claude-code (6종)
 → 특정 팀·에이전트 품질 문제가 아니라 **플랫폼 liveness(오프라인/행/레이트리밋)** 이벤트.
 서킷브레이커·lease-never-ran과 동일 계열이며 기존 스코어러 철학에 부합.
 

@@ -13,7 +13,7 @@ index b7b7c50..551e0f9 100644
    resolveDecomposer,
    resolveDecomposers,
 @@ -282,6 +284,59 @@ describe('resolveExecutor', () => {
-       team({ slug: 'a', name: 'A', lead: 'codex', members: ['nvidia'] }), known, 'ollama', avail
+       team({ slug: 'a', name: 'A', lead: 'codex', members: ['retired-provider'] }), known, 'ollama', avail
      )).toBe('codex');
    });
 +
@@ -24,7 +24,7 @@ index b7b7c50..551e0f9 100644
 +        slug: 'gov-evolution-learning',
 +        name: 'Continuous Learning',
 +        lead: 'opencode',
-+        members: ['codex', 'nvidia', 'ollama'],
++        members: ['codex', 'retired-provider', 'ollama'],
 +      }),
 +      known,
 +      'ollama',
@@ -34,16 +34,16 @@ index b7b7c50..551e0f9 100644
 +});
 +
 +describe('resolveExecutorChain', () => {
-+  const known = new Set(['claude-code', 'codex', 'nvidia', 'ollama']);
++  const known = new Set(['claude-code', 'codex', 'retired-provider', 'ollama']);
 +
 +  it('전용 토글 off 시 Continuous Learning의 선언된 member 순서를 복원', () => {
 +    expect(orderRecoveryMembers(
 +      {
 +        slug: 'gov-evolution-learning',
-+        members: ['codex', 'nvidia', 'ollama'],
++        members: ['codex', 'retired-provider', 'ollama'],
 +      },
 +      'off',
-+    )).toEqual(['codex', 'nvidia', 'ollama']);
++    )).toEqual(['codex', 'retired-provider', 'ollama']);
 +  });
 +
 +  it('Continuous Learning lead는 유지하고 ollama를 첫 failover 후보로 둠', () => {
@@ -52,10 +52,10 @@ index b7b7c50..551e0f9 100644
 +        slug: 'gov-evolution-learning',
 +        name: 'Continuous Learning',
 +        lead: 'claude-code',
-+        members: ['codex', 'nvidia', 'ollama'],
++        members: ['codex', 'retired-provider', 'ollama'],
 +      }),
 +      known,
-+    )).toEqual(['claude-code', 'ollama', 'codex', 'nvidia']);
++    )).toEqual(['claude-code', 'ollama', 'codex', 'retired-provider']);
 +  });
 +
 +  it('다른 팀의 선언된 member 순서는 바꾸지 않음', () => {
@@ -64,10 +64,10 @@ index b7b7c50..551e0f9 100644
 +        slug: 'gov-evolution-memory',
 +        name: 'Memory',
 +        lead: 'claude-code',
-+        members: ['codex', 'nvidia', 'ollama'],
++        members: ['codex', 'retired-provider', 'ollama'],
 +      }),
 +      known,
-+    )).toEqual(['claude-code', 'codex', 'nvidia', 'ollama']);
++    )).toEqual(['claude-code', 'codex', 'retired-provider', 'ollama']);
 +  });
  });
  

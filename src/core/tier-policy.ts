@@ -13,6 +13,8 @@
  *   3) 두뇌가 통합·리뷰·검증                              → 품질 보증
  */
 
+import { filterRegistered, resolvePreference, derivedTier } from './provider-registry.js';
+
 export type Tier = 'brain' | 'worker';
 
 /**
@@ -29,7 +31,7 @@ export const BRAIN_TIER: readonly string[] = [
 
 /**
  * 워커(WORKER) — 무료·로컬 우선. 대량 구현/기계적/병렬 작업.
- * 로컬(ollama) 우선 → 무료 클라우드(nvidia/openrouter) fallback.
+ * 로컬(ollama) 우선 → 무료 CLI(aider) fallback.
  * ※ hermes는 2026-07-18 codex CLI(paid)로 전환되어 무료·로컬 계약에서 제외.
  *   직접 위임(nco_task ai=hermes)·failover 타깃으로는 계속 사용 가능.
  * ※ 로컬 워커는 Ollama 단일화.
@@ -37,17 +39,19 @@ export const BRAIN_TIER: readonly string[] = [
 export const WORKER_TIER: readonly string[] = [
   'ollama',       // 로컬 Ollama (qwen3:30b-a3b)
   'aider',        // 무료 (aider CLI)
-  'nvidia',       // 무료 클라우드 Reasoner
 ];
 
-const BRAIN_SET = new Set(BRAIN_TIER);
-const WORKER_SET = new Set(WORKER_TIER);
+// 순서표는 큐레이션이고 등록 여부는 config 가 정한다. 퇴출 프로바이더는
+// 여기서 사라지고, 표에 없는 신규 프로바이더는 derivedTier() 로 분류된다.
+const BRAIN_SET = new Set(filterRegistered(BRAIN_TIER));
+const WORKER_SET = new Set(filterRegistered(WORKER_TIER));
 
 /** 프로바이더 id의 계층 판별. */
 export function tierOf(id: string): Tier | 'unknown' {
   if (BRAIN_SET.has(id)) return 'brain';
   if (WORKER_SET.has(id)) return 'worker';
-  return 'unknown';
+  // 순서표에 아직 이름이 없는 신규 프로바이더 → config 의 cost/type 으로 분류
+  return derivedTier(id);
 }
 
 // 두뇌급 의도: 판단·설계·검토가 필요한 작업 → 유료 스마트
@@ -89,16 +93,18 @@ export function orderByTier(ids: string[], tier: Tier): string[] {
  * pickAvailableAgent 가 앞에서부터 사용가능한 것을 고르므로 순서 = 우선순위 + fallback.
  */
 export const LAYER_TIER_AGENTS: Record<string, string[]> = {
+  // 각 계층은 provider-registry 를 경유한다: config 에서 빠진 프로바이더는
+  // 자동으로 사라지고, 새로 들어온 프로바이더는 역량 순으로 뒤에 편입된다.
   // 두뇌: 계획·최종 종합 (유료 스마트)
-  management: ['claude-code', 'opencode'],
+  management: resolvePreference(['claude-code', 'opencode']),
   // 두뇌 리서치 + 무료 fallback
-  information: ['nvidia'],
-  // 워커: 무료 전체를 로컬우선→무료클라우드 순으로 나열(WORKER_TIER 그대로 재사용).
+  information: resolvePreference(['opencode', 'hermes'], 'research'),
+  // 워커: 무료 전체를 로컬우선 순으로 나열(WORKER_TIER 그대로 재사용).
   // 머신에 로컬 LLM이 없으면(저사양 원격: subnote/kangnote 등) ollama가
-  // enabled 안 돼 자동으로 무료 클라우드(nvidia/openrouter)로 폴백, 무료가 전무하면
+  // enabled 안 돼 자동으로 무료 CLI(aider)로 폴백, 무료가 전무하면
   // codex(유료)로 escalation. pickAvailableAgent가 enabled+circuit로 필터하므로
   // 머신별 자동 적응 — 하드코딩 없이 사양별 유연 배정 ([[feedback_ollama_lowspec_exclude]]).
-  execution: [...WORKER_TIER, 'codex'],
+  execution: resolvePreference([...WORKER_TIER, 'codex']),
   // 두뇌 리뷰 + 무료 QA fallback
-  quality: ['cursor-agent', 'ollama', 'nvidia'],
+  quality: resolvePreference(['cursor-agent', 'ollama'], 'review'),
 };

@@ -79,8 +79,8 @@ tags:
 
 | task_id | 동일 WR | 최초 provider 실패 | fallback 관측 | 산출물 |
 |---|---|---|---|---|
-| `task_gXcRlu7Ui41AtYar` | `wr_5jFD_m94LPa_KVGC` | nvidia `503 ResourceExhausted: Worker local total request limit reached (19/16)` | ollama heartbeat 16회 후 만료 | response/result 모두 NULL |
-| `task_HFKv-pgafAT8ADJZ` | `wr_5jFD_m94LPa_KVGC` | nvidia `The operation was aborted due to timeout` | ollama heartbeat 8회 후 만료 | response/result 모두 NULL |
+| `task_gXcRlu7Ui41AtYar` | `wr_5jFD_m94LPa_KVGC` | retired-provider `503 ResourceExhausted: Worker local total request limit reached (19/16)` | ollama heartbeat 16회 후 만료 | response/result 모두 NULL |
+| `task_HFKv-pgafAT8ADJZ` | `wr_5jFD_m94LPa_KVGC` | retired-provider `The operation was aborted due to timeout` | ollama heartbeat 8회 후 만료 | response/result 모두 NULL |
 
 두 행은 모두 동일한 `2026-07-22 오후 업무보고` 프롬프트다. verifier의
 `npm run build`는 나중에 exit 0이지만, 업무보고 response가 없으므로 산출물 완료 증거가

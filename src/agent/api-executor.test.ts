@@ -226,7 +226,7 @@ describe('ApiExecutor', () => {
 
     const executor = new ApiExecutor(providerMap.get('hermes'), sandbox);
     await expect(executor.run('task-model-override', 'prompt', {
-      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+      model: 'custom/model-override',
     })).rejects.toThrow('Connection error');
     expect(completionHandlers.get('http://localhost:11434/v1')).not.toHaveBeenCalled();
     expect(openAiConfigs.map(cfg => cfg.baseURL)).toEqual(['http://127.0.0.1:8000/v1']);
@@ -250,7 +250,7 @@ describe('ApiExecutor', () => {
 
     const executor = new ApiExecutor(providerMap.get('hermes'), sandbox);
     await expect(executor.run('task-empty-model-override', 'prompt', {
-      model: 'nvidia/llama-3.3-nemotron-super-49b-v1',
+      model: 'custom/model-override',
     })).rejects.toThrow("empty completion from provider 'hermes' after 1 iteration(s)");
     expect(completionHandlers.get('http://localhost:11434/v1')).not.toHaveBeenCalled();
     expect(openAiConfigs.map(cfg => cfg.baseURL)).toEqual(['http://127.0.0.1:8000/v1']);

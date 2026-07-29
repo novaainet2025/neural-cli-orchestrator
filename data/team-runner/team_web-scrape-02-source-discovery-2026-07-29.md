@@ -1,4 +1,4 @@
-# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_8uX7B9IqODwxbvCt)
+# 02 Source Discovery and Mapping — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_8uX7B9IqODwxbvCt)
 
 ### 오늘 관찰·분석
 
@@ -28,7 +28,7 @@
  + agy: idle
  + hermes: working (태스크: task_hzhFdCAcxZYhol5b)
  + higgsfield: idle
- + nvidia: working (태스크: task_8uX7B9IqODwxbvCt)
+ + retired-provider: working (태스크: task_8uX7B9IqODwxbvCt)
  + ollama: idle
 
 ### 다음에 필요한 작업 제안

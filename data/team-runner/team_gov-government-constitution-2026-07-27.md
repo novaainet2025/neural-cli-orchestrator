@@ -1,4 +1,4 @@
-# Constitution and Policy — 일일 산출물 (2026-07-27, ai=nvidia, taskId=task_rHvgQVvVpTU1uDFW)
+# Constitution and Policy — 일일 산출물 (2026-07-27, ai=retired-provider, taskId=task_rHvgQVvVpTU1uDFW)
 
 ### 오늘 관찰·분석
 
@@ -15,7 +15,7 @@
 * 현재 팀의 에이전트 상태를 살펴보면, 
  + claude-code: 상태=idle, 태스크=2154, 성공률=18%, 24시간실패=82
  + cursor-agent: 상태=working, 태스크=3482, 성공률=96%, 24시간실패=2
- + nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+ + retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
 
 ### 현재 상태
 
@@ -24,7 +24,7 @@
 * 현재 팀의 에이전트 상태를 살펴보면, 
  + claude-code: 상태=idle, 태스크=2154, 성공률=18%, 24시간실패=82
  + cursor-agent: 상태=working, 태스크=3482, 성공률=96%, 24시간실패=2
- + nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+ + retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
 
 ### 다음에 필요한 작업 제안
 
@@ -33,5 +33,5 @@
 * 현재 팀의 에이전트 상태를 살펴보면, 
  + claude-code: 상태=idle, 태스크=2154, 성공률=18%, 24시간실패=82
  + cursor-agent: 상태=working, 태스크=3482, 성공률=96%, 24시간실패=2
- + nvidia: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
+ + retired-provider: 상태=idle, 태스크=520, 성공률=77%, 24시간실패=28
  따라서 다음에 필요한 작업으로는 에이전트의 상태를 확인하고, 성공률이 낮은 에이전트의 태스크를 재할당하는 것이 필요합니다.

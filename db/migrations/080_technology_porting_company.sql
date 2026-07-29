@@ -32,7 +32,7 @@ VALUES
     'tech-port-01-source-discovery',
     'Collect primary-source technology, version, provenance, and reproducible evidence.',
     '#2563EB',
-    'nvidia',
+    'cursor-agent',
     '1단계 기술 탐색·습득. 공식 저장소, 릴리스/보안 공지, 라이선스, 논문 원문, 재현 가능한 벤치마크를 우선한다. 후보 기술의 버전·commit SHA·출처 URL·검증일·대안을 기록하며 출처 불명 코드나 재현 불가 수치는 채택 근거로 사용하지 않는다.',
     0,
     1
@@ -68,7 +68,7 @@ VALUES
     'tech-port-04-baseline-benchmark',
     'Measure a reproducible baseline and define regression limits.',
     '#0891B2',
-    'nvidia',
+    'opencode',
     '4단계 기준선 측정. 기존 테스트, 대표 사용자 시나리오, 지연, 처리량, 자원, 오류율, 성공률과 회귀 민감 지표를 동일 조건에서 측정하고 원시 결과와 실행 명령을 보존한다.',
     0,
     1
@@ -146,7 +146,7 @@ ON CONFLICT(id) DO UPDATE SET
 
 INSERT OR IGNORE INTO team_members (id, team_id, member_type, member_ref)
 VALUES
-  ('member_port_01_nvidia', 'team_tech-port-01-source-discovery', 'provider', 'nvidia'),
+  ('member_port_01_cursor_agent', 'team_tech-port-01-source-discovery', 'provider', 'cursor-agent'),
   ('member_port_01_codex', 'team_tech-port-01-source-discovery', 'provider', 'codex'),
   ('member_port_01_opencode', 'team_tech-port-01-source-discovery', 'provider', 'opencode'),
   ('member_port_02_codex', 'team_tech-port-02-safety-license', 'provider', 'codex'),
@@ -155,17 +155,17 @@ VALUES
   ('member_port_03_opencode', 'team_tech-port-03-recovery-checkpoint', 'provider', 'opencode'),
   ('member_port_03_codex', 'team_tech-port-03-recovery-checkpoint', 'provider', 'codex'),
   ('member_port_03_cursor', 'team_tech-port-03-recovery-checkpoint', 'provider', 'cursor-agent'),
-  ('member_port_04_nvidia', 'team_tech-port-04-baseline-benchmark', 'provider', 'nvidia'),
+  ('member_port_04_opencode', 'team_tech-port-04-baseline-benchmark', 'provider', 'opencode'),
   ('member_port_04_hermes', 'team_tech-port-04-baseline-benchmark', 'provider', 'hermes'),
   ('member_port_04_codex', 'team_tech-port-04-baseline-benchmark', 'provider', 'codex'),
   ('member_port_05_codex', 'team_tech-port-05-upgrade-regression', 'provider', 'codex'),
-  ('member_port_05_nvidia', 'team_tech-port-05-upgrade-regression', 'provider', 'nvidia'),
+  ('member_port_05_opencode', 'team_tech-port-05-upgrade-regression', 'provider', 'opencode'),
   ('member_port_05_cursor', 'team_tech-port-05-upgrade-regression', 'provider', 'cursor-agent'),
   ('member_port_06_claude', 'team_tech-port-06-improvement-debate', 'provider', 'claude-code'),
   ('member_port_06_opencode', 'team_tech-port-06-improvement-debate', 'provider', 'opencode'),
   ('member_port_06_codex', 'team_tech-port-06-improvement-debate', 'provider', 'codex'),
   ('member_port_07_codex', 'team_tech-port-07-value-gate-report', 'provider', 'codex'),
-  ('member_port_07_nvidia', 'team_tech-port-07-value-gate-report', 'provider', 'nvidia'),
+  ('member_port_07_opencode', 'team_tech-port-07-value-gate-report', 'provider', 'opencode'),
   ('member_port_07_hermes', 'team_tech-port-07-value-gate-report', 'provider', 'hermes'),
   ('member_port_08_codex', 'team_tech-port-08-migration-implementation', 'provider', 'codex'),
   ('member_port_08_opencode', 'team_tech-port-08-migration-implementation', 'provider', 'opencode'),

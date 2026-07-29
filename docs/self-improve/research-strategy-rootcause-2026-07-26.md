@@ -25,7 +25,7 @@
 | 3 | task__04Go89EOIojlPdW | completed | claude-code | 6 | 2665 | 정상 완료 | DB row |
 | 4 | task_rqeBjdKtM3pecZgs | completed | ollama | 4 | 591 | 정상 완료 | DB row |
 | 5 | task_CLCWy1BZDVqqFWPb | completed | ollama | 5 | 978 | 정상 완료 | DB row |
-| 6 | task_WZ1iiz-Dnd7v8WG4 | completed | nvidia | 2 | 985 | 정상 완료 | DB row |
+| 6 | task_WZ1iiz-Dnd7v8WG4 | completed | retired-provider | 2 | 985 | 정상 완료 | DB row |
 | 7 | task_bBJ8fWUCwJjfbJsS | completed | agy | 9 | 1370 | 정상 완료 | wr_QxViGkc4gpdQhLAP 실배달본 |
 | 8 | task__zXpjggKrqmyv0Of | **failed** | opencode | **4** | 0 | **정당 실패** (기판정 카테고리) | error=`opencode: CLI failed exit=unknown — Command was killed with SIGINT (User interruption with CTRL-C)`. 04:12 생성→04:49 마지막 hb, 37분 실작업 후 강제 중단, 산출물 0 |
 

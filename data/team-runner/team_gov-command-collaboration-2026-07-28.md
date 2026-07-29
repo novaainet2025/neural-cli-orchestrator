@@ -12,7 +12,7 @@
 | cursor-agent 성공률 | 95% (3588 tasks, 24h실패=23) | `/api/agents` | T1 |
 | ollama 성공률 | 76% (1007 tasks, 24h실패=1) | `/api/agents` | T1 |
 | hermes 성공률 | 57% (2176 tasks, 24h실패=3) | `/api/agents` | T1 |
-| nvidia 성공률 | 78% (558 tasks, 24h실패=2) | `/api/agents` | T1 |
+| retired-provider 성공률 | 78% (558 tasks, 24h실패=2) | `/api/agents` | T1 |
 
 **Missing data (미확인):**
 - handoff 패킷 설계 문서: 미확인

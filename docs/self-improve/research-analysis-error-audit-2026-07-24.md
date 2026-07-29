@@ -52,15 +52,15 @@ tags:
 | 에러 시그니처 | 건수 | 판정 |
 |--------------|-----:|------|
 | lease_expired (heartbeat 有) | 2 | 동일 `workReportId` fan-out 중복 |
-| nvidia 503 ResourceExhausted | 1 | provider 한도 초과 (일회성) |
-| nvidia timeout | 1 | provider 타임아웃 (일회성) |
+| retired-provider 503 ResourceExhausted | 1 | provider 한도 초과 (일회성) |
+| retired-provider timeout | 1 | provider 타임아웃 (일회성) |
 | ollama late completion | 2 | lease 만료 후 6분+ 지연 도착 |
 | INFRA_EXCLUSION (현재 창에서 age-out) | 4 | 당시 이미 분모 제외 |
 | FORMAT_MISMATCH | 0 | research-analysis 태스크에 없음 (quality-audit에만 3건) |
 
 **FORMAT_MISMATCH 오탐 검증**: research-analysis의 `work_reports`·`tasks`·`quality_gates`에 FORMAT_MISMATCH 레코드 0건. quality-audit 태스크(`task_fS--PtJSjDIr4snu` 등)에서만 3건 관찰됐으나 이는 quality-audit 팀 전용 reject이며 research-analysis 점수 산정에 영향을 주지 않음.
 
-**큐 기아**: DB에 큐 대기시간 직접 기록 없음. nvidia 503 `(19/16)` 동시요청 한도는 관측됐으나 큐 깊이·대기시간 원자료는 저장되지 않음 → [미검증].
+**큐 기아**: DB에 큐 대기시간 직접 기록 없음. retired-provider 503 `(19/16)` 동시요청 한도는 관측됐으나 큐 깊이·대기시간 원자료는 저장되지 않음 → [미검증].
 
 ## 3. Circuit Breaker / Gate 규칙 대조
 
@@ -68,7 +68,7 @@ tags:
 
 | agent | state | failure_count | reason | cooldown_until |
 |-------|-------|:------------:|--------|---------------|
-| nvidia | closed | 1 | generic | NULL |
+| retired-provider | closed | 1 | generic | NULL |
 | ollama | closed | 0 | NULL | NULL |
 | codex | closed | 0 | NULL | NULL |
 | opencode | closed | 0 | NULL | NULL |
@@ -169,7 +169,7 @@ tags:
 
 - [변경] `docs/self-improve/research-analysis-error-audit-2026-07-24.md` — 신규 감사 문서
 - [검증방법] sqlite3 readonly 조회 8회 (tasks·circuit_states·agent_actions·lifecycle), circuit-breaker 로그 2개 파일, tsc --noEmit / npm run build / vitest 실행
-- [DB] research-analysis 48h: 13 completed, 4 failed (all infra), 1 running (stuck). CB states: nvidia closed(1 failure), ollama closed(0), copilot half-open(quota), hermes half-open(generic)
+- [DB] research-analysis 48h: 13 completed, 4 failed (all infra), 1 running (stuck). CB states: retired-provider closed(1 failure), ollama closed(0), copilot half-open(quota), hermes half-open(generic)
 - [테스트] `npx vitest run src/core/team-scorer.test.ts src/security/circuit-breaker.test.ts src/server/task-intake.test.ts src/core/work-report-scheduler.test.ts` → 4 files/33 tests passed
 - [타입체크] `npx tsc --noEmit` → exit 0
 - [빌드] `npm run build` → tsc, exit 0

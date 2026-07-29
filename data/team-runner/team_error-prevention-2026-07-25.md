@@ -9,7 +9,7 @@
    * 팀 태스크 누계는 전체 135개, 완료 86개, 실패 47개이며, 진행 중인 태스크는 2개이다.
    * cursor-agent의 상태는 online이며, 태스크는 10922개, 성공률은 98%이다.
    * ollama의 상태는 idle이며, 태스크는 1168개, 성공률은 55%이며, 24시간 실패 횟수는 23개이다.
-   * nvidia의 상태는 idle이며, 태스크는 497개, 성공률은 79%이며, 24시간 실패 횟수는 4개이다.
+   * retired-provider의 상태는 idle이며, 태스크는 497개, 성공률은 79%이며, 24시간 실패 횟수는 4개이다.
 
 ### 현재 상태 ####
 
@@ -21,7 +21,7 @@
 1. **자동 감사(auto-audit) 로그를 분석하여 중복 발생하는 에러를 차단하는 룰(Circuit Breaker/Gate)을 갱신한다.**
 2. **tasks 실패 패턴을 분석하여 False Report 여부를 교차 검증한다.**
 3. **report의 신뢰도 향상을 위해 False Report 여부를 교차 검증한다.**
-4. **cursor-agent, ollama, nvidia의 상태를 분석하여 태스크를 재분배한다.**
+4. **cursor-agent, ollama, retired-provider의 상태를 분석하여 태스크를 재분배한다.**
 
 ### 변경 파일 목록 ####
 
@@ -40,4 +40,4 @@ PASS
 * **자동 감사(auto-audit) 로그를 수집한다.**
 * **tasks 실패 패턴을 수집한다.**
 * **report의 신뢰도 향상을 위해 False Report 여부를 교차 검증한다.**
-* **cursor-agent, ollama, nvidia의 상태를 분석하여 태스크를 재분배한다.**
+* **cursor-agent, ollama, retired-provider의 상태를 분석하여 태스크를 재분배한다.**

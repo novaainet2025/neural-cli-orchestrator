@@ -18,9 +18,9 @@
 |-------|------|--------|--------|----------|
 | cursor-agent | online | 3627 | 95% | 17 |
 | ollama | idle | 1039 | 76% | 6 |
-| nvidia | working | 605 | 79% | 5 |
+| retired-provider | working | 605 | 79% | 5 |
 
-**팀 메타 (프롬프트 Team 블록):** cursor-agent=`working`(task_gVJGbZ26IlnfK_n8), ollama=`idle`, nvidia=`idle` — [/api/agents]의 cursor-agent=`online`·nvidia=`working`과 **불일치**. 어느 쪽이 최신인지는 **미확인** (재조회 금지로 해소 불가).
+**팀 메타 (프롬프트 Team 블록):** cursor-agent=`working`(task_gVJGbZ26IlnfK_n8), ollama=`idle`, retired-provider=`idle` — [/api/agents]의 cursor-agent=`online`·retired-provider=`working`과 **불일치**. 어느 쪽이 최신인지는 **미확인** (재조회 금지로 해소 불가).
 
 **Computer Use 감사 체크리스트 (주입 증거 기준):**
 
@@ -34,7 +34,7 @@
 | 회수 증거 | 미확인 | release/회수 로그·영수증 미주입 |
 | 실행팀 분리 사후감사 | 부분 충족(역할만) | 본 응답은 실행·제어 미수행(텍스트만). 감사 산출물 저장 경로는 **미확인** |
 
-**에이전트 건강 관찰 (주입값만):** cursor-agent 24h 실패 17은 절대 건수 상 가장 큼. 성공률 95%와 병존. ollama 성공률 76%·실패 6, nvidia 79%·실패 5. Computer Use 잠금/회수와의 **인과관계는 미확인**.
+**에이전트 건강 관찰 (주입값만):** cursor-agent 24h 실패 17은 절대 건수 상 가장 큼. 성공률 95%와 병존. ollama 성공률 76%·실패 6, retired-provider 79%·실패 5. Computer Use 잠금/회수와의 **인과관계는 미확인**.
 
 ---
 
@@ -64,7 +64,7 @@
    - 회수/release 증거 (시각, 주체, before/after 상태)  
    - 외부 부작용 체크리스트 (네트워크·파일·결제·배포 등)
 
-2. **상태 정합:** `/api/agents` 재스냅샷으로 cursor-agent online↔working, nvidia working↔idle 불일치 해소 (감사팀은 도구 금지 시 스냅샷만 수신).
+2. **상태 정합:** `/api/agents` 재스냅샷으로 cursor-agent online↔working, retired-provider working↔idle 불일치 해소 (감사팀은 도구 금지 시 스냅샷만 수신).
 
 3. **게이트:** 위 1항이 전부 T1으로 채워지기 전 **Computer Use 승인 보류**. 잠금 없이 제어 시도·승인 없는 부작용·회수 증거 없는 세션은 **즉시 중단** 권고.
 

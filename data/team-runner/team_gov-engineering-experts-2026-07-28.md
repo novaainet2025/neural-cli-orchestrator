@@ -1,4 +1,4 @@
-# Expert Council and Research — 일일 산출물 (2026-07-28, ai=nvidia, taskId=task_7sLpPkvY3LTWtdje)
+# Expert Council and Research — 일일 산출물 (2026-07-28, ai=retired-provider, taskId=task_7sLpPkvY3LTWtdje)
 
 ### 오늘 관찰·분석
 
@@ -25,7 +25,7 @@
 
 * opencode: 상태=working, 태스크=1420, 성공률=28%, 24시간실패=8
 * hermes: 상태=working, 태스크=2173, 성공률=57%, 24시간실패=2
-* nvidia: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
+* retired-provider: 상태=working, 태스크=553, 성공률=78%, 24시간실패=1
 
 ### 현재 상태
 

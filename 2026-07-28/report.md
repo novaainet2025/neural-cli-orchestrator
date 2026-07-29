@@ -13,11 +13,11 @@
 
 [agent_performance_summary] opencode/code: 실행=26, 성공률=80.8%, 평균품질=68.47, 평균소요ms=33154.73
 
-[agent_performance_summary] nvidia/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
+[agent_performance_summary] retired-provider/code: 실행=8, 성공률=50.0%, 평균품질=40.50, 평균소요ms=41017.13
 
-[agent_performance_summary] nvidia/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
+[agent_performance_summary] retired-provider/design: 실행=6, 성공률=100.0%, 평균품질=91.64, 평균소요ms=22118.17
 
-[agent_performance_summary] nvidia/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
+[agent_performance_summary] retired-provider/verify: 실행=2, 성공률=100.0%, 평균품질=82.50, 평균소요ms=31205
 
 [agent_performance_summary] opencode/design: 실행=1, 성공률=100.0%, 평균품질=82.57, 평균소요ms=50112
 

@@ -49,7 +49,7 @@ Changes not staged for commit:
 	modified:   db/hnsw-indices/higgsfield.hnsw
 	deleted:    db/hnsw-indices/mlx-instruct.hnsw
 	deleted:    db/hnsw-indices/mlx.hnsw
-	modified:   db/hnsw-indices/nvidia.hnsw
+	modified:   db/hnsw-indices/retired-provider.hnsw
 	modified:   db/hnsw-indices/ollama.hnsw
 	modified:   db/hnsw-indices/opencode.hnsw
 	modified:   nco/config/ai-providers.local.json

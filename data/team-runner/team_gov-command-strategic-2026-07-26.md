@@ -43,13 +43,13 @@
 - tasks(7일): 전체=4, 완료=1, 실패성=3, 진행=0, 완료율=25.0%
 - work_reports(7일): submitted=1
 - /api/teams 누계: 전체=4, 완료=1, 실패=3, 진행=0, 대기=0, 완료율=25.0%
-- 에이전트: claude-code idle·태스크2146·성공률18%·24h실패84; opencode idle·1364·26%·20; cursor-agent idle·3449·96%·0; nvidia idle·510·77%·29
+- 에이전트: claude-code idle·태스크2146·성공률18%·24h실패84; opencode idle·1364·26%·20; cursor-agent idle·3449·96%·0; retired-provider idle·510·77%·29
 
 **분석:**
 - 팀 단위 완료율 25.0%는 표본 n=4로 **통계적 안정성 미확인**(표본 정의·필터 미제공).
 - 실패성 3 vs 완료 1 → **실패가 완료를 압도**. 실패 유형·게이트 사유는 주입에 없음 → **미확인**.
 - 에이전트 편차: cursor-agent 성공률96%/24h실패0 vs claude-code 18%/84, opencode 26%/20 → **고위험·저신뢰 경로에 claude-code/opencode 단독 배정 비권고**(정책 제안 수준; 실행 변경은 미승인).
-- nvidia 24h실패29는 성공률77%와 병존 → **실패 절대량 모니터링 필요**, 원인 **미확인**.
+- retired-provider 24h실패29는 성공률77%와 병존 → **실패 절대량 모니터링 필요**, 원인 **미확인**.
 - Team 헤더의 cursor-agent “working(task_wt1krhgEsdzsKwhS)” vs /api/agents “idle” → **상태 불일치. 어느 쪽이 최신인지 미확인**.
 - 장기기억의 FORMAT_MISMATCH·사후검증 미실행 사례는 **과거 컨텍스트**; 오늘 실패 3건과의 인과 **미확인**.
 - 작업 유형 라벨 “bugfix”만 주입됨. 버그 티켓 ID·재현·영향 범위 **미확인**.
@@ -116,7 +116,7 @@ unverified/remaining: 실패3 원인, 에이전트 상태 불일치, 라우팅 �
 - 날짜: 2026-07-26. 역할: 의도→목표/제약/성공기준 + 지휘 결정만. 구현·자가검증 비소유.
 - 팀 태스크(7일/누계 일치): 전체=4, 완료=1, 실패=3, 진행=0, 대기=0, 완료율=25.0%.
 - work_reports(7일): submitted=1.
-- 에이전트 스냅샷: claude-code 성공률18%/24h실패84; opencode 26%/20; cursor-agent 96%/0; nvidia 77%/29. 주입 API상 4종 모두 idle.
+- 에이전트 스냅샷: claude-code 성공률18%/24h실패84; opencode 26%/20; cursor-agent 96%/0; retired-provider 77%/29. 주입 API상 4종 모두 idle.
 - Team 헤더의 cursor-agent working(`task_wt1krhgEsdzsKwhS`) vs API idle → **상태 불일치 미해소**.
 - 신규: runCommand 메타문자 거부 → **도구 경로 불안정/가드 작동** 가능하나, 실패 3건과의 인과 **미확인**.
 

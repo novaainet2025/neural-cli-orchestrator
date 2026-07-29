@@ -22,7 +22,7 @@
 | cursor-agent | working | 3561 | 96% | **7** |
 | ollama | working | 998 | 76% | 1 |
 | hermes | working | 2173 | **57%** | 2 |
-| nvidia | working | 553 | 78% | 1 |
+| retired-provider | working | 553 | 78% | 1 |
 
 - **성과 강점**: cursor-agent 성공률 96% (상대 최고).  
 - **역량/품질 공백 후보**: hermes 성공률 57% — 보호관찰·개선 후보로 분류할 *근거 수치*는 있으나, 개선 이력·원인분류·감사 조치는 **미확인**.  
@@ -30,7 +30,7 @@
 
 **역할 중복·권력분립**  
 - 주입 데이터에 역할 매트릭스·권력분립 감사 로그·승계 계획 없음 → **미확인**.  
-- 팀 스냅샷 vs API 상태 불일치: 팀 섹션은 ollama/hermes/nvidia=`idle`, API는 전원 `working`; ollama는 팀상 `idle`이면서 `working on: task__3A5-o_ot53ooK3D` 표기 → 상태 SSOT 신뢰도 저하 (**미확인**: 어느 쪽이 진실인지).
+- 팀 스냅샷 vs API 상태 불일치: 팀 섹션은 ollama/hermes/retired-provider=`idle`, API는 전원 `working`; ollama는 팀상 `idle`이면서 `working on: task__3A5-o_ot53ooK3D` 표기 → 상태 SSOT 신뢰도 저하 (**미확인**: 어느 쪽이 진실인지).
 
 **협력 품질**  
 - 완료율 100%는 협업 “양호”의 *약한* 대리지표일 뿐. 교차 리뷰·핸드오프·충돌 건수·감사 이력은 **미확인**.

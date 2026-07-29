@@ -148,7 +148,7 @@ syscall: 'listen'
   - 다만 다른 프로세스의 동시 커밋 `9201a229...`가 scorer source/test 변경을 이미 포함했다.
     증거 문서는 untracked다. 이후 같은 scorer 2개 파일에는 또 다른 작업의 provider-auth
     변경이 dirty로 추가됐다. 최종 status에는 그 작업의 `.cb-classify-probe.mts`, 기존
-    `db/hnsw-indices/nvidia.hnsw`, 이 증거 문서도 uncommitted 상태로 남아 있다.
+    `db/hnsw-indices/retired-provider.hnsw`, 이 증거 문서도 uncommitted 상태로 남아 있다.
 - [롤백]
   - 런타임: `NCO_SCORER_ZERO_OUTPUT_COMPLETED_EXCLUSION=off`
   - 코드: `buildZeroOutputCompletedExclusion()`과 세 completed CASE 삽입부 및 해당 회귀

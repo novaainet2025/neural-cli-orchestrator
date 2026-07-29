@@ -28,7 +28,7 @@ verdict: SELF-IMPROVE PATCH = FALSE REPORT (no-op) · surface & hold
 
 | 패치 대상 | 실측(T1) | 판정 |
 |---|---|---|
-| `db/hnsw-indices/*.hnsw` (codex/nvidia/ollama) | `git diff --stat db/hnsw-indices/` → **7 files changed, 0 insertions(+), 0 deletions(-)** (바이너리 인덱스, baseline 스냅샷에 이미 존재하는 노이즈) | no-op 노이즈 |
+| `db/hnsw-indices/*.hnsw` (codex/retired-provider/ollama) | `git diff --stat db/hnsw-indices/` → **7 files changed, 0 insertions(+), 0 deletions(-)** (바이너리 인덱스, baseline 스냅샷에 이미 존재하는 노이즈) | no-op 노이즈 |
 | `docs/self-improve/tech-port-08-migration-rootcause-2026-07-24.md` | `git status --short docs/self-improve/` → **출력 없음**(워킹트리 무변경). `revalidated_utc`/`qualityRetryExample`는 이미 커밋된 내용 = 재기술 | no-op / **대상 팀 아님**(tech-port-08 문서) |
 | 근거로 인용한 `task_ZZg5UdtnMmIzauL5` | DB: `team_id=team_self-learning`, `status=running`, `created_at=2026-07-24 03:12:33` | **cli-design 표본 아님** + 스냅샷 이후 생성된 현재 재주입 프롬프트 아티팩트 |
 

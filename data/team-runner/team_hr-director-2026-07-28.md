@@ -39,7 +39,7 @@ done: Team Lifecycle HR Director 상시 임무 — **텍스트 전용 관찰 보
 - 30일 사용량·퇴출 후보 목록
 - 인큐베이션 팀/회사 생성 근거·이력
 - 회사 실패의 “지배적 병목=비핵심 팀” 객관 판정 근거
-- opencode/codex/ollama/nvidia/higgsfield 등 미주입 에이전트·팀 지표
+- opencode/codex/ollama/retired-provider/higgsfield 등 미주입 에이전트·팀 지표
 
 ---
 

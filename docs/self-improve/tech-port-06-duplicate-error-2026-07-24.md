@@ -81,7 +81,7 @@ round 번호 대신 parent/retry 깊이만 보고한다.
 | 기록 에이전트 | 표본 | raw 완료 | 실패성 | `FORMAT_MISMATCH` | raw 완료율 |
 |---|---:|---:|---:|---:|---:|
 | `opencode` | 4 | 1 | 3 | 0 | 25.0% |
-| `nvidia` | 3 | 3 | 0 | 2 | 100.0% |
+| `retired-provider` | 3 | 3 | 0 | 2 | 100.0% |
 | `hermes` | 2 | 1 | 1 | 0 | 50.0% |
 | `claude-code` | 1 | 1 | 0 | 1 | 100.0% |
 | `cursor-agent` | 1 | 1 | 0 | 0 | 100.0% |
@@ -118,7 +118,7 @@ round 번호 대신 parent/retry 깊이만 보고한다.
 
 T1 근거상 직접 원인은 내용 길이나 `EMPTY`가 아니라, build verifier가 붙은
 태스크에만 암묵적으로 요구되는 `done:|status:|question:|error:` 계약이
-입력 prompt에는 없다는 불일치다. 앞의 두 nvidia 응답에는 이전 산출물의
+입력 prompt에는 없다는 불일치다. 앞의 두 retired-provider 응답에는 이전 산출물의
 도구 설명을 현재 작업 결과로 반복하는 별도 내용 불충족도 함께 있다.
 
 ### 근본원인과 제한적 개선 가설

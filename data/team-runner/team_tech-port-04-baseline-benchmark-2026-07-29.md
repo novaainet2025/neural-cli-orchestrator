@@ -1,4 +1,4 @@
-# 04 Baseline Benchmark — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_7pzoDHJPG2Kmv4mo)
+# 04 Baseline Benchmark — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_7pzoDHJPG2Kmv4mo)
 
 ### 오늘 관찰·분석
 
@@ -11,25 +11,25 @@
 
 * [api/agents] codex: 상태=working, 태스크=2652, 성공률=90%, 24시간실패=5
 * [api/agents] hermes: 상태=idle, 태스크=2196, 성공률=57%, 24시간실패=4
-* [api/agents] nvidia: 상태=idle, 태스크=614, 성공률=79%, 24시간실패=6
+* [api/agents] retired-provider: 상태=idle, 태스크=614, 성공률=79%, 24시간실패=6
 
 #### 3. 다음에 필요한 작업 제안
 
 * 현재 팀의 태스크 누계와 상태를 확인한 결과, codex가 현재 작업 중이며, 성공률이 90%로 높게 나타나고 있습니다.
-* 하지만 hermes와 nvidia의 상태는 idle로 나타나고 있으며, 성공률이 57%와 79%로 나타나고 있습니다.
-* 따라서 다음에 필요한 작업 제안으로는 codex의 태스크를 확인하고, hermes와 nvidia의 태스크를 확인하여 성공률을 높이는 것이 필요할 것으로 보입니다.
+* 하지만 hermes와 retired-provider의 상태는 idle로 나타나고 있으며, 성공률이 57%와 79%로 나타나고 있습니다.
+* 따라서 다음에 필요한 작업 제안으로는 codex의 태스크를 확인하고, hermes와 retired-provider의 태스크를 확인하여 성공률을 높이는 것이 필요할 것으로 보입니다.
 
 ### 현재 상태
 
 * 현재 팀의 태스크 누계: 전체 26개, 완료 22개, 실패 4개, 진행 0개, 대기 0개
-* 현재 팀의 상태: codex(working), hermes(idle), nvidia(idle)
+* 현재 팀의 상태: codex(working), hermes(idle), retired-provider(idle)
 
 ### 다음에 필요한 작업
 
 * codex의 태스크를 확인하고 성공률을 높이는 작업
-* hermes와 nvidia의 태스크를 확인하여 성공률을 높이는 작업
+* hermes와 retired-provider의 태스크를 확인하여 성공률을 높이는 작업
 
 ### 미확인 항목
 
-* hermes와 nvidia의 24시간 실패 횟수: 4, 6
-* hermes와 nvidia의 성공률: 57%, 79%
+* hermes와 retired-provider의 24시간 실패 횟수: 4, 6
+* hermes와 retired-provider의 성공률: 57%, 79%

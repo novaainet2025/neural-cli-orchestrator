@@ -1,4 +1,4 @@
-# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-29, ai=nvidia, taskId=task_Lk36cMxCU-ge36Sr)
+# Rights Ethics and Human Sovereignty — 일일 산출물 (2026-07-29, ai=retired-provider, taskId=task_Lk36cMxCU-ge36Sr)
 
 ### 오늘 관찰·분석
 
@@ -17,7 +17,7 @@
 
 * claude-code 에이전트는 상태가 error로, 태스크 2387, 성공률 20%, 24시간 실패 33%로 나타납니다.
 * cursor-agent 에이전트는 상태가 idle로, 태스크 3642, 성공률 95%, 24시간 실패 0%로 나타납니다.
-* nvidia 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
+* retired-provider 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
 
 ### 현재 상태
 
@@ -29,7 +29,7 @@
 
 * claude-code 에이전트는 상태가 error로, 태스크 2387, 성공률 20%, 24시간 실패 33%로 나타납니다.
 * cursor-agent 에이전트는 상태가 idle로, 태스크 3642, 성공률 95%, 24시간 실패 0%로 나타납니다.
-* nvidia 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
+* retired-provider 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
 
 ### 다음 작업 제안
 
@@ -42,7 +42,7 @@
 
 * claude-code 에이전트는 상태가 error로, 태스크 2387, 성공률 20%, 24시간 실패 33%로 나타납니다.
 * cursor-agent 에이전트는 상태가 idle로, 태스크 3642, 성공률 95%, 24시간 실패 0%로 나타납니다.
-* nvidia 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
+* retired-provider 에이전트는 상태가 idle로, 태스크 621, 성공률 79%, 24시간 실패 6%로 나타납니다.
 * 에이전트 관리를 위한 다음 작업으로는 에이전트 상태를 정기적으로 확인하고, 에이전트를 재부팅하거나 업데이트하는 것이 필요합니다.
 
 ### 미확인 항목

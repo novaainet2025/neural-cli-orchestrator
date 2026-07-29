@@ -1,4 +1,4 @@
-# Evaluation and Simulation — 일일 산출물 (2026-07-26, ai=nvidia, taskId=task_KkV0hlSs3hkCxQbY)
+# Evaluation and Simulation — 일일 산출물 (2026-07-26, ai=retired-provider, taskId=task_KkV0hlSs3hkCxQbY)
 
 ### 오늘 관찰·분석
 
@@ -24,7 +24,7 @@
 
 * codex: 상태 - working, 태스크 - 2392, 성공률 - 93%, 24시간 실패 - 6
 * cursor-agent: 상태 - idle, 태스크 - 3449, 성공률 - 96%, 24시간 실패 - 0
-* nvidia: 상태 - idle, 태스크 - 510, 성공률 - 77%, 24시간 실패 - 29
+* retired-provider: 상태 - idle, 태스크 - 510, 성공률 - 77%, 24시간 실패 - 29
 
 ### 다음에 필요한 작업 제안
 

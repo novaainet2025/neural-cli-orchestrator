@@ -6,7 +6,7 @@
 ## 원칙
 - **codex 유지 = 실제 코딩/구현/git 작업 팀만** (사용자 주력 지시 반영, 4팀)
 - 리뷰·보안·QA·검증 → **cursor-agent** (리뷰 전문)
-- 분석·추론 → **nvidia** (Reasoner)
+- 분석·추론 → **retired-provider** (Reasoner)
 - 문서·스펙 → **opencode** (구조/설계)
 - 집필·리포팅 → **claude-code** (서술 강점)
 - 포화 해소: codex 14→4, 어느 프로바이더도 단일 과부하 없게 분산
@@ -24,14 +24,14 @@
 | cli-qa | CLI 검증/QA | codex | **cursor-agent** | QA/검증 |
 | quality-audit | 품질 검수 | codex | **cursor-agent** | 품질 감사 |
 | research-verification | 검증·팩트체크 | codex | **cursor-agent** | 적대적 검증 |
-| analytics-lead | Analytics Lead | codex | **nvidia** | 분석/추론 |
-| research-analysis | 분석·추론팀 | codex | **nvidia** | 심층 추론 |
-| self-learning | 자가학습(패턴분석) | codex | **nvidia** | 패턴 분석 |
+| analytics-lead | Analytics Lead | codex | **retired-provider** | 분석/추론 |
+| research-analysis | 분석·추론팀 | codex | **retired-provider** | 심층 추론 |
+| self-learning | 자가학습(패턴분석) | codex | **retired-provider** | 패턴 분석 |
 | ax-docs | Docs & Spec | codex | **opencode** | 문서/스펙 구조 |
 | research-writing | 집필·리포팅 | codex | **claude-code** | 리포트 집필 |
 
 ## 분산 후 전체 분포 (예상)
-codex 4 · cursor-agent 5 · nvidia 3 · claude-code 8 · ollama 7 · opencode 1 · agy 4 = 32팀
+codex 4 · cursor-agent 5 · retired-provider 3 · claude-code 8 · ollama 7 · opencode 1 · agy 4 = 32팀
 → codex 단일집중(14) 해소, 최대 부하 claude-code 8(주간리밋은 P1 스킵+P11 failover가 완화).
 
 ## 적용 SQL (claude-3가 사용자 OK 후 실행)
@@ -42,9 +42,9 @@ UPDATE teams SET lead = CASE slug
   WHEN 'cli-qa'             THEN 'cursor-agent'
   WHEN 'quality-audit'      THEN 'cursor-agent'
   WHEN 'research-verification' THEN 'cursor-agent'
-  WHEN 'analytics-lead'    THEN 'nvidia'
-  WHEN 'research-analysis' THEN 'nvidia'
-  WHEN 'self-learning'     THEN 'nvidia'
+  WHEN 'analytics-lead'    THEN 'retired-provider'
+  WHEN 'research-analysis' THEN 'retired-provider'
+  WHEN 'self-learning'     THEN 'retired-provider'
   WHEN 'ax-docs'           THEN 'opencode'
   WHEN 'research-writing'  THEN 'claude-code'
   ELSE lead END,

@@ -14,6 +14,7 @@ import { agentManager } from '../agent/agent-manager.js';
 import { qualityGate, type TaskType } from './quality-gate.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
 import { createLogger } from '../utils/logger.js';
+import { resolvePreference } from './provider-registry.js';
 
 const log = createLogger('ensemble-engine');
 
@@ -108,7 +109,8 @@ class EnsembleEngine {
       return explicit.slice(0, max);
     }
     // 기본 앙상블 에이전트 우선순위
-    const preferred = ['codex', 'cursor-agent', 'opencode', 'nvidia', 'agy'];
+    // config 에 새 프로바이더가 들어오면 general 역량 순으로 자동 편입된다.
+    const preferred = resolvePreference(['codex', 'cursor-agent', 'opencode', 'agy'], 'general');
     const available = agentManager.listEnabledIds();
     const filtered = preferred.filter(id => available.includes(id));
     return filtered.slice(0, max);

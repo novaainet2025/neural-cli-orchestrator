@@ -9,7 +9,7 @@
 `task_s_Hkj5UF3mdFpJ6H`가 완료됐다.
 
 이 실패에는 Markdown 업무보고와 무관한 `npm run build` verifier가 붙었다.
-전역 소스의 `TS2307` 오류로 verifier가 실패한 뒤 `ollama → nvidia` failover가
+전역 소스의 `TS2307` 오류로 verifier가 실패한 뒤 `ollama → retired-provider` failover가
 발생했고, 최종 상태는 timeout이었다. 즉 직접 근본원인은 **재시도 task 행을
 독립 품질 표본으로 세는 집계 grain**과 **업무보고의 코드 작업 오분류**가 결합한
 것이다.
@@ -68,7 +68,7 @@ score는 completion뿐 아니라 전체 팀 중 상대 task volume을 함께 사
 
 | task ID | 생성 시각(UTC) | agent | spawner | 상태 | workReportId | scorer 판정 |
 |---|---|---|---|---|---|---|
-| `task_tewtyQQda5wCE5bm` | 2026-07-22 05:01:54 | nvidia | work-report-scheduler | failed | `wr_We202Mx0BA-qPXvd` | 포함 실패; 동일 논리 보고서 완료본 존재 |
+| `task_tewtyQQda5wCE5bm` | 2026-07-22 05:01:54 | retired-provider | work-report-scheduler | failed | `wr_We202Mx0BA-qPXvd` | 포함 실패; 동일 논리 보고서 완료본 존재 |
 | `task_Dmk_S2iv6COirInJ` | 2026-07-22 05:02:13 | ollama | work-report-scheduler | completed | `wr_We202Mx0BA-qPXvd` | 포함 완료 |
 | `task_bEALeFnkTMkagAC_` | 2026-07-22 05:08:44 | ollama | work-report-scheduler | failed | `wr_We202Mx0BA-qPXvd` | restart orphan 제외 |
 | `task_s_Hkj5UF3mdFpJ6H` | 2026-07-22 05:16:33 | ollama | work-report-scheduler | completed | `wr_We202Mx0BA-qPXvd` | 포함 완료 |
@@ -91,7 +91,7 @@ score는 completion뿐 아니라 전체 팀 중 상대 task volume을 함께 사
 | agent | raw terminal/completed | scorer terminal/completed | 증거 기반 해석 |
 |---|---:|---:|---|
 | ollama | 9/8 | 8/8 | scorer 포함 행은 모두 completed. 실패 1행은 restart orphan이다. 같은 보고서의 중복 완료가 반복됐다. |
-| nvidia | 1/0 | 1/0 | `ollama` verifier 실패 후 재할당된 보고서 한 건이 timeout. 독립 Sales 작업 표본이 아니다. |
+| retired-provider | 1/0 | 1/0 | `ollama` verifier 실패 후 재할당된 보고서 한 건이 timeout. 독립 Sales 작업 표본이 아니다. |
 | claude-code | 1/1 | 1/1 | “이 목표에서 제외”의 대상을 되묻는 정상 응답이나 Sales charter와 무관하다. |
 | opencode | 1/0 | 0/0 | `commander-perfgoal` restart orphan으로 현재 scorer에서 제외된다. |
 
@@ -109,7 +109,7 @@ score는 completion뿐 아니라 전체 팀 중 상대 task volume을 함께 사
 - 오류: `src/server/routes/teams.ts(13,21): error TS2307: Cannot find module '../../config/env.js'`
 - L3 change ratio: pass
 - metadata: `requestedProvider=ollama`,
-  `attemptedAgents=["ollama","nvidia"]`, `reassignedFrom=ollama`
+  `attemptedAgents=["ollama","retired-provider"]`, `reassignedFrom=ollama`
 - 최종 error: `The operation was aborted due to timeout`
 - response/result/evidence: 비어 있음
 - heartbeat: 11회 기록

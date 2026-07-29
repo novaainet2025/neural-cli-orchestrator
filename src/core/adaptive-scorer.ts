@@ -40,15 +40,17 @@ const OPERATIONAL_WINDOW_DAYS = 14;
 
 // ── 도메인별 에이전트 사전 강점 (cold-start prior) ─────────────────────
 // 경험적 지식 기반: 데이터 부족 시 이 prior를 사용
+// prior 는 손으로 관리하는 경험값이다. config 에서 사라진 프로바이더의 prior 는
+// 후보 목록 자체가 등록된 것만 담기므로 자연히 무시된다(표는 이력으로 보존).
 const COLD_START_PRIORS: Record<string, Record<string, number>> = {
-  code:     { codex: 1.3, 'cursor-agent': 1.4, opencode: 1.2, nvidia: 0.9, agy: 1.0, copilot: 1.0 },
-  design:   { opencode: 1.5, agy: 1.3, nvidia: 1.2, codex: 1.0, copilot: 1.1, 'cursor-agent': 1.0 },
-  review:   { 'cursor-agent': 1.5, opencode: 1.3, copilot: 1.2, codex: 1.1, nvidia: 1.0 },
+  code:     { codex: 1.3, 'cursor-agent': 1.4, opencode: 1.2, agy: 1.0, copilot: 1.0 },
+  design:   { opencode: 1.5, agy: 1.3, codex: 1.0, copilot: 1.1, 'cursor-agent': 1.0 },
+  review:   { 'cursor-agent': 1.5, opencode: 1.3, copilot: 1.2, codex: 1.1 },
   verify:   { 'cursor-agent': 1.5, codex: 1.3, opencode: 1.1, copilot: 1.0 },
-  research: { copilot: 1.5, nvidia: 1.4, opencode: 1.2, agy: 1.1, 'cursor-agent': 1.0 },
+  research: { copilot: 1.5, opencode: 1.2, agy: 1.1, 'cursor-agent': 1.0 },
   ui:       { agy: 1.5, opencode: 1.3, codex: 1.1, 'cursor-agent': 1.0 },
   media:    { higgsfield: 1.8, agy: 1.3 },
-  general:  { opencode: 1.2, codex: 1.1, 'cursor-agent': 1.1, nvidia: 1.0 },
+  general:  { opencode: 1.2, codex: 1.1, 'cursor-agent': 1.1 },
 };
 
 export function computeOperationalReliabilityWeight(

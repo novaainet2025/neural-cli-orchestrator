@@ -27,7 +27,7 @@
 | cursor-agent | working | 3561 | 96% | 7 | Healthy |
 | ollama | working | 998 | 76% | 1 | Moderate |
 | hermes | working | 2173 | **57%** | 2 | **Concerning** |
-| nvidia | working | 553 | 78% | 1 | Moderate |
+| retired-provider | working | 553 | 78% | 1 | Moderate |
 
 **Agents with no data provided** (unverified — no 실데이터 entry): opencode, codex, agy, higgsfield, copilot, openrouter, gemini-deep, aider — 8 of 13+ agents missing.
 

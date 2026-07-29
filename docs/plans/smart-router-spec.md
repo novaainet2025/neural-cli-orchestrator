@@ -122,7 +122,7 @@ export function resolveExecutorChain(
 }
 ```
 **독립 롤백**: 함수 삭제(P5/P6 미적용이면 무참조).
-**효과 증명**: `tsc`→0. P9 신규 테스트에서 `resolveExecutorChain(team({lead:'opencode',members:['nvidia','codex']}), known, 'ollama', avail)`(avail이 opencode만 배제)→`['nvidia','codex','ollama','opencode']` assert. 31/31 유지.
+**효과 증명**: `tsc`→0. P9 신규 테스트에서 `resolveExecutorChain(team({lead:'opencode',members:['retired-provider','codex']}), known, 'ollama', avail)`(avail이 opencode만 배제)→`['retired-provider','codex','ollama','opencode']` assert. 31/31 유지.
 
 ---
 
@@ -406,11 +406,11 @@ import type { TaskType } from './quality-gate.js';
 ```ts
 // TaskType별 역량 우선순위 — 현재 가용 프로바이더만 역량 내림차순으로 나열.
 const CAPABILITY_CANDIDATES: Record<TaskType, string[]> = {
-  design:   ['opencode', 'claude-code', 'codex', 'agy', 'nvidia'],
+  design:   ['opencode', 'claude-code', 'codex', 'agy', 'retired-provider'],
   code:     ['codex', 'opencode', 'hermes', 'cursor-agent', 'ollama'],
-  review:   ['cursor-agent', 'codex', 'opencode', 'nvidia', 'ollama'],
-  verify:   ['ollama', 'hermes', 'nvidia', 'codex', 'cursor-agent'],
-  research: ['nvidia', 'hermes', 'opencode', 'ollama', 'codex'],
+  review:   ['cursor-agent', 'codex', 'opencode', 'retired-provider', 'ollama'],
+  verify:   ['ollama', 'hermes', 'retired-provider', 'codex', 'cursor-agent'],
+  research: ['retired-provider', 'hermes', 'opencode', 'ollama', 'codex'],
   ui:       ['agy', 'opencode', 'codex', 'cursor-agent'],
   media:    ['agy', 'opencode', 'codex'],
   general:  ['codex', 'opencode', 'claude-code', 'hermes', 'ollama'],
@@ -509,10 +509,10 @@ const team = (p: Partial<TeamRow> & { slug: string; name: string }): TeamRow =>
 
 describe('resolveExecutorChain', () => {
   it('가용 우선 + 등록 후보 후행', () => {
-    const known = new Set(['opencode', 'nvidia', 'codex', 'ollama']);
+    const known = new Set(['opencode', 'retired-provider', 'codex', 'ollama']);
     const avail = (id: string) => id !== 'opencode' && known.has(id);
-    expect(resolveExecutorChain(team({ slug: 'a', name: 'A', lead: 'opencode', members: ['nvidia', 'codex'] }), known, 'ollama', avail))
-      .toEqual(['nvidia', 'codex', 'ollama', 'opencode']);
+    expect(resolveExecutorChain(team({ slug: 'a', name: 'A', lead: 'opencode', members: ['retired-provider', 'codex'] }), known, 'ollama', avail))
+      .toEqual(['retired-provider', 'codex', 'ollama', 'opencode']);
   });
   it('chain[0] === resolveExecutor 반환(가용 lead)', () => {
     const known = new Set(['codex', 'ollama']);
@@ -522,10 +522,10 @@ describe('resolveExecutorChain', () => {
 
 describe('selectCapabilityExecutor', () => {
   it('code 유형 → codex, 제거 provider 미반환', () => {
-    expect(selectCapabilityExecutor('버그 수정·기능 구현', new Set(['ollama','nvidia','codex','opencode'])).executor).toBe('codex');
+    expect(selectCapabilityExecutor('버그 수정·기능 구현', new Set(['ollama','retired-provider','codex','opencode'])).executor).toBe('codex');
   });
   it('codex 미등록이면 역량순 가용 폴백', () => {
-    const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','nvidia']));
+    const r = selectCapabilityExecutor('코드 구현 수정', new Set(['ollama','retired-provider']));
     expect(['mlx','copilot','openrouter']).not.toContain(r.executor);
     expect(r.executor).toBe('ollama');
   });
@@ -535,7 +535,7 @@ describe('selectCapabilityExecutor', () => {
 });
 
 describe('reselectExecutor', () => {
-  const known = new Set(['opencode','codex','cursor-agent','ollama','agy','hermes','nvidia','claude-code']);
+  const known = new Set(['opencode','codex','cursor-agent','ollama','agy','hermes','retired-provider','claude-code']);
   it('lead 유효·가용 → 유지(note 없음)', () => {
     const r = reselectExecutor(team({ slug:'a', name:'A', lead:'codex' }), '코드 구현', known);
     expect(r.executor).toBe('codex'); expect(r.note).toBeUndefined();
@@ -559,9 +559,9 @@ describe('reselectExecutor', () => {
 
 **최종 코드**:
 ```ts
-const DECOMPOSER_PREFS = ['opencode', 'claude-code', 'nvidia', 'codex', 'ollama'];
+const DECOMPOSER_PREFS = ['opencode', 'claude-code', 'retired-provider', 'codex', 'ollama'];
 ```
-**주의(테스트)**: `resolveDecomposers` 테스트(라인 127) `['nvidia','opencode','claude-code','codex','ollama']`는 known에 mlx 미포함이라 **영향 없음**. 검증: 31/31 유지.
+**주의(테스트)**: `resolveDecomposers` 테스트(라인 127) `['retired-provider','opencode','claude-code','codex','ollama']`는 known에 mlx 미포함이라 **영향 없음**. 검증: 31/31 유지.
 **독립 롤백**: 'mlx' 재삽입.
 
 ---

@@ -153,7 +153,7 @@ function withTimeoutSignal(signal: AbortSignal | undefined, timeoutMs: number): 
 }
 
 /**
- * Type C Executor: API-based agents (OpenRouter, NVIDIA, etc.).
+ * Type C Executor: API-based agents (OpenAI-compatible endpoints).
  * OpenAI-compatible API with key rotation, native tool_calls (Claude-parity) + XML fallback.
  */
 export class ApiExecutor {
@@ -304,7 +304,7 @@ export class ApiExecutor {
           // NIM Nemotron 등 reasoner 모델은 본문을 content가 아닌 reasoning_content에
           // 넣는다 — content만 읽으면 빈 결과가 completed로 기록됨 (2026-07-03 실측)
           // NIM 등 일부 프로바이더는 content를 문자열 대신 콘텐츠 파트 배열
-          // ([{type:'text',text:'...'}])로 반환한다 (2026-07-03 nvidia 실측:
+          // ([{type:'text',text:'...'}])로 반환한다 (2026-07-03 실측:
           // contentType=object, completion_tokens>0인데 문자열 추출 실패).
           // reasoner 모델은 본문을 reasoning_content에 넣기도 한다.
           const rawContent: unknown = msg.content;
@@ -501,7 +501,7 @@ export class ApiExecutor {
       await sharedState.setAgentState(agentId, { status: 'idle', currentTask: null });
     }
 
-    // 빈 완료를 성공으로 기록하면 위임자가 결과 유실을 감지 못한다 (nvidia 빈 결과 사건)
+    // 빈 완료를 성공으로 기록하면 위임자가 결과 유실을 감지 못한다 (API 프로바이더 빈 결과 사건)
     if (!finalOutput.trim()) {
       const emptyError = new Error(`empty completion from provider '${agentId}' after ${iterations} iteration(s)`);
       const hasExplicitModel = typeof options?.model === 'string' && options.model.trim() !== '';

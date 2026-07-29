@@ -23,7 +23,7 @@ tags:
 |---|---|---|---|---|---|
 | `task_pKVM8hAZUmzskqwL` | `failed` | `hermes` | `spawned_by_cli=commander-perfgoal`; prompt 접두사=`[성과보고·목표설정 입력 지시]`; response=`curl: (7) Failed to connect to localhost port 6200 ... Couldn't connect to server`; `error=unknown: failure pattern in output`; `evidence_json=NULL` | 목표·성과보고 제어면의 NCO gateway 연결 실패. 지식·메모리 감사 산출물 실패가 아님 | T1 |
 | `task_WpB7UCfWLhPnwx-u` | `failed` | `ollama` | `spawned_by_cli=commander-perfgoal`; prompt 접두사=`[성과보고·목표설정 입력 지시]`; response=`targetValue, direction, reflection, improvement are unknown; cannot fabricate values`; `error=unknown: failure pattern in output`; `evidence_json=NULL` | 목표·성과보고 입력 계약의 필수값 미주입. 지식·메모리 감사 산출물 실패가 아님 | T1 |
-| `task_tnhlWTnnJz5dVshv` | `lease_expired` | `ollama` (`requestedProvider=nvidia`, `nvidia→ollama`) | `spawned_by_cli=commander-perfgoal`; prompt 접두사=`[성과보고·목표설정 입력 지시]`; response=`NULL`; escalation=`empty completion from provider 'nvidia' after 1 iteration(s)`; `heartbeat_seq=1`; `lease_expires_at=2026-07-23 11:58:17`; `evidence_json=NULL` | 목표·성과보고 제어면의 provider/lease 실패. 지식·메모리 감사 산출물 실패가 아님 | T1 |
+| `task_tnhlWTnnJz5dVshv` | `lease_expired` | `ollama` (`requestedProvider=retired-provider`, `retired-provider→ollama`) | `spawned_by_cli=commander-perfgoal`; prompt 접두사=`[성과보고·목표설정 입력 지시]`; response=`NULL`; escalation=`empty completion from provider 'retired-provider' after 1 iteration(s)`; `heartbeat_seq=1`; `lease_expires_at=2026-07-23 11:58:17`; `evidence_json=NULL` | 목표·성과보고 제어면의 provider/lease 실패. 지식·메모리 감사 산출물 실패가 아님 | T1 |
 
 세 task에는 각각 `npm run build` verifier 통과 기록이 있다. 이 값은 저장소
 빌드 결과일 뿐, 요청된 HTTP 입력 성공이나 지식·메모리 감사 산출물 생성을
