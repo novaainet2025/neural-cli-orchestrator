@@ -189,8 +189,34 @@ function parseAbsoluteResetTime(message: string): number | null {
   return candidate;
 }
 
+// ─── 명령 에코(argv) 오탐 차단 ──────────────────────────────────────────────
+//
+// execa의 shortMessage는 실패한 CLI의 **인자 전체(= 프롬프트 전문)** 를 그대로 포함한다
+// ("Command failed with exit code 1: claude … -p '<프롬프트 4000자>'"). 분류기가 그 본문까지
+// 훑으면 프롬프트가 인용한 평범한 단어가 프로바이더 장애 신호로 오인된다.
+//
+// 실측(2026-07-29 06:02:05Z, db/nco.db circuit_states.claude-code):
+//   error = "claude-code: subprocess cancelled: Command was canceled: claude … Roth IRA/401(k) …"
+//   → AUTH_PATTERNS의 /\b401\b/가 프롬프트 안 '401(k)'에 매칭 → reason='auth'
+//   → auth는 cooldownUntil=null + recoverIfExpired 제외라 **수동 reset 전까지 영구 gated**.
+//   대시보드(:5173)는 gate.available===false를 그대로 배지로 그려 "⛔ 리밋"으로 표기했다.
+//
+// 인증·쿼터 신호는 우리가 보낸 argv가 아니라 프로바이더 stdout(오류 봉투)에 실린다. 봉투는
+// recordFailure(providerOutput) 인자로 따로 분류되므로, argv 제거는 탐지력 손실이 없다.
+// 같은 계열 오탐의 선례: agent-manager.ts의 "성공 출력 <300자에만 분류" 가드(2026-07-03 codex).
+// 롤백: NCO_CB_STRIP_ARGV=off (재빌드 불필요) 또는 이 함수와 호출부 1줄 제거.
+const COMMAND_ECHO_RE = /(Command (?:failed|was canceled|was killed)[^:\n]{0,60}:)[\s\S]*$/i;
+const ARGV_STRIP_DISABLED = new Set(['0', 'false', 'off']);
+
+export function stripCommandEcho(raw: string): string {
+  if (ARGV_STRIP_DISABLED.has((process.env.NCO_CB_STRIP_ARGV ?? '').trim().toLowerCase())) {
+    return raw;
+  }
+  return raw.replace(COMMAND_ECHO_RE, '$1');
+}
+
 export function classifyCircuitError(raw: string | null | undefined): ClassifiedCircuitError | null {
-  const message = raw?.trim();
+  const message = raw ? stripCommandEcho(raw).trim() : '';
   if (!message) return null;
 
   const resetTime = parseAbsoluteResetTime(message);

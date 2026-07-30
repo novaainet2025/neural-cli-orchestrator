@@ -45,6 +45,7 @@ import {
   circuitBreakerRegistry,
   classifyCircuitError,
   classifyProviderErrorEnvelope,
+  stripCommandEcho,
 } from './circuit-breaker-registry.js';
 
 describe('CircuitBreaker configuration', () => {
@@ -462,5 +463,42 @@ describe('isExternalInjectionPhantom (GATE-CONTENT-STRAT-R1)', () => {
     expect(classifyCircuitError('Job wait timed out before finishing, no finish notification arrived')).toBeNull();
     expect(classifyCircuitError('agent non-response')).toBeNull();
     expect(classifyCircuitError('invalid input')).toBeNull();
+  });
+});
+
+describe('classifyCircuitError — 명령 에코(argv) 오탐', () => {
+  // 실측 사건(2026-07-29 06:02:05Z): claude-code가 취소된 뒤 execa shortMessage가 프롬프트 전문을
+  // 그대로 실어 왔고, 그 안의 'Roth IRA/401(k)'가 AUTH_PATTERNS의 /\b401\b/에 걸려
+  // circuit_states.claude-code = open/auth/cooldown_until=NULL(영구 차단)이 됐다.
+  const INCIDENT = "claude-code: subprocess cancelled: Command was canceled: claude "
+    + "--dangerously-skip-permissions -p '[회사 워크플로우 필수 토론] 7개 대표 주제 중 이미 완료된 "
+    + "Roth IRA/401(k) 1건은 재검증하고, 나머지는 신규 작성한다.'";
+
+  afterEach(() => {
+    delete process.env.NCO_CB_STRIP_ARGV;
+  });
+
+  it('프롬프트 본문의 401(k)를 인증 실패로 오분류하지 않는다', () => {
+    expect(classifyCircuitError(INCIDENT)).toBeNull();
+  });
+
+  it('롤백 플래그(off)를 켜면 이전 동작(오탐)으로 정확히 되돌아간다', () => {
+    process.env.NCO_CB_STRIP_ARGV = 'off';
+    expect(classifyCircuitError(INCIDENT)?.reason).toBe('auth');
+  });
+
+  it('프로바이더 stdout 오류 봉투의 진짜 인증·쿼터 신호는 그대로 분류한다', () => {
+    expect(classifyCircuitError(
+      '{"type":"error","error":{"type":"authentication_error","message":"invalid api key"}}',
+    )?.reason).toBe('auth');
+    expect(classifyCircuitError('HTTP 401 Unauthorized')?.reason).toBe('auth');
+    expect(classifyCircuitError("You've hit your weekly limit · resets 4am (Asia/Seoul)")?.reason)
+      .toBe('quota');
+  });
+
+  it('명령 에코 앞의 종료코드 머리말은 보존한다', () => {
+    expect(stripCommandEcho("Command failed with exit code 1: claude -p 'quota unauthorized 401'"))
+      .toBe('Command failed with exit code 1:');
+    expect(stripCommandEcho('rate limit exceeded')).toBe('rate limit exceeded');
   });
 });
