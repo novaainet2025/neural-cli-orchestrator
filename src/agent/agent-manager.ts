@@ -59,7 +59,7 @@ export function formatProviderUnavailableError(
 }
 
 const NON_CIRCUIT_CANCELLATION_RE =
-  /(?:graceful shutdown|SIGINT|exit(?:ed| code)?[=: ]*130\b|(?:CLI|subprocess|loop) cancel(?:led|ed)|abort signal|AbortError)/i;
+  /(?:graceful shutdown|SIGINT|exit(?:ed| code)?[=: ]*130\b|(?:CLI|subprocess|loop) cancel(?:led|ed)|abort signal|AbortError|discussion_(?:quorum_reached|cancelled))/i;
 const EXECUTION_TIMEOUT_RE = /(?:timed out|timeout\()/i;
 
 /**
@@ -684,7 +684,7 @@ class AgentManager {
       if (
         this.supportsCliRecoveryProbe(id, provider)
         && availability.status === 'probe'
-        && availability.reason === 'generic'
+        && availability.reason !== 'auth'
       ) {
         await this.probeGatedCliProvider(id);
       }
@@ -705,7 +705,9 @@ class AgentManager {
    * 따라서 이 헬스체크 프로브가 유일한 탈출구다. cursor-agent 전용이던 대상을
    * orchestrated CLI 전체로 넓힌다. claude-code(Type A native)는 프로브 1회가 곧
    * 세션 1개 비용이라 제외한다. API 프로바이더는 위쪽 probeGatedProvider 분기가
-   * 담당한다(quota·rate-limit 한정 — completions 실증만 신뢰).
+   * 담당한다(quota·rate-limit 한정 — completions 실증만 신뢰). CLI 역시 실제
+   * 응답만 복구 증거로 인정하므로 generic뿐 아니라 만료된 quota·rate-limit도
+   * 여기서 프로브한다. auth는 cooldown 자체가 없고 자가복구 대상도 아니다.
    */
   private supportsCliRecoveryProbe(id: string, provider: ProviderConfig): boolean {
     return provider.type === 'cli' && id !== 'claude-code';
@@ -726,6 +728,7 @@ class AgentManager {
     }
     this.cliRecoveryProbes.add(id);
     try {
+      const recoveryReason = circuitBreakerRegistry.getSnapshot(id).reason;
       const fallbackModel = id === 'cursor-agent'
         ? resolveCursorFallbackModel()
         : null;
@@ -739,7 +742,15 @@ class AgentManager {
         if (fallbackModel) preferCursorFallbackModel(fallbackModel);
         circuitBreakerRegistry.recordSuccess(id);
       } else {
-        circuitBreakerRegistry.recordFailure(id, 'CLI recovery probe failed');
+        // Preserve the original classified cooldown. Reclassifying an expired
+        // quota/rate-limit probe failure as generic would create a tight retry
+        // loop and spend provider calls every generic cooldown interval.
+        const failureSignal = recoveryReason === 'quota'
+          ? 'CLI recovery probe failed: quota'
+          : recoveryReason === 'rate-limit'
+            ? 'CLI recovery probe failed: rate limit'
+            : 'CLI recovery probe failed';
+        circuitBreakerRegistry.recordFailure(id, failureSignal);
       }
       await eventBus.publish({
         type: 'provider:recovery-probe',

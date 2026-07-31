@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   isLegacyNcoProviderProcess,
   reapLegacyNcoProviderProcesses,
+  reapOwnedRuntimeProcesses,
   reapStaleRuntimeProcesses,
   registerRuntimeProcess,
   unregisterRuntimeProcess,
@@ -132,28 +133,124 @@ describe('runtime process registry', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get()).toEqual({ count: 1 });
   });
 
+  it('force-reaps only exact registered processes owned by the shutting-down backend', () => {
+    const owned: ProcessSnapshot = {
+      pid: 4101,
+      parentPid: 5000,
+      processGroupId: 4101,
+      command: '/opt/homebrew/bin/opencode run --format json NCO task',
+    };
+    const unrelated: ProcessSnapshot = {
+      pid: 4201,
+      parentPid: 5000,
+      processGroupId: 4201,
+      command: '/opt/homebrew/bin/codex exec unrelated task',
+    };
+    registerRuntimeProcess(
+      { taskId: 'task_owned', agentId: 'opencode', pid: owned.pid },
+      db,
+      { ownerPid: 5000, inspectProcess: () => owned },
+    );
+    registerRuntimeProcess(
+      { taskId: 'task_unrelated', agentId: 'codex', pid: unrelated.pid },
+      db,
+      { ownerPid: 5000, inspectProcess: () => unrelated },
+    );
+    const killProcessGroup = vi.fn();
+
+    expect(reapOwnedRuntimeProcesses(['task_owned'], db, {
+      ownerPid: 5000,
+      inspectProcess: (pid) => pid === owned.pid
+        ? owned
+        : pid === 5000
+          ? { pid, parentPid: 1, processGroupId: 5000, command: 'node dist/index.js' }
+          : null,
+      killProcessGroup,
+    })).toMatchObject({ examined: 1, reaped: 1, stale: 0 });
+    expect(killProcessGroup).toHaveBeenCalledOnce();
+    expect(killProcessGroup).toHaveBeenCalledWith(owned.processGroupId);
+    expect(db.prepare('SELECT task_id FROM runtime_processes').all()).toEqual([
+      { task_id: 'task_unrelated' },
+    ]);
+  });
+
+  it('does not force-kill a registered PID after its command fingerprint changes', () => {
+    const original: ProcessSnapshot = {
+      pid: 4101,
+      parentPid: 5000,
+      processGroupId: 4101,
+      command: '/opt/homebrew/bin/opencode run original',
+    };
+    registerRuntimeProcess(
+      { taskId: 'task_owned', agentId: 'opencode', pid: original.pid },
+      db,
+      { ownerPid: 5000, inspectProcess: () => original },
+    );
+    const killProcessGroup = vi.fn();
+
+    expect(reapOwnedRuntimeProcesses(['task_owned'], db, {
+      ownerPid: 5000,
+      inspectProcess: (pid) => pid === original.pid
+        ? { ...original, command: '/usr/bin/python unrelated.py' }
+        : null,
+      killProcessGroup,
+    })).toMatchObject({ examined: 1, reaped: 0, stale: 1 });
+    expect(killProcessGroup).not.toHaveBeenCalled();
+    expect(db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get()).toEqual({ count: 0 });
+  });
+
   it('recognizes and reaps only legacy NCO provider signatures with PPID 1', () => {
     const codex = {
       pid: 6101,
       parentPid: 1,
       processGroupId: 6101,
-      command: '/opt/homebrew/bin/codex exec --output-last-message /tmp/nco-codex-last-abc prompt',
+      command: '/opt/homebrew/bin/codex exec --output-last-message /var/folders/xx/T/nco-codex-last-abc prompt',
     };
     const userCodex = { ...codex, pid: 6102, processGroupId: 6102, command: 'codex exec user-task' };
     const liveNcoChild = { ...codex, pid: 6103, processGroupId: 6103, parentPid: 5000 };
+    const openCodeHistory = {
+      pid: 6104,
+      parentPid: 1,
+      processGroupId: 6104,
+      command: 'opencode run --pure --format json ## Conversation History (workspace: default) task',
+    };
+    const openCodeDiscussion = {
+      pid: 6105,
+      parentPid: 1,
+      processGroupId: 6105,
+      command: 'opencode run --pure --format json Discussion R1. Session: sess_dead_backend task',
+    };
+    const userOpenCode = {
+      pid: 6106,
+      parentPid: 1,
+      processGroupId: 6106,
+      command: 'opencode run --format json user-task',
+    };
     expect(isLegacyNcoProviderProcess(codex)).toBe(true);
     expect(isLegacyNcoProviderProcess(userCodex)).toBe(false);
     expect(isLegacyNcoProviderProcess(liveNcoChild)).toBe(false);
+    expect(isLegacyNcoProviderProcess(openCodeHistory)).toBe(true);
+    expect(isLegacyNcoProviderProcess(openCodeDiscussion)).toBe(true);
+    expect(isLegacyNcoProviderProcess(userOpenCode)).toBe(false);
     const killProcessGroup = vi.fn();
 
     expect(reapLegacyNcoProviderProcesses({
       ownerPid: 5000,
-      listProcesses: () => [codex, userCodex, liveNcoChild],
+      listProcesses: () => [
+        codex,
+        userCodex,
+        liveNcoChild,
+        openCodeHistory,
+        openCodeDiscussion,
+        userOpenCode,
+      ],
       inspectProcess: (pid) => pid === 5000
         ? { pid, parentPid: 1, processGroupId: 5000, command: 'node dist/index.js' }
         : null,
       killProcessGroup,
-    })).toBe(1);
+    })).toBe(3);
     expect(killProcessGroup).toHaveBeenCalledWith(6101);
+    expect(killProcessGroup).toHaveBeenCalledWith(6104);
+    expect(killProcessGroup).toHaveBeenCalledWith(6105);
   });
 });

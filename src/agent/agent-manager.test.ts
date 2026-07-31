@@ -254,6 +254,15 @@ describe('AgentManager', () => {
     )).toBe(false);
   });
 
+  it('does not penalize providers stopped by discussion coordination', () => {
+    expect(isNonCircuitCancellation(
+      new Error('ollama: discussion_quorum_reached'),
+    )).toBe(true);
+    expect(isNonCircuitCancellation(
+      new Error('discussion_cancelled'),
+    )).toBe(true);
+  });
+
   it('requires a structural cancellation signal instead of loose abort text', () => {
     expect(isNonCircuitCancellation(
       new Error('provider failed while aborting operation'),
@@ -400,6 +409,86 @@ describe('AgentManager', () => {
       agentId: 'cursor-agent',
       success: true,
     }));
+  });
+
+  it.each([
+    ['quota', 'quota exceeded'],
+    ['rate-limit', 'HTTP 429: too many requests'],
+  ])('health monitor probes an expired Cursor %s circuit and closes it on exact success', async (
+    expectedReason,
+    failure,
+  ) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-29T05:00:00.000Z'));
+    await agentManager.init();
+    (agentManager as any).providers = new Map([
+      ['cursor-agent', mockProviders.find(provider => provider.id === 'cursor-agent')!],
+    ]);
+
+    circuitBreakerRegistry.recordFailure('cursor-agent', failure, {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    const opened = circuitBreakerRegistry.getSnapshot('cursor-agent');
+    expect(opened).toMatchObject({ state: 'open', reason: expectedReason });
+    expect(opened.cooldownUntil).not.toBeNull();
+    vi.setSystemTime(opened.cooldownUntil! + 1);
+
+    await (agentManager as any).healthCheck();
+
+    expect(mockExeca).toHaveBeenCalledTimes(1);
+    expect(circuitBreakerRegistry.getSnapshot('cursor-agent')).toMatchObject({
+      state: 'closed',
+      reason: null,
+    });
+  });
+
+  it('preserves the quota cooldown when a Cursor recovery probe fails', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-29T05:00:00.000Z'));
+    await agentManager.init();
+    (agentManager as any).providers = new Map([
+      ['cursor-agent', mockProviders.find(provider => provider.id === 'cursor-agent')!],
+    ]);
+    mockExeca.mockResolvedValueOnce({
+      stdout: 'quota remains unavailable',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    circuitBreakerRegistry.recordFailure('cursor-agent', 'quota exceeded', {
+      failureThreshold: 1,
+      resetTimeoutMs: 50,
+      halfOpenMaxAttempts: 1,
+    });
+    const opened = circuitBreakerRegistry.getSnapshot('cursor-agent');
+    vi.setSystemTime(opened.cooldownUntil! + 1);
+
+    await (agentManager as any).healthCheck();
+
+    const reopened = circuitBreakerRegistry.getSnapshot('cursor-agent');
+    expect(reopened).toMatchObject({ state: 'open', reason: 'quota' });
+    expect(reopened.cooldownUntil).toBeGreaterThan(Date.now());
+  });
+
+  it('does not automatically probe a Cursor auth circuit', async () => {
+    await agentManager.init();
+    (agentManager as any).providers = new Map([
+      ['cursor-agent', mockProviders.find(provider => provider.id === 'cursor-agent')!],
+    ]);
+    circuitBreakerRegistry.recordFailure('cursor-agent', 'invalid API key', {
+      failureThreshold: 1,
+    });
+
+    await (agentManager as any).healthCheck();
+
+    expect(mockExeca).not.toHaveBeenCalled();
+    expect(circuitBreakerRegistry.getSnapshot('cursor-agent')).toMatchObject({
+      state: 'open',
+      reason: 'auth',
+      cooldownUntil: null,
+    });
   });
 
   it('reopens the Cursor circuit when the recovery probe returns the wrong output', async () => {

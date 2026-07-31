@@ -3,6 +3,7 @@ import {
   decideOrphanRecovery,
   isExternalInjectionGuardEnabled,
   isExternallyInjectedOrphan,
+  restoreOrphanExecutionContract,
 } from './orphan-recovery-policy.js';
 
 describe('orphan recovery policy', () => {
@@ -63,6 +64,16 @@ describe('orphan recovery policy', () => {
       externallyInjected: false,
     })).toEqual({ action: 'requeue', incrementRecoveryCount: true });
   });
+
+  it('never degrades an interrupted multi-agent orchestration into one provider task', () => {
+    expect(decideOrphanRecovery({
+      status: 'running',
+      assignedTo: 'agy',
+      recoveryCount: 0,
+      maxRecoveryCount: 2,
+      orchestrationOwned: true,
+    })).toEqual({ action: 'dead_letter', reason: 'orchestration_restart' });
+  });
 });
 
 describe('external injection provenance', () => {
@@ -120,5 +131,45 @@ describe('external injection provenance', () => {
     expect(isExternalInjectionGuardEnabled('off')).toBe(false);
     expect(isExternalInjectionGuardEnabled('0')).toBe(false);
     expect(isExternalInjectionGuardEnabled(' FALSE ')).toBe(false);
+  });
+});
+
+describe('orphan execution contract restoration', () => {
+  it('restores runtime metadata, timeout, verifier, model, and priority', () => {
+    expect(restoreOrphanExecutionContract({
+      metadataJson: JSON.stringify({
+        projectDir: '/private/tmp/project',
+        readOnly: true,
+        localNetworkAccess: false,
+        queuePriority: 1,
+        taskTimeoutMs: 240_000,
+        model: 'gpt-recovery',
+        workflowRunId: 'workflow-recovery',
+      }),
+      verifierJson: JSON.stringify({ type: 'run', command: 'npm test', timeoutMs: 60_000 }),
+      priority: 9,
+    })).toEqual({
+      metadata: {
+        projectDir: '/private/tmp/project',
+        readOnly: true,
+        localNetworkAccess: false,
+        queuePriority: 1,
+        taskTimeoutMs: 240_000,
+        model: 'gpt-recovery',
+        workflowRunId: 'workflow-recovery',
+      },
+      model: 'gpt-recovery',
+      timeoutMs: 240_000,
+      verifier: { type: 'run', command: 'npm test', timeoutMs: 60_000 },
+      priority: 9,
+    });
+  });
+
+  it('fails closed on malformed persisted execution options without crashing boot', () => {
+    expect(restoreOrphanExecutionContract({
+      metadataJson: '{broken',
+      verifierJson: JSON.stringify({ type: 'run', command: 'npm test; rm bad' }),
+      priority: 99,
+    })).toEqual({});
   });
 });

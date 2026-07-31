@@ -306,6 +306,24 @@ export const formatDiscussionProposalContent = (
   return `${content.slice(0, headLength)}${marker}${content.slice(-tailLength)}`;
 };
 
+/** Keep the caller's original output constraints visible to the final synthesizer. */
+export const buildDiscussionSynthesisPrompt = (
+  topic: string,
+  r1Summary: string,
+  r2Summary: string,
+): string => `Synthesize team discussion results into a final conclusion.
+
+=== Original Task And Output Constraints ===
+${topic}
+
+=== R1 Proposals ===
+${r1Summary}
+
+=== R2 Evaluations ===
+${r2Summary}
+
+Return only the final conclusion. It must satisfy every explicit language, format, marker, and acceptance constraint in the original task.`;
+
 export const selectDiscussionSynthesisProvider = (
   responsiveParticipants: string[],
 ): string | undefined => {
@@ -426,6 +444,7 @@ class DiscussionEngine {
   /** Long-term reputation is isolated per discussion session to avoid cross-session contamination. */
   private sessionReputationScores = new Map<string, Map<string, number>>();
   private sessionPidControllers = new Map<string, PIDController>();
+  private sessionAbortControllers = new Map<string, AbortController>();
   private realtimeListeners = new Map<string, Array<{ eventType: 'discussion:message' | 'discussion:user_intervention'; handler: (event: any) => void }>>();
 
   // ═══ 단일 작업 위임 (mode: task) ═══
@@ -491,6 +510,33 @@ class DiscussionEngine {
     });
   }
 
+  /** 태스크 취소를 연결된 discussion 세션과 실행 중 provider까지 함께 전파한다. */
+  cancelTaskDiscussions(taskId: string): number {
+    const db = getDb();
+    const sessions = db.prepare(`
+      SELECT id
+      FROM discussions
+      WHERE task_id=? AND status='active'
+    `).all(taskId) as Array<{ id: string }>;
+    if (sessions.length === 0) return 0;
+
+    const cancelled = db.prepare(`
+      UPDATE discussions
+      SET status='cancelled', report='cancelled_by_user',
+          ended_at=datetime('now'), updated_at=datetime('now')
+      WHERE task_id=? AND status='active'
+    `).run(taskId).changes;
+
+    for (const session of sessions) {
+      const controller = this.sessionAbortControllers.get(session.id);
+      if (controller && !controller.signal.aborted) {
+        controller.abort(new Error('discussion_cancelled'));
+      }
+      this.teardownRealtimeListeners(session.id);
+    }
+    return cancelled;
+  }
+
   // ═══ 라운드 기반 토론 (mode: discussion, consensus, hive) ═══
   async startDiscussion(options: DiscussionOptions): Promise<DiscussionReport> {
     // Hive mode has a distinct execution path — skip round-based discussion
@@ -499,6 +545,7 @@ class DiscussionEngine {
     }
 
     const sessionId = options.sessionId || createSessionId();
+    this.getSessionAbortController(sessionId);
     const startTime = Date.now();
     const maxRounds = options.maxRounds || 3;
     let threshold = options.consensusThreshold || 0.8;
@@ -594,6 +641,7 @@ class DiscussionEngine {
           : clampDiscussionTimeoutMs(options.proposalTimeoutMs),
       },
     );
+    this.assertSessionActive(sessionId);
     let successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
 
     // R1 단일 재시도. 기존 구현은 임계 미달 시 재시도 없이 토론 전체를 즉시 폐기했다
@@ -626,6 +674,7 @@ class DiscussionEngine {
             ),
           },
         );
+        this.assertSessionActive(sessionId);
         proposals = { ...proposals, ...retried };
         successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
       }
@@ -672,6 +721,7 @@ class DiscussionEngine {
             ),
           },
         );
+        this.assertSessionActive(sessionId);
         proposals = { ...proposals, ...replaced };
         successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
       }
@@ -705,11 +755,12 @@ class DiscussionEngine {
         activeParticipants: successfulParticipants,
         excludedParticipants,
       };
-      db.prepare(`
+      const failed = db.prepare(`
         UPDATE discussions
-        SET status='failed', result_json=?, report=?, ended_at=datetime('now')
-        WHERE id=?
+        SET status='failed', result_json=?, report=?, ended_at=datetime('now'), updated_at=datetime('now')
+        WHERE id=? AND status='active'
       `).run(JSON.stringify(failureEvidence), failure, sessionId);
+      if (failed.changes === 0) this.assertSessionActive(sessionId);
       if (options.workflowRunId) {
         markWorkflowStage(options.workflowRunId, 'discussion', 'failed', {
           teamId: options.teamId,
@@ -768,6 +819,7 @@ class DiscussionEngine {
       const evaluations = await this.collectResponsesSequential(
         sessionId, round, 'evaluation', nonClaude, evalPrompt, allProposals, projectDir,
       );
+      this.assertSessionActive(sessionId);
 
       const scores = this.extractScores(evaluations, successfulParticipants);
       consensusRate = this.calculateConsensus(sessionId, scores, successfulParticipants);
@@ -800,7 +852,7 @@ class DiscussionEngine {
 
       const r1Summary = this.formatProposals(rounds[0]?.responses || {}, 6000);
       const r2Summary = this.formatProposals(rounds[1]?.responses || {}, 6000);
-      const synthPrompt = `Synthesize team discussion results into a final conclusion.\n\n=== R1 Proposals ===\n${r1Summary}\n\n=== R2 Evaluations ===\n${r2Summary}\n\nConclusion should be concise and clear.`;
+      const synthPrompt = buildDiscussionSynthesisPrompt(options.topic, r1Summary, r2Summary);
 
       if (synthesisProvider) {
         await eventBus.publish({
@@ -814,8 +866,9 @@ class DiscussionEngine {
           const synthResult = await agentManager.executeTask(synthesisProvider, synthPrompt, {
             systemPrompt: `Synth session ${sessionId}. Final synthesis.`,
             projectDir,
-            signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('synthesis')),
+            signal: this.sessionSignal(sessionId, resolveDiscussionTimeoutMs('synthesis')),
           });
+          this.assertSessionActive(sessionId);
 
           if (synthResult.success && synthResult.output.trim()) {
             const synthesisOutput = requireSubstantiveDiscussionOutput(
@@ -861,6 +914,7 @@ class DiscussionEngine {
             });
           }
         } catch (err: any) {
+          this.assertSessionActive(sessionId);
           await eventBus.publish({
             type: 'discussion:provider_failed',
             sessionId,
@@ -897,10 +951,12 @@ class DiscussionEngine {
       ...report,
       ...(resultState.roundSnapshots ? { roundSnapshots: resultState.roundSnapshots } : {}),
     };
-    db.prepare(`
+    this.assertSessionActive(sessionId);
+    const completed = db.prepare(`
       UPDATE discussions SET status='completed', consensus_rate=?, result_json=?, report=?, ended_at=datetime('now')
-      WHERE id=?
+      WHERE id=? AND status='active'
     `).run(consensusRate, JSON.stringify(persistedReport), report.adoptedProposal, sessionId);
+    if (completed.changes === 0) this.assertSessionActive(sessionId);
     if (options.workflowRunId) {
       markWorkflowStage(options.workflowRunId, 'discussion', 'completed', {
         teamId: options.teamId,
@@ -933,6 +989,7 @@ class DiscussionEngine {
   // 결과: 속도가 빠르고 다양한 관점이 나오지만, 교차 검증은 없음
   private async executeHive(options: DiscussionOptions): Promise<DiscussionReport> {
     const sessionId = options.sessionId || createSessionId();
+    this.getSessionAbortController(sessionId);
     const startTime = Date.now();
     const participants = options.providers || this.selectParticipants('hive');
     const projectDir = resolveDiscussionProjectDir(options);
@@ -979,9 +1036,9 @@ class DiscussionEngine {
           const result = await agentManager.executeTask(pid, options.topic, {
             systemPrompt: `You are part of a Hive intelligence. Respond independently to the task. Session: ${sessionId}`,
             projectDir,
-            signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('hive')),
+            signal: this.sessionSignal(sessionId, resolveDiscussionTimeoutMs('hive')),
           });
-          const output = requireDiscussionOutput(pid, result);
+          const output = requireSubstantiveDiscussionOutput(pid, result, 'proposal');
           db.prepare(`
             INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
             VALUES (?, ?, ?, 1, 'hive_response', ?)
@@ -1001,12 +1058,47 @@ class DiscussionEngine {
         }
       })
     );
+    this.assertSessionActive(sessionId);
 
     const responses: Record<string, string> = {};
     for (const r of parallelResults) {
       if (r.status === 'fulfilled' && r.value.success) {
         responses[r.value.pid] = r.value.output;
       }
+    }
+
+    const hiveQuorum = resolveDiscussionProposalQuorum(Object.keys(responses).length);
+    if (!hiveQuorum.accepted) {
+      const failure = `hive_insufficient_valid_responses:${hiveQuorum.achieved}/${hiveQuorum.required}`;
+      const failureEvidence = {
+        error: failure,
+        responseQuorum: hiveQuorum,
+        participants,
+        responsiveParticipants: Object.keys(responses),
+      };
+      const failed = db.prepare(`
+        UPDATE discussions
+        SET status='failed', result_json=?, report=?, ended_at=datetime('now'), updated_at=datetime('now')
+        WHERE id=? AND status='active'
+      `).run(JSON.stringify(failureEvidence), failure, sessionId);
+      if (failed.changes === 0) this.assertSessionActive(sessionId);
+      if (options.workflowRunId) {
+        markWorkflowStage(options.workflowRunId, 'discussion', 'failed', {
+          teamId: options.teamId,
+          discussionId: sessionId,
+          error: failure,
+          evidence: { responseQuorum: hiveQuorum },
+        }, db);
+      }
+      await eventBus.publish({
+        type: 'discussion:failed',
+        sessionId,
+        round: 1,
+        error: failure,
+        responseQuorum: hiveQuorum,
+      });
+      this.cleanupSessionState(sessionId);
+      throw new Error(failure);
     }
 
     await eventBus.publish({ type: 'discussion:round_completed', sessionId, round: 1, consensusRate: 0, responseCount: Object.keys(responses).length });
@@ -1030,14 +1122,16 @@ class DiscussionEngine {
     try {
       const synthResult = await agentManager.executeTask('claude-code', synthPrompt, {
         projectDir,
-        signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('synthesis')),
+        signal: this.sessionSignal(sessionId, resolveDiscussionTimeoutMs('synthesis')),
       });
+      this.assertSessionActive(sessionId);
       synthesis = requireDiscussionOutput('claude-code', synthResult);
       db.prepare(`
         INSERT INTO discussion_messages (id, discussion_id, agent_id, round, message_type, content)
         VALUES (?, ?, 'claude-code', 2, 'hive_synthesis', ?)
       `).run(createMessageId(), sessionId, synthesis);
     } catch (err: any) {
+      this.assertSessionActive(sessionId);
       // If synthesis fails, use the best individual response
       synthesis = responses[participants[0]] || 'Hive synthesis unavailable';
       log.warn({ sessionId, err: err.message }, 'Commander synthesis failed — using best individual response');
@@ -1059,10 +1153,12 @@ class DiscussionEngine {
       ...(resultState.roundSnapshots ? { roundSnapshots: resultState.roundSnapshots } : {}),
     };
 
-    db.prepare(`
+    this.assertSessionActive(sessionId);
+    const completed = db.prepare(`
       UPDATE discussions SET status='completed', consensus_rate=1, result_json=?, report=?, ended_at=datetime('now')
-      WHERE id=?
+      WHERE id=? AND status='active'
     `).run(JSON.stringify(persistedReport), synthesis, sessionId);
+    if (completed.changes === 0) this.assertSessionActive(sessionId);
     if (options.workflowRunId) {
       markWorkflowStage(options.workflowRunId, 'discussion', 'completed', {
         teamId: options.teamId,
@@ -1086,6 +1182,7 @@ class DiscussionEngine {
   // ═══ 자유 토론 모드 (mode: realtime) ═══
   async startRealtimeDiscussion(options: DiscussionOptions): Promise<string> {
     const sessionId = options.sessionId || createSessionId();
+    this.getSessionAbortController(sessionId);
     const participants = options.providers || this.selectParticipants('realtime');
 
     const db = getDb();
@@ -1196,6 +1293,7 @@ class DiscussionEngine {
             signal: AbortSignal.any([
               AbortSignal.timeout(options.timeoutMs ?? resolveDiscussionTimeoutMs('proposal')),
               controller.signal,
+              this.getSessionAbortController(sessionId).signal,
             ]),
           });
           const output = requireDiscussionOutput(pid, result);
@@ -1292,10 +1390,37 @@ class DiscussionEngine {
     return pid;
   }
 
+  private getSessionAbortController(sessionId: string): AbortController {
+    let controller = this.sessionAbortControllers.get(sessionId);
+    if (!controller) {
+      controller = new AbortController();
+      this.sessionAbortControllers.set(sessionId, controller);
+    }
+    return controller;
+  }
+
+  private sessionSignal(sessionId: string, timeoutMs: number): AbortSignal {
+    return AbortSignal.any([
+      AbortSignal.timeout(timeoutMs),
+      this.getSessionAbortController(sessionId).signal,
+    ]);
+  }
+
+  private assertSessionActive(sessionId: string): void {
+    const controller = this.sessionAbortControllers.get(sessionId);
+    const row = getDb().prepare('SELECT status FROM discussions WHERE id=?')
+      .get(sessionId) as { status?: string } | undefined;
+    if (!controller?.signal.aborted && row?.status === 'active') return;
+    const status = row?.status ?? (controller?.signal.aborted ? 'cancelled' : 'missing');
+    this.cleanupSessionState(sessionId);
+    throw new Error(status === 'cancelled' ? 'discussion_cancelled' : `discussion_not_active:${status}`);
+  }
+
   private cleanupSessionState(sessionId: string): void {
     this.sessionTrustScores.delete(sessionId);
     this.sessionReputationScores.delete(sessionId);
     this.sessionPidControllers.delete(sessionId);
+    this.sessionAbortControllers.delete(sessionId);
     this.teardownRealtimeListeners(sessionId);
   }
 
@@ -1324,6 +1449,7 @@ class DiscussionEngine {
     const accumulated: string[] = [];
 
     for (const pid of participants) {
+      this.assertSessionActive(sessionId);
       await eventBus.publish({
         type: 'discussion:provider_started', sessionId, agentId: pid, round,
       });
@@ -1339,7 +1465,7 @@ class DiscussionEngine {
           systemPrompt: `R${round} (seq). Concisely build on evals.`,
           compact: true,
           projectDir,
-          signal: AbortSignal.timeout(resolveDiscussionTimeoutMs('evaluation')),
+          signal: this.sessionSignal(sessionId, resolveDiscussionTimeoutMs('evaluation')),
         });
         const output = requireSubstantiveDiscussionOutput(pid, result, 'evaluation');
 
@@ -1395,7 +1521,9 @@ class DiscussionEngine {
       const prompt = `Discussion topic: "${topic}"\n\nLatest message from ${event.from}:\n${otherMessages}\n\nRespond with your thoughts. Be concise.`;
 
       try {
-        const result = await agentManager.executeTask(agentId, prompt);
+        const result = await agentManager.executeTask(agentId, prompt, {
+          signal: this.sessionSignal(sessionId, resolveDiscussionTimeoutMs('proposal')),
+        });
         const output = requireDiscussionOutput(agentId, result);
 
         await eventBus.publish({
@@ -1681,7 +1809,7 @@ class DiscussionEngine {
             consensus_rate=COALESCE(?, consensus_rate),
             result_json=?,
             updated_at=datetime('now')
-        WHERE id=?
+        WHERE id=? AND status='active'
       `).run(round, consensusRate ?? null, JSON.stringify(nextResultState), sessionId);
     } catch (err: any) {
       log.error({ err: err.message, sessionId, round }, 'Save round failed');

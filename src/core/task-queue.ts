@@ -11,10 +11,11 @@
 import { Queue, Worker, Job, QueueEvents, UnrecoverableError } from 'bullmq';
 import type Database from 'better-sqlite3';
 import { spawn, execFileSync, type ChildProcessByStdio, execSync } from 'child_process';
+import { createHash } from 'node:crypto';
 import type { Readable } from 'stream';
 import { mkdtempSync, existsSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir, availableParallelism } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { getDb } from '../storage/database.js';
@@ -122,6 +123,41 @@ export interface QueueMetrics {
   failed: number;
   concurrency: number;
   mode: 'bullmq' | 'semaphore';
+}
+
+type BullQueueLiveCountReader = Pick<
+  Queue<QueuedTask>,
+  'getWaitingCount' | 'getPrioritizedCount' | 'getActiveCount'
+>;
+
+type BullQueueWaitingJobReader = Pick<
+  Queue<QueuedTask>,
+  'getWaiting' | 'getPrioritized'
+>;
+
+/**
+ * BullMQ stores every job with a positive priority in the `prioritized` ZSET,
+ * not in the ordinary `wait` list. NCO assigns priority 5 by default, so a
+ * waiting-only snapshot reports an empty queue even while work is backlogged.
+ */
+export async function readBullQueueLiveCounts(
+  queue: BullQueueLiveCountReader,
+): Promise<{ waiting: number; active: number }> {
+  const [waiting, prioritized, active] = await Promise.all([
+    queue.getWaitingCount(),
+    queue.getPrioritizedCount(),
+    queue.getActiveCount(),
+  ]);
+  return { waiting: waiting + prioritized, active };
+}
+
+/** Return every runnable waiting job, regardless of BullMQ storage class. */
+export async function listBullQueueWaitingJobs(queue: BullQueueWaitingJobReader) {
+  const [waiting, prioritized] = await Promise.all([
+    queue.getWaiting(),
+    queue.getPrioritized(),
+  ]);
+  return [...waiting, ...prioritized];
 }
 
 export function resolveVerifierProjectDir(task: Pick<QueuedTask, 'metadata'>): string {
@@ -270,6 +306,69 @@ export function shouldPurgeStaleJob(status: string | undefined): boolean {
   return status === undefined || TERMINAL_STATES.has(status);
 }
 
+/**
+ * 부팅 복구 전에 남은 active job은 DB가 queued로 되돌린 경우에만 회수한다.
+ * running은 다른 정상 worker가 소유할 수 있으므로 절대 건드리지 않는다.
+ */
+export function shouldPurgeStartupActiveJob(status: string | undefined): boolean {
+  return status === undefined || status === 'queued' || TERMINAL_STATES.has(status);
+}
+
+/**
+ * BullMQ state is shared by every process connected to Redis. A test or secondary
+ * NCO instance that uses a different SQLite database must therefore never inspect
+ * or purge the production queue namespace. Keep the historical `bull` prefix for
+ * the canonical database, and derive a stable opaque prefix for every other DB.
+ */
+export function resolveBullMqPrefix(
+  databasePath = env.DATABASE_PATH,
+  override = process.env.NCO_BULLMQ_PREFIX,
+): string {
+  const requested = override?.trim();
+  if (requested) {
+    if (!/^[A-Za-z0-9_-]+$/.test(requested)) {
+      throw new Error('NCO_BULLMQ_PREFIX may contain only letters, numbers, _ and -');
+    }
+    return requested;
+  }
+
+  const absoluteDatabasePath = resolve(databasePath);
+  const defaultDatabasePath = resolve(
+    typeof env.ROOT === 'string' && env.ROOT ? env.ROOT : process.cwd(),
+    'db/nco.db',
+  );
+  if (absoluteDatabasePath === defaultDatabasePath) return 'bull';
+  const databaseId = createHash('sha256')
+    .update(absoluteDatabasePath)
+    .digest('hex')
+    .slice(0, 16);
+  return `bull-nco-${databaseId}`;
+}
+
+export type BestEffortSqliteWriteResult =
+  | { ok: true }
+  | { ok: false; retryable: boolean; error: unknown };
+
+/** 활동/하트비트 같은 보조 기록 실패가 provider 스트림과 백엔드를 종료시키지 않게 한다. */
+export function runBestEffortSqliteWrite(write: () => void): BestEffortSqliteWriteResult {
+  try {
+    write();
+    return { ok: true };
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error
+      ? String((error as { code?: unknown }).code ?? '')
+      : '';
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      retryable: code === 'SQLITE_BUSY'
+        || code === 'SQLITE_LOCKED'
+        || /database is (?:locked|busy)/i.test(message),
+      error,
+    };
+  }
+}
+
 export function reconcileVerifierBaseline(
   verifierResult: VerifierResult,
   baseline: Pick<VerifierProcessResult, 'code' | 'timedOut'>,
@@ -299,7 +398,12 @@ export function terminalDuplicateExecutionError(
   taskId: string,
   status: string | undefined,
 ): UnrecoverableError | null {
-  if (!status || !TERMINAL_STATES.has(status)) return null;
+  if (status === undefined) {
+    return new UnrecoverableError(
+      `duplicate_execution: task ${taskId} has no durable task row`,
+    );
+  }
+  if (!TERMINAL_STATES.has(status)) return null;
   return new UnrecoverableError(
     `duplicate_execution: task ${taskId} already terminal (${status})`,
   );
@@ -406,8 +510,20 @@ export function persistTaskReassignment(
 }
 
 const SILENT_FAILURE_PATTERN = /usage limit|rate limit exceeded|quota exceeded|user not found|unauthorized|invalid api key|\b401\b|payment required|credit/i;
+const HEADLESS_PERMISSION_DENIAL_DISABLED = new Set(['0', 'false', 'off']);
+const HEADLESS_PERMISSION_DENIAL_PATTERN =
+  /^jetski:\s*no output produced\b[\s\S]{0,240}\bheadless mode cannot prompt for,\s*so it was auto-denied\./i;
 
-export function classifyResult(result: TaskExecutionResult): TaskExecutionResult {
+/**
+ * Jetski can exit successfully after refusing a required tool in headless mode. The CLI's
+ * exact leading envelope is provider failure evidence, not a task result. Keep the match
+ * anchored and bounded so a report that merely quotes an earlier incident is not rejected.
+ * Runtime rollback: NCO_HEADLESS_PERMISSION_DENIAL_GATE=off.
+ */
+export function classifyResult(
+  result: TaskExecutionResult,
+  headlessPermissionDenialToggle = process.env.NCO_HEADLESS_PERMISSION_DENIAL_GATE,
+): TaskExecutionResult {
   if (!result.success) return result;
 
   const output = result.output ?? '';
@@ -419,6 +535,20 @@ export function classifyResult(result: TaskExecutionResult): TaskExecutionResult
 
   if (trimmed === '(에이전트 응답 없음)') {
     return { ...result, success: false, output, error: 'silent-failure: no agent response' };
+  }
+
+  if (
+    !HEADLESS_PERMISSION_DENIAL_DISABLED.has(
+      headlessPermissionDenialToggle?.trim().toLowerCase() ?? '',
+    )
+    && HEADLESS_PERMISSION_DENIAL_PATTERN.test(trimmed)
+  ) {
+    return {
+      ...result,
+      success: false,
+      output,
+      error: 'silent-failure: headless tool permission auto-denied',
+    };
   }
 
   if (output.length < 300 && SILENT_FAILURE_PATTERN.test(output)) {
@@ -1079,21 +1209,38 @@ export async function applyVerifierGate(
 }
 
 // ─── In-memory semaphore (Redis-offline fallback) ─────
-class Semaphore {
+export class Semaphore {
   private limit: number;
   private inUse = 0;
-  private queue: Array<() => void> = [];
+  private queue: Array<{
+    waiterId?: string;
+    resolve: (acquired: boolean) => void;
+  }> = [];
 
   constructor(concurrency: number) {
     this.limit = Math.max(1, concurrency);
   }
 
-  async acquire(): Promise<void> {
+  async acquire(waiterId?: string): Promise<boolean> {
     if (this.inUse < this.limit) {
       this.inUse++;
-      return;
+      return true;
     }
-    await new Promise<void>(resolve => this.queue.push(resolve));
+    return await new Promise<boolean>(resolve => this.queue.push({ waiterId, resolve }));
+  }
+
+  cancel(waiterId: string): boolean {
+    const index = this.queue.findIndex(waiter => waiter.waiterId === waiterId);
+    if (index < 0) return false;
+    const [waiter] = this.queue.splice(index, 1);
+    waiter.resolve(false);
+    return true;
+  }
+
+  cancelAll(): number {
+    const waiters = this.queue.splice(0);
+    for (const waiter of waiters) waiter.resolve(false);
+    return waiters.length;
   }
 
   isSaturated(): boolean {
@@ -1114,7 +1261,7 @@ class Semaphore {
     while (this.queue.length > 0 && this.inUse < this.limit) {
       this.inUse++;
       const next = this.queue.shift()!;
-      next();
+      next.resolve(true);
     }
   }
 }
@@ -1181,6 +1328,8 @@ class TaskQueueManager {
   private runtimes = new Map<string, TaskRuntimeEntry>();
   private verifierBaselines = new Map<string, Promise<VerifierProcessResult | null>>();
   private enqueueScopes = new Map<string, number>();
+  private waitingBullMqAborters = new Map<string, () => void>();
+  private priorityAgingTimer: ReturnType<typeof setInterval> | null = null;
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
 
   private getOrCaptureVerifierBaseline(
@@ -1234,11 +1383,11 @@ class TaskQueueManager {
     if (this.initialized) return;
     this.initialized = true;
 
-    setInterval(async () => {
+    this.priorityAgingTimer = setInterval(async () => {
       for (const [, entry] of this.agents) {
         if (entry.mode !== "bullmq" || !entry.queue) continue;
         try {
-          const waiting = await entry.queue.getWaiting();
+          const waiting = await listBullQueueWaitingJobs(entry.queue);
           for (const job of waiting) {
             const waitMs = Date.now() - job.timestamp;
             if (waitMs > 300_000) {
@@ -1249,6 +1398,7 @@ class TaskQueueManager {
         } catch { }
       }
     }, 60_000);
+    this.priorityAgingTimer.unref?.();
 
     this.monitorTimer = setInterval(() => {
       for (const runtime of this.runtimes.values()) {
@@ -1291,9 +1441,10 @@ class TaskQueueManager {
     const redis = await getRedis();
     const connection = { host: redis.options.host || '127.0.0.1', port: Number(redis.options.port || 6379) };
     const queueName = `nco-agent-${agentId}`;
+    const prefix = resolveBullMqPrefix();
 
-    entry.queue = new Queue<QueuedTask>(queueName, { connection });
-    entry.queueEvents = new QueueEvents(queueName, { connection });
+    entry.queue = new Queue<QueuedTask>(queueName, { connection, prefix });
+    entry.queueEvents = new QueueEvents(queueName, { connection, prefix });
     await this.purgeStaleJobs(entry.queue);
 
     entry.worker = new Worker<QueuedTask>(
@@ -1303,6 +1454,7 @@ class TaskQueueManager {
       },
       {
         connection,
+        prefix,
         concurrency,
         // LLM 에이전트 잡은 수 분씩 걸린다. BullMQ 기본 lockDuration(30s)로는
         // 락 갱신이 한 번만 밀려도(이벤트 루프 지연·Redis 순간 지연) 잡이 stalled로
@@ -1323,7 +1475,10 @@ class TaskQueueManager {
     if (!this.executor) throw new Error('Executor not set');
 
     this.refreshEntryConcurrency(task.agentId, entry);
-    await entry.semaphore.acquire();
+    const acquired = await entry.semaphore.acquire(task.taskId);
+    if (!acquired) {
+      return { success: false, output: '', error: 'cancelled', status: 'cancelled' };
+    }
 
     const controller = new AbortController();
     try {
@@ -1398,6 +1553,14 @@ class TaskQueueManager {
    * The taskId is stable across retries so the DB record stays consistent.
    */
   async enqueue(task: QueuedTask): Promise<TaskExecutionResult> {
+    if (this.shutdownSignal) {
+      return {
+        success: false,
+        output: '',
+        error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (${this.shutdownSignal})`,
+        status: 'cancelled',
+      };
+    }
     this.enqueueScopes.set(task.taskId, (this.enqueueScopes.get(task.taskId) ?? 0) + 1);
     try {
       return await this.enqueueWithRetries(task);
@@ -1721,8 +1884,12 @@ class TaskQueueManager {
     } catch (err: any) {
       // waiting 감소는 대기 이탈 시 1회만 — active 진입 후 실행 실패에서 이중 감소 금지 (리뷰 MED)
       if (!leftWaiting) entry.waiting = Math.max(0, entry.waiting - 1);
+      const error = err instanceof Error ? err.message : String(err);
+      if (error === 'cancelled') {
+        return { success: false, output: '', error, status: 'cancelled' };
+      }
       entry.failed++;
-      return { success: false, output: '', error: err.message };
+      return { success: false, output: '', error };
     }
   }
 
@@ -1732,8 +1899,10 @@ class TaskQueueManager {
     maxWaitMs = this.getQueueWaitMaxMs(),
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
+      const taskId = job.data.taskId;
       let settled = false;
       let timer: NodeJS.Timeout | null = null;
+      let cancelWait: (() => void) | null = null;
 
       const cleanup = () => {
         if (timer) {
@@ -1741,6 +1910,9 @@ class TaskQueueManager {
           timer = null;
         }
         queueEvents.off('active', onActive);
+        if (cancelWait && this.waitingBullMqAborters.get(taskId) === cancelWait) {
+          this.waitingBullMqAborters.delete(taskId);
+        }
       };
 
       const resolveOnce = () => {
@@ -1762,6 +1934,10 @@ class TaskQueueManager {
           resolveOnce();
         }
       };
+
+      cancelWait = () => rejectOnce(new Error('cancelled'));
+      this.waitingBullMqAborters.get(taskId)?.();
+      this.waitingBullMqAborters.set(taskId, cancelWait);
 
       queueEvents.on('active', onActive);
       timer = setTimeout(() => {
@@ -1792,31 +1968,46 @@ class TaskQueueManager {
   }
 
   /**
-   * Redis에 남은 terminal/missing job만 제거한다. 비종결 queued job은 부팅 orphan
-   * 복구가 같은 jobId로 이어받아야 하므로 보존한다.
+   * Redis에 남은 terminal/missing job을 제거한다. 부팅 orphan 복구가 DB 상태를
+   * queued로 되돌렸지만 이전 worker의 긴 lock이 남긴 active job도 lock과 함께
+   * 회수한다. 이 메서드는 새 worker 생성 전에만 호출되므로 현재 프로세스와 경합하지 않는다.
    */
   private async purgeStaleJobs(queue: Queue<QueuedTask>): Promise<number> {
     try {
       const jobs = await queue.getJobs(
-        ['wait', 'delayed', 'prioritized', 'paused', 'completed', 'failed'],
+        ['wait', 'delayed', 'prioritized', 'paused', 'active', 'completed', 'failed'],
         0,
         999,
         true,
       );
       const db = getDb();
       const readStatus = db.prepare('SELECT status FROM tasks WHERE id=?');
+      const redis = await queue.client;
       let removed = 0;
+      let removedActive = 0;
       for (const job of jobs) {
         const row = readStatus.get(job.data.taskId) as { status?: string } | undefined;
-        if (!shouldPurgeStaleJob(row?.status)) continue;
+        const state = await job.getState();
+        const active = state === 'active';
+        if (active
+          ? !shouldPurgeStartupActiveJob(row?.status)
+          : !shouldPurgeStaleJob(row?.status)) continue;
         try {
+          if (active && job.id) {
+            // 죽은 worker가 남긴 22분 lock 때문에 remove가 거부되지 않도록 정확한
+            // job lock만 지운다. DB running 작업에는 위 가드 때문에 도달하지 않는다.
+            await redis.del(queue.toKey(`${job.id}:lock`));
+          }
           await job.remove();
           removed++;
+          if (active) removedActive++;
         } catch {
           // 다른 worker가 상태를 바꾼 경합은 다음 부팅/정리 주기에 재평가한다.
         }
       }
-      if (removed > 0) log.info({ queue: queue.name, removed }, 'Purged stale BullMQ jobs');
+      if (removed > 0) {
+        log.info({ queue: queue.name, removed, removedActive }, 'Purged stale BullMQ jobs');
+      }
       return removed;
     } catch (error) {
       log.warn({
@@ -1832,8 +2023,11 @@ class TaskQueueManager {
 
     entry.waiting++;
     this.refreshEntryConcurrency(task.agentId, entry);
-    await entry.semaphore.acquire();
+    const acquired = await entry.semaphore.acquire(task.taskId);
     entry.waiting = Math.max(0, entry.waiting - 1);
+    if (!acquired) {
+      return { success: false, output: '', error: 'cancelled', status: 'cancelled' };
+    }
 
     const controller = new AbortController();
     try {
@@ -1895,8 +2089,8 @@ class TaskQueueManager {
   }
 
   /**
-   * Abort a running task. Works for both BullMQ and semaphore modes.
-   * - If queued (not yet active): remove from BullMQ queue
+   * Abort a running or queued task. Works for both BullMQ and semaphore modes.
+   * - If queued (not yet active): cancel the semaphore waiter or remove from BullMQ
    * - If active: send AbortSignal to the running process
    */
   async abort(taskId: string): Promise<boolean> {
@@ -1910,20 +2104,66 @@ class TaskQueueManager {
         return true;
       }
 
+      // Semaphore fallback jobs, and BullMQ jobs admitted by a worker but still
+      // waiting behind the dynamic local-concurrency gate, have no controller yet.
+      if (entry.semaphore.cancel(taskId)) {
+        log.info({ agentId, taskId }, 'Task aborted (waiting for semaphore)');
+        return true;
+      }
+
       // Try to remove from BullMQ queue (still waiting)
       if (entry.queue) {
         try {
           const job = await entry.queue.getJob(taskId);
           if (job) {
             await job.remove();
-            entry.waiting = Math.max(0, entry.waiting - 1);
+            const cancelWait = this.waitingBullMqAborters.get(taskId);
+            if (cancelWait) {
+              // enqueueBullMQ owns the single waiting-count decrement in its catch.
+              cancelWait();
+            } else {
+              // Compatibility fallback for a job restored before this process had
+              // registered its active-event listener.
+              entry.waiting = Math.max(0, entry.waiting - 1);
+            }
             log.info({ agentId, taskId }, 'Task removed from queue (waiting)');
             return true;
           }
         } catch { /* job may have already started */ }
       }
+
+      // The job may have crossed from waiting to active while remove() awaited.
+      // Re-check both pre-execution and active cancellation handles once.
+      if (entry.semaphore.cancel(taskId)) {
+        log.info({ agentId, taskId }, 'Task aborted after queue activation (waiting for semaphore)');
+        return true;
+      }
+      const activatedController = entry.activeControllers.get(taskId);
+      if (activatedController) {
+        this.setAbortReason(taskId, 'cancelled');
+        activatedController.abort(new Error('cancelled'));
+        entry.activeControllers.delete(taskId);
+        log.info({ agentId, taskId }, 'Task aborted after queue activation');
+        return true;
+      }
     }
     return false;
+  }
+
+  /** Interrupt the exact active tasks left after the bounded shutdown drain. */
+  interruptActiveTasks(taskIds: readonly string[]): number {
+    const targets = new Set(taskIds);
+    let interrupted = 0;
+    for (const [agentId, entry] of this.agents) {
+      for (const [taskId, controller] of entry.activeControllers) {
+        if (!targets.has(taskId) || controller.signal.aborted) continue;
+        this.setAbortReason(taskId, 'cancelled');
+        controller.abort(new Error(GRACEFUL_SHUTDOWN_INTERRUPTION));
+        interrupted += 1;
+        log.warn({ agentId, taskId }, 'Interrupted active task after shutdown drain timeout');
+      }
+    }
+    return interrupted;
   }
 
   /**
@@ -1944,8 +2184,9 @@ class TaskQueueManager {
       // BullMQ mode: get real counts from queue
       if (entry.mode === 'bullmq' && entry.queue) {
         try {
-          waiting = await entry.queue.getWaitingCount();
-          active = await entry.queue.getActiveCount();
+          const live = await readBullQueueLiveCounts(entry.queue);
+          waiting = live.waiting;
+          active = live.active;
         } catch { /* use cached counts */ }
       }
 
@@ -1964,11 +2205,18 @@ class TaskQueueManager {
   }
 
   async close(options: { forceWorkers?: boolean } = {}): Promise<void> {
+    if (this.priorityAgingTimer) {
+      clearInterval(this.priorityAgingTimer);
+      this.priorityAgingTimer = null;
+    }
     if (this.monitorTimer) {
       clearInterval(this.monitorTimer);
       this.monitorTimer = null;
     }
+    for (const cancelWait of [...this.waitingBullMqAborters.values()]) cancelWait();
+    this.waitingBullMqAborters.clear();
     for (const entry of this.agents.values()) {
+      entry.semaphore?.cancelAll();
       // Graceful drain is completed by src/index.ts before this method. BullMQ
       // worker.close(false) has no timeout and waits for active jobs forever;
       // force=true skips only that wait and still closes worker resources.
@@ -1993,7 +2241,7 @@ class TaskQueueManager {
     }
     runtime.liveness = 'working';
     runtime.stalledSince = null;
-    this.flushActivityToDb(runtime, chunk);
+    this.flushActivityToDb(runtime);
   }
 
   recordChildProcess(taskId: string, pid: number | null | undefined): void {
@@ -2089,17 +2337,17 @@ class TaskQueueManager {
     if (!started.ok && started.prev !== 'running') {
       // P1-1: task-state.transitionTask already rejects queued/assigned→running dupes at
       // the DB layer, but a stale BullMQ job (redispatched/retried against an already
-      // terminal task) previously fell through to this warn-and-continue path and executed
-      // anyway, producing "buried" duplicate results. If the task is already terminal, abort
-      // this execution before it burns provider budget — and throw UnrecoverableError so
-      // BullMQ does not retry (a plain Error would trigger another wasted attempt).
+      // terminal or missing task) previously fell through to this warn-and-continue path and
+      // executed anyway, producing buried duplicate results or FK registration failures.
+      // Abort before provider budget is spent and use UnrecoverableError so BullMQ will not
+      // retry a queue item that has no valid durable state transition.
       const duplicateError = terminalDuplicateExecutionError(task.taskId, started.prev);
       if (duplicateError) {
         this.runtimes.delete(task.taskId);
         recordLearningEvent({
           agentId: task.agentId,
           eventType: 'duplicate_execution',
-          pattern: started.prev,
+          pattern: started.prev ?? 'missing_durable_task',
           context: {
             taskId: task.taskId,
             error: duplicateError.message,
@@ -2107,7 +2355,7 @@ class TaskQueueManager {
         });
         log.warn(
           { taskId: task.taskId, prev: started.prev },
-          'Duplicate execution blocked — task already in terminal state',
+          'Invalid queued execution blocked before provider dispatch',
         );
         throw duplicateError;
       }
@@ -2167,18 +2415,38 @@ class TaskQueueManager {
       : terminal;
   }
 
-  private flushActivityToDb(runtime: TaskRuntimeEntry, chunk?: string): void {
+  private flushActivityToDb(runtime: TaskRuntimeEntry): void {
     const now = Date.now();
-    if (!chunk && now - runtime.lastDbFlushAt < 1_000) return;
-    runtime.lastDbFlushAt = now;
-    getDb().prepare(`
-      UPDATE tasks
-      SET last_activity_at=?, updated_at=datetime('now')
-      WHERE id=?
-    `).run(new Date(runtime.lastActivityAt).toISOString(), runtime.taskId);
-    if (runtime.firstActivityObserved && now - runtime.lastHeartbeatFlushAt >= 1_000) {
-      runtime.lastHeartbeatFlushAt = now;
-      recordTaskHeartbeat(runtime.taskId);
+    if (now - runtime.lastDbFlushAt < 1_000) return;
+    // lease는 provider의 출력 유무가 아니라 이 runtime owner가 살아 있는지를 증명한다.
+    // 첫 활동 제한(기본 180초)보다 lease(90초)가 짧으므로 출력/CPU 증가 후에만 갱신하면
+    // 정상 cold start를 sweeper가 먼저 만료시킨다. monitor tick 또는 stream callback이
+    // 살아 있는 동안 갱신하고, 실제 무활동 판정은 first-activity/idle/hard-cap이 담당한다.
+    const shouldFlushHeartbeat = now - runtime.lastHeartbeatFlushAt >= 1_000;
+    const persisted = runBestEffortSqliteWrite(() => {
+      getDb().prepare(`
+        UPDATE tasks
+        SET last_activity_at=?, updated_at=datetime('now')
+        WHERE id=?
+      `).run(new Date(runtime.lastActivityAt).toISOString(), runtime.taskId);
+      if (shouldFlushHeartbeat) recordTaskHeartbeat(runtime.taskId);
+    });
+    // busy_timeout 대기 중 들어온 다음 stream chunk가 곧바로 DB를 다시 때리지 않게
+    // 시도 시작이 아니라 종료 시각부터 throttle한다.
+    runtime.lastDbFlushAt = Date.now();
+    if (persisted.ok) {
+      if (shouldFlushHeartbeat) runtime.lastHeartbeatFlushAt = runtime.lastDbFlushAt;
+      return;
+    }
+    const context = {
+      taskId: runtime.taskId,
+      agentId: runtime.agentId,
+      err: persisted.error,
+    };
+    if (persisted.retryable) {
+      log.warn(context, 'Deferred task activity persistence because SQLite is busy');
+    } else {
+      log.error(context, 'Task activity persistence failed');
     }
   }
 

@@ -194,14 +194,77 @@ export function reapStaleRuntimeProcesses(
   return result;
 }
 
+/**
+ * Force-reap provider processes that still belong to this backend after the
+ * bounded shutdown drain. The registry fingerprint prevents PID-reuse kills;
+ * rows for a different owner are deliberately left for startup recovery.
+ */
+export function reapOwnedRuntimeProcesses(
+  taskIds: readonly string[],
+  database: Database.Database = getDb(),
+  dependencies: ProcessRegistryDependencies = {},
+): ProcessReapResult {
+  const targets = new Set(taskIds);
+  if (targets.size === 0) {
+    return { examined: 0, reaped: 0, stale: 0, skippedLiveOwner: 0 };
+  }
+
+  const inspect = dependencies.inspectProcess ?? inspectProcess;
+  const killGroup = dependencies.killProcessGroup ?? defaultKillProcessGroup;
+  const ownerPid = dependencies.ownerPid ?? process.pid;
+  const rows = (database.prepare(`
+    SELECT task_id, agent_id, pid, process_group_id, owner_pid, command_hash
+    FROM runtime_processes
+    WHERE owner_pid = ?
+  `).all(ownerPid) as RuntimeProcessRow[]).filter(row => targets.has(row.task_id));
+  const result: ProcessReapResult = { examined: rows.length, reaped: 0, stale: 0, skippedLiveOwner: 0 };
+  const remove = database.prepare('DELETE FROM runtime_processes WHERE task_id = ?');
+
+  for (const row of rows) {
+    const snapshot = inspect(row.pid);
+    const exactMatch = snapshot?.processGroupId === row.process_group_id
+      && commandHash(snapshot.command) === row.command_hash;
+    if (!exactMatch) {
+      result.stale += 1;
+      remove.run(row.task_id);
+      continue;
+    }
+    if (!safeProcessGroup(row.process_group_id, ownerPid, inspect)) {
+      result.stale += 1;
+      continue;
+    }
+    try {
+      killGroup(row.process_group_id);
+      result.reaped += 1;
+      remove.run(row.task_id);
+      log.warn(
+        { taskId: row.task_id, agentId: row.agent_id, pid: row.pid, pgid: row.process_group_id },
+        'Force-reaped provider process after shutdown drain timeout',
+      );
+    } catch (error) {
+      log.warn({ err: error, taskId: row.task_id, pid: row.pid }, 'Failed to force-reap provider process');
+    }
+  }
+  return result;
+}
+
 /** Strict signatures used only for pre-registry processes from older builds. */
 export function isLegacyNcoProviderProcess(processInfo: ProcessSnapshot): boolean {
   if (processInfo.parentPid !== 1) return false;
   const command = processInfo.command;
   const orphanedCodex = /(?:^|[\s/])codex(?:\s+)exec(?:\s|$)/.test(command)
-    && command.includes('/tmp/nco-codex-last-');
+    // macOS native CLIs use /var/folders/... while Linux uses /tmp.
+    // The basename is generated only by NCO's Codex executor.
+    && command.includes('nco-codex-last-');
   const orphanedOpenCode = /(?:^|[\s/])opencode(?:\s+)run(?:\s|$)/.test(command)
-    && command.includes('[NCO Core Operating Principles v1]');
+    && (
+      command.includes('[NCO Core Operating Principles v1]')
+      // Pre-registry OrchestratedLoop prompts were sometimes prefixed with
+      // persisted conversation history, so the core-principles marker was not
+      // present in ps output. These two headers are emitted by NCO itself.
+      || command.includes('## Conversation History (workspace:')
+      || /Discussion R\d+\. Session: sess_[A-Za-z0-9_-]+/.test(command)
+    );
   return orphanedCodex || orphanedOpenCode;
 }
 

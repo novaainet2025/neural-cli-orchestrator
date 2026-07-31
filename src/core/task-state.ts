@@ -16,10 +16,11 @@ function parseEvidenceJson(value: string | undefined): unknown {
 }
 
 export const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
+  pending: new Set(['queued', 'assigned', 'running', 'cancelled', 'failed']),
   queued: new Set(['assigned', 'running', 'cancelled', 'failed']),
   assigned: new Set(['running', 'streaming', 'reviewing', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
-  running: new Set(['streaming', 'reviewing', 'completed', 'failed', 'timed_out', 'cancelled']),
-  streaming: new Set(['reviewing', 'completed', 'failed', 'timed_out', 'cancelled']),
+  running: new Set(['streaming', 'reviewing', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
+  streaming: new Set(['reviewing', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
   reviewing: new Set(['completed', 'failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),

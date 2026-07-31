@@ -8,6 +8,7 @@ import {
   DISCUSSION_TIMEOUT_FLOOR_MS,
   authorizeSingleProposalFallback,
   buildDiscussionEventContent,
+  buildDiscussionSynthesisPrompt,
   discussionEngine,
   formatDiscussionProposalContent,
   requireDiscussionOutput,
@@ -163,6 +164,19 @@ describe('discussion provider output validation', () => {
     expect(formatted.length).toBeLessThanOrEqual(300);
   });
 
+  it('keeps original output constraints in the final synthesis prompt', () => {
+    const prompt = buildDiscussionSynthesisPrompt(
+      '한국어로 답하고 마지막에 NCO_REQUIRED_MARKER를 포함하라.',
+      '[codex] proposal',
+      '[hermes] evaluation',
+    );
+
+    expect(prompt).toContain('한국어로 답하고 마지막에 NCO_REQUIRED_MARKER를 포함하라.');
+    expect(prompt).toContain('[codex] proposal');
+    expect(prompt).toContain('[hermes] evaluation');
+    expect(prompt).toContain('every explicit language, format, marker, and acceptance constraint');
+  });
+
   it('selects synthesis only from providers that returned a valid R1 proposal', () => {
     expect(selectDiscussionSynthesisProvider(['agy', 'hermes'])).toBe('agy');
     expect(selectDiscussionSynthesisProvider(['opencode', 'codex'])).toBe('codex');
@@ -191,6 +205,83 @@ describe('discussion provider output validation', () => {
       ['opencode', 'codex'],
       ['ollama', 'cursor-agent'],
     )).toEqual([]);
+  });
+});
+
+describe('discussion cancellation', () => {
+  it('aborts active providers and keeps the persisted discussion cancelled', async () => {
+    const db = getDb();
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const taskId = `task-cancel-${suffix}`;
+    const sessionId = `discussion-cancel-${suffix}`;
+    const seenSignals: AbortSignal[] = [];
+    const execute = vi.spyOn(agentManager, 'executeTask')
+      .mockImplementation(async (_providerId: string, _prompt: string, options?: any) => {
+        const signal = options?.signal as AbortSignal;
+        seenSignals.push(signal);
+        return await new Promise((resolve, reject) => {
+          const rejectAbort = () => reject(signal.reason ?? new Error('aborted'));
+          if (signal.aborted) rejectAbort();
+          else signal.addEventListener('abort', rejectAbort, { once: true });
+        });
+      });
+
+    const running = discussionEngine.startDiscussion({
+      sessionId,
+      taskId,
+      topic: 'cancel this discussion while providers are active',
+      mode: 'discussion',
+      providers: ['codex', 'agy'],
+      maxRounds: 1,
+      projectDir: '/tmp',
+    });
+
+    try {
+      for (let attempt = 0; attempt < 50 && execute.mock.calls.length < 2; attempt++) {
+        await new Promise(resolveWait => setTimeout(resolveWait, 0));
+      }
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(discussionEngine.cancelTaskDiscussions(taskId)).toBe(1);
+      await expect(running).rejects.toThrow('discussion_cancelled');
+      expect(seenSignals).toHaveLength(2);
+      expect(seenSignals.every(signal => signal.aborted)).toBe(true);
+      expect(db.prepare('SELECT status, report FROM discussions WHERE id=?').get(sessionId))
+        .toEqual({ status: 'cancelled', report: 'cancelled_by_user' });
+      expect(discussionEngine.cancelTaskDiscussions(taskId)).toBe(0);
+    } finally {
+      vi.restoreAllMocks();
+      db.prepare('DELETE FROM discussion_messages WHERE discussion_id=?').run(sessionId);
+      db.prepare('DELETE FROM discussions WHERE id=?').run(sessionId);
+    }
+  });
+});
+
+describe('hive response quorum', () => {
+  it('fails closed before synthesis when fewer than two providers return substantive output', async () => {
+    const db = getDb();
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const sessionId = `hive-quorum-${suffix}`;
+    const execute = vi.spyOn(agentManager, 'executeTask')
+      .mockImplementation(async (providerId: string) => providerId === 'codex'
+        ? ({ success: true, output: 'x'.repeat(DISCUSSION_MIN_RESPONSE_LENGTH.proposal) } as any)
+        : ({ success: true, output: 'too short' } as any));
+
+    try {
+      await expect(discussionEngine.startDiscussion({
+        sessionId,
+        topic: 'collect two independent hive responses',
+        mode: 'hive',
+        providers: ['codex', 'agy'],
+        projectDir: '/tmp',
+      })).rejects.toThrow('hive_insufficient_valid_responses:1/2');
+      expect(execute).toHaveBeenCalledTimes(2);
+      expect(db.prepare('SELECT status, report FROM discussions WHERE id=?').get(sessionId))
+        .toEqual({ status: 'failed', report: 'hive_insufficient_valid_responses:1/2' });
+    } finally {
+      vi.restoreAllMocks();
+      db.prepare('DELETE FROM discussion_messages WHERE discussion_id=?').run(sessionId);
+      db.prepare('DELETE FROM discussions WHERE id=?').run(sessionId);
+    }
   });
 });
 
