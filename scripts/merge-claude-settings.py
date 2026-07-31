@@ -115,6 +115,19 @@ def merge_settings(settings: dict[str, Any], hooks_dir: Path) -> dict[str, Any]:
                 group["hooks"] = []
                 retained.append(group)
 
+        # 스크립트 파일이 실제로 있는 훅만 등록한다.
+        # MANAGED_HOOKS 8종은 전부 nova-fleet-config 가 배포하는 훅이라, nco 저장소만
+        # 가지고 setup.sh 를 돌린 머신에는 존재하지 않는다. 그대로 등록하면 settings.json
+        # 이 없는 파일을 가리키게 되고, Claude Code 는 매 이벤트마다 실패한 훅을 실행한다.
+        present = [d for d in definitions if (hooks_dir / d["script"]).is_file()]
+        missing = [d["script"] for d in definitions if d not in present]
+        if missing:
+            print(
+                f"[merge-claude-settings] {event}: 스크립트 없음 → 등록 생략: "
+                + ", ".join(sorted(missing)),
+                file=sys.stderr,
+            )
+
         managed_group = {
             "hooks": [
                 {
@@ -122,13 +135,18 @@ def merge_settings(settings: dict[str, Any], hooks_dir: Path) -> dict[str, Any]:
                     for key, value in definition.items()
                     if key != "script"
                 }
-                for definition in definitions
+                for definition in present
             ],
         }
         # Convert the internal "script" field to Claude's "command" field.
-        for hook, definition in zip(managed_group["hooks"], definitions, strict=True):
+        # zip(..., strict=True) 은 Python 3.10+ 전용이라 Ubuntu 20.04(3.8)·macOS 기본
+        # python3(3.9) 에서 TypeError 로 병합기 전체가 죽었다. 두 리스트는 같은
+        # `present` 에서 만들어져 길이가 항상 같으므로 strict 없이도 안전하다.
+        assert len(managed_group["hooks"]) == len(present)
+        for hook, definition in zip(managed_group["hooks"], present):
             hook["command"] = f"bash {hooks_dir / definition['script']}"
-        hooks[event] = [*retained, managed_group]
+        # 등록할 훅이 하나도 없으면 빈 그룹을 남기지 않는다.
+        hooks[event] = [*retained, managed_group] if managed_group["hooks"] else retained
 
     return settings
 

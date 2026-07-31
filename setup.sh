@@ -305,22 +305,38 @@ CMD
 setup_hooks() {
   step 8 "훅 설치"
 
-  HOOKS_SRC="$NCO_DIR/hooks"
+  # 훅 원본은 .claude/hooks 에 있다. 예전 코드는 $NCO_DIR/hooks 만 봤는데 그 디렉터리는
+  # 비어 있어서 항상 "훅 파일 없음" 경고만 내고 아무것도 설치하지 않았다.
+  HOOKS_SRC=""
+  for cand in "$NCO_DIR/.claude/hooks" "$NCO_DIR/hooks"; do
+    if compgen -G "$cand/*.sh" >/dev/null 2>&1; then HOOKS_SRC="$cand"; break; fi
+  done
   HOOKS_DST="$CLAUDE_DIR/hooks"
+  mkdir -p "$HOOKS_DST"
 
-  EXISTING="$(find "$HOOKS_DST" -maxdepth 1 -type f -name '*.sh' | wc -l | tr -d ' ')"
-  if [[ "$EXISTING" -gt 5 ]]; then
-    ok "${EXISTING}개 훅 이미 설치됨"
+  if [[ -z "$HOOKS_SRC" ]]; then
+    warn "훅 원본을 찾지 못했습니다 ($NCO_DIR/.claude/hooks, $NCO_DIR/hooks)"
     return
   fi
+  info "훅 원본: $HOOKS_SRC"
 
-  if ls "$HOOKS_SRC"/*.sh &>/dev/null 2>/dev/null; then
-    cp "$HOOKS_SRC"/*.sh "$HOOKS_DST/"
-    chmod +x "$HOOKS_DST"/*.sh
-    ok "훅 설치 완료"
-  else
-    warn "훅 파일 없음 — ~/.claude/hooks/ 에 수동으로 복사하세요"
-  fi
+  # 기존 훅은 절대 덮어쓰지 않는다. nova-fleet-config 가 배포한 훅이 이 저장소 사본보다
+  # 최신인 경우가 많아(예: nco-statusline.sh 209줄 vs fleet 901줄), 무조건 복사하면
+  # 하네스가 구버전으로 퇴행한다. 없는 것만 채운다.
+  local copied=0 kept=0 name
+  for f in "$HOOKS_SRC"/*.sh; do
+    [[ -f "$f" ]] || continue
+    name="$(basename "$f")"
+    [[ "$name" == *.bak-* ]] && continue
+    if [[ -e "$HOOKS_DST/$name" ]]; then
+      kept=$((kept+1))
+    else
+      cp "$f" "$HOOKS_DST/$name" && chmod +x "$HOOKS_DST/$name" && copied=$((copied+1))
+    fi
+  done
+  ok "훅 설치: 신규 ${copied}개 · 기존 보존 ${kept}개 (기존 파일은 덮어쓰지 않음)"
+  [[ "$kept" -gt 0 ]] && info "기존 훅을 최신으로 맞추려면: bash \$FLEET_DIR/install/apply.sh --merge-settings"
+  return 0
 }
 
 # ══════════════════════════════════════════════════════════════════════════
