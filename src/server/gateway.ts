@@ -520,6 +520,8 @@ import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerHandoffRoutes } from './routes/handoff.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { registerTeamsRoutes } from './routes/teams.js';
+import { registerProviderAssignmentRoutes } from './routes/provider-assignments.js';
+import { ProviderAssignmentRuntime } from '../core/provider-assignment-runtime.js';
 import { registerCliQaRoutes } from './routes/cli-qa.js';
 import { registerGoalsRoutes } from './routes/goals.js';
 import { registerPerformanceRoutes } from './routes/performance.js';
@@ -4681,6 +4683,7 @@ export async function createGateway() {
   await registerFleetOpsRoutes(app);
   await registerHandoffRoutes(app);
   await registerTeamsRoutes(app);
+  await registerProviderAssignmentRoutes(app, new ProviderAssignmentRuntime());
   await registerCliQaRoutes(app);
 
   await registerTriadRoutes(app);

@@ -25,6 +25,8 @@ import { acquireComputerUseLease } from './computer-use-company.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
 import { hasResponseContract } from './response-contract.js';
 import { listActivelyRateLimited } from './rate-limit-state.js';
+import { ProviderAssignmentRuntime } from './provider-assignment-runtime.js';
+import type { ProviderAssignmentSnapshot } from './provider-assignment.js';
 import {
   buildProtocolSafeHandoff,
   parseCollaborationProtocol,
@@ -82,6 +84,8 @@ export interface TeamRow {
   charter: string | null;
   description: string | null;
   members: string[]; // member_ref 목록(provider/session ref)
+  assignedProviders?: string[];
+  providerAssignmentEnforced?: boolean;
 }
 
 export interface RunStage {
@@ -102,6 +106,10 @@ export interface RunStage {
   blockerFingerprint?: string;
   blockerEvidence?: string;
   blockerEvidenceTier?: 1;
+  providerAssignmentId?: string;
+  policyFingerprint?: string;
+  providerConfigFingerprint?: string;
+  availabilityFingerprint?: string;
 }
 
 export interface CompanyRun {
@@ -143,6 +151,40 @@ export interface CompanyRun {
     activatedAt?: string;
     releasedAt?: string;
   };
+  providerAssignmentMode?: ProviderAssignmentMode;
+  organizationAssignmentId?: string;
+}
+
+export type ProviderAssignmentMode = 'legacy' | 'shadow' | 'enforce';
+
+export function providerAssignmentMode(
+  value = process.env.NCO_PROVIDER_ASSIGNMENT_MODE,
+): ProviderAssignmentMode {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === 'legacy' || normalized === 'shadow' || normalized === 'enforce') {
+    return normalized;
+  }
+  return 'enforce';
+}
+
+export function requiredCapabilitiesForCompanyTask(taskType: TaskType): string[] {
+  switch (taskType) {
+    case 'design': return ['design'];
+    case 'code': return ['code'];
+    case 'review': return ['review'];
+    case 'verify': return ['testing'];
+    case 'research': return ['analysis'];
+    case 'ui': return ['ui-ux'];
+    case 'media': return ['visual'];
+    default: return [];
+  }
+}
+
+function applyAssignmentReceipt(stage: RunStage, snapshot: ProviderAssignmentSnapshot): void {
+  stage.providerAssignmentId = snapshot.assignmentId;
+  stage.policyFingerprint = snapshot.policyFingerprint;
+  stage.providerConfigFingerprint = snapshot.providerConfigFingerprint;
+  stage.availabilityFingerprint = snapshot.availabilityFingerprint;
 }
 
 export function decideCompanyRunResume(input: {
@@ -293,6 +335,11 @@ export function resolveExecutor(
   fallback = 'ollama',
   isAvailable: AvailabilityFn = (id) => knownAgents.has(id),
 ): string {
+  if (team.providerAssignmentEnforced) {
+    return team.assignedProviders?.find((id) => isAvailable(id))
+      ?? team.assignedProviders?.find((id) => knownAgents.has(id))
+      ?? '';
+  }
   const members = orderRecoveryMembers(team);
   if (team.lead && isAvailable(team.lead)) return team.lead;
   const m = members.find((ref) => isAvailable(ref));
@@ -319,6 +366,11 @@ export function resolveExecutorChain(
     if (id && knownAgents.has(id) && !chain.includes(id)) chain.push(id);
   };
   const members = orderRecoveryMembers(team);
+  if (team.providerAssignmentEnforced) {
+    for (const id of team.assignedProviders ?? []) if (isAvailable(id)) push(id);
+    for (const id of team.assignedProviders ?? []) push(id);
+    return chain;
+  }
   if (team.lead && isAvailable(team.lead)) push(team.lead);
   for (const ref of members) if (isAvailable(ref)) push(ref);
   if (isAvailable(fallback)) push(fallback);
@@ -634,7 +686,9 @@ export function isReadOnlyCompanyGoal(goal: string): boolean {
 }
 
 function isDeclaredTeamExecutor(team: TeamRow, executor: string): boolean {
-  return executor === team.lead || team.members.includes(executor);
+  return team.assignedProviders?.includes(executor) === true
+    || executor === team.lead
+    || team.members.includes(executor);
 }
 
 // ── 실행 상태 저장소(인메모리, LRU 상한) ───────────────────────────────
@@ -693,6 +747,7 @@ function parsePersistedRun(value: string): CompanyRun | null {
     parsed.completedIterations = Math.max(0, parsed.completedIterations ?? 0);
     parsed.resumeCount = Math.max(0, parsed.resumeCount ?? 0);
     parsed.workflowRunId ??= null;
+    parsed.providerAssignmentMode ??= 'legacy';
     parsed.blockerFingerprints = [...new Set(parsed.blockerFingerprints ?? [])];
     return parsed;
   } catch {
@@ -879,11 +934,16 @@ const WEB_SCRAPING_STAGE_SLUGS = [
   'web-scrape-07-report-delivery',
 ] as const;
 
-export function validateCompanyPolicy(org: { slug: string; manager: string | null }, mode: OrchestrationMode, rawTeams: TeamRow[]): void {
+export function validateCompanyPolicy(
+  org: { slug: string; manager: string | null },
+  mode: OrchestrationMode,
+  rawTeams: TeamRow[],
+  assignmentMode: ProviderAssignmentMode = 'legacy',
+): void {
   if (org.slug === 'computer-use') {
     const controlTeam = rawTeams.find((team) => team.slug === 'computer-use-control');
     if (
-      org.manager !== 'codex'
+      (assignmentMode === 'legacy' && org.manager !== 'codex')
       || !controlTeam
       || controlTeam.lead !== 'codex'
       || controlTeam.members.length !== 1
@@ -901,7 +961,7 @@ export function validateCompanyPolicy(org: { slug: string; manager: string | nul
     }
     const activeSlugs = new Set(rawTeams.map((team) => team.slug));
     const missing = TECHNOLOGY_PORT_STAGE_SLUGS.filter((slug) => !activeSlugs.has(slug));
-    if (org.manager !== 'codex' || missing.length > 0) {
+    if ((assignmentMode === 'legacy' && org.manager !== 'codex') || missing.length > 0) {
       throw new OrchestrationError(
         409,
         `기술 이식 회사 안전정책 위반: manager=codex 및 9개 필수 팀이 필요합니다${missing.length ? ` (누락: ${missing.join(', ')})` : ''}`,
@@ -914,7 +974,7 @@ export function validateCompanyPolicy(org: { slug: string; manager: string | nul
     }
     const activeSlugs = new Set(rawTeams.map((team) => team.slug));
     const missing = WEB_SCRAPING_STAGE_SLUGS.filter((slug) => !activeSlugs.has(slug));
-    if (org.manager !== 'codex' || missing.length > 0) {
+    if ((assignmentMode === 'legacy' && org.manager !== 'codex') || missing.length > 0) {
       throw new OrchestrationError(
         409,
         `웹 스크래핑 회사 안전정책 위반: manager=codex 및 7개 필수 팀이 필요합니다${missing.length ? ` (누락: ${missing.join(', ')})` : ''}`,
@@ -930,7 +990,11 @@ export function validateCompanyPolicy(org: { slug: string; manager: string | nul
     const activeSlugs = new Set(rawTeams.map((team) => team.slug));
     const missing = govPolicy.slugs.filter((slug) => !activeSlugs.has(slug));
     const unexpected = [...activeSlugs].filter((slug) => !govPolicy.slugs.includes(slug));
-    if (org.manager !== govPolicy.manager || missing.length > 0 || unexpected.length > 0) {
+    if (
+      (assignmentMode === 'legacy' && org.manager !== govPolicy.manager)
+      || missing.length > 0
+      || unexpected.length > 0
+    ) {
       const teamMismatch = [
         missing.length ? `누락: ${missing.join(', ')}` : '',
         unexpected.length ? `미승인: ${unexpected.join(', ')}` : '',
@@ -952,14 +1016,52 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
   const rawTeams = loadTeams(org.id);
   if (rawTeams.length === 0) throw new OrchestrationError(400, `organization has no active teams: ${org.slug}`);
 
-  validateCompanyPolicy(org, mode, rawTeams);
+  const assignmentMode = providerAssignmentMode();
+  validateCompanyPolicy(org, mode, rawTeams, assignmentMode);
 
   const ordered = orderTeams(rawTeams);
   const known = new Set(agentManager.listEnabledIds());
   const avail = liveAvailability(known);
   const now = new Date().toISOString();
 
-  const decomposerCandidates = resolveCompanyDecomposers(org.slug, org.manager, known, avail);
+  const assignmentRuntime = assignmentMode === 'legacy'
+    ? null
+    : new ProviderAssignmentRuntime();
+  const organizationAssignment = assignmentRuntime?.resolveAssignment({
+    scopeType: 'organization',
+    scopeId: org.id,
+    refresh: false,
+    taskRequiredCapabilities: ['architecture'],
+  });
+  if (assignmentMode === 'enforce' && organizationAssignment?.status !== 'assigned') {
+    throw new OrchestrationError(
+      409,
+      `provider_assignment_unavailable: organization ${org.slug} has no eligible decomposer`,
+    );
+  }
+  const decomposerCandidates = assignmentMode === 'enforce'
+    ? organizationAssignment?.providerIds ?? []
+    : resolveCompanyDecomposers(org.slug, org.manager, known, avail);
+  if (assignmentRuntime) {
+    for (const team of ordered) {
+      const snapshot = assignmentRuntime.resolveAssignment({
+        scopeType: 'team',
+        scopeId: team.id,
+        refresh: false,
+        taskRequiredCapabilities: [],
+      });
+      if (assignmentMode === 'enforce' && snapshot.status !== 'assigned') {
+        throw new OrchestrationError(
+          409,
+          `provider_assignment_unavailable: team ${team.slug} has no eligible provider`,
+        );
+      }
+      if (snapshot.status === 'assigned') {
+        team.assignedProviders = snapshot.providerIds;
+        team.providerAssignmentEnforced = assignmentMode === 'enforce';
+      }
+    }
+  }
   const executorFallback = allowQueueProviderFailover(org.slug) ? 'ollama' : '';
   const run: CompanyRun = {
     id: createId('corun'),
@@ -983,6 +1085,8 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
     decomposeSource: null,
     workflowRunId: null,
     blockerFingerprints: [],
+    providerAssignmentMode: assignmentMode,
+    organizationAssignmentId: organizationAssignment?.assignmentId,
     stages: ordered.map((t) => {
       const executor = resolveExecutor(t, known, executorFallback, avail);
       // 배정 경고 가시화: lead 가 미등록이거나 실행자와 다르면 이유를 stage 에 기록.
@@ -992,7 +1096,7 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
       } else if (t.lead && !avail(t.lead) && t.lead !== executor) {
         executorNote = `lead '${t.lead}' 서킷 open/불가용 → '${executor}' 대체 실행`;
       }
-      return {
+      const stage: RunStage = {
         teamId: t.id,
         teamSlug: t.slug,
         teamName: t.name,
@@ -1003,6 +1107,16 @@ export function startCompanyRun(app: FastifyInstance, opts: StartRunOptions): Co
         status: 'pending' as StageStatus,
         ...(executorNote ? { executorNote } : {}),
       };
+      if (assignmentRuntime && assignmentMode !== 'legacy') {
+        const snapshot = assignmentRuntime.resolveAssignment({
+          scopeType: 'team',
+          scopeId: t.id,
+          refresh: false,
+          taskRequiredCapabilities: [],
+        });
+        applyAssignmentReceipt(stage, snapshot);
+      }
+      return stage;
     }),
   };
   const workflowDecision = evaluateWorkflowPolicy(goal, {
@@ -1561,9 +1675,33 @@ async function driveRunBody(
   //      lead 가 유효·가용하면 팀 설계 존중해 유지. 분해 대기 이후 fresh availability 사용.
   const knownNow = new Set(agentManager.listEnabledIds());
   const availNow = liveAvailability(knownNow);
+  const assignmentRuntime = run.providerAssignmentMode === 'legacy'
+    ? null
+    : new ProviderAssignmentRuntime();
+  const unavailableTeams: string[] = [];
   for (const stage of run.stages) {
     const team = teamBySlug.get(stage.teamSlug)!;
     const before = stage.executor;
+    if (assignmentRuntime) {
+      const taskType = smartRouter.inferTaskType(stage.subtask ?? '');
+      const snapshot = assignmentRuntime.resolveAssignment({
+        scopeType: 'team',
+        scopeId: team.id,
+        refresh: true,
+        taskRequiredCapabilities: requiredCapabilitiesForCompanyTask(taskType),
+      });
+      applyAssignmentReceipt(stage, snapshot);
+      if (run.providerAssignmentMode === 'enforce') {
+        team.assignedProviders = snapshot.providerIds;
+        team.providerAssignmentEnforced = true;
+        if (snapshot.status !== 'assigned') {
+          stage.status = 'failed';
+          stage.error = `provider_assignment_unavailable: ${snapshot.reason}`;
+          unavailableTeams.push(team.slug);
+          continue;
+        }
+      }
+    }
     const sel = selectCompanyStageExecutor(run.orgSlug, team, stage.subtask ?? '', knownNow, availNow);
     stage.executor = sel.executor;
     if (sel.note) stage.executorNote = sel.note;
@@ -1573,6 +1711,12 @@ async function driveRunBody(
     }
   }
   touch(run);
+  if (unavailableTeams.length > 0) {
+    throw new OrchestrationError(
+      409,
+      `provider_assignment_unavailable: ${unavailableTeams.join(', ')}`,
+    );
+  }
 
   if (run.dryRun) { run.status = 'planned'; touch(run); return; }
 
@@ -1589,9 +1733,30 @@ async function driveRunBody(
       if (isCompanyRunCancelled(run)) return;
       const k = new Set(agentManager.listEnabledIds());
       const a = liveAvailability(k);
+      const unavailableOnRefresh: string[] = [];
       for (const stage of run.stages) {
         if (stage.status === 'completed') continue;
         const team = teamBySlug.get(stage.teamSlug)!;
+        if (assignmentRuntime) {
+          const taskType = smartRouter.inferTaskType(baseSubtasks.get(stage.teamSlug) ?? '');
+          const snapshot = assignmentRuntime.resolveAssignment({
+            scopeType: 'team',
+            scopeId: team.id,
+            refresh: true,
+            taskRequiredCapabilities: requiredCapabilitiesForCompanyTask(taskType),
+          });
+          applyAssignmentReceipt(stage, snapshot);
+          if (run.providerAssignmentMode === 'enforce') {
+            team.assignedProviders = snapshot.providerIds;
+            team.providerAssignmentEnforced = true;
+            if (snapshot.status !== 'assigned') {
+              stage.status = 'failed';
+              stage.error = `provider_assignment_unavailable: ${snapshot.reason}`;
+              unavailableOnRefresh.push(team.slug);
+              continue;
+            }
+          }
+        }
         const sel = selectCompanyStageExecutor(
           run.orgSlug,
           team,
@@ -1604,6 +1769,12 @@ async function driveRunBody(
         stage.status = 'pending'; stage.taskId = null; stage.error = undefined; stage.attempt = undefined;
       }
       touch(run);
+      if (unavailableOnRefresh.length > 0) {
+        throw new OrchestrationError(
+          409,
+          `provider_assignment_unavailable: ${unavailableOnRefresh.join(', ')}`,
+        );
+      }
     }
 
     // EXECUTE (미완료 단계만)
@@ -1992,10 +2163,19 @@ export async function dispatchStage(
                 queueWaitMaxMs: 180_000,
               }
             : {}),
-          allowProviderFailover: allowQueueProviderFailover(run.orgSlug),
+          allowProviderFailover: run.providerAssignmentMode !== 'enforce'
+            && allowQueueProviderFailover(run.orgSlug),
           organizationId: run.orgId,
           teamId: stage.teamId,
           companyRunId: run.id,
+          ...(stage.providerAssignmentId
+            ? {
+                providerAssignmentId: stage.providerAssignmentId,
+                providerAssignmentPolicyFingerprint: stage.policyFingerprint,
+                providerConfigFingerprint: stage.providerConfigFingerprint,
+                providerAvailabilityFingerprint: stage.availabilityFingerprint,
+              }
+            : {}),
           workflowRunId: run.workflowRunId,
           workflowStage,
           workflowRequired: true,
