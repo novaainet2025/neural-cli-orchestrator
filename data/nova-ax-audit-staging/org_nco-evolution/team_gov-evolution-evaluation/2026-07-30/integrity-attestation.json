@@ -1,0 +1,11 @@
+{
+  "attestor": "shasum-openssl-cross-attestor",
+  "artifactPath": "/Users/nova-ai/project/nova-ax/evidence/audit-gov-evolution-evaluation-20260730/work-report.md",
+  "observedSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+  "shasumSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+  "opensslSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+  "toolsAgree": true,
+  "byteSize": 2645,
+  "artifactModifiedAt": "2026-07-30T17:02:55Z",
+  "observedAt": "2026-07-30T08:02:55Z"
+}

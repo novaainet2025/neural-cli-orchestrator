@@ -1,0 +1,19 @@
+{
+  "targetRepo": "/Users/nova-ai/project/nco-dashboard",
+  "excludedDirectories": [
+    ".git",
+    "node_modules",
+    "dist"
+  ],
+  "window": {
+    "startUtc": "2026-07-30T16:05:23.000Z",
+    "endUtc": "2026-07-30T16:15:28.000Z"
+  },
+  "declaredPaths": [
+    "docs/ui-audit/ax-experience-inspection-plan.md",
+    "output/ui-audit/ax-observations.json",
+    "output/ui-audit/ax-summary.md"
+  ],
+  "createdArtifacts": [],
+  "mutatedInWindow": []
+}

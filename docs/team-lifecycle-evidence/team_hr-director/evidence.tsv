@@ -1,0 +1,3 @@
+scenario	sample	repetition	exit_code	real_seconds	user_seconds	system_seconds	max_rss_raw	log
+hr-task	1	1	0	0.01	0.00	0.01	unknown
+docs/team-lifecycle-evidence/team_hr-director/evidence.log

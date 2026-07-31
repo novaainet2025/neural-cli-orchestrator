@@ -1,0 +1,208 @@
+{
+  "meta": {
+    "team": "team_tech-port-02-safety-license",
+    "slug": "tech-port-02-safety-license",
+    "parentGoal": "HR DIRECTIVE cycle 5/3 — score=83, completion=85.7%, sample=48h/7",
+    "auditorRole": "duplicate-error-prevention (중복에러방지팀)",
+    "generatedAt": "2026-07-30T10:20:00Z",
+    "evidenceTier": "T1",
+    "evidenceSource": "db/nco.db direct SQL (better-sqlite3 readonly) + src/core/*.ts file read + vitest output",
+    "lifecycleChange": "none — 팀 삭제/비활성화 없음 (HR 전권)"
+  },
+
+  "queries": {
+    "Q1_team48h_tasks": {
+      "sql": "SELECT id, assigned_to, status, error, LENGTH(COALESCE(response,'')) AS response_len, LENGTH(COALESCE(result_json,'')) AS result_json_len, COALESCE(heartbeat_seq,0) AS heartbeat_seq, created_at, completed_at FROM tasks WHERE team_id='team_tech-port-02-safety-license' AND created_at >= datetime('now','-48 hours') ORDER BY created_at",
+      "rowCount": 9
+    },
+    "Q2_abort_combo_48h": {
+      "sql": "SELECT id, team_id, assigned_to, status, error, LENGTH(COALESCE(response,'')) AS response_len, COALESCE(heartbeat_seq,0) AS heartbeat_seq FROM tasks WHERE COALESCE(error,'') LIKE '%timeout(idle)%' AND LENGTH(COALESCE(response,'')) = 65536 AND created_at >= datetime('now','-48 hours')",
+      "rowCount": 1,
+      "note": "65536 = PARTIAL_OUTPUT_LIMIT (64*1024) in src/core/task-queue.ts:61"
+    },
+    "Q3_retrograde_48h_global": {
+      "sql": "Scan tasks WHERE metadata_json IS NOT NULL AND created_at >= datetime('now','-48 hours'); for each row compare top-level attemptedAgents length vs max escalationHistory[*].attemptedAgents length; retrograde when top_len < hist_max_len",
+      "rowCount": 16
+    },
+    "Q3b_retrograde_48h_team02": {
+      "sql": "Same as Q3 scoped to team_id='team_tech-port-02-safety-license'",
+      "rowCount": 1
+    },
+    "Q4_canonical_task": {
+      "sql": "SELECT id, status, error, assigned_to, LENGTH(COALESCE(response,'')) AS response_len, LENGTH(COALESCE(result_json,'')) AS result_json_len, COALESCE(heartbeat_seq,0) AS heartbeat_seq, json_extract(metadata_json,'$.attemptedAgents') AS metadata_attempted, json_extract(metadata_json,'$.escalationHistory[0].attemptedAgents') AS escalation_hist0 FROM tasks WHERE id='task_ATkeua4HRwS_T-tQ'"
+    },
+    "Q5_abort_combo_alltime": {
+      "sql": "SELECT COUNT(*) AS n FROM tasks WHERE COALESCE(error,'') LIKE '%timeout(idle)%' AND LENGTH(COALESCE(response,'')) = 65536",
+      "n": 2
+    }
+  },
+
+  "counts": {
+    "retrograde_48h_global": 16,
+    "retrograde_48h_team02": 1,
+    "abort_combo_timeout_idle_plus_65536B_48h_global": 1,
+    "abort_combo_timeout_idle_plus_65536B_48h_team02": 1,
+    "abort_combo_timeout_idle_plus_65536B_alltime_global": 2,
+    "retrograde_and_abort_overlap_48h_team02": 1,
+    "retrograde_and_abort_overlap_48h_global": 1
+  },
+
+  "anonymizedRows": {
+    "team02_48h_sample": [
+      { "id": "task_tv_jA9…", "agent": "codex", "status": "completed", "response_len": 1453, "heartbeat_seq": 4 },
+      { "id": "task_vl9dh…", "agent": "hermes", "status": "completed", "response_len": 951, "heartbeat_seq": 7 },
+      { "id": "task_Gd4ea…", "agent": "codex", "status": "completed", "response_len": 1143, "heartbeat_seq": 4 },
+      { "id": "task_9ij6Q…", "agent": "codex", "status": "completed", "response_len": 1586, "heartbeat_seq": 7 },
+      { "id": "task_UMPsL…", "agent": "codex", "status": "completed", "response_len": 1321, "heartbeat_seq": 7 },
+      { "id": "task_ATkeu…", "agent": "hermes", "status": "timed_out", "error": "timeout(idle)", "response_len": 65536, "result_json_len": 0, "heartbeat_seq": 26, "retrograde": true },
+      { "id": "task_pKJuB…", "agent": "hermes", "status": "completed", "response_len": 1090, "heartbeat_seq": 12 },
+      { "id": "task_IWY5j…", "agent": "codex", "status": "failed", "error": "failure-pattern: agent reported error", "response_len": 1705, "heartbeat_seq": 49 },
+      { "id": "task_5bLy4…", "agent": "cursor-agent", "status": "completed", "response_len": 3690, "heartbeat_seq": 66 }
+    ],
+    "canonical_failure": {
+      "id": "task_ATkeua4HRwS_T-tQ",
+      "team_id": "team_tech-port-02-safety-license",
+      "status": "timed_out",
+      "error": "timeout(idle)",
+      "assigned_to": "hermes",
+      "response_len": 65536,
+      "result_json_len": 0,
+      "heartbeat_seq": 26,
+      "metadata_attempted": ["codex", "hermes"],
+      "escalation_hist0_attempted": ["cursor-agent", "codex", "claude-code"],
+      "retrograde_delta": "hist_max_len=3 → top_len=2; missing_from_top=[cursor-agent, claude-code]",
+      "duration": "created 2026-07-30 04:28:14 → completed 2026-07-30 07:23:59 (~2h56m)"
+    },
+    "abort_combo_other_team": {
+      "id": "task_ENpgXYSX5r2tqLSO",
+      "team_id": null,
+      "assigned_to": "hermes",
+      "status": "timed_out",
+      "error": "timeout(idle)",
+      "response_len": 65536,
+      "heartbeat_seq": 35,
+      "created_at": "2026-07-28 09:59:59",
+      "note": "alltime abort combo #2; outside team-02 48h window"
+    }
+  },
+
+  "rootCauseCrossVerification": {
+    "verdict": "CONFIRMED",
+    "primaryCause": "attemptedAgents monotonicity violation (3→2 retrograde) caused re-selection of already-failed provider (codex after queue_wait_timeout), extending runtime until timeout(idle) with partial output capped at 65536B",
+    "causalChain": [
+      "escalationHistory[0].attemptedAgents had 3 agents after queue_wait_timeout on codex",
+      "top-level attemptedAgents shrank to [codex, hermes] via metadata overwrite / stale BullMQ snapshot",
+      "codex was eligible again despite prior failure in escalation history",
+      "agent ran (heartbeat_seq=26) but produced no result_json; response truncated at PARTIAL_OUTPUT_LIMIT",
+      "terminal error timeout(idle) with 65536B partial stream — not zero-output infra failure"
+    ],
+    "codeFixStatus": "ALREADY_LANDED (working tree, uncommitted per docs/self-improve/tech-port-02-safety-license-cycle5-2026-07-30.md)",
+    "fixLocation": [
+      "src/core/task-queue.ts mergeAttemptedAgents + persistTaskReassignment union",
+      "src/core/task-queue.ts enqueueWithRetries re-seeds from loadTaskMetadata().attemptedAgents",
+      "rollback: NCO_ATTEMPT_HISTORY_MONOTONIC=0"
+    ]
+  },
+
+  "regressionTests": {
+    "pattern_attemptedAgents_retrograde": {
+      "file": "src/core/task-queue.attempt-history.test.ts",
+      "result": "9 passed / 9",
+      "blocksRetrograde": true,
+      "evidence": "mergeAttemptedAgents preserves union; persistTaskReassignment DB round-trip rejects SHRUNK_PATCH overwrite; decideFinalEscalation will not re-pick agents in merged history"
+    },
+    "pattern_timeout_idle_plus_65536B": {
+      "explicitTest": false,
+      "relatedTests": [
+        "src/core/task-queue.recovery.test.ts — maps recovered timeout(idle) to timed_out status only",
+        "src/core/task-queue.attempt-history.test.ts — uses timeout(idle) as failureReason in escalation decision test"
+      ],
+      "blocksSymptomDirectly": false,
+      "blocksRootCause": true,
+      "rationale": "65536B is abort-time partial cap, not a separate failure class; preventing retrograde removes the re-dead-provider loop that wastes wall-clock to idle timeout"
+    },
+    "buildVerification": {
+      "npx vitest run src/core/task-queue.attempt-history.test.ts": "exit 0, 9/9",
+      "npx tsc --noEmit": "exit 0, no output"
+    },
+    "minimalRegressionTestProposal": {
+      "needed": false,
+      "optionalEnhancement": {
+        "description": "Add one assertion-only test documenting that PARTIAL_OUTPUT_LIMIT === 65536 and timeout(idle) abort sets response to capped partial — symptom signature for audits, not a fix path",
+        "file": "src/core/task-queue.attempt-history.test.ts or new task-queue.partial-output.test.ts",
+        "priority": "low — root-cause tests already pass"
+      }
+    }
+  },
+
+  "falseReportCrossVerification": {
+    "scorerInfraExclusionInvariant": "All infra/spawn/job-wait/zero-output exclusions require COALESCE(k.response,'')='' AND COALESCE(k.result_json,'')='' (plus pattern-specific guards)",
+    "canonicalTaskObservation": {
+      "response_empty": false,
+      "response_len": 65536,
+      "result_json_empty": true,
+      "result_json_len": 0,
+      "heartbeat_present": true,
+      "heartbeat_seq": 26
+    },
+    "wouldInfraExclusionApply": false,
+    "verdict": "NOT_FALSE_REPORT_TO_COUNT_AS_INFRA",
+    "reasoning": [
+      "Agent demonstrably executed (26 heartbeats, 65536B partial stream) — this is a real execution timeout, not control-plane/spawn/orphan zero-output",
+      "Widening scorer exclusion for partial-output timeouts would be metric gaming (completion 6/7→7/7) without fixing recurrence",
+      "Prior stage claim that fix is implemented + tests pass is consistent with file content; live process reload unverified"
+    ],
+    "rejectedRemediationPatterns": [
+      { "pattern": "score denominator change / infra exclusion widen for partial output", "verdict": "BLOCK", "reason": "violates response='' AND result_json='' invariant; masks real execution failure" },
+      { "pattern": "timeout extension", "verdict": "BLOCK", "reason": "extends wall-clock waste; does not fix dead-provider re-selection" },
+      { "pattern": "same provider retry after queue_wait_timeout", "verdict": "BLOCK", "reason": "retrograde history re-enables already-failed provider" }
+    ],
+    "allowedRemediation": {
+      "pattern": "mergeAttemptedAgents monotonic union + DB re-seed on retry",
+      "verdict": "ALLOW",
+      "reason": "addresses root cause without scorer manipulation; rollback via NCO_ATTEMPT_HISTORY_MONOTONIC=0"
+    }
+  },
+
+  "rules": [
+    {
+      "id": "GATE-TP02-R1",
+      "type": "changed",
+      "status": "ALREADY_LANDED",
+      "layer": "task-queue execution",
+      "location": "src/core/task-queue.ts mergeAttemptedAgents / persistTaskReassignment / enqueueWithRetries",
+      "rule": "attemptedAgents must be monotonic union — never shrink vs persisted DB or escalationHistory max",
+      "blocks": "attemptedAgents retrograde → dead provider re-selection",
+      "rollback": "NCO_ATTEMPT_HISTORY_MONOTONIC=0"
+    },
+    {
+      "id": "GATE-TP02-R2",
+      "type": "observation",
+      "status": "ENFORCE_VIA_SCORER_INVARIANT",
+      "layer": "scoring",
+      "location": "src/core/team-scorer.ts JOB_WAIT_DEAD_AGENT_EXCLUSION / SPAWN_FAILURE_EXCLUSION / CONTROL_PLANE_CONNECTION_EXCLUSION",
+      "rule": "Do NOT exclude timeout(idle)+partial-65536B from team completion — requires response='' AND result_json=''",
+      "blocks": "metric gaming / false infra reclassification",
+      "evidence_task_id": "task_ATkeua4HRwS_T-tQ"
+    },
+    {
+      "id": "GATE-TP02-R3",
+      "type": "detection_signature",
+      "status": "AUDIT_ONLY",
+      "layer": "monitoring",
+      "rule": "Alert when error LIKE '%timeout(idle)%' AND LENGTH(response)=65536 — correlate with retrograde metadata in same task",
+      "blocks": "nothing automatically — detection for post-fix regression watch",
+      "48h_team02_count": 1
+    }
+  ],
+
+  "unverified": [
+    "Live nco-backend process has loaded mergeAttemptedAgents fix (docs cite dist build newer than last pm2 start — pm2 restart not performed due to in-flight tasks)",
+    "Post-restart retrograde count for newly created tasks (success criterion §6 of cycle5 doc)",
+    "Whether task_ENpgXYSX5r2tqLSO (team_id NULL) shares same retrograde root cause — metadata not scanned in this audit pass",
+    "auto-audit dedicated error log stream — not injected; tasks table used as substitute (T1)"
+  ],
+
+  "changedFiles": [],
+  "diffSummary": "diff 0 — audit-only deliverable; root-cause fix already present in src/core/task-queue.ts per prior cycle"
+}

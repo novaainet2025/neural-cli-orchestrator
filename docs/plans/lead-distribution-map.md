@@ -60,4 +60,4 @@ WHERE is_active=1 AND lead='codex'
 
 ## 주의
 - **P8(동적 재선정)이 이미 lead 서킷open 시 자동 재선정**하므로 이 재배정은 "초기 배정 최적화"(포화 예방). P11/P8과 상보적.
-- higgsfield 정식통합(호출구조 "higgsfield generate create <model> --prompt")은 별건 — 이 표는 lead 분산만.
+- retired-media-provider 정식통합(호출구조 "retired-media-provider generate create <model> --prompt")은 별건 — 이 표는 lead 분산만.

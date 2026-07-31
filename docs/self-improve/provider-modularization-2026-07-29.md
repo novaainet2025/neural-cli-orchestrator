@@ -12,7 +12,7 @@
 읽지 않고 id를 하드코딩**하고 있었다. 실측:
 
 ```
-$ grep -rlE "'(claude-code|opencode|codex|cursor-agent|ollama|agy|hermes|higgsfield)'" src --include='*.ts' | grep -v test
+$ grep -rlE "'(claude-code|opencode|codex|cursor-agent|ollama|agy|hermes|retired-media-provider)'" src --include='*.ts' | grep -v test
 41 files
 ```
 

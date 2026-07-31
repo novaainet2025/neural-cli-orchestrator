@@ -1,0 +1,118 @@
+{
+  "verifier": "independent-claim-verifier",
+  "reportPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-evolution/team_gov-evolution-evaluation/2026-07-30/work-report.md",
+  "observedAt": "2026-07-30T08:02:56.110Z",
+  "verdict": "PASS",
+  "checksTotal": 18,
+  "checksPassed": 18,
+  "checks": [
+    {
+      "name": "task total row matches tasks table",
+      "claimed": 24,
+      "actual": 24,
+      "pass": true
+    },
+    {
+      "name": "failed task count matches",
+      "claimed": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "name": "completed task count matches",
+      "claimed": 15,
+      "actual": 15,
+      "pass": true
+    },
+    {
+      "name": "completion pct matches",
+      "claimed": 62.5,
+      "actual": 62.5,
+      "pass": true
+    },
+    {
+      "name": "submitted report count matches",
+      "claimed": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "total report count matches",
+      "claimed": 9,
+      "actual": 9,
+      "pass": true
+    },
+    {
+      "name": "late report count matches",
+      "claimed": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "recent7d total matches",
+      "claimed": 24,
+      "actual": 24,
+      "pass": true
+    },
+    {
+      "name": "recent7d completed matches",
+      "claimed": 15,
+      "actual": 15,
+      "pass": true
+    },
+    {
+      "name": "recent7d failed matches",
+      "claimed": 6,
+      "actual": 6,
+      "pass": true
+    },
+    {
+      "name": "recent7d in-progress matches",
+      "claimed": 3,
+      "actual": 3,
+      "pass": true
+    },
+    {
+      "name": "recent7d completion pct matches",
+      "claimed": 62.5,
+      "actual": 62.5,
+      "pass": true
+    },
+    {
+      "name": "post-state deliverable count matches",
+      "claimed": 8,
+      "actual": 8,
+      "pass": true
+    },
+    {
+      "name": "missing deliverable count matches",
+      "claimed": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "hash drift count matches",
+      "claimed": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "all expected deliverables present",
+      "claimed": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "inventory hashes stable",
+      "claimed": 0,
+      "actual": 0,
+      "pass": true
+    },
+    {
+      "name": "baseline deliverable count preserved",
+      "claimed": 8,
+      "actual": 8,
+      "pass": true
+    }
+  ]
+}

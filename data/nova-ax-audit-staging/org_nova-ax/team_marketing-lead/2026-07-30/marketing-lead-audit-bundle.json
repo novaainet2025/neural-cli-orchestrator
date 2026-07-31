@@ -1,0 +1,943 @@
+{
+  "schema": "nova-ax.marketing-lead-audit.v2",
+  "status": "final",
+  "generatedAt": "2026-07-30T08:58:11.484Z",
+  "observer": {
+    "id": "marketing-lead-evidence-collector",
+    "independentFromTaskActor": true,
+    "machineProduced": true,
+    "method": "node:fs stat/read + sha256 over file bytes; better-sqlite3 readonly over db/nco.db"
+  },
+  "scope": {
+    "companyId": "org_nova-ax",
+    "teamId": "team_marketing-lead",
+    "teamName": "마케팅 운영팀",
+    "auditCycle": 2,
+    "priorRunId": "vrun_375dc3d5-19e2-43ad-8097-54669b03aadc",
+    "priorCatalogedDeliverables": 2,
+    "priorDbGroundedRows": 0
+  },
+  "artifactInventory": {
+    "fileCount": 40,
+    "totalBytes": 109844,
+    "totalKoreanCharacters": 24929,
+    "byType": {
+      "dated-role-report": 8,
+      "role-report": 7,
+      "team-runner-report": 20,
+      "team-runner-pointer": 1,
+      "role-doc": 3,
+      "team-doc": 1
+    }
+  },
+  "deliverables": [
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-17-marketing-lead-오전.md",
+      "byteSize": 1041,
+      "sha256": "884db8147c50773329085477ab8761cdde35eddeb2471b55c64da3ed62550126",
+      "modifiedAt": "2026-07-17T00:26:38.470Z",
+      "koreanCharacters": 285,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-18-marketing-lead-오전.md",
+      "byteSize": 2900,
+      "sha256": "16b37e07239fb45b0eca76d6f0d6212555c6b4d756d7b242de8f406bfd4eb837",
+      "modifiedAt": "2026-07-18T00:03:17.346Z",
+      "koreanCharacters": 717,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-19-marketing-lead-오전.md",
+      "byteSize": 2911,
+      "sha256": "4a00cd79ea6a775d2484f5209fdc78ec42b861c428fb0cad952516438b5b0c22",
+      "modifiedAt": "2026-07-19T00:19:34.245Z",
+      "koreanCharacters": 747,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-19-marketing-lead-오후.md",
+      "byteSize": 3662,
+      "sha256": "f1e3c03e5939db30188d4b6ea418a955717899458a21529f5e3a9e6b24876b13",
+      "modifiedAt": "2026-07-29T13:16:08.626Z",
+      "koreanCharacters": 900,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-22-marketing-lead-오후.md",
+      "byteSize": 4347,
+      "sha256": "4ef1abc8c1a1b12f7fadbc25b47f0a9261920f45a0c6d30f0cbf1d62440da1d7",
+      "modifiedAt": "2026-07-29T13:16:08.632Z",
+      "koreanCharacters": 1052,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-23-marketing-lead-오후.md",
+      "byteSize": 4613,
+      "sha256": "dbc71357446afca8729b05bd0dc6dab25dba0a6240225a6bf1b23864f6e9bb98",
+      "modifiedAt": "2026-07-29T13:16:08.635Z",
+      "koreanCharacters": 1155,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-24-marketing-lead-오전.md",
+      "byteSize": 4385,
+      "sha256": "bb3863e713af6c02963ca2f1423df214ff4d7fcbdc5cda0b2671d98808b1a23d",
+      "modifiedAt": "2026-07-29T13:16:08.639Z",
+      "koreanCharacters": 1092,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "dated-role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-25-marketing-lead-오전.md",
+      "byteSize": 3720,
+      "sha256": "f179250472b6f856426cdfd374950670aee2c15848335a46d434f48fb32f2edb",
+      "modifiedAt": "2026-07-29T13:16:08.642Z",
+      "koreanCharacters": 909,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-13.md",
+      "byteSize": 4168,
+      "sha256": "edecce27f171f45ce1c8df73f729a7425269af8464adb8df352528ea1385a2ce",
+      "modifiedAt": "2026-07-29T13:16:08.660Z",
+      "koreanCharacters": 958,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-15-afternoon.md",
+      "byteSize": 4612,
+      "sha256": "eb1e006ca78d8696570e07accd2f43499a056d3078493b0755be2db7a74c7f06",
+      "modifiedAt": "2026-07-29T13:16:08.660Z",
+      "koreanCharacters": 1024,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-15.md",
+      "byteSize": 4556,
+      "sha256": "3d420a7fc1ee0ef925bb387af12b759b2df90bb3da76d2dca8ca3fab5f5555e2",
+      "modifiedAt": "2026-07-29T13:16:08.661Z",
+      "koreanCharacters": 1022,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-22-afternoon.md",
+      "byteSize": 4347,
+      "sha256": "4ef1abc8c1a1b12f7fadbc25b47f0a9261920f45a0c6d30f0cbf1d62440da1d7",
+      "modifiedAt": "2026-07-29T13:16:08.661Z",
+      "koreanCharacters": 1052,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-23.md",
+      "byteSize": 4010,
+      "sha256": "8d96f616a363b40b385c95e16a918405eabf88d2559478dd2139c28bb24a72d5",
+      "modifiedAt": "2026-07-29T13:16:08.661Z",
+      "koreanCharacters": 984,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/2026-07-24.md",
+      "byteSize": 4242,
+      "sha256": "6509102cb85b83a32be5c13963ad2e562cb653b31dc5b69aae64f38bb32f9cd2",
+      "modifiedAt": "2026-07-29T13:16:08.661Z",
+      "koreanCharacters": 1059,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/marketing-lead/daily-2026-07-12.md",
+      "byteSize": 1804,
+      "sha256": "aa1b8650088351f5cd5fecc33d9f098d773fa66db7e748ec4e461ed4da1b956d",
+      "modifiedAt": "2026-07-29T13:16:08.662Z",
+      "koreanCharacters": 430,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-09.md",
+      "byteSize": 1507,
+      "sha256": "288d178547c888a144144dce654a8fdf1bce1cf390b76f9484a8ecaf2d1fb595",
+      "modifiedAt": "2026-07-08T17:46:30.123Z",
+      "koreanCharacters": 5,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-10.md",
+      "byteSize": 3327,
+      "sha256": "3d998b14272d058a01edcad5b81e228f8d148bc63c0c4b008a57c5843bfa59ca",
+      "modifiedAt": "2026-07-09T15:12:38.360Z",
+      "koreanCharacters": 5,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-12.md",
+      "byteSize": 3544,
+      "sha256": "1406e9166295b5fb82c1e9f445c8367cc1fc67f9a11714a8ec2a365dd5d680d7",
+      "modifiedAt": "2026-07-29T13:16:08.725Z",
+      "koreanCharacters": 885,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-13.md",
+      "byteSize": 1476,
+      "sha256": "4e17172f7e67193597cfd3bcf52963eea0680878f64662193eed8ec7802b8be6",
+      "modifiedAt": "2026-07-13T05:06:37.494Z",
+      "koreanCharacters": 400,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-15.md",
+      "byteSize": 549,
+      "sha256": "198e79c09e4bf992098a7f8f0615f83790d3a9b8e2a6bdae23363e2b77382ab6",
+      "modifiedAt": "2026-07-29T13:16:08.725Z",
+      "koreanCharacters": 103,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-16.md",
+      "byteSize": 1055,
+      "sha256": "e0e8ba563c223e76dca4aca5a073b8ce0d2d16e6db59825b9c7b7922760e90f3",
+      "modifiedAt": "2026-07-15T15:47:30.514Z",
+      "koreanCharacters": 247,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-17.md",
+      "byteSize": 713,
+      "sha256": "b832994c489abbffc76492cd339e4804b81f52df76f7070876764e6a4e2a016c",
+      "modifiedAt": "2026-07-29T13:16:08.725Z",
+      "koreanCharacters": 132,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-18.md",
+      "byteSize": 549,
+      "sha256": "cd826bea45cb95c98ab6766bd2e2b6ed43199cc93f8074f396703cbc3349e65f",
+      "modifiedAt": "2026-07-29T13:16:08.725Z",
+      "koreanCharacters": 107,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-19.md",
+      "byteSize": 1294,
+      "sha256": "1779d33e71e3edd111cad4184c6e1be39cd10c87165a77e4eb6f5d988b06ca0f",
+      "modifiedAt": "2026-07-18T15:23:40.930Z",
+      "koreanCharacters": 297,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-20.md",
+      "byteSize": 940,
+      "sha256": "b75d04a170f333ea4aacb4ce20ca9baa5242d9fc138d472fc2adf32b78cd9a02",
+      "modifiedAt": "2026-07-19T15:11:09.785Z",
+      "koreanCharacters": 205,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-21.md",
+      "byteSize": 1854,
+      "sha256": "8cae4c146965f6d627aa341a47166fdb3f68f100d5030a035e7d1c9a9682534b",
+      "modifiedAt": "2026-07-20T15:23:29.248Z",
+      "koreanCharacters": 442,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-22.md",
+      "byteSize": 472,
+      "sha256": "b86f9211d5c971fd372b22d990759bc5b2213750d23c974cb1af18bf88bb1671",
+      "modifiedAt": "2026-07-21T15:23:38.067Z",
+      "koreanCharacters": 88,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-23.md",
+      "byteSize": 3287,
+      "sha256": "2089eeff2c73f33130eb3cae27f459755d57a590f55bd0c0f4e58edcf44109a7",
+      "modifiedAt": "2026-07-22T15:18:14.700Z",
+      "koreanCharacters": 723,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-24.md",
+      "byteSize": 3684,
+      "sha256": "85a56f1d52d8f282f8391c47e948a5978aa76d46359a0fbd8939c6e5f9cb2c41",
+      "modifiedAt": "2026-07-23T15:27:09.424Z",
+      "koreanCharacters": 724,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-25.md",
+      "byteSize": 1728,
+      "sha256": "c708e7bf52f0324bcdfdff8a9ed928500bd76467c58f2fcbc0142825007f05a6",
+      "modifiedAt": "2026-07-25T01:51:06.267Z",
+      "koreanCharacters": 350,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-26.md",
+      "byteSize": 7935,
+      "sha256": "6283f1e01d0d8a6e90e8fb996eeb2e0f7e7e51c45c42de4c3917787b8a0282b4",
+      "modifiedAt": "2026-07-26T03:53:53.177Z",
+      "koreanCharacters": 1812,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-27.md",
+      "byteSize": 3512,
+      "sha256": "a354b1cff3f2841efe2237ac0957d30fb3b8483d9de497149e5ca38ea6fc9564",
+      "modifiedAt": "2026-07-26T15:13:12.953Z",
+      "koreanCharacters": 814,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-28.md",
+      "byteSize": 1263,
+      "sha256": "42dd076e6022cfeeb78dfb81810eca92f6d91105f0af5e9015cc3ea7dc369a05",
+      "modifiedAt": "2026-07-27T16:28:20.831Z",
+      "koreanCharacters": 285,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-29.md",
+      "byteSize": 3508,
+      "sha256": "f6f613828e5750d7d9431c160d9b86e9a96ffe611a2c49e0339c7373780d1807",
+      "modifiedAt": "2026-07-29T13:16:08.726Z",
+      "koreanCharacters": 786,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-report",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead-2026-07-30.md",
+      "byteSize": 3056,
+      "sha256": "756e452926ed2a19beec657744482bf271f8043d8da358b2ade551a5e8ca49b6",
+      "modifiedAt": "2026-07-29T17:37:32.901Z",
+      "koreanCharacters": 686,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-runner-pointer",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_marketing-lead.last",
+      "byteSize": 11,
+      "sha256": "6d7d17cea48f2c4d8b89fc38afd8ef13cac9aea5caf20ac7e23b3700cd7fa86c",
+      "modifiedAt": "2026-07-29T17:37:32.902Z",
+      "koreanCharacters": 0,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-doc",
+      "path": "/Users/nova-ai/project/nco/docs/marketing-lead-daily-re-2026-07-16.md",
+      "byteSize": 1917,
+      "sha256": "00fa0894a98c1b76dc640166659552b1f29dc53690962c65082a70d4450c9529",
+      "modifiedAt": "2026-07-16T05:11:58.575Z",
+      "koreanCharacters": 547,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-doc",
+      "path": "/Users/nova-ai/project/nco/docs/marketing-lead-daily-re-2026-07-18.md",
+      "byteSize": 3835,
+      "sha256": "40f8985aaba4b5fb8b3a5091742bf7d32b82ed1cd87c9f7f21593b74e7bc0cef",
+      "modifiedAt": "2026-07-29T13:16:08.752Z",
+      "koreanCharacters": 929,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "role-doc",
+      "path": "/Users/nova-ai/project/nco/docs/marketing-lead-daily-re.md",
+      "byteSize": 1917,
+      "sha256": "00fa0894a98c1b76dc640166659552b1f29dc53690962c65082a70d4450c9529",
+      "modifiedAt": "2026-07-16T00:15:54.930Z",
+      "koreanCharacters": 547,
+      "evidenceTier": "T1"
+    },
+    {
+      "type": "team-doc",
+      "path": "/Users/nova-ai/project/nco/teams/marketing-lead/report-2026-07-13.md",
+      "byteSize": 1593,
+      "sha256": "af67a6b12503225f5472ac8dbebfec6d374dbbe55bc7c35a3a25b5a508d374f7",
+      "modifiedAt": "2026-07-13T01:58:28.572Z",
+      "koreanCharacters": 424,
+      "evidenceTier": "T1"
+    }
+  ],
+  "workReportGroundTruth": {
+    "source": "/Users/nova-ai/project/nco/db/nco.db",
+    "table": "work_reports",
+    "teamId": "team_marketing-lead",
+    "totalRows": 44,
+    "submittedNonEmptyRows": 27,
+    "distinctReportDates": 22,
+    "rows": [
+      {
+        "id": "wr_-ywhR-di7NniXTuQ",
+        "reportDate": "2026-07-30",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 59,
+        "bodyBytes": 1725,
+        "bodySha256": "5f8a322f9c2ef31a2bb3c5dd535bd192517f9a8ce19b0213e4bc7b709bd7a0b5",
+        "koreanCharacters": 419,
+        "createdAt": "2026-07-30 05:01:10",
+        "submittedAt": "2026-07-30T05:27:51.000Z"
+      },
+      {
+        "id": "wr_0W5FtZqiU-2yRxdv",
+        "reportDate": "2026-07-30",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 20,
+        "bodyBytes": 6303,
+        "bodySha256": "2223f85beaea008bf3929792133e57ee4f9f7fb1a3c68b3a1a7a7b248c920933",
+        "koreanCharacters": 1543,
+        "createdAt": "2026-07-30 00:00:48",
+        "submittedAt": "2026-07-30T00:46:04.000Z"
+      },
+      {
+        "id": "wr_QX1YX7oumMYXcGg0",
+        "reportDate": "2026-07-29",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 62,
+        "bodyBytes": 1815,
+        "bodySha256": "e784de418a719f3cf5461fb2ce583f3c9a12b3686db90274297a0840729a319e",
+        "koreanCharacters": 366,
+        "createdAt": "2026-07-29 05:00:56",
+        "submittedAt": "2026-07-29T05:02:17.000Z"
+      },
+      {
+        "id": "wr_5mtUbrU4UrRemNPP",
+        "reportDate": "2026-07-29",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 20,
+        "bodyBytes": 2502,
+        "bodySha256": "f03a6f0464d20a91e0509b4b39443ca30373e777e5cd3434156ac3576b313c53",
+        "koreanCharacters": 501,
+        "createdAt": "2026-07-29 00:14:35",
+        "submittedAt": "2026-07-29T01:19:55.000Z"
+      },
+      {
+        "id": "wr_YV5c756JDg_N0fja",
+        "reportDate": "2026-07-28",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 60,
+        "bodyBytes": 2206,
+        "bodySha256": "20066bb7d6699b175fb98d3f8828a65b140349cabc56686da91c5e8dc62b7f95",
+        "koreanCharacters": 494,
+        "createdAt": "2026-07-28 05:00:28",
+        "submittedAt": "2026-07-28T05:01:52.000Z"
+      },
+      {
+        "id": "wr_u1P86SxbmAt9f9uG",
+        "reportDate": "2026-07-28",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 24,
+        "bodyBytes": 2084,
+        "bodySha256": "cdbbc9ec3e59216b7ccbfe173ef9327d821f3688ec6ea56d90781d422802cd28",
+        "koreanCharacters": 459,
+        "createdAt": "2026-07-28 00:00:25",
+        "submittedAt": "2026-07-28T00:01:43.000Z"
+      },
+      {
+        "id": "wr_636Sq3KrDco2qlyL",
+        "reportDate": "2026-07-27",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 55,
+        "bodyBytes": 2170,
+        "bodySha256": "855b9a87411e3f6ad32bd3272e0bbc33839c6eafd345f641c783dffc1401846a",
+        "koreanCharacters": 486,
+        "createdAt": "2026-07-27 05:12:04",
+        "submittedAt": "2026-07-27T05:27:40.000Z"
+      },
+      {
+        "id": "wr_jLO9IsL2nhS72_cS",
+        "reportDate": "2026-07-27",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 55,
+        "bodyBytes": 1820,
+        "bodySha256": "b4157fe70261c37bcb5a94998c5260b16df6116ee3922d20bbe265bfedc9dbf7",
+        "koreanCharacters": 406,
+        "createdAt": "2026-07-27 00:00:28",
+        "submittedAt": "2026-07-27T00:02:00.000Z"
+      },
+      {
+        "id": "wr_7s62ADxIyX16-g38",
+        "reportDate": "2026-07-26",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 36,
+        "bodyBytes": 1559,
+        "bodySha256": "3d957b4971f9632ee3b230ce970599b94d2df5d0d4e3929b8d0edee8334e48bd",
+        "koreanCharacters": 344,
+        "createdAt": "2026-07-26 05:06:49",
+        "submittedAt": "2026-07-26T05:51:55.000Z"
+      },
+      {
+        "id": "wr_nc6AGDei0XcaslRC",
+        "reportDate": "2026-07-26",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-26 00:02:51",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_uHWcL9LVgGbm-7c0",
+        "reportDate": "2026-07-25",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-25 05:05:54",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_JziHYeCZnx28-wsi",
+        "reportDate": "2026-07-25",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 44,
+        "bodyBytes": 1562,
+        "bodySha256": "ec408c24cc8b24a66d2353e921e1a8369d0244364baa95f5e0b780539178713f",
+        "koreanCharacters": 379,
+        "createdAt": "2026-07-25 00:07:10",
+        "submittedAt": "2026-07-25T02:09:39.000Z"
+      },
+      {
+        "id": "wr_VcazUbW-29zXSMT6",
+        "reportDate": "2026-07-24",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 36,
+        "bodyBytes": 1451,
+        "bodySha256": "cc63980f8673405eef9451818926256e73f8e8678428b7cb6588ff0580fb810b",
+        "koreanCharacters": 287,
+        "createdAt": "2026-07-24 05:00:50",
+        "submittedAt": "2026-07-24T07:09:13.000Z"
+      },
+      {
+        "id": "wr_xBVHM1rmr8az83Qd",
+        "reportDate": "2026-07-24",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 120,
+        "bodyBytes": 824,
+        "bodySha256": "6a9a4dfdd99c16ef65e3bb881820a102822a6dfb8ddf3d92af8e4ed2fb028e16",
+        "koreanCharacters": 40,
+        "createdAt": "2026-07-24 00:00:37",
+        "submittedAt": "2026-07-24T00:07:34.000Z"
+      },
+      {
+        "id": "wr_1b0BZYGivaZLpo7-",
+        "reportDate": "2026-07-23",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 54,
+        "bodyBytes": 378,
+        "bodySha256": "188ebcab0306dd01852a59961fb4dd0a8fe80341e51651230270d94338cf2015",
+        "koreanCharacters": 58,
+        "createdAt": "2026-07-23 05:00:44",
+        "submittedAt": "2026-07-23T05:05:09.000Z"
+      },
+      {
+        "id": "wr_Gt3DODcU8eqgmVYf",
+        "reportDate": "2026-07-23",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 50,
+        "bodyBytes": 1808,
+        "bodySha256": "8fe3e6db8e92a80680363284c4aa49d193a5ede5be95d3f78d0a15a926b09b61",
+        "koreanCharacters": 398,
+        "createdAt": "2026-07-23 00:00:30",
+        "submittedAt": "2026-07-23T00:04:39.000Z"
+      },
+      {
+        "id": "wr_3RVVE3Oui7ORYUxp",
+        "reportDate": "2026-07-22",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 103,
+        "bodyBytes": 2827,
+        "bodySha256": "bac24db3d19501854dc459909b1b6228ab348e8c1e0a2fa7ead736724598abaa",
+        "koreanCharacters": 667,
+        "createdAt": "2026-07-22 05:00:37",
+        "submittedAt": "2026-07-22T07:15:53.000Z"
+      },
+      {
+        "id": "wr_zWg7x4p10Gb_sEzG",
+        "reportDate": "2026-07-22",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-22 00:00:39",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_p3sH0YWGZUVu7lcn",
+        "reportDate": "2026-07-21",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-21 05:00:13",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_sqeQunDlg7QOhIco",
+        "reportDate": "2026-07-21",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-21 00:00:31",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_DOX72VpRjrDWn25q",
+        "reportDate": "2026-07-20",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-20 05:00:27",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_1NgJypA6Tam-LoCV",
+        "reportDate": "2026-07-20",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 54,
+        "bodyBytes": 1037,
+        "bodySha256": "2cd8f7bb3adb5846925880e4d1b2c519c13dc2077c97ca50a67fead2a01969a3",
+        "koreanCharacters": 287,
+        "createdAt": "2026-07-20 02:09:26",
+        "submittedAt": "2026-07-20T02:11:36.000Z"
+      },
+      {
+        "id": "wr_-rxTP2BsVr562OEC",
+        "reportDate": "2026-07-19",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 56,
+        "bodyBytes": 1282,
+        "bodySha256": "a1ce6fe9e4e0fba42f03e12ee1098202cc5c889887357fd5771d6f5b088909ad",
+        "koreanCharacters": 350,
+        "createdAt": "2026-07-19 05:00:21",
+        "submittedAt": "2026-07-19T05:02:20.000Z"
+      },
+      {
+        "id": "wr_skVfC--phZH_zTH_",
+        "reportDate": "2026-07-19",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 56,
+        "bodyBytes": 1130,
+        "bodySha256": "067aa24c430734ebe55627509eaf511e14d75191f84f1812c8c1e709bc4a6cbc",
+        "koreanCharacters": 312,
+        "createdAt": "2026-07-19 00:00:15",
+        "submittedAt": "2026-07-19T00:03:23.000Z"
+      },
+      {
+        "id": "wr_h0oObPVSYOpviJFv",
+        "reportDate": "2026-07-18",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-18 05:00:21",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_Mve2_-dvmPOU-7Wi",
+        "reportDate": "2026-07-18",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 39,
+        "bodyBytes": 1023,
+        "bodySha256": "11902d42787b8c1e45c41ba42c5363c4fdfdbf5f9974101279bd2d4692c693e3",
+        "koreanCharacters": 274,
+        "createdAt": "2026-07-18 00:00:18",
+        "submittedAt": "2026-07-18T00:02:54.000Z"
+      },
+      {
+        "id": "wr_j2nJJAGNCq872Hs9",
+        "reportDate": "2026-07-17",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 43,
+        "bodyBytes": 1275,
+        "bodySha256": "0c10d7c49f671c18db85067c73647760c3073b65a8950725fbe5d439845756b5",
+        "koreanCharacters": 346,
+        "createdAt": "2026-07-17 05:00:15",
+        "submittedAt": "2026-07-17T05:04:11.000Z"
+      },
+      {
+        "id": "wr_T8x0to79uee42qVC",
+        "reportDate": "2026-07-17",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 110,
+        "bodyBytes": 1035,
+        "bodySha256": "dbb84f933453dad291c85e387b7b0e89cd5f79cef40ea48711d52f21d84af2eb",
+        "koreanCharacters": 253,
+        "createdAt": "2026-07-17 00:00:14",
+        "submittedAt": "2026-07-17T00:03:16.000Z"
+      },
+      {
+        "id": "wr_Dvg-D3DY8b77EuKT",
+        "reportDate": "2026-07-16",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-16 05:00:51",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_6cmppKarNxmpmtgy",
+        "reportDate": "2026-07-16",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-16 00:00:58",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_EEjlcIFDPxZCc4ux",
+        "reportDate": "2026-07-15",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 47,
+        "bodyBytes": 2431,
+        "bodySha256": "b75442489eeb0d4b2fe1fbe243060dca1c1fa1afebce5a6ebbf339e6b0f4eb81",
+        "koreanCharacters": 595,
+        "createdAt": "2026-07-15 05:00:34",
+        "submittedAt": "2026-07-15T05:05:12.000Z"
+      },
+      {
+        "id": "wr_NGcKrJGSyKcZLOCY",
+        "reportDate": "2026-07-15",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-15 00:00:31",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_03ksev0DGWVEzRu8",
+        "reportDate": "2026-07-14",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-14 05:00:24",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_XimxtWfQfJNUgvEy",
+        "reportDate": "2026-07-14",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-14 00:00:21",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_CcN3jvrjloBeq13b",
+        "reportDate": "2026-07-13",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 22,
+        "bodyBytes": 2060,
+        "bodySha256": "18aa97ad0a61995ba202a807b29f709031898ba0f30b663113ddda089c202db8",
+        "koreanCharacters": 511,
+        "createdAt": "2026-07-13 05:00:32",
+        "submittedAt": "2026-07-13T05:03:22.000Z"
+      },
+      {
+        "id": "wr_hSf-vOqpZzEIlHzN",
+        "reportDate": "2026-07-13",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 22,
+        "bodyBytes": 2051,
+        "bodySha256": "b47ea4d85b00b77af2e779e8893681222454492d674c885ec2094ca450836e5d",
+        "koreanCharacters": 540,
+        "createdAt": "2026-07-13 01:29:00",
+        "submittedAt": "2026-07-13T01:31:32.000Z"
+      },
+      {
+        "id": "wr_M6LCAVAlUt0PkSO9",
+        "reportDate": "2026-07-12",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 22,
+        "bodyBytes": 2242,
+        "bodySha256": "8d854071bbf33187a80b93b0eda0c4ff4add0bf3328b7541feac55a0a4b49433",
+        "koreanCharacters": 554,
+        "createdAt": "2026-07-12 05:00:13",
+        "submittedAt": "2026-07-12T05:04:36.000Z"
+      },
+      {
+        "id": "wr_8InjsIAO63uUGZ87",
+        "reportDate": "2026-07-12",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-12 00:14:06",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_1qNjQaBtfSznESV5",
+        "reportDate": "2026-07-11",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-11 05:00:07",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_1917mILNuMn4dz9m",
+        "reportDate": "2026-07-11",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-11 00:00:07",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_GxFE6J6ezxWOqc5o",
+        "reportDate": "2026-07-10",
+        "slot": "pm",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-10 05:00:47",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_6Mx8ybwFTQ8lEvDj",
+        "reportDate": "2026-07-10",
+        "slot": "am",
+        "status": "missed",
+        "titleLength": 0,
+        "bodyBytes": 0,
+        "bodySha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "koreanCharacters": 0,
+        "createdAt": "2026-07-10 00:00:38",
+        "submittedAt": null
+      },
+      {
+        "id": "wr_Wu9vpPrtvLaG3X7f",
+        "reportDate": "2026-07-09",
+        "slot": "pm",
+        "status": "submitted",
+        "titleLength": 22,
+        "bodyBytes": 2256,
+        "bodySha256": "17caa8998a78146808d38218d2ee54930d042e1c8933afa650f831edf5ce73af",
+        "koreanCharacters": 564,
+        "createdAt": "2026-07-09 05:00:28",
+        "submittedAt": "2026-07-09T05:04:30.000Z"
+      },
+      {
+        "id": "wr_64rGP3pix5D0t1eF",
+        "reportDate": "2026-07-09",
+        "slot": "am",
+        "status": "submitted",
+        "titleLength": 42,
+        "bodyBytes": 2441,
+        "bodySha256": "c8512f2aee932fbc06e232850d1c6dd13f71e5d70dfed971258addf4d513ac55",
+        "koreanCharacters": 636,
+        "createdAt": "2026-07-09 00:00:04",
+        "submittedAt": "2026-07-09T00:08:06.000Z"
+      }
+    ]
+  },
+  "persistenceCrossCheck": {
+    "rule": "each work_reports report_date must have a matching team-runner markdown file",
+    "distinctReportDates": 22,
+    "datesWithRunnerFile": 20,
+    "datesWithoutRunnerFile": [
+      "2026-07-11",
+      "2026-07-14"
+    ],
+    "coverageRatio": 0.9090909090909091
+  }
+}

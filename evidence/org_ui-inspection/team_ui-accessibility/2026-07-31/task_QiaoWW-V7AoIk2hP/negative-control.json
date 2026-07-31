@@ -1,0 +1,35 @@
+{
+  "taskId": "task_QiaoWW-V7AoIk2hP",
+  "mutations": [
+    {
+      "id": "drop_section_7",
+      "target": "C1_required_sections",
+      "detected": true
+    },
+    {
+      "id": "remove_paths",
+      "target": "C2_artifact_paths",
+      "detected": true
+    },
+    {
+      "id": "remove_numeric_thresholds",
+      "target": "C3_quantified_criteria",
+      "detected": true
+    },
+    {
+      "id": "pretend_file_mutation",
+      "target": "C8_read_only_execution",
+      "detected": true
+    },
+    {
+      "id": "pretend_verifier_failed",
+      "target": "C9_historical_verifier",
+      "detected": true
+    }
+  ],
+  "charLimitBoundaryControl": {
+    "exactly2000Passes": true,
+    "twoThousandOneFails": true
+  },
+  "allControlsPassed": true
+}

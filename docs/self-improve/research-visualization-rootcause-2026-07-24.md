@@ -6,7 +6,7 @@ evidence: T1
 tags:
   - self-improve
   - research-visualization
-  - higgsfield
+  - retired-media-provider
   - mem0
 ---
 
@@ -23,9 +23,9 @@ tags:
   completion은 유효 완료 13건/terminal 14건이다.
 - 유일한 유효 비완료 `task_lGPe3SaFRRJF2oF-`는 네 후보인
   never-ran, silent-empty, infra-orphan, work-report 중복팬아웃 중
-  어느 것도 아니다. `higgsfield`가 heartbeat 1회를 남기고 4초 동안
-  실제 실행됐으나, provider ID인 `higgsfield`를 CLI job-set 이름으로
-  전달해 `exit=4 / Unknown model "higgsfield"`로 실패했다.
+  어느 것도 아니다. `retired-media-provider`가 heartbeat 1회를 남기고 4초 동안
+  실제 실행됐으나, provider ID인 `retired-media-provider`를 CLI job-set 이름으로
+  전달해 `exit=4 / Unknown model "retired-media-provider"`로 실패했다.
 - 이 행은 `workReportId`가 없고 기존 `INFRA_EXCLUSION`,
   `LEASE_NEVER_RAN_EXCLUSION`,
   `WORK_REPORT_DUP_DELIVERED_EXCLUSION`,
@@ -33,8 +33,8 @@ tags:
   또한 `spawned_by_cli=claude-2-measure`인 합성 ping이므로 팀의 실제
   시각화 산출물 실패로 해석하면 안 된다. 현재 scorer가 이 행을 센 것은
   팀 품질 관점의 오탐이다.
-- 공유 기본 설정 `config/ai-providers.json`의 Higgsfield 모델을
-  `higgsfield`에서 `flux_2`로 바꿨다. 이 머신의 비추적 로컬 오버레이에는
+- 공유 기본 설정 `config/ai-providers.json`의 retired-media-provider 모델을
+  `retired-media-provider`에서 `flux_2`로 바꿨다. 이 머신의 비추적 로컬 오버레이에는
   같은 보정과 실제 접수 성공 기록이 있었지만, 공유 SSOT가 뒤처져 로컬
   오버레이가 없는 실행 환경에서 동일 오류가 재발할 수 있었다.
 - scorer의 과거 행을 삭제하거나 상태를 바꾸지 않았고 팀 lifecycle에도
@@ -49,7 +49,7 @@ tags:
 | task_id | agent | status | started (`acked_at`) | heartbeat | completed | resp_len | 근본원인 가설 | 증거등급 |
 |---|---|---|---|---|---|---:|---|---|
 | `task_zT4pGw1Ch943xyuu` | agy | completed | 07-22 06:41:44 | 07-22 06:43:11 | 07-22 06:43:14 | 600 | 정상 완료 | T1 tasks/actions |
-| `task_lGPe3SaFRRJF2oF-` | higgsfield | failed | 07-22 09:23:13 | 07-22 09:23:16 | 07-22 09:23:17 | 62 | 잘못된 CLI job-set `higgsfield`, exit 4 | T1 tasks/actions |
+| `task_lGPe3SaFRRJF2oF-` | retired-media-provider | failed | 07-22 09:23:13 | 07-22 09:23:16 | 07-22 09:23:17 | 62 | 잘못된 CLI job-set `retired-media-provider`, exit 4 | T1 tasks/actions |
 | `task_NMLG4RoqefROWr0X` | agy | completed | 07-22 10:19:56 | 07-22 10:20:47 | 07-22 10:20:51 | 551 | 정상 완료 | T1 tasks/actions |
 | `task_c-7QkwEnDzgf41jx` | agy | completed | 07-22 15:25:47 | 07-22 15:26:16 | 07-22 15:26:17 | 1,057 | 정상 완료 | T1 tasks/actions |
 | `task_-cdB2NKC_kcNtlXt` | agy | completed | 07-23 00:03:43 | 07-23 00:04:16 | 07-23 00:04:18 | 726 | 업무보고 완료 형제 | T1 tasks/work_reports |
@@ -66,7 +66,7 @@ tags:
 `task_lGPe3SaFRRJF2oF-`의 직접 행:
 
 ```text
-assigned_to=higgsfield
+assigned_to=retired-media-provider
 status=failed
 spawned_by_cli=claude-2-measure
 created_at=2026-07-22 09:23:13
@@ -76,7 +76,7 @@ last_heartbeat_at=2026-07-22 09:23:16
 heartbeat_seq=1
 resp_len=62
 workReportId=NULL
-error=higgsfield: CLI failed exit=4 — Error: Unknown model "higgsfield". Run: higgsfield model list
+error=retired-media-provider: CLI failed exit=4 — Error: Unknown model "retired-media-provider". Run: retired-media-provider model list
 ```
 
 `agent_actions`에도 `task:created` 뒤 3,314ms 만에 같은 오류로
@@ -87,7 +87,7 @@ error=higgsfield: CLI failed exit=4 — Error: Unknown model "higgsfield". Run: 
 | agent | 유효 completed | 유효 failed | 평균 latency | 추가 관찰 |
 |---|---:|---:|---:|---|
 | agy | 13 | 0 | 103.2초 | completed 13건 중 2건에 FORMAT_MISMATCH metadata가 있으나 task status는 completed |
-| higgsfield | 0 | 1 | 4.0초 | 실제 생성 실패가 아니라 잘못된 CLI job-set으로 실행 전 검증 단계에서 종료 |
+| retired-media-provider | 0 | 1 | 4.0초 | 실제 생성 실패가 아니라 잘못된 CLI job-set으로 실행 전 검증 단계에서 종료 |
 
 고정 창의 raw terminal은 16행, raw completed는 13행이다. raw 실패
 3행 중 아래 2행은 기존 scorer가 이미 제외한다.
@@ -108,7 +108,7 @@ error=higgsfield: CLI failed exit=4 — Error: Unknown model "higgsfield". Run: 
 | silent-empty `resp_len=0` | 2 | 0 | 두 행 모두 infra-orphan/control-plane으로 이미 제외 |
 | infra-orphan | 2 | 0 | `INFRA_EXCLUSION`이 이미 제외 |
 | 실패 work-report 중복팬아웃 | 0 | 0 | 원인 아님 |
-| Higgsfield invalid job-set | 1 | 1 | 유일한 completion 저하 행 |
+| retired-media-provider invalid job-set | 1 | 1 | 유일한 completion 저하 행 |
 
 업무보고 원장은 4행 모두 `submitted`이며 body 합계는 2,645자다.
 같은 `workReportId`의 task fanout은 각각 3, 2, 3, 1행이지만 9행 전부
@@ -119,13 +119,13 @@ completed다. `WORK_REPORT_DUP_DELIVERED_EXCLUSION`은 완료 형제가 있는
 ## bounded·reversible 수정
 
 ```diff
-- "model": "higgsfield"
+- "model": "retired-media-provider"
 + "model": "flux_2"
 ```
 
-- bounded: `config/ai-providers.json`의 Higgsfield 공유 기본값과 그 값의
+- bounded: `config/ai-providers.json`의 retired-media-provider 공유 기본값과 그 값의
   회귀 테스트만 변경한다.
-- 근거: 현재 로컬 오버레이도 `flux_2`이며, 이후 실제 NCO Higgsfield
+- 근거: 현재 로컬 오버레이도 `flux_2`이며, 이후 실제 NCO retired-media-provider
   task `task_9BaFCTPuIY367BiF`가 `completed`와 UUID 응답
   `190b83a6-fdcd-4022-94f4-ea931c02926b`를 기록했다. 오버레이 적용이
   성공의 원인이었다는 부분은 현재 파일과 시간 순서에 근거한 추론이다.
@@ -138,15 +138,15 @@ completed다. `WORK_REPORT_DUP_DELIVERED_EXCLUSION`은 완료 형제가 있는
 ## Mem0·지식 베이스
 
 - Mem0: `mem0-1784874145395-h5ef5j`
-  - `agent_id=higgsfield`
+  - `agent_id=retired-media-provider`
   - `user_id=team_research-visualization`
   - `metadata.evidenceTier=T1`
   - cycle-2 기준 시각 `2026-07-24T06:10:00Z`와 현재 source task로
     기존 research-visualization 항목을 갱신
   - DB의 `embedding_len=NULL`; BM25/FTS 색인으로 저장
-  - `higgsfield flux_2 Unknown model` 재검색에서 같은 ID 반환
+  - `retired-media-provider flux_2 Unknown model` 재검색에서 같은 ID 반환
 - knowledge base:
-  `kb-research-visualization-higgsfield-model-20260724`
+  `kb-research-visualization-retired-media-provider-model-20260724`
   (`category=bug_pattern`,
   `source_task_id=task_D8mVJyLC5WCZGKcQ`)
 - cycle-2 Mem0 갱신 rollback: content의 기준 시각을 `05:50 UTC`로,
@@ -159,17 +159,17 @@ completed다. `WORK_REPORT_DUP_DELIVERED_EXCLUSION`은 완료 형제가 있는
 - [DB] `db/nco.db`의 `tasks`, `agent_actions`, `work_reports`,
   `team_lifecycle_events` 고정 창 직접 조회; `PRAGMA quick_check` → `ok`.
 - [설정] `jq` 및 빌드 산출물의 `loadProviders()`로
-  `{"id":"higgsfield","enabled":true,"model":"flux_2","command":"higgsfield"}`
+  `{"id":"retired-media-provider","enabled":true,"model":"flux_2","command":"retired-media-provider"}`
   재확인.
 - [Mem0] 기존 ID를 cycle-2 기준으로 갱신한 뒤 DB 행과
-  `higgsfield* flux_2* Unknown* model*` FTS 재검색으로 같은 ID 확인.
+  `retired-media-provider* flux_2* Unknown* model*` FTS 재검색으로 같은 ID 확인.
 - [관련 테스트]
   `npx vitest run src/utils/config.test.ts src/core/team-scorer.test.ts`
   → 2 files, 11 tests passed.
 - [빌드/타입체크] `npm run build` → exit 0 (`tsc`).
 - [등급] T1: DB 행, 파일 본문, 명령 출력 직접 확인.
 - [Gap]
-  - 새 유료 이미지 생성과 공유 설정 reload 후 외부 Higgsfield artifact
+  - 새 유료 이미지 생성과 공유 설정 reload 후 외부 retired-media-provider artifact
     URL까지 기다리는 live end-to-end는 수행하지 않았다.
   - 로컬 NCO API `localhost:6200`가 연결 거부 상태라 독립 에이전트
     교차리뷰와 자동 activity 보고는 수행하지 못했다.

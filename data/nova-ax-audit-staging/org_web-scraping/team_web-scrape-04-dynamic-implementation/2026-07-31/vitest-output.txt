@@ -1,0 +1,125 @@
+
+ RUN  v4.1.10 /Users/nova-ai/project/nco
+
+
+ Test Files  2 passed (2)
+      Tests  7 passed (7)
+   Start at  04:09:57
+   Duration  1.56s (transform 226ms, setup 513ms, import 389ms, tests 136ms, environment 0ms)
+
+{"level":30,"time":1785438597591,"pid":91997,"hostname":"nova-macstudio","module":"database","path":"/private/tmp/nco-ws04-audit-91631.db","msg":"SQLite connected (WAL mode)"}
+{"level":30,"time":1785438597601,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"001_agents.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597603,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"002_agent_actions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597604,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"003_agent_messages.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597604,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"004_artifacts.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597606,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"005_tasks.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597608,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"006_discussions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597610,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"007_rate_limits.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597611,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"008_safety.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597614,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"009_agent_sessions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597616,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"010_plans_kanban.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597621,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"011_observability_learn.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597624,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"012_mesh.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597631,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"013_cli_sessions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597633,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"014_invocations.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597634,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"015_delegations.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597635,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"016_collaboration.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597636,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"017_improvements.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597647,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"017_usage_tokens.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597649,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"018_usage_tokens.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597650,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"019_discussions_updated_at.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597651,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"020_logs.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597654,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"021_knowledge_base_obsidian.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597656,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"022_attendance_records.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597657,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"023_company_definitions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597658,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"024_agent_performance.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597660,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"025_semantic_memory.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597662,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"026_benchmark_runs.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597663,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"027_cron_webhooks.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597665,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"028_skills_plugins_backup.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597667,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"029_false_reports.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597670,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"030_nova_identity.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597673,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"031_nova_economy.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597675,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"032_nova_governance.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597678,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"033_nova_domains.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597680,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"034_nova_marketplace.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597681,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"035_nova_audit.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597684,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"036_nova_citizen_grade.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597685,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"037_nova_burn_tracker.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597693,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"038_nova_citizen_activity.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597694,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"039_nova_diplomacy.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597697,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"040_nova_energy_expansion.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597698,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"040_nova_memory.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597698,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"041_copyright_disputes.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597699,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"041_nova_economy_nonce.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597700,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"042_advanced_disputes.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597701,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"042_nova_threat_restrictions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597701,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"043_nova_domain_auction.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597705,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"044_nova_domain_status_update.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597708,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"045_nova_grade_5tier.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597709,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"046_nova_ai_identity.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597711,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"046b_proposal_bond.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597711,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"047_nova_library.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597712,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"048_nova_government_agents.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597713,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"048b_nova_threat_levels.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597714,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"049_nova_tax_evasion.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597715,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"049b_nova_copyright_chain.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597716,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"049c_nova_citizen_activities.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597717,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"050_nova_civil_servant_salary.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597717,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"050b_nova_copyright_disputes.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597718,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"051_grade_demotion.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597718,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"052_civil_servant_digital_ranks.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597719,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"053_nova_labor_contracts.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597719,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"054_nova_donations.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597720,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"055_nova_energy_log.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597720,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"056_nova_research.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597721,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"057_nova_privacy.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597721,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"058_dashboard.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597722,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"059_circuit_states.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597722,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"060_dead_letter_tasks.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597722,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"061_retry_counts.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597723,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"062_fleet_push_reports.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597723,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"063_handoff_packets.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597724,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"064_verifier_gate.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597727,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"065_tasks_status_check_widen.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597728,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"066_tasks_last_activity.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597729,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"067_tasks_evidence_json.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597729,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"068_acquisitions.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597730,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"069_tasks_orphan_requeue.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597731,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"070_org_teams.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597734,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"071_team_charter_lead.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597734,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"072_work_reports.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597743,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"073_tasks_lease_tracking.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597744,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"074_decision_log.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597747,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"075_sns_content_quality_charters.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597754,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"076_team_org_schedule.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597757,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"077_team_goals.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597760,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"078_goal_direction_performance.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597761,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"078_nco_triad_ultra_company.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597762,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"079_nco_triad_reactive_only.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597763,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"080_technology_porting_company.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597770,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"081_web_scraping_company.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597773,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"082_web_scraping_authorizations.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597775,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"083_team_lifecycle_hr.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597778,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"084_hourly_role_goal_oversight.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597779,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"085_active_work_report_task_idempotency.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597781,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"086_nco_ai_government_foundation.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597782,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"086_tasks_assigned_created_idx.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597789,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"087_goal_performance_operating_system.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597799,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"088_work_report_redispatch_backoff.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597804,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"089_failure_reliability.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597806,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"090_durable_harness_runs.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597808,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"091_nco_capability_topology.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597810,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"092_work_event_ledger.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597812,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"093_team_successor_topology.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597815,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"094_subagent_runs.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597835,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"095_explicit_workflow_stages.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597838,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"096_repair_explicit_workflow_schema.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597839,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"097_content_quality_dedicated_runner.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597839,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"098_retire_nvidia_provider.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597839,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"099_retire_higgsfield_provider.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597840,"pid":91997,"hostname":"nova-macstudio","module":"database","file":"100_tasks_team_score_indexes.sql","msg":"Migration applied"}
+{"level":30,"time":1785438597840,"pid":91997,"hostname":"nova-macstudio","module":"database","count":111,"total":111,"msg":"Migrations complete"}
+{"level":30,"time":1785438597841,"pid":91997,"hostname":"nova-macstudio","module":"database","msg":"SQLite closed"}
+{"level":30,"time":1785438598710,"pid":92061,"hostname":"nova-macstudio","module":"database","path":"/private/tmp/nco-ws04-audit-91631.db","msg":"SQLite connected (WAL mode)"}
+{"level":30,"time":1785438598713,"pid":92061,"hostname":"nova-macstudio","module":"database","msg":"SQLite closed"}

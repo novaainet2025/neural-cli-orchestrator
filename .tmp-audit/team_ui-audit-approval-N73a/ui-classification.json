@@ -1,0 +1,8 @@
+{
+  "artifact": "/Users/nova-ai/project/nco/.tmp-audit/team_ui-audit-approval-N73a/audit-deliverable.json",
+  "uiInspectionRequired": true,
+  "reason": "team_ui-audit-approval is the UI independent approval team; live UI at 127.0.0.1:5173 was observed via chrome headless screenshot and preflight browser evidence, bound to workEvidenceDigest of approved AI-interaction work run.",
+  "workEvidenceDigest": "35b59a303814f32028647f87cf57e815f639a02e7f4d79bb24f1d7bf70e6909b",
+  "liveScreenshotSha256": "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0",
+  "observedAt": "2026-07-31T03:43:39.000Z"
+}

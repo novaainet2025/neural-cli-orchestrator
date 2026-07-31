@@ -42,7 +42,7 @@ NCO stage는 `implementation/review`로 지정되어 있으나, 특정 버그의
 2. Claude Code의 최근 24시간 실패 40건에 대해 오류 코드, 로그, 입력 유형 및 반복 패턴을 확보합니다.
 3. `tasks`와 `/api/teams`의 집계 시각·범위·상태 정의를 함께 기록해 1건 차이의 원인을 확인합니다.
 4. 누락된 작업 보고 3건의 대상, 마감 시각 및 미제출 사유를 확인합니다.
-5. opencode, cursor-agent, hermes, higgsfield, retired-provider, ollama의 `/api/agents` 지표를 추가 수집합니다.
+5. opencode, cursor-agent, hermes, retired-media-provider, retired-provider, ollama의 `/api/agents` 지표를 추가 수집합니다.
 6. bugfix 대상, 기대 동작, 재현 절차 및 검증 결과를 확보한 뒤 implementation/review 통과 여부를 판단합니다.
 7. 실패 원인별 데이터가 확보되면 실패 분포 및 에이전트별 추세 도식을 시각화팀에 요청합니다.
 

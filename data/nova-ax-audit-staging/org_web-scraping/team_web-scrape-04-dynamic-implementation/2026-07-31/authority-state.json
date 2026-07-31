@@ -1,0 +1,103 @@
+{
+  "observedAt": "2026-07-30T19:12:42.798Z",
+  "sources": {
+    "novaDbPath": "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+    "ncoDbPath": "/Users/nova-ai/project/nco/db/nco.db"
+  },
+  "ncoTask": {
+    "id": "task_pnxUEketwozTapq7",
+    "status": "completed",
+    "assigned_to": "codex",
+    "team_id": "team_web-scrape-04-dynamic-implementation",
+    "metadata_json": "{\"projectDir\":\"/Users/nova-ai/project/nco\",\"requestedProvider\":\"codex\",\"promptGate\":{\"score\":0,\"missing\":[\"컨텍스트\",\"목표\",\"제약\",\"출력형식\",\"검증기준\"],\"enriched\":true}}",
+    "created_at": "2026-07-29 20:05:17",
+    "updated_at": "2026-07-29 20:05:48",
+    "completed_at": "2026-07-29 20:05:48"
+  },
+  "verificationRuns": [
+    {
+      "id": "vrun_77a6fe63-cffe-4bd0-85c0-1a9acce6e160",
+      "task_id": "task_pnxUEketwozTapq7",
+      "company_id": "org_web-scraping",
+      "team_id": "team_web-scrape-04-dynamic-implementation",
+      "actor_id": "cursor-agent",
+      "status": "approved",
+      "passed_institutions": 6,
+      "evidence_digest": "d1c11a19ca26394a1d015d7db7f36c130c05141587bbf75efc81828afdb4bf5b",
+      "results_json": "[{\"institution\":\"inspection\",\"name\":\"검사기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886\"]},{\"institution\":\"validation\",\"name\":\"검증기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886\"]},{\"institution\":\"measurement\",\"name\":\"실측기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"c5ce1156131f03ed0714a1009e43de16ea5198c608fe884c2bff2f2a0cef80f9\"]},{\"institution\":\"performance\",\"name\":\"성능테스트기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"7baa7364cd303b254282fdf850c894ca470f8133e43d671198d1bb57415ed9ac\",\"947d6b5236f21d678636626e9e64dd69fed59e0abcf7a492053039b1f910a89c\"]},{\"institution\":\"optimization\",\"name\":\"최적화기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"936e17edbf387f22f63151d7348ae58cf7cd69465a2d3c384648c7f972f2cc09\"]},{\"institution\":\"goal\",\"name\":\"목표달성 체크기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886\",\"c5ce1156131f03ed0714a1009e43de16ea5198c608fe884c2bff2f2a0cef80f9\",\"17997a9cdc37f160c4da09c47f979797e7c9145fddc57b456b8ad1cf866f7f13\",\"7baa7364cd303b254282fdf850c894ca470f8133e43d671198d1bb57415ed9ac\",\"947d6b5236f21d678636626e9e64dd69fed59e0abcf7a492053039b1f910a89c\",\"936e17edbf387f22f63151d7348ae58cf7cd69465a2d3c384648c7f972f2cc09\"]}]",
+      "created_at": "2026-07-30T11:56:38.013Z"
+    }
+  ],
+  "receipts": [
+    {
+      "receipt_id": "vrcpt_3c2b3e44-aafa-4641-bfe8-6443c72f9461",
+      "run_id": "vrun_77a6fe63-cffe-4bd0-85c0-1a9acce6e160",
+      "task_id": "task_pnxUEketwozTapq7",
+      "actor_id": "cursor-agent",
+      "evidence_digest": "d1c11a19ca26394a1d015d7db7f36c130c05141587bbf75efc81828afdb4bf5b",
+      "issued_at": "2026-07-30T11:56:38.013Z",
+      "consumption_id": "vuse_55fe199f-19bf-44a1-ae32-af7abf9bf278",
+      "event_id": "8fbe2425-4af9-4bea-aa3b-d3efa9198432",
+      "consumed_at": "2026-07-30T11:57:15.711Z"
+    }
+  ],
+  "loops": [],
+  "directives": [
+    {
+      "id": "vdir_d2e89157-9bb4-4bdd-ba6f-074b3be9336b",
+      "company_id": "org_web-scraping",
+      "team_id": "team_web-scrape-04-dynamic-implementation",
+      "subject_task_id": "task_pnxUEketwozTapq7",
+      "type": "audit_required",
+      "status": "queued",
+      "work_report_id": "completion_audit_task_pnxUEketwozTapq7",
+      "task_id": null,
+      "last_error": "NCO audit task ended as failed",
+      "attempt_count": 9,
+      "created_at": "2026-07-30T11:57:25.182Z",
+      "updated_at": "2026-07-30T18:39:28.106Z"
+    },
+    {
+      "id": "vdir_3862d60f-3333-480a-a613-af4d7f10d76b",
+      "company_id": "org_web-scraping",
+      "team_id": "team_web-scrape-04-dynamic-implementation",
+      "subject_task_id": null,
+      "type": "audit_required",
+      "status": "completed",
+      "work_report_id": "audit_req_org_web-scraping_team_web-scrape-04-dynamic-implementation",
+      "task_id": "task_LthBfI5eTvwMrGqp",
+      "last_error": null,
+      "attempt_count": 4,
+      "created_at": "2026-07-30T04:14:12.072Z",
+      "updated_at": "2026-07-30T11:56:38.013Z"
+    }
+  ],
+  "completionEvents": [
+    {
+      "id": "ea5c3c3f-d622-48c4-ad72-e768a5c6b68b",
+      "timestamp": "2026-07-30T11:57:25.181Z",
+      "agent_id": "cursor-agent",
+      "action": "verification_rejected",
+      "description": "replay probe",
+      "result": "verification receipt has already been consumed",
+      "task_id": "task_pnxUEketwozTapq7",
+      "company_id": "org_web-scraping",
+      "team_id": "team_web-scrape-04-dynamic-implementation",
+      "receipt_id": "vrcpt_3c2b3e44-aafa-4641-bfe8-6443c72f9461",
+      "metadata_json": "{\"originalAction\":\"task_complete\",\"quarantined\":true}"
+    },
+    {
+      "id": "8fbe2425-4af9-4bea-aa3b-d3efa9198432",
+      "timestamp": "2026-07-30T11:57:15.709Z",
+      "agent_id": "cursor-agent",
+      "action": "task_complete",
+      "description": "web-scrape-04-dynamic-implementation routine audit 6/6 verified",
+      "result": "approved 6/6 — vrun_77a6fe63-cffe-4bd0-85c0-1a9acce6e160",
+      "task_id": "task_pnxUEketwozTapq7",
+      "company_id": "org_web-scraping",
+      "team_id": "team_web-scrape-04-dynamic-implementation",
+      "receipt_id": "vrcpt_3c2b3e44-aafa-4641-bfe8-6443c72f9461",
+      "metadata_json": "{\"verificationRunId\":\"vrun_77a6fe63-cffe-4bd0-85c0-1a9acce6e160\",\"uiInspectionRequired\":false}"
+    }
+  ]
+}

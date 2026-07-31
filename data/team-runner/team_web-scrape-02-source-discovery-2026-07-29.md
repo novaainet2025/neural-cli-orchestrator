@@ -27,7 +27,7 @@
  + cursor-agent: idle
  + agy: idle
  + hermes: working (태스크: task_hzhFdCAcxZYhol5b)
- + higgsfield: idle
+ + retired-media-provider: idle
  + retired-provider: working (태스크: task_8uX7B9IqODwxbvCt)
  + ollama: idle
 

@@ -1,0 +1,98 @@
+{
+  "taskId": "task_p7FNVqWeBQK7tu-i",
+  "companyId": "org_nco-evolution",
+  "teamId": "team_gov-evolution-improvement",
+  "actorId": "cursor-agent",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "file:///Users/nova-ai/project/nova-ax/evidence/org_nco-evolution/team_gov-evolution-improvement/2026-07-30/audit-artifact.json",
+    "expectedSha256": "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "gov-evolution-improvement-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:19.012Z",
+      "evidenceHash": "72551d5658991ca2e1558f6b5d18430ca3db0a9011237d48d729f047d01a4a1e"
+    }
+  },
+  "measurements": [
+    {
+      "name": "deliverables-cataloged",
+      "unit": "artifacts",
+      "baseline": 0,
+      "current": 5,
+      "target": 3,
+      "direction": "higher_is_better",
+      "sampleSize": 5,
+      "provenance": {
+        "kind": "ci",
+        "producer": "gov-evolution-improvement-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:03:19.012Z",
+        "evidenceHash": "4c60b834a8cb56365d56b631b2d626c65139e4de6b221a374adf28c40de25ceb"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "verification-suite",
+      "exitCode": 0,
+      "durationMs": 3567,
+      "commandHash": "b7d2576517a8e38d6547cd7d0efd8a453291390302adf065557974a14d87436c",
+      "outputHash": "3f3bc2d30cea6b5435d76e266ba86b06ac4b90d1d717affc289206d7f644f0c3",
+      "provenance": {
+        "kind": "ci",
+        "producer": "gov-evolution-improvement-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:03:19.012Z",
+        "evidenceHash": "106186f1bbc4bd83713be6c6454b9708a289478f9c164554c9ec07b2a77f8fd0"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "76d25b9fa7aa8ea3bda3963b4fb73926c81ea47a1c07d3cbb5e86e8d1d3b770d",
+    "provenance": {
+      "kind": "ci",
+      "producer": "gov-evolution-improvement-optimization-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:19.012Z",
+      "evidenceHash": "7da448b52dbead8a02b9ec43df1ad8096fbc575fd99ac793236d7c83f8a79334"
+    }
+  },
+  "requirements": [
+    {
+      "id": "audit-scope-evidence",
+      "satisfied": true,
+      "evidenceHashes": [
+        "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d",
+        "4c60b834a8cb56365d56b631b2d626c65139e4de6b221a374adf28c40de25ceb",
+        "106186f1bbc4bd83713be6c6454b9708a289478f9c164554c9ec07b2a77f8fd0"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "gov-evolution-improvement-goal-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:19.012Z",
+      "evidenceHash": "4ce4482fa2bce0f6bedbf2fec18b15fe9e9283a6e575c357c37caca7ff932dc4"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "Machine classification: JSON operations audit artifact; no HTML or interactive UI surface.",
+    "provenance": {
+      "kind": "ci",
+      "producer": "artifact-surface-classification-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:19.012Z",
+      "evidenceHash": "38fe9368cce806aa2ff6e2b4e0fbec619c5be53205a21f5482626e6aa18f770a"
+    }
+  }
+}

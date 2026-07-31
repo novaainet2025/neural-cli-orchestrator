@@ -8,6 +8,7 @@ import { createLogger } from '../utils/logger.js';
 import { sortProvidersByCostOrder } from './smart-router.js';
 import { env } from '../utils/config.js';
 import { resolvePreference } from './provider-registry.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import {
   linkWorkflowDiscussion,
   markWorkflowStage,
@@ -40,6 +41,14 @@ export interface DiscussionOptions {
   workflowRunId?: string;
   /** 호출자가 지정한 실제 작업 저장소. 미지정일 때만 NCO 기본 PROJECT_DIR을 사용한다. */
   projectDir?: string;
+  /** 특정 호출의 R1 실행 상한. 전역 floor/ceiling 안에서만 적용한다. */
+  proposalTimeoutMs?: number;
+  /**
+   * R1 기본 정족수 2를 채우기 위한 동일 참가자 재시도와 대체 provider 호출을
+   * 모두 소진한 뒤에만 유효 제안 1개를 degraded quorum으로 허용한다.
+   * 기본값은 false라 일반 토론의 fail-closed 정책을 바꾸지 않는다.
+   */
+  allowSingleProposalAfterBoundedFallback?: boolean;
 }
 
 export const resolveDiscussionProjectDir = (
@@ -64,6 +73,30 @@ export interface DiscussionReport {
   rationale: string;
   dissentingOpinions: string[];
   totalDurationMs: number;
+  proposalQuorum?: DiscussionProposalQuorumEvidence;
+}
+
+export const DISCUSSION_DEGRADED_QUORUM_REASON =
+  'bounded_retry_and_replacement_exhausted' as const;
+
+export interface DiscussionProposalQuorumEvidence {
+  required: number;
+  achieved: number;
+  degraded: boolean;
+  reason?: typeof DISCUSSION_DEGRADED_QUORUM_REASON;
+  initialProviders: string[];
+  retriedProviders: string[];
+  replacementProviders: string[];
+  attemptWaves: number;
+  providerCalls: number;
+}
+
+export interface DiscussionProposalQuorumDecision {
+  accepted: boolean;
+  degraded: boolean;
+  required: number;
+  achieved: number;
+  reason?: typeof DISCUSSION_DEGRADED_QUORUM_REASON;
 }
 
 interface DiscussionRoundSnapshot {
@@ -133,6 +166,7 @@ export type DiscussionTimeoutStage = keyof typeof DISCUSSION_STAGE_TIMEOUT_DEFAU
 
 export const DISCUSSION_TIMEOUT_FLOOR_MS = 60_000;
 export const DISCUSSION_TIMEOUT_CEILING_MS = 900_000;
+export const DISCUSSION_RETRY_TIMEOUT_CEILING_MS = 300_000;
 
 /** 단계별 상한을 해석한다. 환경변수 오버라이드는 항상 [floor, ceiling] 으로 클램프된다. */
 export function resolveDiscussionTimeoutMs(stage: DiscussionTimeoutStage): number {
@@ -143,8 +177,65 @@ export function resolveDiscussionTimeoutMs(stage: DiscussionTimeoutStage): numbe
   return Math.min(Math.max(base, DISCUSSION_TIMEOUT_FLOOR_MS), DISCUSSION_TIMEOUT_CEILING_MS);
 }
 
+function clampDiscussionTimeoutMs(value: number): number {
+  return Math.min(
+    Math.max(value, DISCUSSION_TIMEOUT_FLOOR_MS),
+    DISCUSSION_TIMEOUT_CEILING_MS,
+  );
+}
+
+/**
+ * 최초 R1에서 이미 전체 제안 예산을 쓴 실행자의 재시도는 짧은 복구 확인으로 제한한다.
+ * 실패하면 다음 단계의 다른 활성 provider 교체 경로로 넘겨 동일 7분 대기를 반복하지 않는다.
+ */
+export function resolveDiscussionRetryTimeoutMs(): number {
+  const raw = Number(process.env.NCO_DISCUSSION_RETRY_TIMEOUT_MS);
+  const base = Number.isFinite(raw) && raw > 0 ? raw : 120_000;
+  return Math.min(
+    Math.max(base, DISCUSSION_TIMEOUT_FLOOR_MS),
+    DISCUSSION_RETRY_TIMEOUT_CEILING_MS,
+  );
+}
+
 /** 라운드 1이 성립하기 위한 최소 유효 제안 수. */
 export const DISCUSSION_MIN_VALID_PROPOSALS = 2;
+
+export function resolveDiscussionProposalQuorum(
+  validProposals: number,
+  allowSingleProposalAfterBoundedFallback = false,
+): DiscussionProposalQuorumDecision {
+  const achieved = Math.max(0, Math.trunc(validProposals));
+  if (achieved >= DISCUSSION_MIN_VALID_PROPOSALS) {
+    return {
+      accepted: true,
+      degraded: false,
+      required: DISCUSSION_MIN_VALID_PROPOSALS,
+      achieved,
+    };
+  }
+  if (allowSingleProposalAfterBoundedFallback && achieved === 1) {
+    return {
+      accepted: true,
+      degraded: true,
+      required: DISCUSSION_MIN_VALID_PROPOSALS,
+      achieved,
+      reason: DISCUSSION_DEGRADED_QUORUM_REASON,
+    };
+  }
+  return {
+    accepted: false,
+    degraded: false,
+    required: DISCUSSION_MIN_VALID_PROPOSALS,
+    achieved,
+  };
+}
+
+export function authorizeSingleProposalFallback(
+  requested: boolean | undefined,
+  companyRunOrgSlug: string | null | undefined,
+): boolean {
+  return requested === true && companyRunOrgSlug === 'ui-inspection';
+}
 
 /**
  * 정족수(DISCUSSION_MIN_VALID_PROPOSALS) 충족 후 낙오 참가자를 더 기다리는 유예.
@@ -224,20 +315,38 @@ export const selectDiscussionSynthesisProvider = (
     ?? responsiveParticipants[0];
 };
 
+export const selectDiscussionReplacementProviders = (
+  participants: string[],
+  responsiveParticipants: string[],
+  enabledProviders: string[],
+  minimumValidProposals = DISCUSSION_MIN_VALID_PROPOSALS,
+): string[] => {
+  const excluded = new Set(participants);
+  const needed = Math.max(0, minimumValidProposals - responsiveParticipants.length);
+  if (needed === 0) return [];
+  // 부족분만 정확히 호출하면 대체자 하나의 timeout이 곧바로 토론 전체 실패가 된다.
+  // 예비자 한 명을 추가하되 collectResponses의 quorum 조기 종료로 불필요한 실행은
+  // 유예 후 취소한다. 후보 증가는 항상 1명으로 유계다.
+  return sortProvidersByCostOrder(enabledProviders)
+    .filter(provider => !excluded.has(provider))
+    .slice(0, needed + 1);
+};
+
 export function selectDiscussionConclusion(
   rounds: DiscussionRoundResult[],
   participants: string[],
+  allowSingleProposal = false,
 ): { adoptedAgent: string; adoptedProposal: string } {
   const firstRound = rounds[0];
   const proposals = Object.entries(firstRound?.responses ?? {})
     .filter(([, content]) => content.trim().length > 0);
-  if (proposals.length < 2) {
+  if (proposals.length < (allowSingleProposal ? 1 : DISCUSSION_MIN_VALID_PROPOSALS)) {
     throw new Error(`discussion_insufficient_valid_proposals:${proposals.length}/2`);
   }
 
   // 최종 synthesis가 성공했다면 이것이 토론 전체의 산출물이다. 기존 구현은 마지막
   // synthesis round에서 evaluations가 없다는 이유로 participants[0]의 R1을 되돌려,
-  // higgsfield UUID 같은 무효 제안을 최종 응답으로 저장했다.
+  // 무효 제안을 최종 응답으로 저장했다.
   const synthesis = rounds.slice(1).reverse()
     .filter(round => !round.evaluations)
     .map(round => Object.entries(round.responses)
@@ -393,7 +502,7 @@ class DiscussionEngine {
     const startTime = Date.now();
     const maxRounds = options.maxRounds || 3;
     let threshold = options.consensusThreshold || 0.8;
-    const participants = options.providers || this.selectParticipants(options.mode);
+    const participants = [...(options.providers || this.selectParticipants(options.mode))];
     const initiator = options.initiator || 'claude-code';
     const projectDir = resolveDiscussionProjectDir(options);
     const pidController = this.getSessionPid(sessionId);
@@ -405,6 +514,25 @@ class DiscussionEngine {
 
     // Save session to DB
     const db = getDb();
+    const companyRunOrgSlug = options.companyRunId
+      ? (db.prepare('SELECT org_slug FROM company_runs WHERE id=?')
+        .get(options.companyRunId) as { org_slug?: string } | undefined)?.org_slug
+      : undefined;
+    const singleProposalFallbackAuthorized = authorizeSingleProposalFallback(
+      options.allowSingleProposalAfterBoundedFallback,
+      companyRunOrgSlug,
+    );
+    if (options.allowSingleProposalAfterBoundedFallback === true
+      && !singleProposalFallbackAuthorized) {
+      log.warn(
+        {
+          sessionId,
+          companyRunId: options.companyRunId,
+          companyRunOrgSlug,
+        },
+        'Ignoring unauthorized single-proposal fallback request',
+      );
+    }
     db.prepare(`
       INSERT INTO discussions (
         id, topic, mode, status, participants_json, initiator, max_rounds,
@@ -441,6 +569,9 @@ class DiscussionEngine {
 
     const rounds: DiscussionRoundResult[] = [];
     let consensusRate = 0;
+    const initialProviders = [...participants];
+    let retriedProviders: string[] = [];
+    let replacementProviders: string[] = [];
 
     // ─── Round 1: 독립 제안 (병렬) ────────────────
     await eventBus.publish({
@@ -456,7 +587,12 @@ class DiscussionEngine {
       participants,
       options.topic,
       projectDir,
-      { quorum: DISCUSSION_MIN_VALID_PROPOSALS },
+      {
+        quorum: DISCUSSION_MIN_VALID_PROPOSALS,
+        timeoutMs: options.proposalTimeoutMs == null
+          ? undefined
+          : clampDiscussionTimeoutMs(options.proposalTimeoutMs),
+      },
     );
     let successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
 
@@ -468,6 +604,7 @@ class DiscussionEngine {
     if (successfulParticipants.length < DISCUSSION_MIN_VALID_PROPOSALS) {
       const retryTargets = participants.filter(pid => !proposals[pid]);
       if (retryTargets.length > 0) {
+        retriedProviders = [...retryTargets];
         log.warn(
           { sessionId, retryTargets, validProposals: successfulParticipants.length },
           'Retrying failed R1 participants once before failing the discussion',
@@ -478,27 +615,107 @@ class DiscussionEngine {
           'proposal',
           retryTargets,
           options.topic,
-          projectDir
+          projectDir,
+          {
+            quorum: DISCUSSION_MIN_VALID_PROPOSALS - successfulParticipants.length,
+            timeoutMs: Math.min(
+              resolveDiscussionRetryTimeoutMs(),
+              options.proposalTimeoutMs == null
+                ? DISCUSSION_RETRY_TIMEOUT_CEILING_MS
+                : clampDiscussionTimeoutMs(options.proposalTimeoutMs),
+            ),
+          },
         );
         proposals = { ...proposals, ...retried };
         successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
       }
     }
 
+    // 같은 참가자 재시도로도 정족수가 채워지지 않으면 아직 사용하지 않은 활성
+    // provider로 부족분만 교체한다. 기존 구현은 retryTargets를 한 번 더 호출한 뒤
+    // 즉시 terminal failed로 끝나 회사 run 전체를 방치했다. 교체 후보는 활성 SSOT
+    // 안에서만 고르고, 부족분 수만큼 한 번만 호출해 유계 재시도 불변식을 유지한다.
+    if (successfulParticipants.length < DISCUSSION_MIN_VALID_PROPOSALS) {
+      const replacements = selectDiscussionReplacementProviders(
+        participants,
+        successfulParticipants,
+        agentManager.listEnabledIds()
+          .filter(provider => circuitBreakerRegistry.getAvailability(provider).available),
+      );
+      if (replacements.length > 0) {
+        replacementProviders = [...replacements];
+        log.warn(
+          { sessionId, replacements, validProposals: successfulParticipants.length },
+          'Replacing failed R1 participants before failing the discussion',
+        );
+        participants.push(...replacements);
+        for (const provider of replacements) trustScores.set(provider, 1.0);
+        db.prepare(`
+          UPDATE discussions
+          SET participants_json=?, updated_at=datetime('now')
+          WHERE id=?
+        `).run(JSON.stringify(participants), sessionId);
+        const replaced = await this.collectResponses(
+          sessionId,
+          1,
+          'proposal',
+          replacements,
+          options.topic,
+          projectDir,
+          {
+            quorum: DISCUSSION_MIN_VALID_PROPOSALS - successfulParticipants.length,
+            timeoutMs: Math.min(
+              resolveDiscussionRetryTimeoutMs(),
+              options.proposalTimeoutMs == null
+                ? DISCUSSION_RETRY_TIMEOUT_CEILING_MS
+                : clampDiscussionTimeoutMs(options.proposalTimeoutMs),
+            ),
+          },
+        );
+        proposals = { ...proposals, ...replaced };
+        successfulParticipants = participants.filter(pid => Boolean(proposals[pid]));
+      }
+    }
+
     const excludedParticipants = participants.filter(pid => !proposals[pid]);
     const validProposalsCount = successfulParticipants.length;
-    if (validProposalsCount < DISCUSSION_MIN_VALID_PROPOSALS) {
+    const proposalQuorum = resolveDiscussionProposalQuorum(
+      validProposalsCount,
+      singleProposalFallbackAuthorized,
+    );
+    const proposalQuorumEvidence: DiscussionProposalQuorumEvidence = {
+      required: proposalQuorum.required,
+      achieved: proposalQuorum.achieved,
+      degraded: proposalQuorum.degraded,
+      ...(proposalQuorum.reason ? { reason: proposalQuorum.reason } : {}),
+      initialProviders,
+      retriedProviders,
+      replacementProviders,
+      attemptWaves: 1
+        + (retriedProviders.length > 0 ? 1 : 0)
+        + (replacementProviders.length > 0 ? 1 : 0),
+      providerCalls:
+        initialProviders.length + retriedProviders.length + replacementProviders.length,
+    };
+    if (!proposalQuorum.accepted) {
       const failure = `discussion_insufficient_valid_proposals:${validProposalsCount}/${DISCUSSION_MIN_VALID_PROPOSALS}`;
+      const failureEvidence = {
+        error: failure,
+        proposalQuorum: proposalQuorumEvidence,
+        activeParticipants: successfulParticipants,
+        excludedParticipants,
+      };
       db.prepare(`
         UPDATE discussions
-        SET status='failed', report=?, ended_at=datetime('now')
+        SET status='failed', result_json=?, report=?, ended_at=datetime('now')
         WHERE id=?
-      `).run(failure, sessionId);
+      `).run(JSON.stringify(failureEvidence), failure, sessionId);
       if (options.workflowRunId) {
         markWorkflowStage(options.workflowRunId, 'discussion', 'failed', {
           teamId: options.teamId,
           discussionId: sessionId,
           error: failure,
+          evidence: { proposalQuorum: proposalQuorumEvidence },
         }, db);
       }
       await eventBus.publish({
@@ -506,11 +723,23 @@ class DiscussionEngine {
         sessionId,
         round: 1,
         error: failure,
+        proposalQuorum: proposalQuorumEvidence,
         activeParticipants: successfulParticipants,
         excludedParticipants,
       });
       this.cleanupSessionState(sessionId);
       throw new Error(failure);
+    }
+    if (proposalQuorum.degraded) {
+      log.warn(
+        {
+          sessionId,
+          proposalQuorum: proposalQuorumEvidence,
+          activeParticipants: successfulParticipants,
+          excludedParticipants,
+        },
+        'Discussion proceeding with degraded quorum after bounded fallback exhaustion',
+      );
     }
     rounds.push({ round: 1, responses: proposals, consensusRate: 0 });
 
@@ -521,6 +750,7 @@ class DiscussionEngine {
       consensusRate: 0, responseCount: Object.keys(proposals).length,
       activeParticipants: successfulParticipants,
       excludedParticipants,
+      proposalQuorum: proposalQuorumEvidence,
     });
 
     // ─── Round 2: 순차 평가 (이전 응답 참조) ──────────────
@@ -558,7 +788,9 @@ class DiscussionEngine {
     }
 
     // ─── Final: R1에서 실제 응답한 건강한 provider가 최종 결론 생성 ───────────
-    {
+    // maxRounds=1은 R1 다중 제안 자체를 최종 합의 입력으로 쓰는 명시적 fast path다.
+    // 기존에는 finalRound도 1이 되어 같은 라운드에 proposal/synthesis를 중복 기록했다.
+    if (maxRounds >= 2) {
       const finalRound = maxRounds;
       const synthesisProvider = selectDiscussionSynthesisProvider(successfulParticipants);
       let synthesisResponseCount = 0;
@@ -656,6 +888,7 @@ class DiscussionEngine {
       rounds,
       consensusRate,
       startTime,
+      proposalQuorumEvidence,
     );
 
     // Save to DB
@@ -676,6 +909,7 @@ class DiscussionEngine {
           consensusRate,
           rounds: report.rounds.length,
           participants: report.participants,
+          proposalQuorum: report.proposalQuorum,
         },
       }, db);
     }
@@ -931,7 +1165,7 @@ class DiscussionEngine {
     participants: string[],
     prompt: string,
     projectDir: string,
-    options: { quorum?: number } = {},
+    options: { quorum?: number; timeoutMs?: number } = {},
   ): Promise<Record<string, string>> {
     const responses: Record<string, string> = {};
     // 정족수 조기 진행용. quorum 이 없으면 기존과 동일하게 전원을 기다린다.
@@ -960,7 +1194,7 @@ class DiscussionEngine {
             // 상한(resolveDiscussionTimeoutMs)과 정족수 조기 종료(controller)를 함께 건다.
             // 둘 중 먼저 발화한 쪽이 실행을 끊는다.
             signal: AbortSignal.any([
-              AbortSignal.timeout(resolveDiscussionTimeoutMs('proposal')),
+              AbortSignal.timeout(options.timeoutMs ?? resolveDiscussionTimeoutMs('proposal')),
               controller.signal,
             ]),
           });
@@ -1379,12 +1613,17 @@ class DiscussionEngine {
     participants: string[],
     rounds: DiscussionRoundResult[],
     consensusRate: number,
-    startTime: number
+    startTime: number,
+    proposalQuorum?: DiscussionProposalQuorumEvidence,
   ): DiscussionReport {
     const firstRound = rounds[0];
     const proposals = Object.entries(firstRound?.responses || {});
 
-    const { adoptedAgent, adoptedProposal } = selectDiscussionConclusion(rounds, participants);
+    const { adoptedAgent, adoptedProposal } = selectDiscussionConclusion(
+      rounds,
+      participants,
+      proposalQuorum?.degraded === true,
+    );
     const dissentingOpinions = proposals
       .filter(([pid]) => pid !== adoptedAgent)
       .map(([pid, content]) => `${pid}: ${content.slice(0, 200)}`);
@@ -1397,9 +1636,15 @@ class DiscussionEngine {
       rounds,
       finalConsensusRate: consensusRate,
       adoptedProposal: adoptedProposal.slice(0, 20000),
-      rationale: `Adopted ${adoptedAgent}'s proposal with ${(consensusRate * 100).toFixed(0)}% consensus after ${rounds.length} rounds.`,
+      rationale: proposalQuorum?.degraded
+        ? `Adopted ${adoptedAgent}'s sole valid proposal under degraded quorum `
+          + `${proposalQuorum.achieved}/${proposalQuorum.required} after `
+          + `${proposalQuorum.attemptWaves} bounded attempt waves `
+          + `(reason=${proposalQuorum.reason}).`
+        : `Adopted ${adoptedAgent}'s proposal with ${(consensusRate * 100).toFixed(0)}% consensus after ${rounds.length} rounds.`,
       dissentingOpinions,
       totalDurationMs: Date.now() - startTime,
+      ...(proposalQuorum ? { proposalQuorum } : {}),
     };
   }
 

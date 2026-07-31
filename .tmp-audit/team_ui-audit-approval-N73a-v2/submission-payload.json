@@ -1,0 +1,195 @@
+{
+  "taskId": "task_N73a_tt-ewoyj3hU",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-audit-approval",
+  "actorId": "cursor-agent",
+  "taskType": "software",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-audit-approval/2026-07-31/task_N73a_tt-ewoyj3hU/audit-deliverable.json",
+    "expectedSha256": "979948c1254288c7c371232472953a830b9f5c69d9c6193e33d662d88a2f13f6",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "979948c1254288c7c371232472953a830b9f5c69d9c6193e33d662d88a2f13f6",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "shasum-256",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:03:39.000Z",
+      "evidenceHash": "979948c1254288c7c371232472953a830b9f5c69d9c6193e33d662d88a2f13f6"
+    }
+  },
+  "measurements": [
+    {
+      "name": "browser-visual-files-hashed",
+      "unit": "files",
+      "baseline": 0,
+      "current": 4,
+      "target": 4,
+      "direction": "higher_is_better",
+      "sampleSize": 4,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "google-chrome-headless-browser-visual",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "dc1852df849c55c955294e1e2b24c7de71b1c69c3abff9151db29e87dbf221e2"
+      }
+    },
+    {
+      "name": "live-ui-http-ok",
+      "unit": "status",
+      "baseline": 0,
+      "current": 200,
+      "target": 200,
+      "direction": "higher_is_better",
+      "sampleSize": 1,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6"
+      }
+    },
+    {
+      "name": "team-task-rows-collected",
+      "unit": "rows",
+      "baseline": 0,
+      "current": 40,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 40,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "9668ba4046baa0095db30d7dc49efc297e67e04121d7874c90af639903e21741"
+      }
+    },
+    {
+      "name": "oversight-scope-observed",
+      "unit": "scopes",
+      "baseline": 0,
+      "current": 1,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 1,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "f159883806944118c74c005c59b11c85a268e42f64cb64b92e64da8b7fe652cf"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "chrome-headless-browser-visual-screenshot",
+      "exitCode": 0,
+      "durationMs": 42000,
+      "commandHash": "a440e9b52f873191589c34f7f032051b48c9095bdd69eda7946612e6cd71c015",
+      "outputHash": "dc1852df849c55c955294e1e2b24c7de71b1c69c3abff9151db29e87dbf221e2",
+      "provenance": {
+        "kind": "ci",
+        "producer": "google-chrome-headless-browser-visual",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "dc1852df849c55c955294e1e2b24c7de71b1c69c3abff9151db29e87dbf221e2"
+      }
+    },
+    {
+      "name": "curl-live-ui-home",
+      "exitCode": 0,
+      "durationMs": 82,
+      "commandHash": "98fe4c0a08edf8299d7d2e593ca485835908339e34dc92f50e8ee3c1cacbab41",
+      "outputHash": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6",
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6"
+      }
+    },
+    {
+      "name": "curl-ax-oversight-scope",
+      "exitCode": 0,
+      "durationMs": 100,
+      "commandHash": "01bae21027bd38d9428f84dd1a0ab9e6e1d80588b0b6385cc2e70875f6d30225",
+      "outputHash": "f159883806944118c74c005c59b11c85a268e42f64cb64b92e64da8b7fe652cf",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:03:39.000Z",
+        "evidenceHash": "f159883806944118c74c005c59b11c85a268e42f64cb64b92e64da8b7fe652cf"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "feb54f4c42fa70081acfff2265513a7076be240ba5840b3991defd8ed14e7d4c",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "node-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:03:39.000Z",
+      "evidenceHash": "feb54f4c42fa70081acfff2265513a7076be240ba5840b3991defd8ed14e7d4c"
+    }
+  },
+  "requirements": [
+    {
+      "id": "ui_browser_visual_e2e_gate",
+      "satisfied": true,
+      "evidenceHashes": [
+        "dc1852df849c55c955294e1e2b24c7de71b1c69c3abff9151db29e87dbf221e2",
+        "112f9ddc27323b5db41b71954bd66308da61e94d08b0a35e066a7419b9314c21",
+        "a229c0e7ecfc733cefa87d86419ade13a2e551e4c13f91fab1d5f0c80d4121a9",
+        "60da511b4e597a53d61a761a8c341fc030ef88aa7ac9dc1e96373b9e1cf8f305",
+        "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6"
+      ]
+    },
+    {
+      "id": "artifact_under_approved_verification_roots",
+      "satisfied": true,
+      "evidenceHashes": [
+        "979948c1254288c7c371232472953a830b9f5c69d9c6193e33d662d88a2f13f6"
+      ]
+    },
+    {
+      "id": "independent_approval_scope_evidence_bound",
+      "satisfied": true,
+      "evidenceHashes": [
+        "979948c1254288c7c371232472953a830b9f5c69d9c6193e33d662d88a2f13f6",
+        "f159883806944118c74c005c59b11c85a268e42f64cb64b92e64da8b7fe652cf",
+        "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ui-audit-goal-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:03:39.000Z",
+      "evidenceHash": "afc6d236ed09a650f2763e4d227501f25399ce9e8742ace3f6d91d833c6350e5"
+    }
+  },
+  "uiInspection": {
+    "required": true,
+    "reason": "team_ui-audit-approval is the UI independent approval team; live UI at 127.0.0.1:5173 was observed via chrome headless screenshots and curl HTTP body hash, bound as workEvidenceDigest.",
+    "workEvidenceDigest": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ui-presence-classifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:03:39.000Z",
+      "evidenceHash": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6"
+    }
+  },
+  "selfReportedScore": 0,
+  "workJournal": "Ignored by policy."
+}

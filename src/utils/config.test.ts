@@ -30,14 +30,14 @@ describe('config JSON validation', () => {
     })).toThrow('[config] ai-providers.json providers[0].name is required');
   });
 
-  it('uses a CLI job-set type instead of the Higgsfield provider id', () => {
+  it('keeps the registered visual provider model distinct from its provider id', () => {
     const loaded = loadJSON<{
       providers: Array<{ id: string; model: string | null }>;
     }>('ai-providers.json');
-    const higgsfield = loaded.providers.find(provider => provider.id === 'higgsfield');
+    const visualProvider = loaded.providers.find(provider => provider.id === 'agy');
 
-    expect(higgsfield).toBeDefined();
-    expect(higgsfield?.model).toBe('flux_2');
-    expect(higgsfield?.model).not.toBe(higgsfield?.id);
+    expect(visualProvider).toBeDefined();
+    expect(visualProvider?.model).toBe('agy-internal');
+    expect(visualProvider?.model).not.toBe(visualProvider?.id);
   });
 });

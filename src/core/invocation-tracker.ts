@@ -287,29 +287,39 @@ class InvocationTracker {
   /**
    * 대시보드용 개요: 활성 호출 + 최근 완료 호출.
    */
-  getOverview(): InvocationOverview {
+  getOverview(limit?: number): InvocationOverview {
     const db = getDb();
+
+    // limit 미지정 시 기존 동작(active 50 / recent 20)을 유지한다.
+    const activeLimit = limit && limit > 0 ? Math.min(limit, 50) : 50;
+    const recentLimit = limit && limit > 0 ? Math.min(limit, 20) : 20;
 
     const activeRows = db.prepare(`
       SELECT * FROM agent_invocations
       WHERE status IN ('pending', 'running')
       ORDER BY created_at DESC
-      LIMIT 50
-    `).all() as Record<string, unknown>[];
+      LIMIT ?
+    `).all(activeLimit) as Record<string, unknown>[];
 
     const recentRows = db.prepare(`
       SELECT * FROM agent_invocations
       WHERE status IN ('completed', 'failed', 'cancelled')
       ORDER BY completed_at DESC
-      LIMIT 20
-    `).all() as Record<string, unknown>[];
+      LIMIT ?
+    `).all(recentLimit) as Record<string, unknown>[];
 
     // 대시보드 목록 표시용 — 저장은 2000자지만 개요 페이로드는 500자로 자른다
     // (전문은 getInvocation() 단건 조회 또는 tasks.response에서)
-    const forDisplay = (inv: Invocation): Invocation =>
-      inv.resultSummary && inv.resultSummary.length > 500
-        ? { ...inv, resultSummary: inv.resultSummary.slice(0, 500) + '…' }
-        : inv;
+    // prompt 도 함께 자른다: 자르지 않으면 개요 응답이 수백 KB 로 불어나
+    // MCP(nco_invocations) 호출자가 결과를 아예 받지 못한다.
+    const clip = (s: string | undefined, max: number): string | undefined =>
+      s && s.length > max ? s.slice(0, max) + '…' : s;
+
+    const forDisplay = (inv: Invocation): Invocation => ({
+      ...inv,
+      prompt: clip(inv.prompt, 500) as Invocation['prompt'],
+      resultSummary: clip(inv.resultSummary, 500),
+    });
 
     return {
       active: activeRows.map(rowToInvocation).map(forDisplay),

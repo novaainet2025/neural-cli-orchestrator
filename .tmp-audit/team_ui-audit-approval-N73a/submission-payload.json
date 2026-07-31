@@ -1,0 +1,232 @@
+{
+  "taskId": "task_N73a_tt-ewoyj3hU",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-audit-approval",
+  "actorId": "cursor-agent",
+  "taskType": "software",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nco/.tmp-audit/team_ui-audit-approval-N73a/audit-deliverable.json",
+    "expectedSha256": "1b94bc6961b356c6a64942fa32a9ae38097e892c2da30957c3f345de2f5edf00",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "1b94bc6961b356c6a64942fa32a9ae38097e892c2da30957c3f345de2f5edf00",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "shasum-256",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:43:58.000Z",
+      "evidenceHash": "2f68d8dddce7b5a239407df7b43304323695a65354bc08f0b3d4a8eab8dcce5c"
+    }
+  },
+  "measurements": [
+    {
+      "name": "team-task-rows-collected",
+      "unit": "rows",
+      "baseline": 0,
+      "current": 40,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 40,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "d20159ef0877b8882b66a700f299a3a5403817d2a0cf769a0e3a82d7125b0d30"
+      }
+    },
+    {
+      "name": "verification-runs-observed",
+      "unit": "runs",
+      "baseline": 0,
+      "current": 28,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 28,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "6c1aadf05b628cc13e7487da0d57c49ef0f9798d31c65eb094a4f4d8cd4db0ca"
+      }
+    },
+    {
+      "name": "browser-visual-files-hashed",
+      "unit": "files",
+      "baseline": 0,
+      "current": 13,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 13,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "chrome-headless-browser-visual",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0"
+      }
+    },
+    {
+      "name": "approved-six-of-six-runs-in-scope",
+      "unit": "runs",
+      "baseline": 0,
+      "current": 19,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 19,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "6c1aadf05b628cc13e7487da0d57c49ef0f9798d31c65eb094a4f4d8cd4db0ca"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "chrome-headless-browser-visual-screenshot",
+      "exitCode": 0,
+      "durationMs": 18393,
+      "commandHash": "c7d5363c80965c0b58d3200574ec527fb1144703fa130a0bbeff4e171378928b",
+      "outputHash": "dd290ee81156a05d8f79757f2617bb8af9aad98f86243f640bfd141b01fb6182",
+      "provenance": {
+        "kind": "ci",
+        "producer": "chrome-headless-browser-visual",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "dd290ee81156a05d8f79757f2617bb8af9aad98f86243f640bfd141b01fb6182"
+      }
+    },
+    {
+      "name": "curl-live-ui-home",
+      "exitCode": 0,
+      "durationMs": 30,
+      "commandHash": "c131c678e36daa33b17f187d79a8b924ab2ab054c4ebd637cd414bdf69edc414",
+      "outputHash": "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d",
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d"
+      }
+    },
+    {
+      "name": "curl-ax-oversight-scope",
+      "exitCode": 0,
+      "durationMs": 80,
+      "commandHash": "66183b53b8eb2fe5a83ab33d64dfff8e3e87404a4777fde71d27f189bd5f4ac7",
+      "outputHash": "47d53b33e0df07104813660b3a0e4b99bf569e735b7f4d5eeccbad84e6844edb",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "curl-http-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "47d53b33e0df07104813660b3a0e4b99bf569e735b7f4d5eeccbad84e6844edb"
+      }
+    },
+    {
+      "name": "sqlite-ax-loops-probe",
+      "exitCode": 0,
+      "durationMs": 15,
+      "commandHash": "461f8bc6639725025f1739872f1626d7748d24a729e67cfb42c345f2eb10aac1",
+      "outputHash": "28c629a08934516af40c4b56c9503505390ec0631f472a633d428aff62b8bf5c",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "28c629a08934516af40c4b56c9503505390ec0631f472a633d428aff62b8bf5c"
+      }
+    },
+    {
+      "name": "shasum-artifact",
+      "exitCode": 0,
+      "durationMs": 10,
+      "commandHash": "b1440c6403cc961cbbfb47e7b05d7a3ba7a7b133ac82717d413f889fdb5dccc7",
+      "outputHash": "2f68d8dddce7b5a239407df7b43304323695a65354bc08f0b3d4a8eab8dcce5c",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "shasum-256",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:43:58.000Z",
+        "evidenceHash": "2f68d8dddce7b5a239407df7b43304323695a65354bc08f0b3d4a8eab8dcce5c"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "fc3ba5d2dd71321318bc66c27f7d80316750d7a16f3806e507b84388eeed972b",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "node-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:43:58.000Z",
+      "evidenceHash": "fc3ba5d2dd71321318bc66c27f7d80316750d7a16f3806e507b84388eeed972b"
+    }
+  },
+  "requirements": [
+    {
+      "id": "ui_browser_visual_e2e_gate",
+      "satisfied": true,
+      "evidenceHashes": [
+        "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0",
+        "dd290ee81156a05d8f79757f2617bb8af9aad98f86243f640bfd141b01fb6182",
+        "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d"
+      ]
+    },
+    {
+      "id": "ui-independent-approval-findings-reconfirmed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "49232bb238bc093c7adcdc3223a2b90a98d92d9fe0a7c40ad063bdd8004b91de",
+        "35b59a303814f32028647f87cf57e815f639a02e7f4d79bb24f1d7bf70e6909b",
+        "ddd8cc2c5349c2bdfe645aec76a36515128411f8896cb7d7fed18f9313251aca"
+      ]
+    },
+    {
+      "id": "scope-work-results-collected",
+      "satisfied": true,
+      "evidenceHashes": [
+        "1b94bc6961b356c6a64942fa32a9ae38097e892c2da30957c3f345de2f5edf00",
+        "d20159ef0877b8882b66a700f299a3a5403817d2a0cf769a0e3a82d7125b0d30",
+        "6c1aadf05b628cc13e7487da0d57c49ef0f9798d31c65eb094a4f4d8cd4db0ca"
+      ]
+    },
+    {
+      "id": "independent-machine-evidence",
+      "satisfied": true,
+      "evidenceHashes": [
+        "2f68d8dddce7b5a239407df7b43304323695a65354bc08f0b3d4a8eab8dcce5c",
+        "8cb33c76740b74d1c6457dd77c0a72e27b9d71c5a7310e68314f96b59b799b4e",
+        "47d53b33e0df07104813660b3a0e4b99bf569e735b7f4d5eeccbad84e6844edb"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "nova-ax-oversight-api",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:43:58.000Z",
+      "evidenceHash": "47d53b33e0df07104813660b3a0e4b99bf569e735b7f4d5eeccbad84e6844edb"
+    }
+  },
+  "uiInspection": {
+    "required": true,
+    "reason": "team_ui-audit-approval is the UI independent approval team; live UI at 127.0.0.1:5173 was observed via chrome headless screenshot and preflight browser evidence, bound to workEvidenceDigest of approved AI-interaction work run.",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ui-presence-classifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:43:58.000Z",
+      "evidenceHash": "00b6053990f3c80d37c373ea972c9d4e6892a16fcfa8a74ddc1987d8534af797"
+    },
+    "workEvidenceDigest": "35b59a303814f32028647f87cf57e815f639a02e7f4d79bb24f1d7bf70e6909b"
+  },
+  "selfReportedScore": 0,
+  "workJournal": "Ignored by policy; see audit-deliverable.json machine counters."
+}

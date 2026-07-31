@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-07-30T19:24:29Z",
+  "status": "BLOCKED_NOT_COMPLETED",
+  "scope": {
+    "companyId": "org_nova-cli",
+    "teamId": "team_cli-assurance-2026",
+    "subjectTaskId": "task_XKpnPbEvhc1omPz7"
+  },
+  "subjectTask": {
+    "status": "reviewing",
+    "assignedTo": "ollama",
+    "verificationStatus": "pending",
+    "completedAt": null,
+    "dbPath": "/Users/nova-ai/project/nco/db/nco.db"
+  },
+  "access": {
+    "ncoHttp": {
+      "uri": "http://127.0.0.1:6200",
+      "result": "ECONNREFUSED"
+    },
+    "novaAxHttp": {
+      "uri": "http://127.0.0.1:6300",
+      "result": "ECONNREFUSED"
+    },
+    "novaAxMcp": {
+      "result": "user cancelled MCP tool call",
+      "attempts": 2
+    },
+    "ncoMcp": {
+      "result": "user cancelled MCP tool call",
+      "attempts": 1
+    },
+    "pm2": {
+      "result": "EPERM",
+      "detail": "connect EPERM /Users/nova-ai/.pm2/rpc.sock"
+    }
+  },
+  "freshMachineEvidence": {
+    "typecheck": {
+      "command": "npm run typecheck",
+      "project": "/Users/nova-ai/project/nova-cli",
+      "exitCode": 0,
+      "durationMs": 10231,
+      "outputSha256": "f601a3f1e0e480dce4a210ab707d522ec6c113dea063d93a18d4ce281dc49488",
+      "errors": 0
+    },
+    "vitest": {
+      "command": "vitest run --configLoader runner",
+      "sourceProject": "/Users/nova-ai/project/nova-cli",
+      "isolatedExecutionRoot": "/private/tmp/nova-cli-copy.mS1qyd",
+      "sourceManifestSha256": "3a783f03e6323977e08a75ea96329dde96bbce9846e23deb10f83fabd86912cd",
+      "exitCode": 0,
+      "durationMs": 14190,
+      "outputSha256": "e3002aef30cf6f3ef73681929b33b8bb4ee8d322abac55691eeb6027529cc8ea",
+      "testFilesPassed": 63,
+      "testFilesTotal": 63,
+      "testsPassed": 596,
+      "testsTotal": 596
+    },
+    "commandSurfaceSnapshot": {
+      "path": "/Users/nova-ai/project/nova-cli/docs/qa-2026-07-29/evidence/command-model-matrix.json",
+      "sha256": "87ed5bd73a89add7cb80bcca0cddc3e2c131e96d8155bbf88917d2ae98874a1a",
+      "generatedAt": "2026-07-29T03:50:26.018Z",
+      "commands": 134,
+      "models": 572,
+      "registryMetadataChecks": 134,
+      "builtinHandlerChecks": 70,
+      "builtinContractChecks": 70,
+      "aliasHandlerChecks": 6,
+      "executedSideEffectFreeChecks": 13962,
+      "failures": 0,
+      "freshForThisAudit": false
+    },
+    "modelInferenceSnapshot": {
+      "path": "/Users/nova-ai/project/nova-cli/docs/qa-2026-07-29/evidence/model-availability.json",
+      "sha256": "4bbd1f9ca8e6025c74ae8013e547995f9de3bf8757ad9d0821d977b4936a1074",
+      "generatedAt": "2026-07-29T03:50:20.965Z",
+      "total": 572,
+      "verified": 223,
+      "unavailable": 10,
+      "catalogOnly": 339,
+      "freshForThisAudit": false
+    },
+    "installedCli": {
+      "launcherPath": "/Users/nova-ai/.local/bin/nova",
+      "launcherTarget": "../lib/node_modules/nova-cli/dist/index.js",
+      "packagePath": "/Users/nova-ai/.local/lib/node_modules/nova-cli",
+      "packageTarget": "/Users/nova-ai/project/nova-cli",
+      "isPackageSymlinkToDevelopmentWorktree": true,
+      "isImmutableReleaseArtifact": false,
+      "versionCommand": "/Users/nova-ai/.local/bin/nova --version",
+      "version": "1.0.0",
+      "versionExitCode": 0,
+      "binarySha256": "16d1d8d3e0ce49ffd375eb790e9e09d4ccc01a52c43a9d1bc1c4be1a365753e3",
+      "packageJsonSha256": "d5a9dbb14ac3b868372865f7f51d6f6cc078ad19211b2614d6970b3252abd775"
+    },
+    "releaseGateConfiguration": {
+      "packageJsonSha256": "d5a9dbb14ac3b868372865f7f51d6f6cc078ad19211b2614d6970b3252abd775",
+      "releaseGateScript": "npm run typecheck && npm test && npm run build",
+      "prepack": "npm run release:gate",
+      "prepublishOnly": "npm run qa:all",
+      "ciWorkflowPath": "/Users/nova-ai/project/nova-cli/.github/workflows/ci.yml",
+      "ciWorkflowSha256": "b8d50bdd581fe35e32eccb0223d1e34bb8241addcdd43a030b90f07696037492",
+      "ciMatrix": {
+        "os": ["ubuntu-latest", "macos-latest"],
+        "node": [20, 22]
+      },
+      "configuredChecks": [
+        "npm ci",
+        "npm run typecheck",
+        "npm test -- --run",
+        "npm run build",
+        "npm audit --omit=dev --audit-level=high"
+      ],
+      "currentCiRunObserved": false
+    }
+  },
+  "novaAx": {
+    "newRunForSubjectTask": null,
+    "newReceiptForSubjectTask": null,
+    "subjectReceiptConsumption": null,
+    "priorSameScopeApprovedRun": {
+      "runId": "vrun_6373986d-6caa-4b55-8330-5f5a79591414",
+      "taskId": "nova-cli-tool-audit-20260730-1028",
+      "actorId": "codex",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "receiptId": "vrcpt_b93c3d56-9244-4d5e-8807-b90eade2ed4a",
+      "receiptConsumed": false,
+      "reusableForSubjectTask": false,
+      "reason": "receipt taskId does not match task_XKpnPbEvhc1omPz7"
+    },
+    "openRemediationLoop": {
+      "loopId": "vloop_1bf7fffc-9aa4-4dfe-a4f2-936ff62e9111",
+      "originalRunId": "vrun_87dcd328-8335-4755-812e-c8f9cc018fe2",
+      "taskId": "nova-cli-readiness-audit-20260730-team_cli-assurance-2026",
+      "actorId": "nova-ax-cli-auditor",
+      "status": "action_required",
+      "currentIteration": 1,
+      "latestRunId": null,
+      "attemptId": null
+    }
+  },
+  "requirementAssessment": [
+    {
+      "id": "all-mandatory-tests-pass",
+      "satisfied": true,
+      "evidenceSha256": "e3002aef30cf6f3ef73681929b33b8bb4ee8d322abac55691eeb6027529cc8ea"
+    },
+    {
+      "id": "mandatory-test-pass-count",
+      "satisfied": true,
+      "measurement": "596/596",
+      "evidenceSha256": "e3002aef30cf6f3ef73681929b33b8bb4ee8d322abac55691eeb6027529cc8ea"
+    },
+    {
+      "id": "advertised-command-surface-has-live-outcome-evidence",
+      "satisfied": false,
+      "reason": "only a 2026-07-29 matrix snapshot is available; NCO live endpoint is inaccessible"
+    },
+    {
+      "id": "advertised-models-have-live-inference-receipts",
+      "satisfied": false,
+      "reason": "only a 2026-07-29 inference snapshot is available; no fresh live inference run was observed"
+    },
+    {
+      "id": "installed-cli-is-an-immutable-release-artifact",
+      "satisfied": false,
+      "reason": "the installed package path is a symlink to the mutable development worktree"
+    },
+    {
+      "id": "ci-and-release-gates-are-enforced",
+      "satisfied": false,
+      "reason": "gate configuration exists and local typecheck/tests pass, but no current CI run or immutable release execution was observed"
+    }
+  ],
+  "remainingFailures": [
+    "No new Nova-AX run exists for task_XKpnPbEvhc1omPz7",
+    "No 6/6 receipt exists for task_XKpnPbEvhc1omPz7",
+    "No receipt consumption/completion event exists for task_XKpnPbEvhc1omPz7",
+    "Remediation loop vloop_1bf7fffc-9aa4-4dfe-a4f2-936ff62e9111 remains action_required",
+    "Fresh live command outcome evidence is unavailable",
+    "Fresh live model inference receipts are unavailable",
+    "Installed CLI is not an immutable release artifact",
+    "Current CI enforcement run is unobserved"
+  ]
+}

@@ -1,0 +1,300 @@
+{
+  "auditCompletedAt": "2026-07-30T09:21:42.509Z",
+  "auditCompletedAtFinal": "2026-07-30T09:22:10.632Z",
+  "scope": {
+    "companyId": "org_nova-ax",
+    "teamId": "team_infra-engineer",
+    "taskId": "task_BGQMsOcF_Oc5pVw1"
+  },
+  "verificationRun": {
+    "httpStatus": 200,
+    "runId": "vrun_e750830a-1694-4362-9c49-5cb6f5539e32",
+    "decision": "approved",
+    "passedInstitutions": 6,
+    "receiptId": "vrcpt_ce679c36-d875-4585-9f25-8f73d2f7628f",
+    "issuedAt": "2026-07-30T09:21:42.505Z",
+    "institutions": [
+      {
+        "institution": "inspection",
+        "name": "검사기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370"
+        ]
+      },
+      {
+        "institution": "validation",
+        "name": "검증기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370"
+        ]
+      },
+      {
+        "institution": "measurement",
+        "name": "실측기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "d7b3c727a346420b60a2fc06b81c2cd5c326974240dfd8ccb8753ad16794f090"
+        ]
+      },
+      {
+        "institution": "performance",
+        "name": "성능테스트기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "2244d620c55cb878cb76f6cd33f85f6bc3bf4b33f3dd913d73e1b7dfd0440f7e"
+        ]
+      },
+      {
+        "institution": "optimization",
+        "name": "최적화기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "395c996fdcb798a4d3288d53ee8c0be79daa190d8596bb2054f6640f03c51661"
+        ]
+      },
+      {
+        "institution": "goal",
+        "name": "목표달성 체크기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370",
+          "d7b3c727a346420b60a2fc06b81c2cd5c326974240dfd8ccb8753ad16794f090",
+          "4ea5373520ac47dcf10fb6ef65acda92b55a58f41e0fb4035310578bc5fc99fc"
+        ]
+      }
+    ],
+    "failures": [],
+    "remediationLoop": null
+  },
+  "artifactPath": "/Users/nova-ai/project/nova-ax/evidence/org_nova-ax/team_infra-engineer/2026-07-30/audit-artifact.json",
+  "artifactSha256": "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370",
+  "testExitCode": 0,
+  "testDurationMs": 2122,
+  "remediationLoop": {
+    "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+    "loopStatus": "completed",
+    "currentIteration": 1,
+    "latestRunId": "vrun_e750830a-1694-4362-9c49-5cb6f5539e32",
+    "updatedAt": "2026-07-30T09:22:05.858Z",
+    "actionsResolved": true,
+    "attemptDecision": "approved"
+  },
+  "completionEvent": {
+    "httpStatus": 201,
+    "activityId": "1b490e39-467d-493e-a827-8e7ff034e690",
+    "receiptConsumed": true,
+    "consumedAt": "2026-07-30T09:22:10.632Z",
+    "body": {
+      "ok": true,
+      "id": "1b490e39-467d-493e-a827-8e7ff034e690",
+      "status": "recorded",
+      "metadata": {
+        "verificationRunId": "vrun_e750830a-1694-4362-9c49-5cb6f5539e32",
+        "uiInspectionRequired": false
+      }
+    },
+    "priorRejectedAttempt": {
+      "httpStatus": 409,
+      "activityId": "3a0543e3-e17a-4d96-bba0-775d2b3d27cd",
+      "error": "active remediation loop must be completed before receipt consumption: vloop_23f3cb50-a908-4993-9281-3174ca28a77a"
+    }
+  },
+  "oversightAfter": {
+    "commander": "Supreme Verification Commander",
+    "institutions": [
+      {
+        "id": "inspection",
+        "name": "검사기관",
+        "mandate": "산출물을 직접 열어 존재·상태·내용·해시를 검사"
+      },
+      {
+        "id": "validation",
+        "name": "검증기관",
+        "mandate": "실측 해시와 독립 증명의 무결성·독립성을 검증"
+      },
+      {
+        "id": "measurement",
+        "name": "실측기관",
+        "mandate": "신선한 기계 실측값·표본·목표 달성을 검증"
+      },
+      {
+        "id": "performance",
+        "name": "성능테스트기관",
+        "mandate": "실행된 테스트의 종료코드·시간·출력 증거를 검증"
+      },
+      {
+        "id": "optimization",
+        "name": "최적화기관",
+        "mandate": "기준선 대비 개선과 무회귀를 검증"
+      },
+      {
+        "id": "goal",
+        "name": "목표달성 체크기관",
+        "mandate": "모든 요구사항과 실제 증거의 연결을 검증"
+      }
+    ],
+    "policy": "6/6 unanimous approval per task; any unresolved task failure makes the scope non-compliant",
+    "totals": {
+      "total": 2,
+      "approved": 1,
+      "rejected": 1,
+      "pending": 0,
+      "consumedReceipts": 1,
+      "activeScopes": 1,
+      "compliantScopes": 1,
+      "unverifiedScopes": 0,
+      "failedScopes": 0,
+      "activeRemediationLoops": 0,
+      "completedRemediationLoops": 1,
+      "exhaustedRemediationLoops": 0,
+      "queuedDirectives": 0,
+      "dispatchedDirectives": 0,
+      "completedDirectives": 2,
+      "cancelledDirectives": 0
+    },
+    "scopes": [
+      {
+        "companyId": "org_nova-ax",
+        "teamId": "team_infra-engineer",
+        "total": 2,
+        "approved": 1,
+        "rejected": 1
+      }
+    ],
+    "historicalRejectedRuns": [
+      {
+        "runId": "vrun_527f7eb2-c86f-4d6a-8676-d5574faa15bb",
+        "taskId": "task_BGQMsOcF_Oc5pVw1",
+        "companyId": "org_nova-ax",
+        "teamId": "team_infra-engineer",
+        "actorId": "cursor-agent",
+        "passedInstitutions": 5,
+        "createdAt": "2026-07-30T09:21:02.238Z"
+      }
+    ],
+    "failureQueue": [],
+    "unverifiedScopeQueue": [],
+    "remediationLoops": [
+      {
+        "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+        "originalRunId": "vrun_527f7eb2-c86f-4d6a-8676-d5574faa15bb",
+        "taskId": "task_BGQMsOcF_Oc5pVw1",
+        "ownerCompanyId": "org_nova-ax",
+        "ownerTeamId": "team_infra-engineer",
+        "actorId": "cursor-agent",
+        "status": "completed",
+        "currentIteration": 1,
+        "maxIterations": 5,
+        "latestRunId": "vrun_e750830a-1694-4362-9c49-5cb6f5539e32",
+        "createdAt": "2026-07-30T09:21:02.239Z",
+        "updatedAt": "2026-07-30T09:22:05.858Z",
+        "actions": [
+          {
+            "id": "vaction_27dd68cfcebe5c96199424e65302cf01",
+            "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+            "iteration": 1,
+            "ownerCompanyId": "org_nova-ax",
+            "ownerTeamId": "team_infra-engineer",
+            "institution": "validation",
+            "failure": "UI inspection classification reason is required",
+            "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: UI inspection classification reason is required",
+            "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+            "evidenceRequired": [
+              "independent integrity attestation SHA-256",
+              "new validation result evidence reference"
+            ],
+            "priority": "high",
+            "status": "resolved"
+          },
+          {
+            "id": "vaction_4b7fcfa82c396fef0b9511d3b2a4fe40",
+            "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+            "iteration": 1,
+            "ownerCompanyId": "org_nova-ax",
+            "ownerTeamId": "team_infra-engineer",
+            "institution": "validation",
+            "failure": "UI inspection classification: provenance is required",
+            "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: UI inspection classification: provenance is required",
+            "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+            "evidenceRequired": [
+              "independent integrity attestation SHA-256",
+              "new validation result evidence reference"
+            ],
+            "priority": "high",
+            "status": "resolved"
+          }
+        ],
+        "attempts": [
+          {
+            "id": "vattempt_3f80935f-ad41-48c6-add1-d548bf8ccc01",
+            "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+            "iteration": 1,
+            "actorId": "cursor-agent",
+            "runId": "vrun_e750830a-1694-4362-9c49-5cb6f5539e32",
+            "criteria": [
+              {
+                "actionId": "vaction_27dd68cfcebe5c96199424e65302cf01",
+                "evidenceHashes": [
+                  "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370"
+                ]
+              },
+              {
+                "actionId": "vaction_4b7fcfa82c396fef0b9511d3b2a4fe40",
+                "evidenceHashes": [
+                  "1e20c0e6d5f27c761c2058d52b63f9cc58656ac2bee15ac72973c87e8afe0370"
+                ]
+              }
+            ],
+            "decision": "approved",
+            "createdAt": "2026-07-30T09:22:05.858Z"
+          }
+        ]
+      }
+    ],
+    "nextActions": [],
+    "directives": [
+      {
+        "id": "vdir_5dda3b53-385b-456e-9f93-eff6e853d0e7",
+        "companyId": "org_nova-ax",
+        "teamId": "team_infra-engineer",
+        "loopId": "vloop_23f3cb50-a908-4993-9281-3174ca28a77a",
+        "type": "remediation",
+        "status": "completed",
+        "workReportId": "remediation_vloop_23f3cb50-a908-4993-9281-3174ca28a77a_1",
+        "taskId": "task_OcM2jVHk0R3x0Rsu",
+        "dispatchedAt": "2026-07-30T09:21:09.685Z",
+        "lastError": null,
+        "attemptCount": 1,
+        "nextAttemptAt": null,
+        "scopeType": "team"
+      },
+      {
+        "id": "vdir_ee1bb9f3-dba9-4812-aff7-dd36de00a01b",
+        "companyId": "org_nova-ax",
+        "teamId": "team_infra-engineer",
+        "loopId": "",
+        "type": "audit_required",
+        "status": "completed",
+        "workReportId": "audit_req_org_nova-ax_team_infra-engineer",
+        "taskId": "task_BGQMsOcF_Oc5pVw1",
+        "dispatchedAt": "2026-07-30T04:34:16.383Z",
+        "lastError": null,
+        "attemptCount": 1,
+        "nextAttemptAt": null,
+        "scopeType": "team"
+      }
+    ],
+    "runtime": {
+      "scopeRegistryReady": true,
+      "scopeRegistryLastSyncedAt": "2026-07-30T09:21:09.681Z"
+    }
+  }
+}

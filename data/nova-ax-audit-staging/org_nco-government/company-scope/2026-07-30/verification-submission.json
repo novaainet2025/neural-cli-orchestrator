@@ -1,0 +1,99 @@
+{
+  "taskId": "task_jJHlFjEeTXAUXqOO",
+  "companyId": "org_nco-government",
+  "teamId": "company-scope",
+  "actorId": "cursor-agent",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/org_nco-government/company-scope/2026-07-30/company-scope-audit-bundle.json",
+    "expectedSha256": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "node-sha256-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:49:32.668Z",
+      "evidenceHash": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "company-scope evidence bundle is a machine-generated JSON document with no rendered UI surface; content-type probe returned non-HTML",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "artifact-content-type-probe",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:49:32.668Z",
+      "evidenceHash": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+    }
+  },
+  "measurements": [
+    {
+      "name": "hashed-nco-government-artifacts",
+      "unit": "files",
+      "baseline": 0,
+      "current": 15,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 15,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "node-filesystem-evidence-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:49:32.668Z",
+        "evidenceHash": "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "company-scope-evidence-integrity-suite",
+      "exitCode": 0,
+      "durationMs": 135,
+      "commandHash": "c6f1d8b726440da7c5779b5ba8459f3949dc06fa1a6d682db4e45de4d5e741be",
+      "outputHash": "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+      "provenance": {
+        "kind": "ci",
+        "producer": "node-test-independent-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:49:32.668Z",
+        "evidenceHash": "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "company-scope-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:49:32.668Z",
+      "evidenceHash": "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+    }
+  },
+  "requirements": [
+    {
+      "id": "company-scope-audit-bundle-is-grounded-and-reproducible",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+        "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74",
+        "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+        "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "company-scope-goal-attestation-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:49:32.668Z",
+      "evidenceHash": "0e1756317dcbaa2f6fe60fdfa48123bfaaddd7109d52431497b85ede833c930d"
+    }
+  }
+}

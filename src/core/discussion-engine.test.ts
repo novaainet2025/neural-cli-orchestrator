@@ -1,24 +1,34 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DISCUSSION_EVENT_CONTENT_LIMIT,
   DISCUSSION_MIN_RESPONSE_LENGTH,
   DISCUSSION_QUORUM_GRACE_CEILING_MS,
+  DISCUSSION_RETRY_TIMEOUT_CEILING_MS,
   DISCUSSION_TIMEOUT_CEILING_MS,
   DISCUSSION_TIMEOUT_FLOOR_MS,
+  authorizeSingleProposalFallback,
   buildDiscussionEventContent,
+  discussionEngine,
   formatDiscussionProposalContent,
   requireDiscussionOutput,
   requireSubstantiveDiscussionOutput,
   resolveDiscussionQuorumGraceMs,
+  resolveDiscussionProposalQuorum,
+  resolveDiscussionRetryTimeoutMs,
   resolveDiscussionTimeoutMs,
   selectDiscussionConclusion,
+  selectDiscussionReplacementProviders,
   selectDiscussionSynthesisProvider,
 } from './discussion-engine.js';
+import { agentManager } from '../agent/agent-manager.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+import { getDb } from '../storage/database.js';
 
 describe('discussion stage timeout resolution', () => {
   const overridden = [
     'NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS',
     'NCO_DISCUSSION_EVALUATION_TIMEOUT_MS',
+    'NCO_DISCUSSION_RETRY_TIMEOUT_MS',
   ];
   afterEach(() => {
     for (const key of overridden) delete process.env[key];
@@ -46,6 +56,14 @@ describe('discussion stage timeout resolution', () => {
   it('ignores non-numeric overrides instead of producing NaN', () => {
     process.env.NCO_DISCUSSION_PROPOSAL_TIMEOUT_MS = 'not-a-number';
     expect(resolveDiscussionTimeoutMs('proposal')).toBe(420_000);
+  });
+
+  it('bounds R1 retry separately from the full initial proposal budget', () => {
+    expect(resolveDiscussionRetryTimeoutMs()).toBe(120_000);
+    process.env.NCO_DISCUSSION_RETRY_TIMEOUT_MS = String(60 * 60 * 1000);
+    expect(resolveDiscussionRetryTimeoutMs()).toBe(DISCUSSION_RETRY_TIMEOUT_CEILING_MS);
+    process.env.NCO_DISCUSSION_RETRY_TIMEOUT_MS = '1000';
+    expect(resolveDiscussionRetryTimeoutMs()).toBe(DISCUSSION_TIMEOUT_FLOOR_MS);
   });
 });
 
@@ -150,15 +168,51 @@ describe('discussion provider output validation', () => {
     expect(selectDiscussionSynthesisProvider(['opencode', 'codex'])).toBe('codex');
     expect(selectDiscussionSynthesisProvider([])).toBeUndefined();
   });
+
+  it('adds one bounded spare replacement so a single timeout cannot defeat quorum', () => {
+    expect(selectDiscussionReplacementProviders(
+      ['opencode', 'claude-code', 'codex'],
+      ['codex'],
+      ['opencode', 'ollama', 'codex', 'cursor-agent', 'hermes'],
+    )).toEqual(['ollama', 'cursor-agent']);
+  });
+
+  it('caps replacement overprovisioning at one provider when two proposals are missing', () => {
+    expect(selectDiscussionReplacementProviders(
+      ['opencode', 'claude-code', 'codex'],
+      [],
+      ['opencode', 'ollama', 'codex', 'agy', 'cursor-agent', 'hermes'],
+    )).toEqual(['ollama', 'agy', 'cursor-agent']);
+  });
+
+  it('does not select replacements after proposal quorum is satisfied', () => {
+    expect(selectDiscussionReplacementProviders(
+      ['opencode', 'codex'],
+      ['opencode', 'codex'],
+      ['ollama', 'cursor-agent'],
+    )).toEqual([]);
+  });
 });
 
 describe('discussion conclusion selection', () => {
+  it('uses a valid R1 proposal when a caller explicitly runs one round', () => {
+    const result = selectDiscussionConclusion([
+      {
+        round: 1,
+        responses: { ollama: 'proposal A', codex: 'proposal B' },
+        consensusRate: 0,
+      },
+    ], ['ollama', 'codex']);
+
+    expect(result).toEqual({ adoptedAgent: 'ollama', adoptedProposal: 'proposal A' });
+  });
+
   it('uses the commander synthesis instead of falling back to the first participant', () => {
     const result = selectDiscussionConclusion([
       {
         round: 1,
         responses: {
-          higgsfield: '118904a8-2d77-4753-85c2-7c8752cd9280',
+          'media-job-runner': '118904a8-2d77-4753-85c2-7c8752cd9280',
           agy: 'evidence-backed proposal',
         },
         consensusRate: 0,
@@ -166,7 +220,7 @@ describe('discussion conclusion selection', () => {
       {
         round: 2,
         responses: { agy: 'agy should win' },
-        evaluations: { agy: { higgsfield: 1, agy: 9 } },
+        evaluations: { agy: { 'media-job-runner': 1, agy: 9 } },
         consensusRate: 1,
       },
       {
@@ -174,7 +228,7 @@ describe('discussion conclusion selection', () => {
         responses: { 'claude-code': 'final verified synthesis' },
         consensusRate: 1,
       },
-    ], ['higgsfield', 'agy', 'claude-code']);
+    ], ['media-job-runner', 'agy', 'claude-code']);
 
     expect(result).toEqual({
       adoptedAgent: 'claude-code',
@@ -186,6 +240,25 @@ describe('discussion conclusion selection', () => {
     expect(() => selectDiscussionConclusion([
       { round: 1, responses: { codex: 'valid proposal' }, consensusRate: 0 },
     ], ['codex', 'cursor-agent'])).toThrow('discussion_insufficient_valid_proposals:1/2');
+  });
+
+  it('accepts one proposal only when bounded fallback degradation is explicit', () => {
+    const result = selectDiscussionConclusion([
+      { round: 1, responses: { codex: 'sole valid proposal' }, consensusRate: 0 },
+    ], ['codex', 'cursor-agent'], true);
+
+    expect(result).toEqual({
+      adoptedAgent: 'codex',
+      adoptedProposal: 'sole valid proposal',
+    });
+  });
+
+  it('keeps zero valid proposals fail-closed even when degradation is explicit', () => {
+    expect(() => selectDiscussionConclusion([
+      { round: 1, responses: {}, consensusRate: 0 },
+    ], ['codex', 'cursor-agent'], true)).toThrow(
+      'discussion_insufficient_valid_proposals:0/2',
+    );
   });
 
   it('accepts a synthesis from a responsive non-claude provider', () => {
@@ -230,5 +303,164 @@ describe('discussion conclusion selection', () => {
     ], ['codex', 'opencode']);
 
     expect(result).toEqual({ adoptedAgent: 'opencode', adoptedProposal: 'proposal B' });
+  });
+});
+
+describe('discussion proposal quorum decision', () => {
+  it('authorizes degraded quorum only for a persisted UI company run', () => {
+    expect(authorizeSingleProposalFallback(true, 'ui-inspection')).toBe(true);
+    expect(authorizeSingleProposalFallback(true, 'research')).toBe(false);
+    expect(authorizeSingleProposalFallback(true, undefined)).toBe(false);
+    expect(authorizeSingleProposalFallback(false, 'ui-inspection')).toBe(false);
+  });
+
+  it('keeps the default 2-proposal quorum', () => {
+    expect(resolveDiscussionProposalQuorum(1)).toMatchObject({
+      accepted: false,
+      degraded: false,
+      required: 2,
+      achieved: 1,
+    });
+    expect(resolveDiscussionProposalQuorum(2)).toMatchObject({
+      accepted: true,
+      degraded: false,
+      required: 2,
+      achieved: 2,
+    });
+  });
+
+  it('degrades only from 1/2 after the caller explicitly exhausted bounded fallback', () => {
+    expect(resolveDiscussionProposalQuorum(1, true)).toEqual({
+      accepted: true,
+      degraded: true,
+      required: 2,
+      achieved: 1,
+      reason: 'bounded_retry_and_replacement_exhausted',
+    });
+    expect(resolveDiscussionProposalQuorum(0, true)).toMatchObject({
+      accepted: false,
+      degraded: false,
+      achieved: 0,
+    });
+  });
+});
+
+describe('bounded single-proposal fallback sequence', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function runExhaustedFallback(orgSlug: string) {
+    const db = getDb();
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const companyRunId = `corun-quorum-${suffix}`;
+    const sessionId = `discussion-quorum-${suffix}`;
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO company_runs (
+        id, org_id, org_slug, goal, mode, status, dry_run,
+        project_dir, run_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, 'pipeline', 'running', 0, '/tmp', '{}', ?, ?)
+    `).run(companyRunId, `org_${orgSlug}`, orgSlug, 'bounded quorum test', now, now);
+
+    const execute = vi.spyOn(agentManager, 'executeTask')
+      .mockImplementation(async (providerId: string) => {
+        if (providerId === 'agy') {
+          return { success: true, output: 'sole valid proposal' } as any;
+        }
+        throw new Error(`${providerId} unavailable`);
+      });
+    vi.spyOn(agentManager, 'listEnabledIds')
+      .mockReturnValue(['agy', 'hermes', 'opencode', 'ollama']);
+    vi.spyOn(circuitBreakerRegistry, 'getAvailability')
+      .mockReturnValue({ available: true } as any);
+
+    try {
+      const report = await discussionEngine.startDiscussion({
+        sessionId,
+        topic: 'exercise the bounded fallback sequence',
+        mode: 'discussion',
+        providers: ['agy', 'hermes'],
+        maxRounds: 1,
+        companyRunId,
+        projectDir: '/tmp',
+        allowSingleProposalAfterBoundedFallback: true,
+      });
+      return { report, execute, sessionId };
+    } catch (error) {
+      return { error, execute, sessionId };
+    } finally {
+      // Assertions read the persisted discussion before the caller removes it.
+      vi.restoreAllMocks();
+    }
+  }
+
+  function cleanupSequence(sessionId: string) {
+    const db = getDb();
+    const row = db.prepare('SELECT company_run_id FROM discussions WHERE id=?')
+      .get(sessionId) as { company_run_id?: string } | undefined;
+    db.prepare('DELETE FROM discussion_messages WHERE discussion_id=?').run(sessionId);
+    db.prepare('DELETE FROM discussions WHERE id=?').run(sessionId);
+    if (row?.company_run_id) {
+      db.prepare('DELETE FROM company_runs WHERE id=?').run(row.company_run_id);
+    }
+  }
+
+  it('persists degraded evidence only after UI retry and replacement waves are exhausted', async () => {
+    const outcome = await runExhaustedFallback('ui-inspection');
+    try {
+      expect(outcome.error).toBeUndefined();
+      expect(outcome.report?.proposalQuorum).toMatchObject({
+        required: 2,
+        achieved: 1,
+        degraded: true,
+        reason: 'bounded_retry_and_replacement_exhausted',
+        initialProviders: ['agy', 'hermes'],
+        retriedProviders: ['hermes'],
+        attemptWaves: 3,
+        providerCalls: 5,
+      });
+      expect(new Set(outcome.report?.proposalQuorum?.replacementProviders)).toEqual(
+        new Set(['opencode', 'ollama']),
+      );
+      expect(outcome.execute.mock.calls.filter(([provider]) => provider === 'hermes')).toHaveLength(2);
+
+      const persisted = getDb().prepare(
+        'SELECT status, result_json FROM discussions WHERE id=?',
+      ).get(outcome.sessionId) as { status: string; result_json: string };
+      expect(persisted.status).toBe('completed');
+      expect(JSON.parse(persisted.result_json).proposalQuorum).toMatchObject({
+        achieved: 1,
+        degraded: true,
+        attemptWaves: 3,
+      });
+    } finally {
+      cleanupSequence(outcome.sessionId);
+    }
+  });
+
+  it('keeps an otherwise identical non-UI company run fail-closed', async () => {
+    const outcome = await runExhaustedFallback('research');
+    try {
+      expect(outcome.report).toBeUndefined();
+      expect(outcome.error).toBeInstanceOf(Error);
+      expect((outcome.error as Error).message).toBe(
+        'discussion_insufficient_valid_proposals:1/2',
+      );
+
+      const persisted = getDb().prepare(
+        'SELECT status, result_json FROM discussions WHERE id=?',
+      ).get(outcome.sessionId) as { status: string; result_json: string };
+      expect(persisted.status).toBe('failed');
+      expect(JSON.parse(persisted.result_json)).toMatchObject({
+        error: 'discussion_insufficient_valid_proposals:1/2',
+        proposalQuorum: {
+          achieved: 1,
+          degraded: false,
+        },
+      });
+    } finally {
+      cleanupSequence(outcome.sessionId);
+    }
   });
 });

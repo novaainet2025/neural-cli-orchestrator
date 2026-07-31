@@ -1,0 +1,81 @@
+{
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-accessibility",
+    "taskId": "task_QiaoWW-V7AoIk2hP"
+  },
+  "artifact": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/task-deliverable.md",
+    "sha256": "278cad4a147619307df982ad8909cd564d118ad18c87b68d2df9699ec6ec5016",
+    "byteSize": 3795,
+    "status": "observed"
+  },
+  "taskState": {
+    "status": "cancelled",
+    "assignedTo": "hermes",
+    "verificationStatus": "pending",
+    "originalCompletionEvent": {
+      "id": "evt_qKqRyHSkYYh8ImUo",
+      "event_type": "task:completed",
+      "outcome": "succeeded",
+      "occurred_at": "2026-07-30T13:31:35.271Z"
+    }
+  },
+  "novaAxState": {
+    "verificationRuns": [],
+    "receipts": [],
+    "remediationLoops": [],
+    "directives": [
+      {
+        "id": "vdir_c5c21eda-ab19-4425-a75b-f9b3eabae6a5",
+        "type": "audit_required",
+        "status": "queued",
+        "auditTaskId": null,
+        "subjectTaskId": "task_QiaoWW-V7AoIk2hP",
+        "attemptCount": 7,
+        "lastError": "NCO audit task ended as failed",
+        "updatedAt": "2026-07-30T16:29:27.600Z"
+      }
+    ]
+  },
+  "institutionSubmissionReadiness": {
+    "eligible": false,
+    "passedChecks": 10,
+    "totalChecks": 11,
+    "failedChecks": [
+      {
+        "id": "C11_character_limit",
+        "requirement": "산출물 2000자 이내",
+        "observed": {
+          "rawCodePoints": 2323,
+          "bodyWithoutProtocolCodePoints": 2204,
+          "utf8Bytes": 3795,
+          "promptLimitCodePoints": 2000
+        }
+      }
+    ]
+  },
+  "ncoCompletionReadiness": {
+    "eligible": false,
+    "requiredStatus": "reviewing",
+    "observedStatus": "cancelled",
+    "blocker": "POST /api/tasks/:id/verification rejects tasks not in reviewing state"
+  },
+  "evidence": {
+    "deliverableSha256": "278cad4a147619307df982ad8909cd564d118ad18c87b68d2df9699ec6ec5016",
+    "checks": {
+      "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/machine-checks.json",
+      "sha256": "58b5b082d59ffff8de746be3e94e7f3cfb65bd25b01c4d8dc7b502375cc2fafe"
+    },
+    "negativeControl": {
+      "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/negative-control.json",
+      "sha256": "eee53ab902e4c58598fa4d9df7f324e13f240a24acb5f297b7256f4d749fb553"
+    },
+    "provenance": {
+      "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/provenance.json",
+      "sha256": "4c0cdad03f7ca084af9fcd7ef1e43efe1b45a76d6012034aec01bce9179198a9"
+    }
+  },
+  "conclusion": "blocked_do_not_claim_approval",
+  "collectedAt": "2026-07-30T17:04:17.745Z"
+}

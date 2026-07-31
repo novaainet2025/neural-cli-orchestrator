@@ -53,7 +53,7 @@ AI 정부 수립 설계: 헌법, 정부구조, 시민등록, 법률체계, 경�
 | 완료 | 17개 (34.0%) |
 | 대기 중 | 26개 |
 | 실패 | 4개 (실패율: 8.0%) ✅ |
-| 투입 에이전트 | claude-code, codex, copilot, cursor-agent, discussion-engine, higgsfield, retired-provider, opencode |
+| 투입 에이전트 | claude-code, codex, copilot, cursor-agent, discussion-engine, retired-media-provider, retired-provider, opencode |
 | 사용 모드 | full-pipeline, hive, inter-session, mesh, nova-ax, parallel, task |
 
 > 실패율 기준: ≤10% 정상 | 현재 8.0% ✅

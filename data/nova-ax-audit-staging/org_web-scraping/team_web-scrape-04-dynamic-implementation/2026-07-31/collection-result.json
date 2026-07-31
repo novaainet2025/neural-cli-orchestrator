@@ -1,0 +1,14 @@
+{
+  "status": "ready_for_submission",
+  "observedAt": "2026-07-30T19:09:59.044Z",
+  "evidenceManifest": {
+    "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/evidence-manifest.json",
+    "sha256": "591760676c7ed86b8e384ddc6b9cf3b7b564426f4c4f8f91208c33ede22e5c64",
+    "bytes": 2341
+  },
+  "submissionPayload": {
+    "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/submission-payload.json",
+    "sha256": "3351b5bd74ce5708145752375a7ee8a89b1137e7d4c7f3b97d2743ee09b5a781",
+    "bytes": 5022
+  }
+}

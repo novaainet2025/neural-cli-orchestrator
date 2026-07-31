@@ -1,6 +1,7 @@
-import Fastify, { type FastifyReply } from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import { createHmac, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod/v4';
@@ -519,6 +520,7 @@ import { registerInterSessionRoutes } from './routes/inter-session.js';
 import { registerHandoffRoutes } from './routes/handoff.js';
 import { registerFleetOpsRoutes } from './routes/fleet-ops.js';
 import { registerTeamsRoutes } from './routes/teams.js';
+import { registerCliQaRoutes } from './routes/cli-qa.js';
 import { registerGoalsRoutes } from './routes/goals.js';
 import { registerPerformanceRoutes } from './routes/performance.js';
 import { registerPerformanceFlowRoutes } from './routes/performance-flow.js';
@@ -1033,6 +1035,162 @@ function safeJsonParse(raw: string): unknown {
   }
 }
 
+const NOVA_AX_BASE_URL = process.env.NOVA_AX_URL || 'http://127.0.0.1:6300';
+const NOVA_AX_ACTIVITY_PATH = '/api/activity';
+
+function parseTaskMetadata(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  const parsed = safeJsonParse(raw);
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : {};
+}
+
+function isAuditControlPlane(metadata: Record<string, unknown>): boolean {
+  return metadata.auditControlPlane === true
+    || typeof metadata.verificationDirectiveId === 'string';
+}
+
+function requiresNovaAxAudit(
+  teamId: string | null,
+  metadata: Record<string, unknown>,
+): boolean {
+  // UI 독립 감사 승인팀은 영수증 소비자이지 자기 charter의 감사 대상이 아니다.
+  if (teamId === 'team_ui-audit-approval') return false;
+  return Boolean(teamId) && !isAuditControlPlane(metadata);
+}
+
+async function postNovaAxActivity(body: Record<string, unknown>): Promise<{
+  ok: boolean;
+  status: number;
+  payload: Record<string, unknown>;
+}> {
+  const secret = (process.env.AX_NCO_SECRET || process.env.NCO_API_TOKEN || '').trim();
+  if (!secret) throw new Error('Nova-AX bridge secret is not configured');
+  const bodyText = JSON.stringify(body);
+  const timestamp = Date.now().toString();
+  const nonce = randomBytes(8).toString('hex');
+  const signature = createHmac('sha256', secret)
+    .update(`POST:${NOVA_AX_ACTIVITY_PATH}:${timestamp}:${nonce}:${bodyText}`)
+    .digest('hex');
+  const response = await fetch(`${NOVA_AX_BASE_URL}${NOVA_AX_ACTIVITY_PATH}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-nco-signature': signature,
+      'x-nco-timestamp': timestamp,
+      'x-nco-nonce': nonce,
+      'x-nco-service': 'nco',
+    },
+    body: bodyText,
+    signal: AbortSignal.timeout(10_000),
+  });
+  const text = await response.text();
+  let payload: Record<string, unknown> = {};
+  if (text) {
+    try {
+      payload = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      payload = { raw: text };
+    }
+  }
+  return { ok: response.ok, status: response.status, payload };
+}
+
+async function notifyNovaAxAuditRequired(input: {
+  taskId: string;
+  companyId: string;
+  teamId: string;
+  actorId: string;
+  prompt: string;
+}): Promise<void> {
+  const response = await postNovaAxActivity({
+    id: `nco-audit-pending:${input.taskId}:${Date.now()}`,
+    timestamp: new Date().toISOString(),
+    agentId: input.actorId,
+    agentName: input.actorId,
+    action: 'task_complete',
+    description: input.prompt.slice(0, 500),
+    taskId: input.taskId,
+    companyId: input.companyId,
+    teamId: input.teamId,
+    metadata: {
+      auditPending: true,
+      source: 'nco-completion-gate',
+      requiredPriority: 10,
+    },
+  });
+  // A 409 is the expected fail-closed acknowledgement: Nova-AX recorded the
+  // rejected completion and queued the task-bound priority-10 audit.
+  if (response.status !== 409 && !response.ok) {
+    throw new Error(`Nova-AX audit queue request failed with HTTP ${response.status}`);
+  }
+}
+
+function markTaskAuditQueued(taskId: string): void {
+  const db = getDb();
+  const row = db.prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as
+    | { metadata_json: string | null }
+    | undefined;
+  const metadata = parseTaskMetadata(row?.metadata_json);
+  metadata.verificationStatus = 'pending';
+  metadata.verificationAuditQueuedAt = new Date().toISOString();
+  metadata.auditPriority = 10;
+  db.prepare(`
+    UPDATE tasks
+    SET metadata_json=?, updated_at=datetime('now')
+    WHERE id=? AND status='reviewing'
+  `).run(JSON.stringify(metadata), taskId);
+}
+
+async function reconcilePendingOrganizationAudits(limit = 25): Promise<number> {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT k.id, k.team_id, k.assigned_to, k.prompt, k.metadata_json,
+      t.organization_id
+    FROM tasks k
+    JOIN teams t ON t.id=k.team_id
+    JOIN organizations o ON o.id=t.organization_id
+    WHERE k.status='reviewing'
+      AND t.is_active=1
+      AND o.is_active=1
+      AND (
+        NOT json_valid(COALESCE(k.metadata_json, ''))
+        OR COALESCE(json_extract(k.metadata_json, '$.verificationStatus'), '') <> 'approved'
+      )
+      AND (
+        NOT json_valid(COALESCE(k.metadata_json, ''))
+        OR json_extract(k.metadata_json, '$.verificationAuditQueuedAt') IS NULL
+        OR datetime(json_extract(k.metadata_json, '$.verificationAuditQueuedAt'))
+          <= datetime('now','-10 minutes')
+      )
+    ORDER BY k.updated_at, k.id
+    LIMIT ?
+  `).all(limit) as Array<{
+    id: string;
+    team_id: string;
+    assigned_to: string | null;
+    prompt: string;
+    metadata_json: string | null;
+    organization_id: string;
+  }>;
+  let queued = 0;
+  for (const row of rows) {
+    const metadata = parseTaskMetadata(row.metadata_json);
+    if (isAuditControlPlane(metadata)) continue;
+    await notifyNovaAxAuditRequired({
+      taskId: row.id,
+      companyId: row.organization_id,
+      teamId: row.team_id,
+      actorId: row.assigned_to || 'nco',
+      prompt: row.prompt,
+    });
+    markTaskAuditQueued(row.id);
+    queued++;
+  }
+  return queued;
+}
+
 async function processAcquisitionCandidate(input: {
   packageName: string;
   version?: string | null;
@@ -1123,6 +1281,22 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  const organizationAuditTimer = setInterval(() => {
+    void reconcilePendingOrganizationAudits().catch(error => {
+      log.warn({
+        err: error instanceof Error ? error.message : String(error),
+      }, 'Pending organization audit reconciliation failed');
+    });
+  }, 60_000);
+  organizationAuditTimer.unref();
+  app.addHook('onClose', async () => {
+    clearInterval(organizationAuditTimer);
+  });
+  void reconcilePendingOrganizationAudits().catch(error => {
+    log.warn({
+      err: error instanceof Error ? error.message : String(error),
+    }, 'Initial pending organization audit reconciliation failed');
+  });
   try {
     reconcileTerminalWorkflowTasks();
     failStaleDiscussions();
@@ -1453,10 +1627,11 @@ export async function createGateway() {
   const handleCompletedTaskQualityGate = async (taskId: string, response: string): Promise<void> => {
     const db = getDb();
     const taskRow = db.prepare(`
-      SELECT assigned_to, verifier_json, parent_task_id, metadata_json, prompt
+      SELECT status, assigned_to, verifier_json, parent_task_id, metadata_json, prompt
       FROM tasks
       WHERE id=?
     `).get(taskId) as {
+      status: string;
       assigned_to: string | null;
       verifier_json: string | null;
       parent_task_id: string | null;
@@ -1489,15 +1664,21 @@ export async function createGateway() {
       pattern: quality.heuristics.join(','),
       context: { taskId, companyOwnsRetry },
     });
+    const qualityError = `quality_rejected: ${quality.heuristics.join(',')}`;
     if (companyOwnsRetry) {
+      const demoted = markTaskQualityRejected(db, taskId, quality.heuristics);
+      if (demoted) {
+        // 회사 오케스트레이터가 재시도 owner여도 reviewing 상태를 종결해야
+        // waitForTask()가 실패를 관측하고 다음 실행자로 failover할 수 있다.
+        syncWorkflowTask(taskId, 'failed', { error: qualityError }, db);
+      }
       log.info(
-        { taskId, heuristics: quality.heuristics },
+        { taskId, heuristics: quality.heuristics, demoted },
         'Quality retry delegated to company orchestrator',
       );
       return;
     }
 
-    const qualityError = `quality_rejected: ${quality.heuristics.join(',')}`;
     const demoted = markTaskQualityRejected(db, taskId, quality.heuristics);
     if (demoted) {
       // Execution completion is provisional until this quality gate finishes.
@@ -1965,16 +2146,21 @@ export async function createGateway() {
     const taskTeamId = typeof input.metadata?.teamId === 'string' && input.metadata.teamId.trim()
       ? input.metadata.teamId.trim()
       : null;
+    let taskOrganizationId = typeof input.metadata?.organizationId === 'string'
+      ? input.metadata.organizationId.trim()
+      : '';
     if (taskTeamId) {
       const lifecycleTarget = db.prepare(`
         SELECT
           t.is_active AS team_active,
+          t.organization_id AS organization_id,
           COALESCE(o.is_active, 1) AS organization_active
         FROM teams t
         LEFT JOIN organizations o ON o.id = t.organization_id
         WHERE t.id = ?
       `).get(taskTeamId) as {
         team_active: number;
+        organization_id: string | null;
         organization_active: number;
       } | undefined;
       if (!lifecycleTarget) {
@@ -1986,6 +2172,14 @@ export async function createGateway() {
         return {
           error: 'team_inactive',
           detail: `team lifecycle blocks new work: ${taskTeamId}`,
+        };
+      }
+      taskOrganizationId = lifecycleTarget.organization_id || taskOrganizationId;
+      if (!taskOrganizationId) {
+        reply.code(409);
+        return {
+          error: 'organization_audit_scope_missing',
+          detail: `active team has no organization audit scope: ${taskTeamId}`,
         };
       }
     }
@@ -2064,6 +2258,17 @@ export async function createGateway() {
       // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
       const mergedMetadata = {
         ...(input.metadata ?? {}),
+        ...(taskTeamId && requiresNovaAxAudit(taskTeamId, input.metadata ?? {})
+          ? {
+              // GATE-STRATEGIC-R1: verificationStatus는 reviewing 진입 시
+              // markTaskAuditQueued가 설정한다. enqueue 시 'pending' 주입은
+              // 스케줄러 우회 completed 행이 게이트에 걸려 completion=0%를 만든다.
+              organizationAuditRequired: true,
+              companyId: taskOrganizationId,
+              teamId: taskTeamId,
+              auditPriority: 10,
+            }
+          : {}),
         requestedProvider: input.metadata?.requestedProvider ?? requestedProvider,
         ...(input.model ? { model: input.model } : {}),
         ...(promptGate ? { promptGate } : {}),
@@ -2138,23 +2343,48 @@ export async function createGateway() {
           result,
           failureDetectionOptions,
         );
+        const taskMetadata = input.metadata ?? {};
+        const auditRequired = nextStatus === 'completed'
+          && requiresNovaAxAudit(taskTeamId, taskMetadata);
+        const persistedStatus = auditRequired ? 'reviewing' : nextStatus;
         try {
-          const moved = transitionTask(db, taskId, nextStatus, {
+          const moved = transitionTask(db, taskId, persistedStatus, {
             response: response || undefined,
             error,
-            completedAt: nextStatus !== 'cancelled',
-            evidenceJson: nextStatus === 'completed' ? result.evidenceJson : undefined,
+            completedAt: persistedStatus !== 'cancelled' && persistedStatus !== 'reviewing',
+            evidenceJson:
+              persistedStatus === 'completed' || persistedStatus === 'reviewing'
+                ? result.evidenceJson
+                : undefined,
           });
           if (!moved.ok) {
-            log.info({ taskId, prev: moved.prev, next: nextStatus }, 'Skipped terminal completion update');
+            log.info({ taskId, prev: moved.prev, next: persistedStatus }, 'Skipped terminal completion update');
           } else {
-            syncWorkflowTask(taskId, nextStatus, {
-              error: error ?? null,
-              evidence: nextStatus === 'completed' ? result.evidenceJson : undefined,
-            }, db);
-            if (nextStatus === 'completed') {
+            if (persistedStatus !== 'reviewing') {
+              syncWorkflowTask(taskId, persistedStatus, {
+                error: error ?? null,
+                evidence: persistedStatus === 'completed' ? result.evidenceJson : undefined,
+              }, db);
+            }
+            if (persistedStatus === 'completed' || persistedStatus === 'reviewing') {
               void handleCompletedTaskQualityGate(taskId, response)
                 .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed task quality gate failed'));
+            }
+            if (persistedStatus === 'reviewing' && taskTeamId && taskOrganizationId) {
+              void notifyNovaAxAuditRequired({
+                taskId,
+                companyId: taskOrganizationId,
+                teamId: taskTeamId,
+                actorId: agentId,
+                prompt: input.prompt,
+              })
+                .then(() => markTaskAuditQueued(taskId))
+                .catch(err => log.warn({
+                  err: err instanceof Error ? err.message : String(err),
+                  taskId,
+                  companyId: taskOrganizationId,
+                  teamId: taskTeamId,
+                }, 'Nova-AX priority audit queue notification failed'));
             }
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
@@ -2433,6 +2663,134 @@ export async function createGateway() {
       updatedAt: task.updated_at,
       lastActivityAt: projected.lastActivityAt,
       liveness: projected.liveness,
+    };
+  });
+
+  app.post('/api/tasks/:id/verification', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({
+      receiptId: z.string().min(1),
+      actorId: z.string().min(1),
+      uiInspectionReceiptId: z.string().min(1).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: 'invalid_verification_receipt',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
+    }
+
+    const db = getDb();
+    const task = db.prepare(`
+      SELECT k.id, k.status, k.team_id, k.assigned_to, k.prompt, k.response,
+        k.metadata_json, t.organization_id
+      FROM tasks k
+      LEFT JOIN teams t ON t.id=k.team_id
+      WHERE k.id=?
+    `).get(id) as {
+      id: string;
+      status: string;
+      team_id: string | null;
+      assigned_to: string | null;
+      prompt: string;
+      response: string | null;
+      metadata_json: string | null;
+      organization_id: string | null;
+    } | undefined;
+    if (!task) {
+      reply.code(404);
+      return { error: 'task_not_found' };
+    }
+    const metadata = parseTaskMetadata(task.metadata_json);
+    if (!requiresNovaAxAudit(task.team_id, metadata)) {
+      reply.code(409);
+      return { error: 'task_does_not_require_organization_audit' };
+    }
+    if (task.status !== 'reviewing') {
+      reply.code(409);
+      return {
+        error: 'task_not_waiting_for_verification',
+        status: task.status,
+      };
+    }
+    const companyId = task.organization_id
+      || (typeof metadata.companyId === 'string' ? metadata.companyId : '');
+    if (!companyId || !task.team_id) {
+      reply.code(409);
+      return { error: 'organization_audit_scope_missing' };
+    }
+
+    const alreadyApproved = metadata.verificationStatus === 'approved'
+      && metadata.verificationReceiptId === parsed.data.receiptId;
+    if (!alreadyApproved) {
+      const activity = await postNovaAxActivity({
+        id: `nco-audit-approved:${id}:${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        agentId: parsed.data.actorId,
+        agentName: task.assigned_to || parsed.data.actorId,
+        action: 'task_complete',
+        description: task.prompt.slice(0, 500),
+        result: task.response || 'execution completed; awaiting audit approval',
+        taskId: id,
+        companyId,
+        teamId: task.team_id,
+        receiptId: parsed.data.receiptId,
+        metadata: parsed.data.uiInspectionReceiptId
+          ? { uiInspectionReceiptId: parsed.data.uiInspectionReceiptId }
+          : {},
+      });
+      if (!activity.ok) {
+        reply.code(activity.status === 409 ? 409 : 502);
+        return {
+          error: 'nova_ax_verification_rejected',
+          novaAxStatus: activity.status,
+          detail: activity.payload,
+        };
+      }
+      metadata.verificationStatus = 'approved';
+      metadata.verificationReceiptId = parsed.data.receiptId;
+      metadata.verificationApprovedAt = new Date().toISOString();
+      if (parsed.data.uiInspectionReceiptId) {
+        metadata.uiInspectionReceiptId = parsed.data.uiInspectionReceiptId;
+      }
+      db.prepare(`
+        UPDATE tasks
+        SET metadata_json=?, updated_at=datetime('now')
+        WHERE id=? AND status='reviewing'
+      `).run(JSON.stringify(metadata), id);
+    }
+
+    const moved = transitionTask(db, id, 'completed', { completedAt: true });
+    if (!moved.ok) {
+      reply.code(409);
+      return {
+        error: 'verified_completion_transition_failed',
+        status: moved.prev,
+      };
+    }
+    syncWorkflowTask(id, 'completed', {
+      evidence: {
+        source: 'nova-ax-6-of-6-receipt',
+        receiptId: parsed.data.receiptId,
+        uiInspectionReceiptId: parsed.data.uiInspectionReceiptId,
+      },
+    }, db);
+    await eventBus.publish({
+      type: 'task:completed',
+      taskId: id,
+      agentId: task.assigned_to || parsed.data.actorId,
+      prompt: task.prompt,
+      companyId,
+      teamId: task.team_id,
+      receiptId: parsed.data.receiptId,
+    });
+    return {
+      ok: true,
+      taskId: id,
+      status: 'completed',
+      verificationStatus: 'approved',
+      receiptId: parsed.data.receiptId,
     };
   });
 
@@ -2728,7 +3086,13 @@ export async function createGateway() {
       return rejectWhileDraining(reply);
     }
 
-    const input = CreateDiscussionInput.parse(req.body);
+    const parsedInput = CreateDiscussionInput.safeParse(req.body);
+    if (!parsedInput.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsedInput.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+    const input = parsedInput.data;
+
     const gated = resolveRealtimeProviders('discussion', input.providers);
     if (!gated.ok) {
       reply.code(409);
@@ -2771,7 +3135,15 @@ export async function createGateway() {
       return rejectWhileDraining(reply);
     }
 
-    const body = req.body as any;
+    // 형제 라우트(/api/parallel, /api/realtime/discussion)와 동일하게 스키마 검증한다.
+    // 검증이 없으면 prompt 없이도 202 "started"를 돌려주어 호출자가 성공으로 오인한다.
+    const parsedBody = CreateDiscussionInput.safeParse(req.body);
+    if (!parsedBody.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsedBody.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+    const body = parsedBody.data;
+
     const gated = resolveRealtimeProviders('parallel', body.providers);
     if (!gated.ok) {
       reply.code(409);
@@ -2799,12 +3171,21 @@ export async function createGateway() {
     return { status: 'started', providers };
   });
 
-  app.post('/api/realtime/consensus', async (req, reply) => {
+  // 합의 실행 핸들러. /api/realtime/consensus 와 /api/consensus 양쪽에 등록한다.
+  // (/nco-team consensus 는 /api/consensus 로 POST 하는데, 예전에는 POST 핸들러가
+  //  없어서 dashboard-compat 의 catch-all 이 200 + 빈 data 를 돌려주고 있었다.)
+  const runConsensus = async (req: FastifyRequest, reply: FastifyReply) => {
     if (draining) {
       return rejectWhileDraining(reply);
     }
 
-    const input = CreateDiscussionInput.parse(req.body);
+    const parsedInput = CreateDiscussionInput.safeParse(req.body);
+    if (!parsedInput.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsedInput.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
+    }
+    const input = parsedInput.data;
+
     const gated = resolveRealtimeProviders('consensus', input.providers);
     if (!gated.ok) {
       reply.code(409);
@@ -2834,7 +3215,10 @@ export async function createGateway() {
       .catch(err => log.error({ err: err.message, sessionId }, 'Consensus failed'));
 
     return { sessionId, status: 'started', mode: 'consensus', providers: gated.providers };
-  });
+  };
+
+  app.post('/api/realtime/consensus', runConsensus);
+  app.post('/api/consensus', runConsensus);
 
   app.post('/api/discussion/create', async (req, reply) => {
     const body = req.body as any;
@@ -3175,10 +3559,13 @@ export async function createGateway() {
     return { messages: history, pending };
   });
 
-  app.post('/api/mesh/complete', async (req) => {
+  app.post('/api/mesh/complete', async (req, reply) => {
     const cliMesh = await getCliMesh();
     const { sessionId, completedWork } = req.body as any;
-    if (!sessionId) return { error: 'sessionId required' };
+    if (!sessionId) {
+      reply.code(400);
+      return { error: 'sessionId required' };
+    }
     await cliMesh.complete(sessionId, completedWork);
     return { completed: true };
   });
@@ -3190,10 +3577,13 @@ export async function createGateway() {
     return { messages: cliMesh.getRecentMessages(limit) };
   });
 
-  app.post('/api/mesh/disconnect', async (req) => {
+  app.post('/api/mesh/disconnect', async (req, reply) => {
     const cliMesh = await getCliMesh();
     const { sessionId } = req.body as any;
-    if (!sessionId) return { error: 'sessionId required' };
+    if (!sessionId) {
+      reply.code(400);
+      return { error: 'sessionId required' };
+    }
     await cliMesh.disconnect(sessionId);
     // Broadcast disconnect event to dashboard
     await eventBus.publish({
@@ -3435,7 +3825,13 @@ export async function createGateway() {
     }
 
     const { id } = req.params as any;
-    const collab = await collaborationEngine.close(id);
+    // body.result 를 엔진에 전달한다. 이전에는 close(id) 만 호출해서
+    // /nco-collab close <id> [result] 의 result 인자가 조용히 버려졌다.
+    const { result: requestedResult } = (req.body ?? {}) as any;
+    const collab = await collaborationEngine.close(
+      id,
+      typeof requestedResult === 'string' && requestedResult.trim() ? requestedResult : undefined,
+    );
     return { id, status: 'closed', result: collab.result };
   });
 
@@ -3448,10 +3844,13 @@ export async function createGateway() {
     return { collaborations: collaborationEngine.getOpen() };
   });
 
-  app.get('/api/collab/:id', async (req) => {
+  app.get('/api/collab/:id', async (req, reply) => {
     const { id } = req.params as any;
     const collab = collaborationEngine.get(id);
-    if (!collab) return { error: 'not found' };
+    if (!collab) {
+      reply.code(404);
+      return { error: 'not found' };
+    }
     return { collab, contributions: collaborationEngine.getContributions(id) };
   });
 
@@ -3791,10 +4190,13 @@ export async function createGateway() {
   });
 
   // ═══ Commander 4-Layer ═════════════════════════════
-  app.post('/api/commander', async (req) => {
+  app.post('/api/commander', async (req, reply) => {
     const commander = await getCommander();
     const { prompt } = req.body as any;
-    if (!prompt) return { error: 'prompt is required' };
+    if (!prompt) {
+      reply.code(400);
+      return { error: 'prompt is required' };
+    }
     const result = await commander.executeCommand(prompt);
     return result;
   });
@@ -3831,36 +4233,48 @@ export async function createGateway() {
     return { id };
   });
 
-  app.get('/api/learn/query', async (req) => {
+  app.get('/api/learn/query', async (req, reply) => {
     const { knowledgeBase } = await import('../core/knowledge-base.js');
     const { keywords, project } = req.query as any;
-    if (!keywords) return { error: 'keywords parameter required' };
+    if (!keywords) {
+      reply.code(400);
+      return { error: 'keywords parameter required' };
+    }
     return { results: knowledgeBase.query(keywords, project) };
   });
 
   // /api/learn/search is registered in dashboard-compat.ts (inside catch-all handler)
 
-  app.get('/api/learn/context', async (req) => {
+  app.get('/api/learn/context', async (req, reply) => {
     const { knowledgeBase } = await import('../core/knowledge-base.js');
     const { project } = req.query as any;
-    if (!project) return { error: 'project parameter required' };
+    if (!project) {
+      reply.code(400);
+      return { error: 'project parameter required' };
+    }
     return { context: knowledgeBase.getContext(project) };
   });
 
   // ═══ Plan + Kanban ════════════════════════════════
-  app.post('/api/plan/create', async (req) => {
+  app.post('/api/plan/create', async (req, reply) => {
     const { planManager } = await import('../core/plan-manager.js');
     const { title, tasks, sourceDiscussionId } = req.body as any;
-    if (!title) return { error: 'title is required' };
+    if (!title) {
+      reply.code(400);
+      return { error: 'title is required' };
+    }
     const plan = await planManager.createPlan(title, tasks, sourceDiscussionId);
     return plan;
   });
 
-  app.get('/api/plan/:id', async (req) => {
+  app.get('/api/plan/:id', async (req, reply) => {
     const { planManager } = await import('../core/plan-manager.js');
     const { id } = req.params as any;
     const plan = planManager.getPlan(id);
-    if (!plan) return { error: 'Plan not found' };
+    if (!plan) {
+      reply.code(404);
+      return { error: 'Plan not found' };
+    }
     return plan;
   });
 
@@ -3886,10 +4300,13 @@ export async function createGateway() {
     return { moved };
   });
 
-  app.post('/api/plan/execute', async (req) => {
+  app.post('/api/plan/execute', async (req, reply) => {
     const { kanbanEngine } = await import('../core/kanban-engine.js');
     const { planId, strategy } = req.body as any;
-    if (!planId) return { error: 'planId is required' };
+    if (!planId) {
+      reply.code(400);
+      return { error: 'planId is required' };
+    }
     const result = await kanbanEngine.executePlan(planId, strategy || 'auto');
     return result;
   });
@@ -3902,7 +4319,10 @@ export async function createGateway() {
 
     const smartRouter = await getSmartRouter();
     const { prompt, metadata: rawMetadata, callerAgentId: rawCallerAgentId } = req.body as any;
-    if (!prompt) return { error: 'prompt is required' };
+    if (!prompt) {
+      reply.code(400);
+      return { error: 'prompt is required' };
+    }
     const metadata = rawMetadata && typeof rawMetadata === 'object' && !Array.isArray(rawMetadata)
       ? rawMetadata as Record<string, unknown>
       : {};
@@ -4131,10 +4551,13 @@ export async function createGateway() {
   });
 
   // ═══ Agent Sessions ════════════════════════════════
-  app.post('/api/agent/start', async (req) => {
+  app.post('/api/agent/start', async (req, reply) => {
     const sessionManager = await getSessionManager();
     const { prompt, provider, systemPrompt, autoApprove } = req.body as any;
-    if (!prompt) return { error: 'prompt is required' };
+    if (!prompt) {
+      reply.code(400);
+      return { error: 'prompt is required' };
+    }
     const agentId = provider || 'codex';
     const sessionId = await sessionManager.startSession(prompt, agentId, { systemPrompt, autoApprove });
     return { sessionId, status: 'running', agentId };
@@ -4147,11 +4570,14 @@ export async function createGateway() {
     return { sessions: [...active, ...history.filter(h => !active.find(a => a.id === h.id))] };
   });
 
-  app.get('/api/agent/:sessionId/status', async (req) => {
+  app.get('/api/agent/:sessionId/status', async (req, reply) => {
     const sessionManager = await getSessionManager();
     const { sessionId } = req.params as any;
     const session = sessionManager.getSession(sessionId);
-    if (!session) return { error: 'Session not found' };
+    if (!session) {
+      reply.code(404);
+      return { error: 'Session not found' };
+    }
     return {
       id: session.id, agentId: session.agentId, status: session.status,
       iterations: session.iterations, toolCalls: session.toolCalls,
@@ -4220,8 +4646,10 @@ export async function createGateway() {
     return { invocation };
   });
 
-  app.get('/api/invocations/overview', async () => {
-    return invocationTracker.getOverview();
+  app.get('/api/invocations/overview', async (req) => {
+    const { limit } = req.query as any;
+    const parsedLimit = Number(limit);
+    return invocationTracker.getOverview(Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : undefined);
   });
 
   app.get('/api/invocations/session/:sessionId', async (req) => {
@@ -4253,6 +4681,7 @@ export async function createGateway() {
   await registerFleetOpsRoutes(app);
   await registerHandoffRoutes(app);
   await registerTeamsRoutes(app);
+  await registerCliQaRoutes(app);
 
   await registerTriadRoutes(app);
   registerGoalsRoutes(app);

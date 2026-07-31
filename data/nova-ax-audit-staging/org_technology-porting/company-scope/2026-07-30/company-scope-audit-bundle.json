@@ -1,0 +1,521 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-07-30T06:16:25.960Z",
+  "scope": {
+    "companyId": "org_technology-porting",
+    "teamId": "company-scope"
+  },
+  "auditBinding": {
+    "taskId": "task_zfhOCnyCRqgulprd",
+    "directive": {
+      "id": "vdir_396a7416-5e57-4525-94ab-0f6816dc6f9c",
+      "companyId": "org_technology-porting",
+      "teamId": "company-scope",
+      "type": "audit_required",
+      "status": "dispatched",
+      "workReportId": "audit_req_org_technology-porting_company-scope",
+      "taskId": "task_zfhOCnyCRqgulprd",
+      "loopId": "",
+      "attemptCount": 1,
+      "lastError": null,
+      "createdAt": "2026-07-30T04:14:12.072Z",
+      "updatedAt": "2026-07-30T04:19:12.406Z"
+    },
+    "sourceTask": {
+      "id": "task_zfhOCnyCRqgulprd",
+      "status": "failed",
+      "assignedTo": "claude-code",
+      "priority": 5,
+      "createdAt": "2026-07-30 04:19:12",
+      "updatedAt": "2026-07-30 05:19:14",
+      "completedAt": "2026-07-30 05:19:14",
+      "error": "queue_wait_timeout: provider claude-code busy for 1800000ms",
+      "workReportId": "audit_req_org_technology-porting_company-scope",
+      "verificationDirectiveId": "vdir_396a7416-5e57-4525-94ab-0f6816dc6f9c"
+    }
+  },
+  "sourceFacts": {
+    "activeScopes": [
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "company-scope",
+        "teamName": "Technology Porting Company",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-01-source-discovery",
+        "teamName": "01 Source Discovery",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-02-safety-license",
+        "teamName": "02 Safety and License",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-03-recovery-checkpoint",
+        "teamName": "03 Recovery Checkpoint",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-04-baseline-benchmark",
+        "teamName": "04 Baseline Benchmark",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-05-upgrade-regression",
+        "teamName": "05 Upgrade Regression",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-06-decision-2026",
+        "teamName": "06 Porting Decision Council",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-07-value-gate-report",
+        "teamName": "07 Value Gate Report",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-08-delivery-2026",
+        "teamName": "08 Migration Delivery",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      },
+      {
+        "companyId": "org_technology-porting",
+        "teamId": "team_tech-port-09-post-migration-verify",
+        "teamName": "09 Post-migration Verification",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T06:14:44.940Z"
+      }
+    ],
+    "taskStatusCounts": [
+      {
+        "status": "assigned",
+        "count": 2
+      },
+      {
+        "status": "cancelled",
+        "count": 7
+      },
+      {
+        "status": "completed",
+        "count": 209
+      },
+      {
+        "status": "failed",
+        "count": 130
+      },
+      {
+        "status": "queued",
+        "count": 7
+      },
+      {
+        "status": "timed_out",
+        "count": 3
+      }
+    ],
+    "latestCompletedTasks": [
+      {
+        "id": "task_u_LdjkHGXUJLR9ax",
+        "teamId": "team_tech-port-08-delivery-2026",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:38:29",
+        "workflowStage": "implementation",
+        "workReportId": "wr_3sTC19dmSL7NttW3"
+      },
+      {
+        "id": "task_2sBlwrRIAKEn5Jok",
+        "teamId": "team_tech-port-05-upgrade-regression",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:36:30",
+        "workflowStage": "implementation",
+        "workReportId": "wr_5F_4i6nKEX75Xqt1"
+      },
+      {
+        "id": "task_HZhDyKMn5lqHWaWI",
+        "teamId": "team_tech-port-04-baseline-benchmark",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:36:09",
+        "workflowStage": "implementation",
+        "workReportId": "wr_UmQcvS3jDVeBZDHW"
+      },
+      {
+        "id": "task_pKJuB7VLeRfSqveq",
+        "teamId": "team_tech-port-02-safety-license",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:35:23",
+        "workflowStage": "implementation",
+        "workReportId": "wr_baTyXWbZ2yl_1O96"
+      },
+      {
+        "id": "task_m1JS1jjEkh9Wtya9",
+        "teamId": "team_tech-port-03-recovery-checkpoint",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:35:23",
+        "workflowStage": "implementation",
+        "workReportId": "wr_HL2BYkcZgxVfRab5"
+      },
+      {
+        "id": "task_jvPBGOFTNW-EPjIu",
+        "teamId": "team_tech-port-06-decision-2026",
+        "assignedTo": "agy",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:18:49",
+        "workflowStage": "implementation",
+        "workReportId": "wr_Nf6cothLLGnbVAzw"
+      },
+      {
+        "id": "task_jB6_5TIZSfQLOeiM",
+        "teamId": "team_tech-port-09-post-migration-verify",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:15:56",
+        "workflowStage": "implementation",
+        "workReportId": "wr_TpwvJhbGJtS3nf1e"
+      },
+      {
+        "id": "task_DO0KEacTR_aKXREZ",
+        "teamId": "team_tech-port-06-decision-2026",
+        "assignedTo": "agy",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:14:31",
+        "workflowStage": "verification",
+        "workReportId": "audit_req_org_technology-porting_team_tech-port-06-decision-2026"
+      },
+      {
+        "id": "task_OVgGuioPOJwewWf4",
+        "teamId": "team_tech-port-06-decision-2026",
+        "assignedTo": "claude-code",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:54:45",
+        "workflowStage": "implementation",
+        "workReportId": "wr_2fDfJngtQAD0e5kr"
+      },
+      {
+        "id": "task_YQ2YngH7p87ikR27",
+        "teamId": "team_tech-port-08-delivery-2026",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:37:06",
+        "workflowStage": "implementation",
+        "workReportId": "wr_XrFw0UsQ3o6vQyZL"
+      },
+      {
+        "id": "task_7Ir9HiEvN9jLuiok",
+        "teamId": "team_tech-port-07-value-gate-report",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:33:58",
+        "workflowStage": "implementation",
+        "workReportId": "wr_obd1qWUyCRF3SjiW"
+      },
+      {
+        "id": "task_sncYn_4gIAVYcYtq",
+        "teamId": "team_tech-port-04-baseline-benchmark",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:33:49",
+        "workflowStage": "implementation",
+        "workReportId": "wr_g6VxKrfa2G1Limtk"
+      },
+      {
+        "id": "task_nXg7BNJQrjKYjE6d",
+        "teamId": "team_tech-port-05-upgrade-regression",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:33:45",
+        "workflowStage": "implementation",
+        "workReportId": "wr_W5xwyDSp0xAwt32C"
+      },
+      {
+        "id": "task_UMPsLV228fn3BcP3",
+        "teamId": "team_tech-port-02-safety-license",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:33:06",
+        "workflowStage": "implementation",
+        "workReportId": "wr_z5dJLXIk65BibquH"
+      },
+      {
+        "id": "task_F95HDNzBOaGfxZdK",
+        "teamId": "team_tech-port-03-recovery-checkpoint",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:32:57",
+        "workflowStage": "implementation",
+        "workReportId": "wr_CDe05whGFWBrY46b"
+      },
+      {
+        "id": "task_lyRIqF03mEu69xlz",
+        "teamId": "team_tech-port-09-post-migration-verify",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:04:29",
+        "workflowStage": "implementation",
+        "workReportId": "wr_C5YG5et6Ju3cUnjF"
+      },
+      {
+        "id": "task_PpiN3szm4xxGiUtQ",
+        "teamId": "team_tech-port-01-source-discovery",
+        "assignedTo": "opencode",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:03:27",
+        "workflowStage": "implementation",
+        "workReportId": "wr_2ukZP17AZR4VGzy9"
+      },
+      {
+        "id": "task_joRewophUA0AU31x",
+        "teamId": "team_tech-port-08-delivery-2026",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-29 23:29:22",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_2u01bHLJGz7n6x83",
+        "teamId": "team_tech-port-06-decision-2026",
+        "assignedTo": "agy",
+        "status": "completed",
+        "completedAt": "2026-07-29 23:28:44",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_T_m6Rd45uWD7GEcI",
+        "teamId": "team_tech-port-09-post-migration-verify",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-29 19:36:45",
+        "workflowStage": null,
+        "workReportId": null
+      }
+    ],
+    "verificationRuns": [
+      {
+        "runId": "vrun_a69c5c71-b794-4f89-a9eb-5b520a843574",
+        "taskId": "task_DO0KEacTR_aKXREZ",
+        "teamId": "team_tech-port-06-decision-2026",
+        "actorId": "agy",
+        "status": "approved",
+        "passedInstitutions": 6,
+        "evidenceDigest": "0b5038ddf3971cf2ce415ccf19235e2e530045442fa4005736fe21132b716d48",
+        "createdAt": "2026-07-30T05:13:37.872Z"
+      }
+    ],
+    "remediationLoops": [],
+    "openCompanyScopeLoops": []
+  },
+  "artifactInventory": {
+    "root": "REPORTS/technology-porting",
+    "fileCount": 27,
+    "totalBytes": 1245056,
+    "files": [
+      {
+        "path": "REPORTS/technology-porting/2026-07-30-tech-port-06-improvement-debate-오전.md",
+        "byteSize": 8487,
+        "sha256": "87be49376094e26958f680152adbadaab4b04bfe285cca6f27453e2dfd2058db",
+        "modifiedAt": "2026-07-30T00:54:15.994Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/2026-07-24-tech-port-07-value-gate-report-오전.md",
+        "byteSize": 5325,
+        "sha256": "62c884f9ea8622972ff22da04ca560373dfbd4267d2c85cc151b5ceae9cf398f",
+        "modifiedAt": "2026-07-29T12:14:35.783Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/2026-07-24-tech-port-06-improvement-debate-오전.md",
+        "byteSize": 4363,
+        "sha256": "7bc48b097118a42941885182baf4772a895279992a9b69398406917faeaeda20",
+        "modifiedAt": "2026-07-24T00:09:47.945Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-source-discovery-2026-07-23.md",
+        "byteSize": 26086,
+        "sha256": "5cfe3f02ae3aa92f55ff43501bf52dcd529e4878041e3c4ba898e5e460225222",
+        "modifiedAt": "2026-07-23T10:33:43.014Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-improvement-debate-2026-07-23.md",
+        "byteSize": 20214,
+        "sha256": "c197bfc773a3567e6b5446380b916073ece3c3f26bd8d31e4d704e5444a9670c",
+        "modifiedAt": "2026-07-23T10:33:32.669Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nco-report-test.log",
+        "byteSize": 789,
+        "sha256": "ac8562e8cc12b777753a957b5adab078fc1003dc04b0449b8049e1b16da8bfad",
+        "modifiedAt": "2026-07-23T10:29:12.507Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/source-notes.md",
+        "byteSize": 7806,
+        "sha256": "20e7f60ffe895cd90dd61743651d83236c570d0fc4fcb34458eca36652e713cd",
+        "modifiedAt": "2026-07-23T10:28:52.099Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-recovery-checkpoint-2026-07-23.md",
+        "byteSize": 12566,
+        "sha256": "6e0dfeca93d44dc4d53ee604cf79a79fd79a470dc4ddf7612faf2ef447f5c2df",
+        "modifiedAt": "2026-07-23T10:27:43.509Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nco-build.log",
+        "byteSize": 46,
+        "sha256": "52c6dfa90ccef47040cf4ed680c4cc296f6fa17374fc1c7d1a01df240c4d2e5d",
+        "modifiedAt": "2026-07-23T10:21:43.306Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/report-delivery-receipt.json",
+        "byteSize": 625,
+        "sha256": "12b10eb7c35e4ce70df2ee55f041eb739b5614036e8b55c88fa1eb02ac140ea0",
+        "modifiedAt": "2026-07-23T10:21:22.329Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/report.html",
+        "byteSize": 433845,
+        "sha256": "b93abc9007a2f64516eea1eeb8c0138cee07890499e90d4bdf5c3f2ab21d357d",
+        "modifiedAt": "2026-07-23T10:21:22.324Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/artifact.json",
+        "byteSize": 40702,
+        "sha256": "e74b0d0b340a9cc7cb404c142d08273122420e388bb944dd1b3a9164c5720501",
+        "modifiedAt": "2026-07-23T10:20:30.959Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate-2026-07-23-source-notes.md",
+        "byteSize": 11396,
+        "sha256": "04a3306f4b3b2011c611c4adbe24988b3a243a80d1d9652b17660154c7c0ef87",
+        "modifiedAt": "2026-07-23T10:19:41.179Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate-2026-07-23.html",
+        "byteSize": 437123,
+        "sha256": "7f5708f6f2f691ff8fc994a733edaa44d57bed6a1d96c92d27765b6302a6f213",
+        "modifiedAt": "2026-07-23T10:18:44.380Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate-2026-07-23-artifact.json",
+        "byteSize": 33496,
+        "sha256": "6edfe3c7a55ee0b460263e4828f0d93b6851d187b5b85025496cecce7d7dab76",
+        "modifiedAt": "2026-07-23T10:17:53.914Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nova-use-t1-receipt.txt",
+        "byteSize": 103,
+        "sha256": "db2a605b57bd5aeda444f1425635492b6cd69920437545cff097ce58c7837188",
+        "modifiedAt": "2026-07-23T10:13:34.509Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nova-use-browser-focused-test.log",
+        "byteSize": 609,
+        "sha256": "3b6a569ad4412d85e280a8d7f2ef364fc2765d6dac8d74182e57275a8ee7add2",
+        "modifiedAt": "2026-07-23T10:13:34.346Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nova-use-test.log",
+        "byteSize": 16020,
+        "sha256": "81a34725a5de244764d618ef1a31fdbc8b0a9abd2c1934183ab37156f1232041",
+        "modifiedAt": "2026-07-23T10:13:25.028Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nova-use-build.log",
+        "byteSize": 9439,
+        "sha256": "229d0b710a47f55809e55fe983ff2aa0560fdfe3fb7d49373ed515db54ca58fa",
+        "modifiedAt": "2026-07-23T10:13:20.875Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/nova-use-typecheck.log",
+        "byteSize": 61,
+        "sha256": "32bc229a577a122311cf45b73904a9cb685f4df5e0b35d9557a68b7546d3a441",
+        "modifiedAt": "2026-07-23T10:13:04.902Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/browser-control-extension-port-value-gate/evidence/isolated-snapshot-path.txt",
+        "byteSize": 40,
+        "sha256": "d2500734be7d7b5e73f241c054f62fb3903c8d92c27bf868289fcfa4cbb27bc7",
+        "modifiedAt": "2026-07-23T10:13:04.793Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-migration-artifact.json",
+        "byteSize": 32974,
+        "sha256": "f0d55a399fe2e51ca55e430b55226c53d2257c584101edfac9d2fd26ca76462d",
+        "modifiedAt": "2026-07-23T09:12:20.427Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-migration-2026-07-23.md",
+        "byteSize": 19652,
+        "sha256": "d94398832a3bb853b53d7747e6c7ffb279410a6ff0337835751d6336c416e74c",
+        "modifiedAt": "2026-07-23T09:11:45.108Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-activation-validation-2026-07-23.ipynb",
+        "byteSize": 8786,
+        "sha256": "97ae677b613e56147fcce539754a18c9681971a489000e1fda61b739c860f571",
+        "modifiedAt": "2026-07-23T09:05:53.941Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-activation-decision-2026-07-23.json",
+        "byteSize": 5109,
+        "sha256": "874dc500234af09d3bdc14047e20aa88354a748c637f3c32e64243e2253a648a",
+        "modifiedAt": "2026-07-23T09:05:21.376Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-activation-lite-benchmark-2026-07-23.json",
+        "byteSize": 108479,
+        "sha256": "3ddbc014cb5579631ec79ab6d7942a3823a25216e611b133b0b819c8f7750c21",
+        "modifiedAt": "2026-07-23T08:58:04.670Z"
+      },
+      {
+        "path": "REPORTS/technology-porting/cognee-activation-lite-prepare-2026-07-23.json",
+        "byteSize": 915,
+        "sha256": "10b87d182c354268c0797cbb619d9b3f7242e7bffcf45601ca4a649962ab0d8b",
+        "modifiedAt": "2026-07-23T08:47:11.880Z"
+      }
+    ]
+  },
+  "repository": {
+    "head": "1cbe199c362c7f81ceda71e2c0469400fe620200"
+  },
+  "assertions": {
+    "successClaimed": false,
+    "sourceTaskStatus": "failed",
+    "directiveStatus": "dispatched",
+    "note": "이 번들은 관찰된 원본 상태를 보존하며 검증 승인 전 성공을 주장하지 않는다."
+  }
+}

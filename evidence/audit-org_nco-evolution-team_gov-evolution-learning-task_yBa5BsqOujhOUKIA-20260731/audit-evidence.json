@@ -1,0 +1,640 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T19:49:20.521Z",
+  "audit": {
+    "companyId": "org_nco-evolution",
+    "teamId": "team_gov-evolution-learning",
+    "taskId": "task_yBa5BsqOujhOUKIA",
+    "targetOfSubjectReport": "task_x21RZj7Pog5HXkTi",
+    "actorId": "codex",
+    "evidenceTier": "T1 SQLite rows + file bytes; runtime probes are T2 diagnostics"
+  },
+  "subjectBound": "2026-07-30T17:45:37.762Z",
+  "organization": {
+    "id": "org_nco-evolution",
+    "name": "NCO Learning and Evolution Company",
+    "slug": "nco-evolution",
+    "graph_type": "nova-ax",
+    "created_at": "2026-07-26 04:14:11",
+    "updated_at": "2026-07-26 04:14:11",
+    "manager": "opencode",
+    "parent_id": "org_nova-ax",
+    "is_always_on": 1,
+    "is_active": 1,
+    "schedule": null
+  },
+  "team": {
+    "id": "team_gov-evolution-learning",
+    "organization_id": "org_nco-evolution",
+    "name": "Continuous Learning",
+    "slug": "gov-evolution-learning",
+    "description": "Capture outcomes, feedback, failures, and verified lessons.",
+    "color": "#059669",
+    "created_at": "2026-07-26 04:14:11",
+    "updated_at": "2026-07-26 23:43:57",
+    "lead": "ollama",
+    "charter": "태스크 결과·사용자 피드백·실패·검증 영수증에서 재사용 가능한 교훈을 추출한다. 자연어 주장만 있는 학습은 격리하고, 근거·적용범위·만료조건·재검증일을 포함한 학습만 승격한다.",
+    "is_always_on": 1,
+    "is_active": 1,
+    "schedule": null
+  },
+  "subject": {
+    "id": "task_yBa5BsqOujhOUKIA",
+    "status": "reviewing",
+    "assigned_to": "hermes",
+    "team_id": "team_gov-evolution-learning",
+    "prompt": "[컨텍스트]\nNova-AX 최고 검증 지휘관의 정기 감사 지시다.\n회사=org_nco-evolution, 범위=team_gov-evolution-learning\n감사 대상 원본 작업=task_x21RZj7Pog5HXkTi\n[목표]\n최우선 목표: 모든 회사·팀의 작업 보고 의무 수신 및 6/6 감사 통과.\n실제 산출물과 독립적인 기계 증거를 Nova-AX 6개 기관에 제출하고, 6/6 승인 영수증을 받아 완료 이벤트에 결박한다.\n[제약]\n자가보고, 작업일지, LLM 주장, 자체 점수만으로 통과를 주장하지 않는다. 미통과 상태를 완료로 보고하지 않는다.\n[조치]\n- 현재 회사/팀 범위의 실제 작업 결과를 수집하고 6개 검증기관에 제출한다.\n[출력형식]\n검증 runId, 기관별 판정, receiptId(승인 시), 남은 실패와 증거 경로를 포함한 감사 보고.\n승인 후 NCO POST /api/tasks/task_x21RZj7Pog5HXkTi/verification에 receiptId와 actorId를 제출해 원본 작업을 최종 완료한다.\n[검증기준]\nNova-AX의 새 검증 실행이 6/6 approved이고, 열린 반시드 루프가 있으면 해당 loop attempt가 completed여야 한다.",
+    "response": "status: [미검증] 현재 원본 작업 `task_x21RZj7Pog5HXkTi`의 새 6/6 검증과 완료 결박은 아직 생성되지 않았습니다.\n\n- 검증 runId: 없음 — Nova-AX `verification_runs`에 해당 task 행 0건\n- 기관별 판정: 검사·검증·실측·성능·최적화·목표달성 모두 미검증\n- receiptId: 없음 — NCO `/verification` 제출도 수행하지 않음\n- 열린 remediation loop: 0건\n- 남은 실패: 감사 지시 `vdir_511c06cc-5695-4c79-aab2-3068a9ae731f`가 `dispatched`, 후속 감사 작업 `task_yBa5BsqOujhOUKIA`가 `running` 상태입니다. 원본 작업은 `reviewing` 상태입니다.\n- 차단 근거: 이 실행 환경에서 :6200/:6300 HTTP 연결이 거부됐고 Nova-AX 제어 연결도 완료되지 않았습니다.\n\n이 팀의 기존 6/6 승인 2건은 모두 다른 작업 `task__IhkK9T9s085QlyT`에 결박된 영수증이므로 현재 작업에 재사용할 수 없습니다.\n\n증거: [Nova-AX 원장](</Users/nova-ai/project/nova-ax/db/nova-ax.db>), [NCO 작업 원장](</Users/nova-ai/project/nco/db/nco.db>), [기존 작업 전용 감사 결과](</Users/nova-ai/project/nova-ax/evidence/org_nco-evolution/team_gov-evolution-learning/2026-07-30/audit-result.json>).",
+    "metadata_json": "{\"projectDir\":\"/Users/nova-ai/project/nco\",\"allowProviderFailover\":true,\"organizationId\":\"org_nco-evolution\",\"teamId\":\"team_gov-evolution-learning\",\"workReportId\":\"completion_audit_task_x21RZj7Pog5HXkTi\",\"workflowRunId\":\"wfr_4nnbTT1MjX9YkOYh\",\"workflowStage\":\"implementation\",\"organizationAuditRequired\":true,\"companyId\":\"org_nco-evolution\",\"auditPriority\":10,\"requestedProvider\":\"hermes\",\"promptGate\":{\"score\":100},\"verificationStatus\":\"pending\",\"verificationAuditQueuedAt\":\"2026-07-30T19:46:37.729Z\"}",
+    "created_at": "2026-07-30 17:40:49",
+    "updated_at": "2026-07-30 19:46:37",
+    "last_activity_at": "2026-07-30T17:45:37.762Z",
+    "last_heartbeat_at": "2026-07-30 17:45:51",
+    "completed_at": null,
+    "metadata": {
+      "projectDir": "/Users/nova-ai/project/nco",
+      "allowProviderFailover": true,
+      "organizationId": "org_nco-evolution",
+      "teamId": "team_gov-evolution-learning",
+      "workReportId": "completion_audit_task_x21RZj7Pog5HXkTi",
+      "workflowRunId": "wfr_4nnbTT1MjX9YkOYh",
+      "workflowStage": "implementation",
+      "organizationAuditRequired": true,
+      "companyId": "org_nco-evolution",
+      "auditPriority": 10,
+      "requestedProvider": "hermes",
+      "promptGate": {
+        "score": 100
+      },
+      "verificationStatus": "pending",
+      "verificationAuditQueuedAt": "2026-07-30T19:46:37.729Z"
+    }
+  },
+  "target": {
+    "id": "task_x21RZj7Pog5HXkTi",
+    "status": "reviewing",
+    "assigned_to": "ollama",
+    "team_id": "team_gov-evolution-learning",
+    "response": "[Today's Observations]\n- Failed verification attempts (task_D4lykkvjOjq3Txlu) showed concrete connection failures to localhost ports 6300 and 6200 as logged in the SQLite tasks row (Evidence Tier 1)\n- Successful verifications (task__IhkK9T9s085QlyT) demonstrated proper runId/receiptId linkage with \"6/6 approved\" status\n- All evidence was sourced from actual SQLite tasks rows (T1), not natural language claims\n- The failure occurred due to missing local service connectivity, not implementation logic\n\n[Current State]\n- **Verification Failure Pattern**: Connection failure to localhost ports 6300/6200 during verification\n- **Scope**: All verification processes dependent on local service endpoints\n- **Expiration**: Until port configuration is validated per verification requirements\n- **Re-verification**: Required after fixing local service configuration (date not specified in data)\n\n[Future Actions]\n1. [Critical] Verify port 6200/6300 availability in local service configuration\n2. Add connection validation step before verification launch\n3. Implement port status monitoring in verification pipeline\n4. [Verification Required] Confirm fix with `curl` test to port 6300/6200\n\n[Unverified Items]\n- Exact service configuration for ports 6200/6300\n- Required port values (port numbers not confirmed as defaults)\n- Expected status of local services before verification",
+    "metadata_json": "{\"projectDir\":\"/Users/nova-ai/project/nco\",\"teamId\":\"team_gov-evolution-learning\",\"allowProviderFailover\":false,\"workflowRunId\":\"wfr_yut-x_mYYAHb3gUa\",\"workflowStage\":\"implementation\",\"organizationAuditRequired\":true,\"companyId\":\"org_nco-evolution\",\"auditPriority\":10,\"requestedProvider\":\"ollama\",\"promptGate\":{\"score\":60},\"verificationStatus\":\"pending\",\"verificationAuditQueuedAt\":\"2026-07-30T19:42:38.181Z\"}",
+    "created_at": "2026-07-30 17:01:06",
+    "updated_at": "2026-07-30 19:42:38",
+    "last_activity_at": "2026-07-30T17:20:21.986Z",
+    "last_heartbeat_at": "2026-07-30 17:20:59",
+    "completed_at": null,
+    "metadata": {
+      "projectDir": "/Users/nova-ai/project/nco",
+      "teamId": "team_gov-evolution-learning",
+      "allowProviderFailover": false,
+      "workflowRunId": "wfr_yut-x_mYYAHb3gUa",
+      "workflowStage": "implementation",
+      "organizationAuditRequired": true,
+      "companyId": "org_nco-evolution",
+      "auditPriority": 10,
+      "requestedProvider": "ollama",
+      "promptGate": {
+        "score": 60
+      },
+      "verificationStatus": "pending",
+      "verificationAuditQueuedAt": "2026-07-30T19:42:38.181Z"
+    }
+  },
+  "citedTask": {
+    "id": "task__IhkK9T9s085QlyT",
+    "status": "completed",
+    "assigned_to": "cursor-agent",
+    "team_id": "team_gov-evolution-learning",
+    "metadata_json": "{\"projectDir\":\"/Users/nova-ai/project/nova-ax\",\"workReportId\":\"audit_req_org_nco-evolution_team_gov-evolution-learning\",\"workflowIntent\":\"routine\",\"workflowStage\":\"verification\",\"allowProviderFailover\":true,\"organizationId\":\"org_nco-evolution\",\"subjectKind\":\"team\",\"subjectId\":\"team_gov-evolution-learning\",\"verificationDirectiveId\":\"vdir_4f2a9ca9-3364-480e-8c36-30bce6c8e36c\",\"auditControlPlane\":true,\"scoreEligible\":false,\"teamId\":\"team_gov-evolution-learning\",\"workflowRunId\":\"wfr_rzpX6ot6qK8kFzZg\",\"requestedProvider\":\"cursor-agent\",\"promptGate\":{\"score\":100}}",
+    "created_at": "2026-07-30 10:43:37",
+    "updated_at": "2026-07-30 10:52:50",
+    "completed_at": "2026-07-30 10:52:50"
+  },
+  "verification": {
+    "subjectRuns": [],
+    "subjectReceipts": [],
+    "subjectLoops": [],
+    "targetRunsAsOf": [],
+    "targetReceiptsAsOf": [],
+    "targetLoops": [],
+    "targetConsumptions": [],
+    "citedReceipts": [
+      {
+        "id": "vrcpt_dd571d8c-9535-4b72-bbab-dd31e964f53c",
+        "run_id": "vrun_b8513ba6-d86c-4d06-be97-cc425946fb64",
+        "task_id": "task__IhkK9T9s085QlyT",
+        "actor_id": "cursor-agent",
+        "issued_at": "2026-07-30T10:51:36.198Z",
+        "consumption_id": "vuse_390b22e5-9782-4c3d-8695-b8d892d52fc1",
+        "event_id": "c0542a0d-6dde-48ce-bbc0-807da0170508",
+        "consumed_at": "2026-07-30T10:51:36.209Z"
+      },
+      {
+        "id": "vrcpt_68449f5f-7c37-4b31-917a-7d55373e7c03",
+        "run_id": "vrun_e0e627e6-1c3f-4df2-8e24-7fe502540cb9",
+        "task_id": "task__IhkK9T9s085QlyT",
+        "actor_id": "cursor-agent",
+        "issued_at": "2026-07-30T11:32:03.572Z",
+        "consumption_id": "vuse_166b62e4-c78a-47fa-9ddd-d4cf679a5cd1",
+        "event_id": "26ee6e75-617e-4049-939b-3ee4a01d39ec",
+        "consumed_at": "2026-07-30T11:32:03.585Z"
+      }
+    ],
+    "scopeOpenLoops": [],
+    "directives": [
+      {
+        "id": "vdir_511c06cc-5695-4c79-aab2-3068a9ae731f",
+        "company_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "loop_id": "",
+        "type": "audit_required",
+        "status": "dispatched",
+        "work_report_id": "completion_audit_task_x21RZj7Pog5HXkTi",
+        "task_id": "task_yBa5BsqOujhOUKIA",
+        "dispatched_at": "2026-07-30T19:42:44.735Z",
+        "last_error": null,
+        "attempt_count": 5,
+        "next_attempt_at": null,
+        "created_at": "2026-07-30T17:21:01.642Z",
+        "updated_at": "2026-07-30T19:42:44.735Z",
+        "subject_task_id": "task_x21RZj7Pog5HXkTi"
+      },
+      {
+        "id": "vdir_6b133fe5-b14b-4b3d-b059-49543ed122ca",
+        "company_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "loop_id": "",
+        "type": "audit_required",
+        "status": "dispatched",
+        "work_report_id": "completion_audit_task_yBa5BsqOujhOUKIA",
+        "task_id": "task_L0R6YEp6SGlFDHr3",
+        "dispatched_at": "2026-07-30T19:37:28.521Z",
+        "last_error": null,
+        "attempt_count": 5,
+        "next_attempt_at": null,
+        "created_at": "2026-07-30T17:45:52.064Z",
+        "updated_at": "2026-07-30T19:37:28.521Z",
+        "subject_task_id": "task_yBa5BsqOujhOUKIA"
+      }
+    ]
+  },
+  "workReportObligations": {
+    "total": 18,
+    "submitted": 15,
+    "missed": 3,
+    "latestReportDate": "2026-07-30",
+    "latestTotal": 4,
+    "latestSubmitted": 4,
+    "historicalMisses": [
+      {
+        "id": "wr_dUqp7bT31nDzpO2n",
+        "report_date": "2026-07-26",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-26 05:06:12",
+        "updated_at": "2026-07-26 09:30:37"
+      },
+      {
+        "id": "wr_6UPabCZJPoitVftv",
+        "report_date": "2026-07-27",
+        "report_slot": "am",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-27 00:00:28",
+        "updated_at": "2026-07-27 03:13:44"
+      },
+      {
+        "id": "wr_mFYMUMA_uwpQoDU6",
+        "report_date": "2026-07-27",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-27 05:12:04",
+        "updated_at": "2026-07-27 09:30:06"
+      }
+    ],
+    "rows": [
+      {
+        "id": "wr_dUqp7bT31nDzpO2n",
+        "report_date": "2026-07-26",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-26 05:06:12",
+        "updated_at": "2026-07-26 09:30:37"
+      },
+      {
+        "id": "wr_bBF2I0obDvf5VY7V",
+        "report_date": "2026-07-26",
+        "report_slot": "pm",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_53abN7hMCQcH5SrT",
+        "submitted_at": "2026-07-26T05:56:52.000Z",
+        "created_at": "2026-07-26 05:08:13",
+        "updated_at": "2026-07-26 05:56:54"
+      },
+      {
+        "id": "wr_6UPabCZJPoitVftv",
+        "report_date": "2026-07-27",
+        "report_slot": "am",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-27 00:00:28",
+        "updated_at": "2026-07-27 03:13:44"
+      },
+      {
+        "id": "wr_mFYMUMA_uwpQoDU6",
+        "report_date": "2026-07-27",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "missed",
+        "source_task_id": null,
+        "submitted_at": null,
+        "created_at": "2026-07-27 05:12:04",
+        "updated_at": "2026-07-27 09:30:06"
+      },
+      {
+        "id": "wr_uJW7nBcFvSRNMVNU",
+        "report_date": "2026-07-27",
+        "report_slot": "am",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_f1CCNcEiOGMMpq-Z",
+        "submitted_at": "2026-07-27T01:16:48.000Z",
+        "created_at": "2026-07-27 00:00:28",
+        "updated_at": "2026-07-27 01:17:43"
+      },
+      {
+        "id": "wr_wcXz4AG_W0eFppWp",
+        "report_date": "2026-07-27",
+        "report_slot": "pm",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_TF-0pwR0YBvnvs0b",
+        "submitted_at": "2026-07-27T07:11:49.000Z",
+        "created_at": "2026-07-27 05:12:04",
+        "updated_at": "2026-07-27 07:11:50"
+      },
+      {
+        "id": "wr_skJzTGQBWtkSLofW",
+        "report_date": "2026-07-28",
+        "report_slot": "am",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_C3AbOTbk5440urWQ",
+        "submitted_at": "2026-07-28T00:06:38.000Z",
+        "created_at": "2026-07-28 00:00:25",
+        "updated_at": "2026-07-28 00:07:25"
+      },
+      {
+        "id": "wr_3wNAS5w5SNF5gAX-",
+        "report_date": "2026-07-28",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_lfKiwKoC6qo8AZw9",
+        "submitted_at": "2026-07-28T05:08:00.000Z",
+        "created_at": "2026-07-28 05:00:27",
+        "updated_at": "2026-07-28 05:23:30"
+      },
+      {
+        "id": "wr_srOHwyL8qN4QeFvX",
+        "report_date": "2026-07-28",
+        "report_slot": "am",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_lxln3jvYhrhIjoKx",
+        "submitted_at": "2026-07-28T00:22:54.000Z",
+        "created_at": "2026-07-28 00:00:25",
+        "updated_at": "2026-07-28 00:23:24"
+      },
+      {
+        "id": "wr_PiGZ6v72N2j2VnvI",
+        "report_date": "2026-07-28",
+        "report_slot": "pm",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_wRlgBvydIEC9wPqS",
+        "submitted_at": "2026-07-28T05:05:58.000Z",
+        "created_at": "2026-07-28 05:00:28",
+        "updated_at": "2026-07-28 05:07:28"
+      },
+      {
+        "id": "wr_H9uSKD7hBg53LLJa",
+        "report_date": "2026-07-29",
+        "report_slot": "am",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_PMTq0oNbJm3ZdS_z",
+        "submitted_at": "2026-07-29T01:51:40.000Z",
+        "created_at": "2026-07-29 00:14:35",
+        "updated_at": "2026-07-29 01:52:11"
+      },
+      {
+        "id": "wr_0MNBuhbucERrVxpn",
+        "report_date": "2026-07-29",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_pCZ2Ga3yIyTOChKA",
+        "submitted_at": "2026-07-29T05:08:55.000Z",
+        "created_at": "2026-07-29 05:00:56",
+        "updated_at": "2026-07-29 05:09:55"
+      },
+      {
+        "id": "wr_xvjsLhscuUwwanSh",
+        "report_date": "2026-07-29",
+        "report_slot": "am",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_HZR7_F1-lm2rQ6Me",
+        "submitted_at": "2026-07-29T01:52:51.000Z",
+        "created_at": "2026-07-29 00:14:35",
+        "updated_at": "2026-07-29 01:53:11"
+      },
+      {
+        "id": "wr_uQS-a74Qgyt8kupR",
+        "report_date": "2026-07-29",
+        "report_slot": "pm",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_YBjc_pyOiEy_Qywh",
+        "submitted_at": "2026-07-29T05:19:33.000Z",
+        "created_at": "2026-07-29 05:00:56",
+        "updated_at": "2026-07-29 05:19:55"
+      },
+      {
+        "id": "wr_sXtlfDl4NbYTU9He",
+        "report_date": "2026-07-30",
+        "report_slot": "am",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_Luzopv8xCLbtvBmE",
+        "submitted_at": "2026-07-30T00:10:52.000Z",
+        "created_at": "2026-07-30 00:00:47",
+        "updated_at": "2026-07-30 00:11:51"
+      },
+      {
+        "id": "wr_s7eYlDsojZftKnya",
+        "report_date": "2026-07-30",
+        "report_slot": "pm",
+        "subject_kind": "organization",
+        "subject_id": "org_nco-evolution",
+        "organization_id": "org_nco-evolution",
+        "team_id": null,
+        "status": "submitted",
+        "source_task_id": "task_AKmFU-vHdjwARNfp",
+        "submitted_at": "2026-07-30T06:27:10.000Z",
+        "created_at": "2026-07-30 05:01:06",
+        "updated_at": "2026-07-30 06:28:27"
+      },
+      {
+        "id": "wr_iGznJ9S0XXKce1Al",
+        "report_date": "2026-07-30",
+        "report_slot": "am",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_U2_S1gJqT1F4vfBX",
+        "submitted_at": "2026-07-30T00:09:57.000Z",
+        "created_at": "2026-07-30 00:00:49",
+        "updated_at": "2026-07-30 00:10:51"
+      },
+      {
+        "id": "wr_X-_ASvgw1UmSROR8",
+        "report_date": "2026-07-30",
+        "report_slot": "pm",
+        "subject_kind": "team",
+        "subject_id": "team_gov-evolution-learning",
+        "organization_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "status": "submitted",
+        "source_task_id": "task_u3NZiXViPXlfFr9f",
+        "submitted_at": "2026-07-30T06:22:05.000Z",
+        "created_at": "2026-07-30 05:01:11",
+        "updated_at": "2026-07-30 06:22:59"
+      }
+    ]
+  },
+  "claims": [
+    {
+      "id": "C01",
+      "claim": "No Nova-AX run existed for task_x21RZj7Pog5HXkTi when task_yBa5BsqOujhOUKIA stopped producing output",
+      "expected": 0,
+      "observed": 0,
+      "verified": true,
+      "evidence": "verification_runs bounded by subject.last_activity_at"
+    },
+    {
+      "id": "C02",
+      "claim": "No receipt existed for task_x21RZj7Pog5HXkTi in the same bounded window",
+      "expected": 0,
+      "observed": 0,
+      "verified": true,
+      "evidence": "verification_receipts bounded by subject.last_activity_at"
+    },
+    {
+      "id": "C03",
+      "claim": "No remediation loop exists for task_x21RZj7Pog5HXkTi",
+      "expected": 0,
+      "observed": 0,
+      "verified": true,
+      "evidence": "verification_loops current ledger"
+    },
+    {
+      "id": "C04",
+      "claim": "task_x21RZj7Pog5HXkTi remains reviewing/pending verification",
+      "expected": "reviewing/pending",
+      "observed": "reviewing/pending",
+      "verified": true,
+      "evidence": "NCO tasks row"
+    },
+    {
+      "id": "C05",
+      "claim": "The cited two approved receipts belong to another task and are not reusable",
+      "expected": "2 receipts; 2 consumed; all bound to cited task",
+      "observed": "2 receipts; 2 consumed; 2 bound to cited task",
+      "verified": true,
+      "evidence": "verification_receipts joined to verification_receipt_consumptions"
+    },
+    {
+      "id": "C06",
+      "claim": "Directive vdir_511c06cc-5695-4c79-aab2-3068a9ae731f binds task_x21RZj7Pog5HXkTi to task_yBa5BsqOujhOUKIA",
+      "expected": "matching dispatched directive",
+      "observed": {
+        "id": "vdir_511c06cc-5695-4c79-aab2-3068a9ae731f",
+        "company_id": "org_nco-evolution",
+        "team_id": "team_gov-evolution-learning",
+        "loop_id": "",
+        "type": "audit_required",
+        "status": "dispatched",
+        "work_report_id": "completion_audit_task_x21RZj7Pog5HXkTi",
+        "task_id": "task_yBa5BsqOujhOUKIA",
+        "dispatched_at": "2026-07-30T19:42:44.735Z",
+        "last_error": null,
+        "attempt_count": 5,
+        "next_attempt_at": null,
+        "created_at": "2026-07-30T17:21:01.642Z",
+        "updated_at": "2026-07-30T19:42:44.735Z",
+        "subject_task_id": "task_x21RZj7Pog5HXkTi"
+      },
+      "verified": true,
+      "evidence": "verification_directives current ledger"
+    },
+    {
+      "id": "C07",
+      "claim": "task_yBa5BsqOujhOUKIA was running at the exact time its report text was emitted",
+      "expected": "historical state transition evidence",
+      "observed": "current task row is reviewing; no immutable task-status history row was found",
+      "verified": false,
+      "evidence": "snapshot task row is insufficient to reconstruct the prior transient state"
+    },
+    {
+      "id": "C08",
+      "claim": "The two HTTP_STATUS:000 observations prove that both services were down",
+      "expected": "server-side availability evidence",
+      "observed": "current shell cannot connect; sandbox also denies listen and PM2 RPC access, so client-side HTTP 000 does not identify the server-side cause",
+      "verified": false,
+      "evidence": "runtime probes below; causal attribution remains unverified"
+    }
+  ],
+  "runtimeProbes": {
+    "ncoHealth": {
+      "command": [
+        "curl",
+        "-sS",
+        "--max-time",
+        "5",
+        "-w",
+        "\nHTTP_STATUS:%{http_code}\n",
+        "http://127.0.0.1:6200/api/health"
+      ],
+      "exitCode": 7,
+      "signal": null,
+      "stdout": "\nHTTP_STATUS:000\n",
+      "stderr": "curl: (7) Failed to connect to 127.0.0.1 port 6200 after 0 ms: Couldn't connect to server\n"
+    },
+    "novaAxHealth": {
+      "command": [
+        "curl",
+        "-sS",
+        "--max-time",
+        "5",
+        "-w",
+        "\nHTTP_STATUS:%{http_code}\n",
+        "http://127.0.0.1:6300/api/health"
+      ],
+      "exitCode": 7,
+      "signal": null,
+      "stdout": "\nHTTP_STATUS:000\n",
+      "stderr": "curl: (7) Failed to connect to 127.0.0.1 port 6300 after 12 ms: Couldn't connect to server\n"
+    },
+    "pm2Supervisor": {
+      "command": [
+        "pm2",
+        "jlist"
+      ],
+      "exitCode": 1,
+      "signal": null,
+      "stdout": "",
+      "stderr": "connect EPERM /Users/nova-ai/.pm2/rpc.sock\nnode:fs:556\n  return binding.open(\n                 ^\n\nError: EPERM: operation not permitted, open '/Users/nova-ai/.pm2/pm2.log'\n    at Object.openSync (node:fs:556:18)\n    at Client.launchDaemon (/opt/homebrew/lib/node_modules/pm2/lib/Client.js:228:12)\n    at /opt/homebrew/lib/node_modules/pm2/lib/Client.js:104:10\n    at /opt/homebrew/lib/node_modules/pm2/lib/Client.js:318:14\n    at processTicksAndRejections (node:internal/process/task_queues:85:11)\n    at runNextTicks (node:internal/process/task_queues:69:3)\n    at listOnTimeout (node:internal/timers:567:9)\n    at process.processTimers (node:internal/timers:541:7) {\n  errno: -1,\n  code: 'EPERM',\n  syscall: 'open',\n  path: '/Users/nova-ai/.pm2/pm2.log'\n}\n\nNode.js v25.9.0\n"
+    }
+  },
+  "fileEvidence": [
+    {
+      "path": "/Users/nova-ai/project/nco/db/nco.db",
+      "byteSize": 966021120,
+      "modifiedAt": "2026-07-30T19:48:37.135Z",
+      "sha256": "fccc14e2edbac074cbda30e73dab00d1e0bf7674873f44d9206a9631e14544c4"
+    },
+    {
+      "path": "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+      "byteSize": 69406720,
+      "modifiedAt": "2026-07-30T19:42:54.180Z",
+      "sha256": "158362f27dab0dd0332be27bd461d991b3af8c03bdbe29c2714bcdf51e1af737"
+    },
+    {
+      "path": "/Users/nova-ai/project/nova-ax/evidence/org_nco-evolution/team_gov-evolution-learning/2026-07-30/audit-result.json",
+      "byteSize": 18179,
+      "modifiedAt": "2026-07-30T11:32:03.662Z",
+      "sha256": "36a491cb583743ed89b244e881337ebc005240995e5974446497502889479e90"
+    }
+  ],
+  "completionGate": {
+    "canClaimDone": false,
+    "reasons": [
+      "task_yBa5BsqOujhOUKIA has no fresh verification run",
+      "task_yBa5BsqOujhOUKIA has no approved receipt",
+      "NCO completion binding was not attempted without a valid current-task receipt",
+      "3 company/team work-report obligations remain missed in the ledger",
+      "Nova-AX and NCO connector calls were cancelled outside this collector"
+    ]
+  }
+}

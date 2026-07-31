@@ -1,0 +1,18 @@
+{
+  "name": "chrome-headless-browser-visual-screenshot",
+  "cmd": [
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "--headless=new",
+    "--disable-gpu",
+    "--hide-scrollbars",
+    "--screenshot=/tmp/ui-audit-approval-N73a-20260731T033946Z/live-ui-desktop.png",
+    "--window-size=1440,900",
+    "http://127.0.0.1:5173/"
+  ],
+  "exitCode": -6,
+  "durationMs": 245,
+  "commandHash": "5690bcd263320b0a10d5e94dda13c814a39fd4daa6e90544a8018cc7aa9040f8",
+  "outputHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout": "",
+  "stderr": ""
+}

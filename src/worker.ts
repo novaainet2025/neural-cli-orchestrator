@@ -39,6 +39,7 @@ async function boot(): Promise<void> {
       signal,
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,
+      localNetworkAccess: task.metadata?.localNetworkAccess === true,
     });
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });

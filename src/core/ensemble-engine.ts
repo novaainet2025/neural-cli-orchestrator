@@ -152,6 +152,15 @@ class EnsembleEngine {
     return Promise.all(tasks);
   }
 
+  /** 정렬 전 1회 배치 조회 — sort 비교기마다 getWeight() 2쿼리 반복 방지 */
+  private weightsForResults(
+    results: AgentEnsembleResult[],
+    domain: string,
+  ): Record<string, number> {
+    const agentIds = [...new Set(results.map((r) => r.agentId))];
+    return adaptiveScorer.getWeightsForTask(agentIds, domain);
+  }
+
   /**
    * Best-of-N: 적응형 가중 점수 기반 최적 결과 선택
    * AdaptiveScorer 가중치 × 품질 점수로 정렬 (cold start 시 가중치=1.0)
@@ -163,9 +172,10 @@ class EnsembleEngine {
     taskType?: string,
   ): EnsembleResult {
     const domain = taskType ?? 'general';
+    const weights = this.weightsForResults(results, domain);
     const sorted = [...results].sort((a, b) => {
-      const wa = adaptiveScorer.getWeight(a.agentId, domain);
-      const wb = adaptiveScorer.getWeight(b.agentId, domain);
+      const wa = weights[a.agentId] ?? 1.0;
+      const wb = weights[b.agentId] ?? 1.0;
       return (b.score * wb) - (a.score * wa);
     });
     return {
@@ -206,9 +216,10 @@ class EnsembleEngine {
 
     // 가장 큰 클러스터에서 적응형 가중 점수 최고 결과 선택
     const largestCluster = clusters.sort((a, b) => b.length - a.length)[0] ?? results;
+    const weights = this.weightsForResults(largestCluster, domain);
     const winner = [...largestCluster].sort((a, b) => {
-      const wa = adaptiveScorer.getWeight(a.agentId, domain);
-      const wb = adaptiveScorer.getWeight(b.agentId, domain);
+      const wa = weights[a.agentId] ?? 1.0;
+      const wb = weights[b.agentId] ?? 1.0;
       return (b.score * wb) - (a.score * wa);
     })[0] ?? results[0];
     const sorted = [...results].sort((a, b) => b.score - a.score);

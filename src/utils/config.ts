@@ -6,7 +6,8 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
 
-dotenvConfig({ path: resolve(ROOT, '.env') });
+// quiet: dotenv v17+ 배너를 stdout 으로 내보내므로 억제 — MCP stdio(JSON-RPC) 오염 방지
+dotenvConfig({ path: resolve(ROOT, '.env'), quiet: true });
 
 // ─── topology.json ────────────────────────────────────
 interface Topology {

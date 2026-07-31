@@ -1,0 +1,98 @@
+{
+  "taskId": "task_k3A4UTcYGBJpJZ_K",
+  "companyId": "org_nco-evolution",
+  "teamId": "team_gov-evolution-skills",
+  "actorId": "cursor-agent",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-evolution/team_gov-evolution-skills/2026-07-30/audit-artifact.json",
+    "expectedSha256": "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "gov-evolution-skills-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T07:55:19.818Z",
+      "evidenceHash": "d673afe65aa18b7317b7b9c43b0dd90f4422503f090111b1b073c83ce2dbf3c3"
+    }
+  },
+  "measurements": [
+    {
+      "name": "deliverables-cataloged",
+      "unit": "artifacts",
+      "baseline": 0,
+      "current": 5,
+      "target": 3,
+      "direction": "higher_is_better",
+      "sampleSize": 5,
+      "provenance": {
+        "kind": "ci",
+        "producer": "gov-evolution-skills-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T07:55:19.818Z",
+        "evidenceHash": "be1ecbbefd378d8f2a62c6a0e2dc42b36901b2751dfe8729200325ed974dec59"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "verification-suite",
+      "exitCode": 0,
+      "durationMs": 15865,
+      "commandHash": "b7d2576517a8e38d6547cd7d0efd8a453291390302adf065557974a14d87436c",
+      "outputHash": "c62f4aac654ed7ce2151cf566914ce27df034304cb557a2af30fd917e70e5526",
+      "provenance": {
+        "kind": "ci",
+        "producer": "gov-evolution-skills-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T07:55:19.818Z",
+        "evidenceHash": "691ec317ed5fb3cdc384854a8e53b466314dd01729c16e8ea9c733259716b597"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "76d25b9fa7aa8ea3bda3963b4fb73926c81ea47a1c07d3cbb5e86e8d1d3b770d",
+    "provenance": {
+      "kind": "ci",
+      "producer": "gov-evolution-skills-optimization-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T07:55:19.818Z",
+      "evidenceHash": "c102b6b6bc4ce6245ea57b9a6af6feb5da07787238d19fc5646584b4b3471ab9"
+    }
+  },
+  "requirements": [
+    {
+      "id": "audit-scope-evidence",
+      "satisfied": true,
+      "evidenceHashes": [
+        "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+        "be1ecbbefd378d8f2a62c6a0e2dc42b36901b2751dfe8729200325ed974dec59",
+        "691ec317ed5fb3cdc384854a8e53b466314dd01729c16e8ea9c733259716b597"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "gov-evolution-skills-goal-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T07:55:19.818Z",
+      "evidenceHash": "76faa86d4300b3ba02928d0c76ceb591094369a2f7b8779daec96c083c22e5ff"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "Machine classification: JSON operations audit artifact; no HTML or interactive UI surface.",
+    "provenance": {
+      "kind": "ci",
+      "producer": "artifact-surface-classification-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T07:55:19.818Z",
+      "evidenceHash": "b05a483512d328d6007f80c969a8ccc654d0d28707c222906227c4f7a0d3f3d1"
+    }
+  }
+}

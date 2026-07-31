@@ -1,0 +1,24 @@
+{
+  "runId": "vrun_a544066d-d7e7-45c5-962a-f14b458b5743",
+  "status": "approved",
+  "passedInstitutions": 6,
+  "requiredInstitutions": 6,
+  "receiptId": "vrcpt_90850a4f-ba88-4bbe-8edf-ded179b921c8",
+  "issuedAt": "2026-07-31T04:04:39.992Z",
+  "loopId": "vloop_9d184149-6d2c-4a85-b171-1a088d57067d",
+  "loopStatus": "completed",
+  "attemptId": "vattempt_b8ac9438-d984-41e3-8c3c-698b0884969b",
+  "ncoBindSubject": {
+    "taskId": "task_N73a_tt-ewoyj3hU",
+    "httpBody": {
+      "error": "task_not_found"
+    }
+  },
+  "oversightAfter": {
+    "compliantScopes": 1,
+    "unverifiedScopes": 0,
+    "failedScopes": 0,
+    "failureQueue": [],
+    "activeRemediationLoops": 2
+  }
+}

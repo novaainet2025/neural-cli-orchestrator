@@ -199,7 +199,7 @@ export function persistRecoveredTaskResult(
   taskId: string,
   result: TaskExecutionResult,
 ): { ok: boolean; prev?: string } {
-  const nextStatus = result.status === 'cancelled'
+  let nextStatus = result.status === 'cancelled'
     ? 'cancelled'
     : result.status === 'timed_out'
         || result.error === 'timeout(idle)'
@@ -208,15 +208,39 @@ export function persistRecoveredTaskResult(
       : result.success
         ? 'completed'
         : 'failed';
-  const error = nextStatus === 'completed'
+  if (nextStatus === 'completed') {
+    const row = db.prepare(`
+      SELECT team_id, metadata_json
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as {
+      team_id: string | null;
+      metadata_json: string | null;
+    } | undefined;
+    let metadata: Record<string, unknown> = {};
+    try {
+      metadata = row?.metadata_json
+        ? JSON.parse(row.metadata_json) as Record<string, unknown>
+        : {};
+    } catch {
+      metadata = {};
+    }
+    const auditControlPlane = metadata.auditControlPlane === true
+      || typeof metadata.verificationDirectiveId === 'string';
+    if (row?.team_id && !auditControlPlane) nextStatus = 'reviewing';
+  }
+  const error = nextStatus === 'completed' || nextStatus === 'reviewing'
     ? undefined
     : result.error || 'unknown: execution failed';
 
   return transitionTask(db, taskId, nextStatus, {
     response: result.output || undefined,
     error,
-    completedAt: nextStatus !== 'cancelled',
-    evidenceJson: nextStatus === 'completed' ? result.evidenceJson : undefined,
+    completedAt: nextStatus !== 'cancelled' && nextStatus !== 'reviewing',
+    evidenceJson:
+      nextStatus === 'completed' || nextStatus === 'reviewing'
+        ? result.evidenceJson
+        : undefined,
   });
 }
 
@@ -1661,11 +1685,17 @@ class TaskQueueManager {
   }
 
   private async enqueueBullMQ(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
+    const requestedQueuePriority = Number(task.metadata?.queuePriority);
+    const queuePriority = Number.isInteger(requestedQueuePriority)
+      && requestedQueuePriority >= 0
+      && requestedQueuePriority <= 2_097_152
+      ? requestedQueuePriority
+      : task.priority ?? 5;
     const job = await entry.queue!.add(task.taskId, task, {
       jobId: task.taskId,
       removeOnComplete: 100,
       removeOnFail: 50,
-      priority: task.priority ?? 5,
+      priority: queuePriority,
       // 재시도·에스컬레이션은 enqueue()의 단일 루프가 담당한다. BullMQ까지 재시도하면
       // 동일 taskId가 이중 실행되고 terminal 결과가 매몰될 수 있다.
       attempts: BULLMQ_JOB_ATTEMPTS,

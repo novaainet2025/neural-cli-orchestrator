@@ -27,11 +27,17 @@ describe('task model override CLI propagation', () => {
   });
 
   it('does not send routing aliases as literal model names', () => {
-    expect(buildOrchestratedCliArgs(
+    const args = buildOrchestratedCliArgs(
       { id: 'cursor-agent', model: 'cursor' },
       [],
       'Reply OK'
-    )).not.toContain('--model');
+    );
+    expect(args).not.toContain('--model');
+    expect(args).toEqual(expect.arrayContaining([
+      '--auto-review',
+      '--sandbox',
+      'enabled',
+    ]));
   });
 
   it('does not send the NCO agy-internal routing alias to AGY as a model', () => {
@@ -41,9 +47,38 @@ describe('task model override CLI propagation', () => {
       'Reply OK'
     );
     expect(args).not.toContain('--model');
+    expect(args).not.toContain('--dangerously-skip-permissions');
+    expect(args).toEqual(expect.arrayContaining([
+      '--mode',
+      'accept-edits',
+      '--sandbox',
+    ]));
     expect(args.at(-2)).toBe('--print');
     expect(args.at(-1)).toBe('Reply OK');
   });
+
+  it.each(['codex', 'hermes'])(
+    '%s enables local network only for an explicitly scoped task',
+    (id) => {
+      const defaultArgs = buildOrchestratedCliArgs(
+        { id, model: id },
+        [],
+        'Reply OK',
+      );
+      expect(defaultArgs).not.toContain('sandbox_workspace_write.network_access=true');
+
+      const networkArgs = buildOrchestratedCliArgs(
+        { id, model: id },
+        [],
+        'Reply OK',
+        null,
+        undefined,
+        true,
+      );
+      expect(networkArgs).toContain('sandbox_workspace_write.network_access=true');
+      expect(networkArgs[networkArgs.indexOf('--sandbox') + 1]).toBe('workspace-write');
+    },
+  );
 });
 
 describe('Cursor transient model-provider fallback', () => {
@@ -144,6 +179,6 @@ describe('Cursor transient model-provider fallback', () => {
   it('supports environment override and explicit disable values', () => {
     expect(resolveCursorFallbackModel('cursor-grok-4.5-low')).toBe('cursor-grok-4.5-low');
     expect(resolveCursorFallbackModel('off')).toBeNull();
-    expect(resolveCursorFallbackModel(undefined)).toBe('composer-2.5');
+    expect(resolveCursorFallbackModel(undefined)).toBe('auto');
   });
 });

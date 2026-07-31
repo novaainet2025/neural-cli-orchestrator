@@ -11,6 +11,10 @@ import {
   OrchestrationError,
   type OrchestrationMode,
 } from '../../core/company-orchestrator.js';
+import {
+  buildComputerUseObservability,
+  probeComputerUseRuntime,
+} from '../../core/computer-use-company.js';
 import { resolveInternalProjectDir } from '../../utils/project-dir.js';
 
 type TeamMemberType = 'provider' | 'session' | 'nco-session';
@@ -862,5 +866,23 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     const rawLimit = Number((req.query as { limit?: string }).limit ?? 20);
     const limit = Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 20, 100);
     return { runs: listCompanyRuns(limit) };
+  });
+
+  // Computer Use 제어 코디네이터팀·감사팀이 Tier-1 잠금/런타임 증거를 수집할 수 있는 읽기 전용 엔드포인트.
+  app.get('/api/computer-use/status', async () => {
+    const runtime = await probeComputerUseRuntime();
+    const snapshot = buildComputerUseObservability(runtime);
+    const activeRuns = listCompanyRuns(50)
+      .filter((run) => run.orgSlug === 'computer-use' && run.computerUse)
+      .map((run) => ({
+        runId: run.id,
+        orgSlug: run.orgSlug,
+        status: run.computerUse!.status,
+        message: run.computerUse!.message,
+        queuedBehindRunId: run.computerUse!.queuedBehindRunId,
+        activatedAt: run.computerUse!.activatedAt,
+        releasedAt: run.computerUse!.releasedAt,
+      }));
+    return { ...snapshot, activeRuns };
   });
 }

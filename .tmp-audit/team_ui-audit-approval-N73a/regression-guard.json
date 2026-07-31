@@ -1,0 +1,38 @@
+{
+  "checkedMetrics": [
+    {
+      "name": "team-task-rows-collected",
+      "baseline": 0,
+      "current": 40,
+      "target": 1,
+      "targetMet": true,
+      "improved": true
+    },
+    {
+      "name": "verification-runs-observed",
+      "baseline": 0,
+      "current": 28,
+      "target": 1,
+      "targetMet": true,
+      "improved": true
+    },
+    {
+      "name": "browser-visual-files-hashed",
+      "baseline": 0,
+      "current": 13,
+      "target": 1,
+      "targetMet": true,
+      "improved": true
+    },
+    {
+      "name": "approved-six-of-six-runs-in-scope",
+      "baseline": 0,
+      "current": 19,
+      "target": 1,
+      "targetMet": true,
+      "improved": true
+    }
+  ],
+  "regressionGuardPassed": true,
+  "observedAt": "2026-07-31T03:43:39.000Z"
+}

@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import { refreshTeamCircuitFromRecentFailures } from '../security/team-circuit-guard.js';
 import { recordWorkEventSafely } from './work-event-ledger.js';
 
 export const TERMINAL_STATES = new Set(['completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']);
@@ -16,9 +17,10 @@ function parseEvidenceJson(value: string | undefined): unknown {
 
 export const ALLOWED_TRANSITIONS: Record<string, Set<string>> = {
   queued: new Set(['assigned', 'running', 'cancelled', 'failed']),
-  assigned: new Set(['running', 'streaming', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
-  running: new Set(['streaming', 'completed', 'failed', 'timed_out', 'cancelled']),
-  streaming: new Set(['completed', 'failed', 'timed_out', 'cancelled']),
+  assigned: new Set(['running', 'streaming', 'reviewing', 'completed', 'failed', 'timed_out', 'cancelled', 'lease_expired']),
+  running: new Set(['streaming', 'reviewing', 'completed', 'failed', 'timed_out', 'cancelled']),
+  streaming: new Set(['reviewing', 'completed', 'failed', 'timed_out', 'cancelled']),
+  reviewing: new Set(['completed', 'failed', 'cancelled']),
   completed: new Set(),
   failed: new Set(),
   timed_out: new Set(),
@@ -43,6 +45,34 @@ export function transitionTask(
   extra?: { response?: string; error?: string; completedAt?: boolean; evidenceJson?: string },
 ): { ok: boolean; prev?: string } {
   const prior = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as { status?: string } | undefined;
+  if (next === 'completed') {
+    const auditRow = db.prepare(`
+      SELECT team_id, metadata_json
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as {
+      team_id?: string | null;
+      metadata_json?: string | null;
+    } | undefined;
+    if (auditRow?.team_id) {
+      let metadata: Record<string, unknown> = {};
+      try {
+        metadata = auditRow.metadata_json
+          ? JSON.parse(auditRow.metadata_json) as Record<string, unknown>
+          : {};
+      } catch {
+        metadata = {};
+      }
+      const auditControlPlane = metadata.auditControlPlane === true
+        || typeof metadata.verificationDirectiveId === 'string';
+      const approved = metadata.verificationStatus === 'approved'
+        && typeof metadata.verificationReceiptId === 'string'
+        && metadata.verificationReceiptId.trim().length > 0;
+      if (!auditControlPlane && !approved) {
+        return { ok: false, prev: prior?.status };
+      }
+    }
+  }
   const allowedSources = ALLOWED_SOURCES_BY_TARGET.get(next) ?? [];
   if (allowedSources.length === 0) {
     return { ok: false, prev: prior?.status };
@@ -80,6 +110,18 @@ export function transitionTask(
   const result = db.prepare(sql).run(...params, taskId, ...allowedSources);
 
   if (result.changes === 1) {
+    if (next === 'failed') {
+      const teamRow = db.prepare('SELECT team_id FROM tasks WHERE id=?').get(taskId) as
+        | { team_id?: string | null }
+        | undefined;
+      if (teamRow?.team_id) {
+        try {
+          refreshTeamCircuitFromRecentFailures(db, teamRow.team_id);
+        } catch {
+          // best-effort team circuit refresh must not block task transitions
+        }
+      }
+    }
     recordWorkEventSafely({
       source: 'task-state',
       eventType: `task:${next}`,

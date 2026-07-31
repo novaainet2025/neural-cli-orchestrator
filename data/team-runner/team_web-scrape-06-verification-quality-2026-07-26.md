@@ -32,7 +32,7 @@
 - 빌드/타입체크/테스트/커밋: **미실행 · unverified**.
 - 데이터 품질 게이트(정확도·완전성·중복·최신성·선택자): **검증 불가(표본 부재)**.
 - 안전 가드(robots/도메인/상한/비신뢰 표지): **검증 불가(증거 부재)**.
-- 팀 가동: claude-code/opencode/codex/agy/hermes/higgsfield/retired-provider idle; cursor-agent working(`task_olu99S9hq1uU956f`) — 해당 태스크 산출물 내용은 **미확인**.
+- 팀 가동: claude-code/opencode/codex/agy/hermes/retired-media-provider/retired-provider idle; cursor-agent working(`task_olu99S9hq1uU956f`) — 해당 태스크 산출물 내용은 **미확인**.
 
 ---
 

@@ -1,0 +1,97 @@
+{
+  "observedAt": "2026-07-30T09:07:46.104Z",
+  "taskId": "task_6U9HdSXrBErDX2CZ",
+  "directiveId": "vdir_fbcc1e20-b7e8-43e0-b53c-0f301281b7d6",
+  "artifactPath": "/Users/nova-ai/project/nova-ax/evidence/org_nova-ax/team_hr-director/2026-07-30/hr-director-audit-bundle-cycle1.json",
+  "stagingArtifactPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nova-ax/team_hr-director/2026-07-30/hr-director-audit-bundle.json",
+  "evidenceDir": "/Users/nova-ai/project/nova-ax/evidence/org_nova-ax/team_hr-director/2026-07-30",
+  "artifactHash": "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+  "testLogPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nova-ax/team_hr-director/2026-07-30/verification-suite.log",
+  "testOutputHash": "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8",
+  "testExitCode": 0,
+  "testDurationMs": 142,
+  "submissionPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nova-ax/team_hr-director/2026-07-30/verification-submission.json",
+  "verification": {
+    "httpStatus": 200,
+    "body": {
+      "runId": "vrun_d9338941-4f11-42ea-b297-7d7a2f5c7cac",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "requiredInstitutions": 6,
+      "results": [
+        {
+          "institution": "inspection",
+          "name": "검사기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1"
+          ]
+        },
+        {
+          "institution": "validation",
+          "name": "검증기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1"
+          ]
+        },
+        {
+          "institution": "measurement",
+          "name": "실측기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "944964e88b99c23481ef5b8ef484d37f8202d2f5d9e09a9a5c2ad52e45435671",
+            "ddd327a8af058892d54e78be2a53a5bd72db468979d559c95756f11b68de5082"
+          ]
+        },
+        {
+          "institution": "performance",
+          "name": "성능테스트기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8"
+          ]
+        },
+        {
+          "institution": "optimization",
+          "name": "최적화기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "5dbc7c009004ccd502c113a3245a4faadf75efc62281f6f3a68a7de1b9b87185"
+          ]
+        },
+        {
+          "institution": "goal",
+          "name": "목표달성 체크기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+            "944964e88b99c23481ef5b8ef484d37f8202d2f5d9e09a9a5c2ad52e45435671",
+            "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8",
+            "ddd327a8af058892d54e78be2a53a5bd72db468979d559c95756f11b68de5082",
+            "5dbc7c009004ccd502c113a3245a4faadf75efc62281f6f3a68a7de1b9b87185"
+          ]
+        }
+      ],
+      "evidenceDigest": "03a6f97268c6d70386d3c9daf427e128ca432053cb56c9f44f3dce53de308909",
+      "receiptId": "vrcpt_7a8085a3-ae44-43ae-9c87-da4d7b88a5ca",
+      "issuedAt": "2026-07-30T09:07:46.276Z"
+    }
+  },
+  "openLoops": [],
+  "remediationAttempt": null,
+  "completionEvent": {
+    "httpStatus": 200,
+    "body": {
+      "ok": true,
+      "id": "axevt_hr_director_audit_cycle1_c6afc6a6-abde-4779-a1a6-833333fd1198",
+      "status": "task_complete"
+    }
+  }
+}

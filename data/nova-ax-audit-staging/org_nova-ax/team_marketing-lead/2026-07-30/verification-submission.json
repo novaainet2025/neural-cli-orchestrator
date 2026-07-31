@@ -1,0 +1,131 @@
+{
+  "taskId": "task_6ri7yR6wsyJxciMd",
+  "companyId": "org_nova-ax",
+  "teamId": "team_marketing-lead",
+  "actorId": "cursor-agent",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/org_nova-ax/team_marketing-lead/2026-07-30/marketing-lead-audit-bundle-cycle2.json",
+    "expectedSha256": "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "node-sha256-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:00:17.265Z",
+      "evidenceHash": "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "감사 번들은 렌더링 표면이 없는 기계 생성 JSON 문서이며 파일 관측 content-type은 비-HTML이다",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "artifact-content-type-probe",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:00:17.265Z",
+      "evidenceHash": "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2"
+    }
+  },
+  "measurements": [
+    {
+      "name": "cataloged-marketing-lead-deliverables",
+      "unit": "files",
+      "baseline": 2,
+      "current": 40,
+      "target": 3,
+      "direction": "higher_is_better",
+      "sampleSize": 40,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "marketing-lead-evidence-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:00:17.265Z",
+        "evidenceHash": "6b24965349e3d9456496c4f6db38013a67bc2e1c37e5f739e6f6079518ffd203"
+      }
+    },
+    {
+      "name": "db-grounded-submitted-work-reports",
+      "unit": "rows",
+      "baseline": 0,
+      "current": 27,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 44,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "nco-db-work-report-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:00:17.265Z",
+        "evidenceHash": "6ad1c4f578f6833eae72f43bf4ce5f1216ad193d9117d6df27d28d91efeb90cc"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "marketing-lead-evidence-integrity-suite",
+      "exitCode": 0,
+      "durationMs": 149,
+      "commandHash": "53e9df01fd789fb4fbea7a9d33bf395da471b564171efbe60f25cb3073a22af8",
+      "outputHash": "2aa56f9a8bb5f5dbe80e13dd1609c45d68c2a24c0e21776fc6a30979bb39b0d5",
+      "provenance": {
+        "kind": "ci",
+        "producer": "node-test-independent-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:00:17.265Z",
+        "evidenceHash": "2aa56f9a8bb5f5dbe80e13dd1609c45d68c2a24c0e21776fc6a30979bb39b0d5"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "88f22e0dc473ebcff9467a0120d4d2a10d70dc7428346464d5b6892b4fbbf211",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "marketing-lead-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:00:17.265Z",
+      "evidenceHash": "88f22e0dc473ebcff9467a0120d4d2a10d70dc7428346464d5b6892b4fbbf211"
+    }
+  },
+  "requirements": [
+    {
+      "id": "marketing-lead-audit-bundle-is-grounded-and-reproducible",
+      "satisfied": true,
+      "evidenceHashes": [
+        "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2",
+        "6b24965349e3d9456496c4f6db38013a67bc2e1c37e5f739e6f6079518ffd203",
+        "2aa56f9a8bb5f5dbe80e13dd1609c45d68c2a24c0e21776fc6a30979bb39b0d5"
+      ]
+    },
+    {
+      "id": "marketing-lead-work-reports-have-no-phantom-submissions",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6ad1c4f578f6833eae72f43bf4ce5f1216ad193d9117d6df27d28d91efeb90cc",
+        "2aa56f9a8bb5f5dbe80e13dd1609c45d68c2a24c0e21776fc6a30979bb39b0d5"
+      ]
+    },
+    {
+      "id": "marketing-lead-persistence-crosscheck-is-machine-derived",
+      "satisfied": true,
+      "evidenceHashes": [
+        "06e05fe896f798e21c297269e4a64412b0b71646db7b207958b54bf285dd5dc2",
+        "2aa56f9a8bb5f5dbe80e13dd1609c45d68c2a24c0e21776fc6a30979bb39b0d5",
+        "88f22e0dc473ebcff9467a0120d4d2a10d70dc7428346464d5b6892b4fbbf211"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "marketing-lead-goal-attestation-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:00:17.265Z",
+      "evidenceHash": "3d080a36b8d48826c9a703a919ae728d0591680dfceac3b5ceca1ea428f72e5c"
+    }
+  }
+}

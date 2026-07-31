@@ -1,0 +1,105 @@
+{
+  "source": "/Users/nova-ai/project/nco/db/nco.db",
+  "companyId": "org_web-scraping",
+  "teamId": "team_web-scrape-04-dynamic-implementation",
+  "taskId": "task_n2jb5eXRa44AI5xx",
+  "team": {
+    "id": "team_web-scrape-04-dynamic-implementation",
+    "organization_id": "org_web-scraping",
+    "name": "04 Dynamic Browser Implementation",
+    "slug": "web-scrape-04-dynamic-implementation",
+    "lead": "codex",
+    "is_active": 1
+  },
+  "task": {
+    "id": "task_n2jb5eXRa44AI5xx",
+    "team_id": "team_web-scrape-04-dynamic-implementation",
+    "assigned_to": "agy",
+    "status": "reviewing",
+    "created_at": "2026-07-30 23:03:06",
+    "updated_at": "2026-07-31 04:34:03",
+    "completed_at": null
+  },
+  "taskCounts": [
+    {
+      "status": "cancelled",
+      "count": 7
+    },
+    {
+      "status": "completed",
+      "count": 21
+    },
+    {
+      "status": "failed",
+      "count": 11
+    },
+    {
+      "status": "queued",
+      "count": 3
+    },
+    {
+      "status": "reviewing",
+      "count": 1
+    },
+    {
+      "status": "running",
+      "count": 1
+    }
+  ],
+  "workReportCounts": [
+    {
+      "status": "late",
+      "count": 2
+    },
+    {
+      "status": "missed",
+      "count": 2
+    },
+    {
+      "status": "pending",
+      "count": 1
+    },
+    {
+      "status": "submitted",
+      "count": 10
+    }
+  ],
+  "baseline": {
+    "completedTasks": 18,
+    "submittedReports": 8
+  },
+  "current": {
+    "completedTasks": 21,
+    "submittedReports": 10,
+    "totalTasks": 44,
+    "totalReports": 15
+  },
+  "tests": {
+    "vitestFiles": 2,
+    "vitestTests": 7,
+    "pythonTests": 11
+  },
+  "implementation": [
+    {
+      "path": "/Users/nova-ai/project/nco/src/services/webScrapingService.ts",
+      "sha256": "37d65b9dba0525b4711c2eb9a1d1e4c5fe764e05bd6dc638ba31ba7e11ef7714",
+      "bytes": 6370
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/src/server/routes/web-scraping.ts",
+      "sha256": "1894e5bb97f88bd26940ae7bd1e3ed284d8c1fa8c0c6133be06ce188dcb8d420",
+      "bytes": 9772
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/integrations/scrapling/nco_scrapling/policy.py",
+      "sha256": "239db14e7790fdc784b5f9a1fa84a0e9d15516dcd41dc00fba9af8d0548c9b5e",
+      "bytes": 11397
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/integrations/scrapling/nco_scrapling/runner.py",
+      "sha256": "4f10647051fdff19bc519b8579e3c4cbe8a8b75f394f811cfe1360b82b61b6ff",
+      "bytes": 10828
+    }
+  ],
+  "observedAt": "2026-07-31T04:37:21.850Z"
+}

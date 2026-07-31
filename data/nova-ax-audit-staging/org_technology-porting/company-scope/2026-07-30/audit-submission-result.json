@@ -1,0 +1,14 @@
+{
+  "observedAt": "2026-07-30T06:16:39.280Z",
+  "artifactPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_technology-porting/company-scope/2026-07-30/company-scope-audit-bundle.json",
+  "artifactHash": "4a56164de182cd1898202af757119adf6943450508c9ac08ff1c8ad1deefc4e7",
+  "testLogPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_technology-porting/company-scope/2026-07-30/verification-suite.log",
+  "testOutputHash": "d8eb90017ae690f2df3f77d48f733d8a3bb5a203221816c0598f5520f607272c",
+  "testExitCode": 0,
+  "testDurationMs": 815,
+  "submissionPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_technology-porting/company-scope/2026-07-30/verification-submission.json",
+  "verification": null,
+  "remediationAttempt": null,
+  "completionEvent": null,
+  "transportError": "fetch failed"
+}

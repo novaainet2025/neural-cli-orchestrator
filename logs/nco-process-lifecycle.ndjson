@@ -1,0 +1,4 @@
+{"timestamp":"2026-07-31T04:24:05.297Z","event":"startup","pid":41408,"ppid":41324,"uptimeSeconds":3.475}
+{"timestamp":"2026-07-31T04:24:07.083Z","event":"exit","pid":41408,"ppid":41324,"uptimeSeconds":5.26,"code":1}
+{"timestamp":"2026-07-31T04:24:45.458Z","event":"startup","pid":78242,"ppid":1252,"uptimeSeconds":0.703}
+{"timestamp":"2026-07-31T04:24:45.930Z","event":"exit","pid":78242,"ppid":1252,"uptimeSeconds":1.175,"code":1}

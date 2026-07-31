@@ -41,7 +41,7 @@
 | 팀 태스크 | 진행=0, 대기=0, 실패누적=3, 완료율 62.5% | tasks / /api/teams |
 | claude-code | **장애 후보 (error + 고실패)**; 헤더는 idle | /api/agents vs Team |
 | codex / cursor-agent | working | /api/agents · Team도 cursor-agent working |
-| 기타 에이전트(opencode/ollama/agy/hermes/higgsfield/retired-provider) | Team=idle; API 상세 **미확인** | Team만 |
+| 기타 에이전트(opencode/ollama/agy/hermes/retired-media-provider/retired-provider) | Team=idle; API 상세 **미확인** | Team만 |
 | 인시던트 등급 | **P2 후보** (단일 에이전트 고실패·팀 완료율 저하). P1 여부(게이트웨이 다운 등) **미확인** | 스냅샷 |
 | 파괴적 조치 | **미허가** (2nd key·시간상자 미제시) | 정책 |
 

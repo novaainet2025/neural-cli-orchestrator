@@ -24,7 +24,7 @@
 - **Name**: Expert Guild
 - **Slug**: `ax-collab`
 - **Lead**: `opencode` (설계/아키텍처)
-- **Members**: `opencode`, `codex` (코드 구현), `higgsfield` (시각화/미디어), `openclaw` (브라우저 자동화)
+- **Members**: `opencode`, `codex` (코드 구현), `agy` (시각화/미디어), `openclaw` (브라우저 자동화)
 - **Charter**: 복잡한 교차 도메인 태스크 처리, 도메인 특화 전문 지식(아키텍처, 코딩, 시각화) 제공 및 협업 구현
 - **Always-on**: `false` (태스크 발생 시 동적 트리거)
 - **상호 견제 구조**: 생성된 산출물은 길드 내부의 1차 검토 후 최종적으로 `independent-audit`의 `cursor-agent`에게 코드 리뷰를 받아야 함.

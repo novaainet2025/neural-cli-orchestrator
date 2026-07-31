@@ -63,7 +63,7 @@
 - 회로차단 기준, 타임아웃 값, 폴백 순서, 중단 조건과 실제 작동 기록이 없어 안전한 배차 운용 여부를 확인할 수 없다.
 - 역할·역량·최근 성과 가운데 최근 성과만 일부 제공됐다. 비용, 위험, 현재 가용성, 팀별 역할과 역량, 최근 성과의 산정 기준은 제공되지 않았다.
 - 업무보고 제출 4건의 보고서 식별자, 대상, 제출 시각과 전체 제출 대상 수가 없어 제출 완전성을 확인할 수 없다.
-- 현재 팀 상태를 보면 opencode와 cursor-agent와 ollama는 작업 진행 중이며(각각 `task_WdP5XtFQrgqCBamC`, `task_7wS1alWtK8IZxVuW`, `task_LIyU5cTZfHZlDL2q`), codex·agy·hermes·higgsfield는 오프라인, retired-provider는 유휴 상태다. 이 정보는 현재 가용성의 부분 신호로 사용할 수 있다.
+- 현재 팀 상태를 보면 opencode와 cursor-agent와 ollama는 작업 진행 중이며(각각 `task_WdP5XtFQrgqCBamC`, `task_7wS1alWtK8IZxVuW`, `task_LIyU5cTZfHZlDL2q`), codex·agy·hermes·retired-media-provider는 오프라인, retired-provider는 유휴 상태다. 이 정보는 현재 가용성의 부분 신호로 사용할 수 있다.
 
 ## 다음 액션
 
@@ -82,7 +82,7 @@
 - 최근 7일 과업 집계: 전체 8건, 완료 7건, 실패성 1건, 진행 0건, 완료율 87.5%
 - 최근 7일 업무보고: 제출 4건
 - 에이전트 성과 요약: 9개 항목
-- 현재 팀 가용성: opencode·cursor-agent·ollama 작업 진행 중, codex·agy·hermes·higgsfield 오프라인, retired-provider 유휴
+- 현재 팀 가용성: opencode·cursor-agent·ollama 작업 진행 중, codex·agy·hermes·retired-media-provider 오프라인, retired-provider 유휴
 
 ### 확인 불가 항목
 

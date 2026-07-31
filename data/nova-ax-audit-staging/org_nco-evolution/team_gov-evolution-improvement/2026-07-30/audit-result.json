@@ -1,0 +1,179 @@
+{
+  "auditCompletedAt": "2026-07-30T08:03:22.704Z",
+  "scope": {
+    "companyId": "org_nco-evolution",
+    "teamId": "team_gov-evolution-improvement",
+    "taskId": "task_p7FNVqWeBQK7tu-i"
+  },
+  "artifactSha256": "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d",
+  "evidencePaths": {
+    "staging": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-evolution/team_gov-evolution-improvement/2026-07-30/audit-artifact.json",
+    "verified": "/Users/nova-ai/project/nova-ax/evidence/org_nco-evolution/team_gov-evolution-improvement/2026-07-30/audit-artifact.json"
+  },
+  "verificationRun": {
+    "httpStatus": 200,
+    "runId": "vrun_599e95c4-5ce2-40c4-acae-968a87d1a05b",
+    "decision": "approved",
+    "passedInstitutions": 6,
+    "receiptId": "vrcpt_2fd21b5f-b7a5-48a2-b999-b334cd2b7246",
+    "results": [
+      {
+        "institution": "inspection",
+        "name": "검사기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d"
+        ]
+      },
+      {
+        "institution": "validation",
+        "name": "검증기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d"
+        ]
+      },
+      {
+        "institution": "measurement",
+        "name": "실측기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "4c60b834a8cb56365d56b631b2d626c65139e4de6b221a374adf28c40de25ceb"
+        ]
+      },
+      {
+        "institution": "performance",
+        "name": "성능테스트기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "3f3bc2d30cea6b5435d76e266ba86b06ac4b90d1d717affc289206d7f644f0c3"
+        ]
+      },
+      {
+        "institution": "optimization",
+        "name": "최적화기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "76d25b9fa7aa8ea3bda3963b4fb73926c81ea47a1c07d3cbb5e86e8d1d3b770d"
+        ]
+      },
+      {
+        "institution": "goal",
+        "name": "목표달성 체크기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "58eb42c3583316c6e749ec8d7852e133cf3f8d996e7b88c1c3c2e0c2a41cde5d",
+          "4c60b834a8cb56365d56b631b2d626c65139e4de6b221a374adf28c40de25ceb",
+          "106186f1bbc4bd83713be6c6454b9708a289478f9c164554c9ec07b2a77f8fd0"
+        ]
+      }
+    ],
+    "failures": []
+  },
+  "testExitCode": 0,
+  "completionEvent": {
+    "httpStatus": 200,
+    "activityId": "2a0038fc-0371-4ac9-847a-3aa553693b03",
+    "receiptConsumed": true,
+    "body": {
+      "ok": true,
+      "id": "2a0038fc-0371-4ac9-847a-3aa553693b03",
+      "status": "task_complete"
+    }
+  },
+  "oversightAfter": {
+    "commander": "Supreme Verification Commander",
+    "institutions": [
+      {
+        "id": "inspection",
+        "name": "검사기관",
+        "mandate": "산출물을 직접 열어 존재·상태·내용·해시를 검사"
+      },
+      {
+        "id": "validation",
+        "name": "검증기관",
+        "mandate": "실측 해시와 독립 증명의 무결성·독립성을 검증"
+      },
+      {
+        "id": "measurement",
+        "name": "실측기관",
+        "mandate": "신선한 기계 실측값·표본·목표 달성을 검증"
+      },
+      {
+        "id": "performance",
+        "name": "성능테스트기관",
+        "mandate": "실행된 테스트의 종료코드·시간·출력 증거를 검증"
+      },
+      {
+        "id": "optimization",
+        "name": "최적화기관",
+        "mandate": "기준선 대비 개선과 무회귀를 검증"
+      },
+      {
+        "id": "goal",
+        "name": "목표달성 체크기관",
+        "mandate": "모든 요구사항과 실제 증거의 연결을 검증"
+      }
+    ],
+    "policy": "6/6 unanimous approval per task; any unresolved task failure makes the scope non-compliant",
+    "totals": {
+      "total": 2,
+      "approved": 2,
+      "rejected": 0,
+      "pending": 0,
+      "consumedReceipts": 2,
+      "activeScopes": 1,
+      "compliantScopes": 1,
+      "unverifiedScopes": 0,
+      "failedScopes": 0,
+      "activeRemediationLoops": 0,
+      "completedRemediationLoops": 0,
+      "exhaustedRemediationLoops": 0,
+      "queuedDirectives": 0,
+      "dispatchedDirectives": 0,
+      "completedDirectives": 1,
+      "cancelledDirectives": 0
+    },
+    "scopes": [
+      {
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-improvement",
+        "total": 2,
+        "approved": 2,
+        "rejected": 0
+      }
+    ],
+    "historicalRejectedRuns": [],
+    "failureQueue": [],
+    "unverifiedScopeQueue": [],
+    "remediationLoops": [],
+    "nextActions": [],
+    "directives": [
+      {
+        "id": "vdir_8483c349-425d-4bf4-85d1-7eec5f0203f6",
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-improvement",
+        "loopId": "",
+        "type": "audit_required",
+        "status": "completed",
+        "workReportId": "audit_req_org_nco-evolution_team_gov-evolution-improvement",
+        "taskId": "task_p7FNVqWeBQK7tu-i",
+        "dispatchedAt": "2026-07-30T04:26:22.029Z",
+        "lastError": null,
+        "attemptCount": 1,
+        "nextAttemptAt": null,
+        "scopeType": "team"
+      }
+    ],
+    "runtime": {
+      "scopeRegistryReady": true,
+      "scopeRegistryLastSyncedAt": "2026-07-30T08:02:44.180Z"
+    }
+  }
+}

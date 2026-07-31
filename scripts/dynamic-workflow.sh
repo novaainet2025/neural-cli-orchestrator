@@ -116,7 +116,7 @@ provider_for_task() {
   text="$(to_lower "$1")"
 
   if [[ "$text" =~ (image|video|generate) ]]; then
-    echo "higgsfield"
+    echo "agy"
   elif [[ "$text" =~ (design|architect|plan) ]]; then
     echo "opencode"
   elif [[ "$text" =~ (implement|code|fix|build) ]]; then

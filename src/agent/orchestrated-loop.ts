@@ -91,6 +91,7 @@ export function buildOrchestratedCliArgs(
   prompt: string,
   lastMessageFile?: string | null,
   model?: string,
+  localNetworkAccess = false,
 ): string[] {
   const configuredModel = model || provider.model;
   const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
@@ -99,21 +100,30 @@ export function buildOrchestratedCliArgs(
 
   switch (provider.id) {
     case 'hermes': {
-      const hFlags = ['exec', '--skip-git-repo-check', '--sandbox', 'read-only', ...(selectedModel ? ['-m', selectedModel] : [])];
+      const hFlags = [
+        'exec',
+        '--skip-git-repo-check',
+        '--sandbox',
+        localNetworkAccess ? 'workspace-write' : 'read-only',
+        ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
+        ...(selectedModel ? ['-m', selectedModel] : []),
+      ];
       return lastMessageFile
         ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
         : [...hFlags, prompt];
     }
     case 'codex':
       return lastMessageFile
-        ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
-        : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
+        ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
+        : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
     case 'agy':
       // provider.model은 NCO 라우팅 별칭(`agy-internal`)일 수 있으며 AGY CLI의
       // 실제 모델 ID가 아니다. AGY는 태스크가 명시한 override만 --model로 전달하고,
       // 기본 실행은 AGY 자체 기본 모델 선택에 맡긴다.
       return [
-        '--dangerously-skip-permissions',
+        '--mode',
+        'accept-edits',
+        '--sandbox',
         ...baseArgs,
         ...(model?.trim() ? ['--model', model.trim()] : []),
         '--print',
@@ -130,9 +140,19 @@ export function buildOrchestratedCliArgs(
         : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
     }
     case 'cursor-agent':
-      return ['--print', '--trust', '--output-format', 'text', ...(selectedModel ? ['--model', selectedModel] : []), prompt];
-    case 'higgsfield':
-      return ['generate', 'create', provider.model || 'higgsfield', '--prompt', prompt];
+      // Headless default는 안전한 명령도 승인 대화상자를 열 수 없어 거부한다.
+      // Smart Auto가 안전 호출만 자동 승인하고 나머지는 거부하도록 sandbox와 함께 고정한다.
+      return [
+        '--print',
+        '--trust',
+        '--auto-review',
+        '--sandbox',
+        'enabled',
+        '--output-format',
+        'text',
+        ...(selectedModel ? ['--model', selectedModel] : []),
+        prompt,
+      ];
     default:
       return [...baseArgs, prompt];
   }
@@ -142,7 +162,9 @@ function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null
   return !result.failed && result.exitCode === 0 && !result.timedOut && !result.isCanceled;
 }
 
-const DEFAULT_CURSOR_FALLBACK_MODEL = 'composer-2.5';
+// Cursor의 계정별 유료 모델 한도와 독립적으로 동작하는 공식 Auto 라우트를 기본값으로 쓴다.
+// 특정 모델이 필요하면 NCO_CURSOR_FALLBACK_MODEL로 명시적으로 고정할 수 있다.
+const DEFAULT_CURSOR_FALLBACK_MODEL = 'auto';
 const DEFAULT_CURSOR_FALLBACK_TTL_MS = 10 * 60_000;
 const CURSOR_MODEL_PROVIDER_ERROR_RE =
   /NonRetriableError:\s*Provider Error[\s\S]{0,500}trouble connecting to the model provider/i;
@@ -303,6 +325,7 @@ class CliExecutionError extends Error {
 export class OrchestratedLoop {
   private toolExecutor: AgentToolExecutor;
   private taskProjectDir?: string;
+  private localNetworkAccess = false;
 
   constructor(
     private provider: ProviderConfig,
@@ -315,9 +338,17 @@ export class OrchestratedLoop {
   async run(
     taskId: string,
     prompt: string,
-    options?: { systemPrompt?: string, compact?: boolean, model?: string, projectDir?: string, disableHistory?: boolean },
+    options?: {
+      systemPrompt?: string;
+      compact?: boolean;
+      model?: string;
+      projectDir?: string;
+      disableHistory?: boolean;
+      localNetworkAccess?: boolean;
+    },
   ): Promise<LoopResult> {
     this.taskProjectDir = options?.projectDir;
+    this.localNetworkAccess = options?.localNetworkAccess === true;
     this.toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId, options?.projectDir);
     const agentId = this.provider.id;
     let iterations = 0;
@@ -719,7 +750,14 @@ export class OrchestratedLoop {
   }
 
   private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
-    return buildOrchestratedCliArgs(this.provider, baseArgs, prompt, lastMessageFile, model);
+    return buildOrchestratedCliArgs(
+      this.provider,
+      baseArgs,
+      prompt,
+      lastMessageFile,
+      model,
+      this.localNetworkAccess,
+    );
   }
 
   /** Preserve first user message; drop oldest assistant/user pairs beyond MAX_HISTORY_TURNS. */

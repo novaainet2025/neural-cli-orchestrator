@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "collectedAt": "2026-07-30T17:50:27Z",
+  "conclusion": "blocked_do_not_claim_approval",
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-accessibility",
+    "taskId": "task_yVUMVzox6iUTV3yB"
+  },
+  "targetTask": {
+    "status": "reviewing",
+    "assignedTo": "hermes",
+    "completedAt": null,
+    "verificationStatus": "pending",
+    "evidenceBytes": 0,
+    "responseSha256": "5d3ba1f528641701971377f949c2c2e10dafb6c57c9481d2534da43d261c920c",
+    "responseBytes": 1613,
+    "updatedAt": "2026-07-30 17:46:26"
+  },
+  "workReportState": {
+    "formalTeamWorkReportRows": 0,
+    "latestTeamRunnerArtifact": "/Users/nova-ai/project/nco/data/team-runner/team_ui-accessibility-2026-07-30.md",
+    "latestArtifactConclusion": "actual UI accessibility inspection and failure reproduction remain unverified"
+  },
+  "verificationState": {
+    "runId": null,
+    "receiptId": null,
+    "passedInstitutions": 0,
+    "institutions": {
+      "inspection": "not_submitted",
+      "validation": "not_submitted",
+      "measurement": "not_submitted",
+      "performance": "not_submitted",
+      "optimization": "not_submitted",
+      "goal": "not_submitted"
+    },
+    "taskRunCount": 0,
+    "taskReceiptCount": 0,
+    "taskReceiptConsumptionCount": 0,
+    "taskLoopCount": 0,
+    "taskLoopAttemptCount": 0,
+    "openScopeLoopCount": 0
+  },
+  "directive": {
+    "id": "vdir_6d15682e-1a03-40fc-aa6f-4518415c52a9",
+    "status": "dispatched",
+    "auditTaskId": "task_5T5n_2lXB284OBMs",
+    "subjectTaskId": "task_yVUMVzox6iUTV3yB",
+    "attemptCount": 5,
+    "lastError": null,
+    "updatedAt": "2026-07-30T17:46:27.865Z"
+  },
+  "submissionChannel": {
+    "nco": {
+      "url": "http://127.0.0.1:6200/api/tasks/task_yVUMVzox6iUTV3yB",
+      "httpStatus": 0,
+      "curlExitCode": 7,
+      "observation": "connection refused from the current execution environment"
+    },
+    "novaAx": {
+      "url": "http://127.0.0.1:6300/api/health",
+      "httpStatus": 0,
+      "curlExitCode": 7,
+      "observation": "connection refused from the current execution environment"
+    },
+    "novaAxConnector": "user cancelled MCP tool call",
+    "ncoConnector": "user cancelled MCP tool call"
+  },
+  "integrity": {
+    "ncoDatabaseQuickCheck": "ok",
+    "novaAxDatabaseQuickCheck": "ok"
+  },
+  "completionBinding": {
+    "attempted": false,
+    "reason": "No approved 6/6 receipt exists; posting without one would violate the completion gate."
+  },
+  "remainingFailures": [
+    "No task-scoped Nova-AX verification run exists.",
+    "No approved receipt exists and no receipt has been consumed.",
+    "The target task has no attached evidence and its own report records that its requested 6/6 verification and completion binding were not performed.",
+    "The team runner artifact states that actual accessibility inspection, reproduction, and remediation validation remain unverified.",
+    "The current execution environment cannot reach the NCO or Nova-AX HTTP endpoints, and both connected control calls were cancelled."
+  ],
+  "evidenceSources": [
+    "/Users/nova-ai/project/nco/db/nco.db",
+    "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+    "/Users/nova-ai/obsidian/mac-obsidian/07-SESSIONS/NCO-WORK-JOURNAL/TASKS/2026-07/task_yVUMVzox6iUTV3yB.md",
+    "/Users/nova-ai/project/nco/data/team-runner/team_ui-accessibility-2026-07-30.md",
+    "/Users/nova-ai/project/nco/src/server/gateway.ts"
+  ]
+}

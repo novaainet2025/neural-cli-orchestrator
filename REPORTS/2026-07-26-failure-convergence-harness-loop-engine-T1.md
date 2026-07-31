@@ -68,7 +68,7 @@
 - `cancelled`, policy/format rejection은 provider failover하지 않는다.
 - quality rejection을 받은 원 태스크는 `completed`에 남겨 두지 않고 응답을 보존한 채 `failed`로 강등한 후 retry를 만든다.
 - 구조화 JSON-only 프롬프트에는 빌드 지시를 주입하지 않는다.
-- Higgsfield는 media 작업에만 참여한다.
+- retired-media-provider는 media 작업에만 참여한다.
 
 ### Discussion·collaboration
 

@@ -21,6 +21,8 @@ describe('transitionTask', () => {
         response TEXT,
         error TEXT,
         evidence_json TEXT,
+        team_id TEXT,
+        metadata_json TEXT,
         updated_at TEXT,
         completed_at TEXT
       );
@@ -76,5 +78,29 @@ describe('transitionTask', () => {
     expect(JSON.parse(row.evidence_json)).toEqual([
       { path: '/tmp/evidence.txt', tier: 'T1' },
     ]);
+  });
+
+  it('blocks team completion until an approved Nova-AX receipt is bound', () => {
+    const database = createTask();
+    database.prepare(`
+      UPDATE tasks
+      SET team_id='team-audit', metadata_json='{"verificationStatus":"pending"}'
+      WHERE id='task-1'
+    `).run();
+
+    expect(transitionTask(database, 'task-1', 'completed')).toEqual({
+      ok: false,
+      prev: 'running',
+    });
+    expect(transitionTask(database, 'task-1', 'reviewing')).toEqual({ ok: true });
+
+    database.prepare(`
+      UPDATE tasks
+      SET metadata_json='{"verificationStatus":"approved","verificationReceiptId":"receipt-6-of-6"}'
+      WHERE id='task-1'
+    `).run();
+    expect(transitionTask(database, 'task-1', 'completed', {
+      completedAt: true,
+    })).toEqual({ ok: true });
   });
 });

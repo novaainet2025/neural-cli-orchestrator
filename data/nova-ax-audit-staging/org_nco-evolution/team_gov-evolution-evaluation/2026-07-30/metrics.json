@@ -1,0 +1,43 @@
+{
+  "collector": "nova-ax-evaluation-team-metrics-collector",
+  "observedAt": "2026-07-30T08:02:57.529Z",
+  "verdict": "PASS",
+  "baselineCapturedAt": "2026-07-30T08:02:55.321Z",
+  "rawCurrent": {
+    "taskTotal": 24,
+    "completed": 15,
+    "reportTotal": 9,
+    "submitted": 9,
+    "deliverablesPresent": 8
+  },
+  "metrics": [
+    {
+      "name": "team-task-volume",
+      "unit": "tasks",
+      "baseline": 0,
+      "current": 24,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 24
+    },
+    {
+      "name": "work-report-submission-rate",
+      "unit": "percent-submitted",
+      "baseline": 100,
+      "current": 100,
+      "target": 95,
+      "direction": "higher_is_better",
+      "sampleSize": 9
+    },
+    {
+      "name": "evaluation-deliverable-preservation-rate",
+      "unit": "percent-deliverables-present",
+      "baseline": 100,
+      "current": 100,
+      "target": 100,
+      "direction": "higher_is_better",
+      "sampleSize": 8
+    }
+  ],
+  "targetsNotMet": []
+}

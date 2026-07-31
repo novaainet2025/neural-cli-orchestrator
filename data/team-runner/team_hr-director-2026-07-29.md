@@ -20,7 +20,7 @@ status: Team Lifecycle HR Director 평가 — **텍스트 전용·도구 금지*
 | cursor-agent | idle, 성공률 **95%**, 24h실패 17, 태스크 3635 | working (task_O4XfAJhhsmmyzRZz) | 상태 불일치 |
 | hermes | idle, 성공률 **57%**, 24h실패 4, 태스크 2196 | working (task_fZXnMB4K-tkbS0Ub) | 상태 불일치 |
 | agy | idle, 성공률 **89%**, 24h실패 0, 태스크 641 | idle | 일치 |
-| codex / opencode / higgsfield / retired-provider / ollama | **미확인**(/api/agents 미주입) | codex working 외 idle | API 점수·실패율 **미확인** |
+| codex / opencode / retired-media-provider / retired-provider / ollama | **미확인**(/api/agents 미주입) | codex working 외 idle | API 점수·실패율 **미확인** |
 
 ### HR 게이트 대비 (점수≤90 → 개선 / 반복 미개선 → 소프트 퇴출)
 - 팀별 **점수(0–100)**: **미확인** (주입 없음 → 90점 이하 판정·개선 지시 발행 불가)

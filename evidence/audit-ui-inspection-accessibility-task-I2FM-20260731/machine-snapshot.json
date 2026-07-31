@@ -1,0 +1,45 @@
+{
+  "schema": "nco.nova-ax-blocked-audit-snapshot/v1",
+  "observedAt": "2026-07-30T19:50:36Z",
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-accessibility",
+    "taskId": "task_I2FM116aXy5I2r6-"
+  },
+  "subjectTask": {
+    "status": "reviewing",
+    "assignedTo": "claude-code",
+    "responseChars": 3384,
+    "verificationStatus": "pending",
+    "rowEvidenceSha256": "6753f34b98f360a20b5cd4f84e8ef4253696955badbf121a7b85758074322e03"
+  },
+  "observedArtifact": {
+    "path": "/Users/nova-ai/project/nova-ax/evidence/audit-ui-inspection-accessibility-20260731/independent-audit-findings.md",
+    "sha256": "eb6709331d09e012d26b4af7e1ccf48c8b3daa1e8d5605277ba3762662a453ec"
+  },
+  "priorBoundVerification": {
+    "taskId": "task_GtlvAXGUd5dkXZyl",
+    "runId": "vrun_538b0367-63eb-4321-932a-2d609197170f",
+    "status": "approved",
+    "passedInstitutions": 6,
+    "receiptId": "vrcpt_6b1e5e0a-eb61-450d-bb72-76f7a15801e9",
+    "consumptionId": "vuse_76f633e6-d261-4c50-91a5-a9f9315f2f00",
+    "rowEvidenceSha256": "afc015e659679ab15bcf80a68b9357f65e50fd6be262a27119ec96fbb26311c6"
+  },
+  "remediationLoops": {
+    "completed": 4,
+    "active": 0,
+    "rowEvidenceSha256": "be810ce9e9425d09bcf3c6b1a62ca9f02c3ce2e84137d8c3f53da4a9cd480e98"
+  },
+  "workReports": {
+    "matchingRows": 0,
+    "submittedOrLate": 0,
+    "rowEvidenceSha256": "6546c16731b4f51986a1cda17d2f7a37f8164b61cc070ae68e60cc1d775f61b9"
+  },
+  "newVerification": {
+    "runId": null,
+    "receiptId": null,
+    "institutionDecisions": null,
+    "reason": "No authorized writable API transport was available; no database gate was bypassed."
+  }
+}

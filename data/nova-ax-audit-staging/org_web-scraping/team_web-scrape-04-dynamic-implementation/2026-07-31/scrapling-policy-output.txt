@@ -1,0 +1,16 @@
+test_authorization_is_required (test_policy.RequestPolicyTests.test_authorization_is_required) ... ok
+test_authorization_reference_is_required (test_policy.RequestPolicyTests.test_authorization_reference_is_required) ... ok
+test_auto_save_requires_adaptive_mode (test_policy.RequestPolicyTests.test_auto_save_requires_adaptive_mode) ... ok
+test_dynamic_browser_requires_exact_target_host_in_scope (test_policy.RequestPolicyTests.test_dynamic_browser_requires_exact_target_host_in_scope) ... ok
+test_dynamic_browser_requires_explicit_domain_scope (test_policy.RequestPolicyTests.test_dynamic_browser_requires_explicit_domain_scope) ... ok
+test_stealth_requires_separate_authorization (test_policy.RequestPolicyTests.test_stealth_requires_separate_authorization) ... ok
+test_domain_scope_includes_subdomains_but_not_suffix_tricks (test_policy.TargetPolicyTests.test_domain_scope_includes_subdomains_but_not_suffix_tricks) ... ok
+test_private_and_local_targets_are_blocked (test_policy.TargetPolicyTests.test_private_and_local_targets_are_blocked) ... ok
+test_public_target_is_allowed (test_policy.TargetPolicyTests.test_public_target_is_allowed) ... ok
+test_caps_total_output_characters (test_runner.ExtractionTests.test_caps_total_output_characters) ... ok
+test_extracts_bounded_values_and_passes_adaptive_options (test_runner.ExtractionTests.test_extracts_bounded_values_and_passes_adaptive_options) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.005s
+
+OK

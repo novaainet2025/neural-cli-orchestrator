@@ -1,0 +1,62 @@
+{
+  "schema": "nova-ax.audit-blocked-report.v1",
+  "observedAt": "2026-07-30T16:46:57Z",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-ax-design",
+  "taskId": "task_Z55VUS68zSp7itqY",
+  "status": "incomplete",
+  "newVerification": {
+    "runId": null,
+    "runsCreatedAfterDirectiveDispatch": 0,
+    "approvedInstitutions": 0,
+    "receiptId": null
+  },
+  "completionBinding": {
+    "ncoTaskStatus": "reviewing",
+    "verificationStatus": "pending",
+    "completedAt": null,
+    "postPerformed": false
+  },
+  "remediation": {
+    "openLoops": 0,
+    "latestLoopId": "vloop_d0e92c63-b5ee-4914-bfea-e55818210072",
+    "latestLoopStatus": "completed",
+    "latestAttemptId": "vattempt_746d4753-a2e7-406d-bf27-bc4c1980a8ee",
+    "latestAttemptDecision": "approved"
+  },
+  "historicalEvidenceNotAcceptedAsNew": {
+    "primaryRunId": "vrun_b764f955-8ce9-4ccc-8481-783823cf030d",
+    "primaryReceiptId": "vrcpt_0072c67e-c322-4481-9e80-cea6b6163c3d",
+    "primaryReceiptConsumptionCount": 1,
+    "uiApprovalRunId": "vrun_b42fed90-a1b8-441b-bdd0-b074eb4cbe2a",
+    "uiApprovalReceiptId": "vrcpt_60221bee-ffad-492f-8435-55d1b1b65869",
+    "uiApprovalReceiptConsumptionCount": 1
+  },
+  "workReportCoverage": {
+    "scopeLedgerRows": 0,
+    "allRequiredReportsReceived": "unknown",
+    "reason": "No work_reports row matched organization/team scope; zero ledger rows cannot prove that every obligation was received."
+  },
+  "controlChannel": {
+    "novaAxMcpCalls": "cancelled_by_user",
+    "ncoMcpCalls": "cancelled_by_user",
+    "localApiProbe": "sandbox_network_operation_not_permitted",
+    "runtimeReachability": "unknown"
+  },
+  "databaseIntegrity": {
+    "ncoQuickCheck": "ok",
+    "novaAxQuickCheck": "ok"
+  },
+  "remainingFailures": [
+    "A new Nova-AX verification run was not created.",
+    "No new 6/6 decision or unconsumed receipt exists.",
+    "The NCO verification endpoint was not called because there was no valid new receipt.",
+    "All required work-report receipt coverage is unverified."
+  ],
+  "evidencePaths": [
+    "/Users/nova-ai/project/nco/db/nco.db",
+    "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+    "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-ax-design/2026-07-30/machine-probe.json",
+    "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-ax-design/2026-07-30/ui-approval-response.json"
+  ]
+}

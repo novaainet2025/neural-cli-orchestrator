@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -53,16 +54,14 @@ function runtimeMetadataPath(): string {
   return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'nova-use', 'nova-runtime.json');
 }
 
-async function loadRuntimeMetadata(): Promise<RuntimeMetadata> {
-  const path = runtimeMetadataPath();
-  const info = await stat(path);
+function parseRuntimeMetadataFile(path: string, info: { isFile(): boolean; size: number; mode: number }): RuntimeMetadata {
   if (!info.isFile() || info.size <= 0 || info.size > MAX_METADATA_BYTES) {
     throw new Error('nova-use runtime metadata is invalid');
   }
   if (process.platform !== 'win32' && (info.mode & 0o077) !== 0) {
     throw new Error('nova-use runtime metadata permissions are unsafe');
   }
-  const raw = JSON.parse(await readFile(path, 'utf8')) as Partial<RuntimeMetadata>;
+  const raw = JSON.parse(readFileSync(path, 'utf8')) as Partial<RuntimeMetadata>;
   const pid = raw.pid;
   if (!Number.isInteger(pid) || (pid ?? 0) <= 0) throw new Error('nova-use runtime pid is invalid');
   if (typeof raw.authToken !== 'string' || raw.authToken.length < 32) throw new Error('nova-use runtime token is invalid');
@@ -73,6 +72,72 @@ async function loadRuntimeMetadata(): Promise<RuntimeMetadata> {
   }
   try { process.kill(pid!, 0); } catch { throw new Error('nova-use runtime is not running'); }
   return raw as RuntimeMetadata;
+}
+
+async function loadRuntimeMetadata(): Promise<RuntimeMetadata> {
+  const path = runtimeMetadataPath();
+  const info = await stat(path);
+  return parseRuntimeMetadataFile(path, info);
+}
+
+/** Sync variant for team-runner T1 context injection (buildTeamDataContext is synchronous). */
+export function probeComputerUseRuntimeSync(): ComputerUseObservability['runtime'] {
+  try {
+    const path = runtimeMetadataPath();
+    const runtime = parseRuntimeMetadataFile(path, statSync(path));
+    const endpointHost = new URL(runtime.endpoint).hostname;
+    return { available: true, pid: runtime.pid, endpointHost };
+  } catch (error) {
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export interface ComputerUseObservability {
+  runtime: {
+    available: boolean;
+    pid?: number;
+    endpointHost?: string;
+    error?: string;
+  };
+  policy: {
+    provider: typeof PROVIDER;
+    leaseMs: number;
+    heartbeatMs: number;
+    maxWaitMs: number;
+  };
+  timestamp: string;
+}
+
+/** Read-only probe: nova-use runtime metadata without acquiring the control lease. */
+export async function probeComputerUseRuntime(): Promise<ComputerUseObservability['runtime']> {
+  try {
+    const runtime = await loadRuntimeMetadata();
+    const endpointHost = new URL(runtime.endpoint).hostname;
+    return { available: true, pid: runtime.pid, endpointHost };
+  } catch (error) {
+    return {
+      available: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export function buildComputerUseObservability(
+  runtime: ComputerUseObservability['runtime'],
+): ComputerUseObservability {
+  return {
+    runtime,
+    policy: {
+      provider: PROVIDER,
+      leaseMs: LEASE_MS,
+      heartbeatMs: HEARTBEAT_MS,
+      maxWaitMs: Number(process.env.NCO_COMPUTER_USE_WAIT_MS || DEFAULT_WAIT_MS),
+    },
+    timestamp: new Date().toISOString(),
+  };
 }
 
 export async function callNovaRuntime<T>(

@@ -29,4 +29,35 @@ describe('task quality terminal state', () => {
     expect(markTaskQualityRejected(db, 'task-1', ['FORMAT_MISMATCH'])).toBe(false);
     db.close();
   });
+
+  it('demotes a rejected reviewing task so the company orchestrator can retry it', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE tasks (
+        id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        response TEXT,
+        error TEXT,
+        completed_at TEXT,
+        updated_at TEXT
+      );
+      INSERT INTO tasks (id,status,response)
+      VALUES ('task-company-review','reviewing','tool echo preserved');
+    `);
+
+    expect(markTaskQualityRejected(
+      db,
+      'task-company-review',
+      ['TOOL_CALL_ECHO'],
+    )).toBe(true);
+    expect(db.prepare(
+      'SELECT status,response,error,completed_at IS NOT NULL AS terminalized FROM tasks WHERE id=?',
+    ).get('task-company-review')).toEqual({
+      status: 'failed',
+      response: 'tool echo preserved',
+      error: 'quality_rejected: TOOL_CALL_ECHO',
+      terminalized: 1,
+    });
+    db.close();
+  });
 });

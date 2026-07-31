@@ -24,7 +24,7 @@ status: CLI 독립 검증 — **검증 미실행**. 주입 실데이터만으로
 - Team: cursor-agent=`working`(task_hXEV0-lKT8ys2xaj) vs `/api/agents`: `online` → 동일 시점 스냅샷으로 단정 불가, **상태 불일치 관찰**.
 - Team: retired-provider=`idle` vs `/api/agents`: `working` → **상태 불일치 관찰**.
 - Team: ollama=`idle` ↔ `/api/agents`: `idle` → 일치.
-- Team만 제공: opencode/codex=`working`, claude-code/agy/hermes/higgsfield=`idle` — `/api/agents` 수치 **미제공**.
+- Team만 제공: opencode/codex=`working`, claude-code/agy/hermes/retired-media-provider=`idle` — `/api/agents` 수치 **미제공**.
 
 **독립 검증 범위 대비 데이터 공백:**
 - 명령·도구 호출 재현 출력: **미확인**

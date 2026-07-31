@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   acquireComputerUseLease,
+  buildComputerUseObservability,
+  probeComputerUseRuntime,
   type ComputerUseRuntimeStatus,
 } from './computer-use-company.js';
 
@@ -15,6 +17,19 @@ function status(overrides: Partial<ComputerUseRuntimeStatus> = {}): ComputerUseR
     ...overrides,
   };
 }
+
+describe('Computer Use observability', () => {
+  it('runtime 미가용 시 available=false와 오류 메시지를 반환', async () => {
+    const runtime = await probeComputerUseRuntime();
+    const snapshot = buildComputerUseObservability(runtime);
+    expect(snapshot.policy.provider).toBe('codex');
+    expect(snapshot.policy.leaseMs).toBe(15_000);
+    expect(typeof snapshot.timestamp).toBe('string');
+    if (!runtime.available) {
+      expect(runtime.error).toBeTruthy();
+    }
+  });
+});
 
 describe('Computer Use company lease', () => {
   it('기존 제어자가 있으면 보고·대기한 뒤 Codex 단독 제어권을 얻고 종료 시 회수', async () => {

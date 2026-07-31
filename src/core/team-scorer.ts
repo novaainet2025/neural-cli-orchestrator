@@ -1,9 +1,15 @@
 import type Database from 'better-sqlite3';
+import { buildFalseCompletionExclusion } from './false-completion.js';
 import { getDb } from '../storage/database.js';
 
 export const TEAM_SCORE_TARGET = 90;
 // Automated remediation needs repeat evidence; one terminal task is only an initial signal.
 export const TEAM_SCORE_MIN_ACTIONABLE_SAMPLE = 2;
+// UI 독립 감사 승인팀은 Nova-AX 6/6 영수증의 *소비자*이지, 자기 charter 작업의
+// *대상*이 될 수 없다. 이 팀에 organizationAuditRequired를 찍으면 자기참조 루프로
+// completion 분자가 영구 0%가 된다(실측 2026-07-30: tasks 3건 completed·실패 0인데
+// HR score=2.4·completion=0%·sample=48h/2).
+export const UI_AUDIT_APPROVAL_TEAM_ID = 'team_ui-audit-approval';
 
 export type TeamScoreGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
 export type TeamScoreSample = '48h' | '7d' | 'all';
@@ -175,7 +181,11 @@ function computeVolume(n: number, maxN: number): number {
 //  서비스 연결에 실패한 태스크까지 잘못 빠지므로 반드시 error·status·NCO 포트를 함께 건다.
 // 롤백: 아래 3개 terminal CASE에서 INFRA_EXCLUSION 조건을 제거하면 정확히 이전 동작.
 //  게이트웨이-다운 절만 되돌리려면 아래 `AND NOT ( … )` 블록만 삭제한다.
-const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'provider_unavailable:%' AND k.error NOT LIKE 'queue_wait_timeout:%' AND k.error NOT LIKE '%API Error: Connection closed mid-response%'))
+// nova-use 런타임 미가동·메타데이터 무효는 Computer Use 제어 코디네이터팀 charter 품질 실패가
+// 아니라 로컬 런타임 가용성 이벤트다(실측 2026-07-30: team_computer-use-control 48h/6
+// completion=0% — 일일 보고가 잠금·MCP 상태 Tier-1 미확인 반복, company run lease 실패가
+// 팀 태스크 실패로 집계). 롤백: 아래 nova-use·Computer Use activation 조건을 제거.
+const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' AND k.error NOT LIKE 'Circuit breaker open%' AND k.error NOT LIKE 'provider_unavailable:%' AND k.error NOT LIKE 'queue_wait_timeout:%' AND k.error NOT LIKE '%API Error: Connection closed mid-response%' AND k.error NOT LIKE '%nova-use runtime%' AND k.error NOT LIKE 'Computer Use activation failed%'))
     AND NOT (
       k.status <> 'completed'
       AND COALESCE(k.error, '') LIKE 'unknown: failure pattern in output%'
@@ -197,6 +207,46 @@ const INFRA_EXCLUSION = `AND (k.error IS NULL OR (k.error NOT LIKE 'orphaned:%' 
 const CONTROL_PLANE_PERFGOAL_EXCLUSION = `AND NOT (
       COALESCE(k.spawned_by_cli, '') = 'commander-perfgoal'
     )`;
+
+// 전 조직 감사 게이트:
+// - 감사 제어 태스크 자체는 팀 성과 표본이 아니다.
+// - 새 감사 파이프라인이 명시적으로 표식한 팀 작업의 completed 성공은 Nova-AX가
+//   실제 소비한 6/6 영수증이 metadata에 결박된 경우에만 인정한다.
+// - gateway.ts L2154–2155는 팀 태스크 생성 시 organizationAuditRequired+verificationStatus
+//   ='pending'을 일괄 주입한다. 'pending'은 아직 감사 파이프라인에 진입하지 않은 초기
+//   표식이므로 strict gate 대상이 아니다(실측 2026-07-30: team_gov-assurance-safety 등
+//   85팀 completion=0% — completed 행이 전부 pending 주입 상태이며 approved 영수증 0건).
+// - 감사 롤아웃 전 legacy 행(표식 없음)과 pending 주입 행은 기존 status를 인정한다.
+//   strict gate는 verificationStatus가 pending·빈값 이외(rejected 등 실제 감사 진행 상태)일
+//   때만 영수증을 요구한다. organizationAuditRequired 단독 표식은 성과를 막지 않는다.
+const AUDIT_CONTROL_PLANE_EXCLUSION = `AND NOT (
+      json_valid(COALESCE(k.metadata_json, ''))
+      AND (
+        COALESCE(json_extract(k.metadata_json, '$.auditControlPlane'), 0) = 1
+        OR TRIM(COALESCE(json_extract(k.metadata_json, '$.verificationDirectiveId'), '')) <> ''
+      )
+    )`;
+
+const AUDIT_APPROVAL_GATE_DISABLED = new Set(['0', 'false', 'off']);
+const AUDIT_APPROVED_COMPLETION_SQL = `AND (
+      k.team_id = '${UI_AUDIT_APPROVAL_TEAM_ID}'
+      OR NOT (
+        json_valid(COALESCE(k.metadata_json, ''))
+        AND TRIM(COALESCE(json_extract(k.metadata_json, '$.verificationStatus'), '')) NOT IN ('', 'pending')
+      )
+      OR (
+        json_extract(k.metadata_json, '$.verificationStatus') = 'approved'
+        AND TRIM(COALESCE(json_extract(k.metadata_json, '$.verificationReceiptId'), '')) <> ''
+      )
+    )`;
+
+export function buildAuditApprovedCompletion(
+  toggle: string | undefined = process.env.NCO_SCORER_AUDIT_APPROVAL_GATE,
+): string {
+  return AUDIT_APPROVAL_GATE_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : AUDIT_APPROVED_COMPLETION_SQL;
+}
 
 // lease_expired 중 '에이전트가 리스를 잡았지만 한 줄도 실행하지 않은' 케이스는 팀 품질
 // 실패가 아니라 서킷브레이커와 동일한 에이전트 가용성/생존(liveness) 이벤트다.
@@ -553,11 +603,66 @@ export function buildProviderAuthExclusion(
     : PROVIDER_AUTH_EXCLUSION_SQL;
 }
 
+// 제어면(NCO :6200 / Nova-AX :6300) 연결거부로 죽은 실패는 이미 INFRA_EXCLUSION의
+// 게이트웨이-다운 절이 다루는 가용성 이벤트다. 그런데 그 절은 구(舊) 실패 라벨
+// 'unknown: failure pattern in output'에만 걸려 있어, 라벨이 세분화된 뒤의 같은 실패를
+// 놓치고 팀 품질 실패로 오계상한다.
+//  - src/server/gateway.ts:112 REPORTED_ERROR_CAUSE_PATTERNS가 'error:' 접두로 정직하게
+//    보고된 연결거부를 더 구체적인 라벨 'failure-pattern: connection failure'로 마킹한다.
+//    같은 파일의 구 경로만 'unknown: failure pattern in output'을 남긴다(실측 13건).
+//    즉 라벨 세분화와 스코어러 술어가 desync된 상태다.
+//  - 또한 기존 절은 NCO 게이트웨이(:6200)만 커버한다. 검증지시(workflowStage='verification')
+//    태스크는 Nova-AX 제어면(:6300)에 기계 증거를 제출해야 하므로, 그 서버가 죽으면 어떤
+//    팀도 성공할 수 없다 — :6200 다운과 정확히 같은 가용성 이벤트다.
+//  실측 근거(2026-07-30 UTC, db/nco.db):
+//   - team_gov-government-treasury의 48h 계상 실패는 task_xvV9Pw13uv63Tn0v 1건뿐이다.
+//     hermes가 error='failure-pattern: connection failure', response 575B에
+//     "curl: (7) Failed to connect to 127.0.0.1 port 6300 after 0 ms: Couldn't connect to
+//     server"를 남기고 정직하게 미완료를 보고했다(result_json 0B, 산출물 없음).
+//     제외 시 48h completion 6/7=85.7% → 6/6=100%로 실제 팀 품질을 반영한다.
+//   - 같은 창(04:24~04:35)에 team_gov-government-hr(task_opcJbXioZ_RdGex8)·
+//     team_hr-director(task_6U9HdSXrBErDX2CZ)도 동일한 :6300 연결거부로 실패했고,
+//     team_self-improvement(task_MQNO8i0HLDY5CtQu)는 같은 라벨의 :6200 연결거부다
+//     → 팀 무관(team-agnostic) 가용성 이벤트임이 확인된다.
+//   - 이 error 라벨은 DB 전체 8건이고 전부 status='failed'이며, 아래 술어에 매칭되는
+//     completed 행은 0건이다(팀 귀속 4건 / team_id NULL 4건).
+// 안전 불변식: (a) status<>'completed' 가드, (b) 실패 라벨이 연결거부 클래스로 정확히
+//  한정, (c) response가 제어면 포트(6200/6300)에 대한 curl 연결실패 문구를 포함, (d)
+//  result_json이 비어 산출물이 전혀 없을 것. 이 4중 가드로 완료 보고서가 과거 장애를
+//  인용한 경우나 다른 서버(:11434 등) 연결실패, 부분 산출물을 낸 실패는 빠지지 않는다.
+//  completed 행이 매칭되지 않으므로 completed⊆terminal이 유지되어 completion>100% 회귀가 없다.
+// 롤백: 런타임 즉시 → NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION=off (재빌드 불필요).
+//  코드 → 아래 상수와 buildControlPlaneConnectionExclusion() 및 3개 terminal CASE 삽입부 제거.
+const CONTROL_PLANE_CONNECTION_EXCLUSION_DISABLED = new Set(['0', 'false', 'off']);
+
+const CONTROL_PLANE_CONNECTION_EXCLUSION_SQL = `AND NOT (
+      k.status <> 'completed'
+      AND COALESCE(k.error, '') LIKE 'failure-pattern: connection failure%'
+      AND COALESCE(k.result_json, '') = ''
+      AND (
+        COALESCE(k.response, '') LIKE '%Failed to connect to localhost port 6200%'
+        OR COALESCE(k.response, '') LIKE '%Failed to connect to 127.0.0.1 port 6200%'
+        OR COALESCE(k.response, '') LIKE '%Failed to connect to localhost port 6300%'
+        OR COALESCE(k.response, '') LIKE '%Failed to connect to 127.0.0.1 port 6300%'
+      )
+    )`;
+
+export function buildControlPlaneConnectionExclusion(
+  toggle: string | undefined = process.env.NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION,
+): string {
+  return CONTROL_PLANE_CONNECTION_EXCLUSION_DISABLED.has(toggle?.trim().toLowerCase() ?? '')
+    ? ''
+    : CONTROL_PLANE_CONNECTION_EXCLUSION_SQL;
+}
+
 export function computeTeamScores(database: Database.Database = getDb()): TeamScore[] {
   const SPAWN_FAILURE_EXCLUSION = buildSpawnFailureExclusion();
   const EXTERNAL_ZERO_OUTPUT_EXCLUSION = buildExternalZeroOutputExclusion();
   const ZERO_OUTPUT_COMPLETED_EXCLUSION = buildZeroOutputCompletedExclusion();
+  const FALSE_COMPLETION_EXCLUSION = buildFalseCompletionExclusion();
+  const AUDIT_APPROVED_COMPLETION = buildAuditApprovedCompletion();
   const PROVIDER_AUTH_EXCLUSION = buildProviderAuthExclusion();
+  const CONTROL_PLANE_CONNECTION_EXCLUSION = buildControlPlaneConnectionExclusion();
   const ACTIVE_WORK_REPORT_RETRY_EXCLUSION = buildActiveWorkReportRetryExclusion();
   const rows = database.prepare(`
     SELECT
@@ -570,6 +675,7 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           AND julianday(k.created_at) >= julianday('now','-48 hours')
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
@@ -577,20 +683,25 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${CONTROL_PLANE_CONNECTION_EXCLUSION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_48h,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-48 hours')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
+          ${AUDIT_APPROVED_COMPLETION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
+          ${FALSE_COMPLETION_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_48h,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           AND julianday(k.created_at) >= julianday('now','-7 days')
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
@@ -598,19 +709,24 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${CONTROL_PLANE_CONNECTION_EXCLUSION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_7d,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           AND julianday(k.created_at) >= julianday('now','-7 days')
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
+          ${AUDIT_APPROVED_COMPLETION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
+          ${FALSE_COMPLETION_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_7d,
       COALESCE(SUM(CASE
         WHEN k.status IN ('completed','failed','timed_out','lease_expired')
           ${INFRA_EXCLUSION}
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
           ${LEASE_NEVER_RAN_EXCLUSION}
           ${WORK_REPORT_DUP_DELIVERED_EXCLUSION}
           ${ACTIVE_WORK_REPORT_RETRY_EXCLUSION}
@@ -618,13 +734,17 @@ export function computeTeamScores(database: Database.Database = getDb()): TeamSc
           ${JOB_WAIT_DEAD_AGENT_EXCLUSION}
           ${SPAWN_FAILURE_EXCLUSION}
           ${PROVIDER_AUTH_EXCLUSION}
+          ${CONTROL_PLANE_CONNECTION_EXCLUSION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS terminal_all,
       COALESCE(SUM(CASE
         WHEN k.status = 'completed'
           ${CONTROL_PLANE_PERFGOAL_EXCLUSION}
+          ${AUDIT_CONTROL_PLANE_EXCLUSION}
+          ${AUDIT_APPROVED_COMPLETION}
           ${EXTERNAL_ZERO_OUTPUT_EXCLUSION}
           ${ZERO_OUTPUT_COMPLETED_EXCLUSION}
+          ${FALSE_COMPLETION_EXCLUSION}
         THEN 1 ELSE 0 END), 0) AS completed_all
     FROM teams t
     LEFT JOIN organizations o ON o.id = t.organization_id

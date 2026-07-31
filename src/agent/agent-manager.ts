@@ -146,12 +146,11 @@ function killProcessGroup(pid: number | undefined): void {
 // Type B: Orchestrated (codex, aider, opencode, cursor-agent, copilot) — NCO external loop
 // Type C: API (ollama, openrouter) — OpenAI-compatible API
 
-type AgentType = 'A' | 'B' | 'B_SINGLE_PROMPT' | 'C';
+type AgentType = 'A' | 'B' | 'C';
 
 function classifyAgent(provider: ProviderConfig): AgentType {
   if (provider.id === 'claude-code') return 'A';
   if (provider.type === 'api') return 'C';
-  if (provider.id === 'higgsfield') return 'B_SINGLE_PROMPT';
   return 'B';
 }
 
@@ -222,6 +221,7 @@ class AgentManager {
     signal?: AbortSignal;
     projectDir?: string;
     timeoutMs?: number;
+    localNetworkAccess?: boolean;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
@@ -297,10 +297,10 @@ class AgentManager {
       let usage: TaskResult['usage'];
       taskQueue.recordActivity(taskId);
 
-      // ── HNSW Vector Memory: Pre-task semantic recall ─────
-      // B_SINGLE_PROMPT providers (e.g. higgsfield) must receive only the
-      // user's original media prompt — no memory injection, no enrichment.
-      if (agentType !== 'B_SINGLE_PROMPT') {
+      // compact 호출(토론 R1/R2 등)은 즉시 응답 수집이 목적이다. 일반 task용 HNSW
+      // recall을 수행하면 혼잡 시 모델 호출 전에 상한을 소모하고 프롬프트도 불필요하게
+      // 팽창하므로 생략한다. 일반 작업의 장기기억 경로는 그대로 유지한다.
+      if (!options?.compact) {
         try {
           const { vectorMemory } = await import('../core/vector-memory.js');
           const personalMemories = await vectorMemory.search(agentId, prompt, 5);
@@ -367,8 +367,7 @@ class AgentManager {
           break;
         }
 
-        case 'B':
-        case 'B_SINGLE_PROMPT': {
+        case 'B': {
           // Type B: NCO orchestrated loop
           const loop = new OrchestratedLoop(provider, executionSandbox, signal);
           const result = await loop.run(taskId, prompt, {
@@ -376,7 +375,7 @@ class AgentManager {
             compact: options?.compact,
             model: options?.model,
             projectDir: effectiveProjectDir,
-            disableHistory: agentType === 'B_SINGLE_PROMPT',
+            localNetworkAccess: options?.localNetworkAccess,
           });
           output = result.output;
           iterations = result.iterations;
@@ -441,25 +440,28 @@ class AgentManager {
 
       circuitBreakerRegistry.recordSuccess(agentId);
 
-      // Triple Verification Gate — run L1/L2/L3 checks
-      try {
-        const { stdout: diffOutput } = await (await import('execa')).execa(
-          'git', ['diff', '--name-only'], { cwd: env.PROJECT_DIR, reject: false }
-        );
-        const changedFiles = diffOutput.split('\n').filter(Boolean);
+      // compact 토론 제안은 코드 산출 작업이 아니므로 저장소 전체 diff 검증을 붙이지 않는다.
+      // 회사의 실제 stage task 및 최종 Nova-AX 감사 게이트에는 영향을 주지 않는다.
+      if (!options?.compact) {
+        try {
+          const { stdout: diffOutput } = await (await import('execa')).execa(
+            'git', ['diff', '--name-only'], { cwd: env.PROJECT_DIR, reject: false }
+          );
+          const changedFiles = diffOutput.split('\n').filter(Boolean);
 
-        if (changedFiles.length > 0) {
-          const vResult = await verificationGate.verify(taskId, changedFiles);
-          if (!vResult.passed) {
-            log.warn({ taskId, agentId, results: vResult.results }, 'Verification gate failed');
-            await eventBus.publish({
-              type: 'task:verification_failed', taskId, agentId,
-              results: vResult.results, durationMs,
-            });
+          if (changedFiles.length > 0) {
+            const vResult = await verificationGate.verify(taskId, changedFiles);
+            if (!vResult.passed) {
+              log.warn({ taskId, agentId, results: vResult.results }, 'Verification gate failed');
+              await eventBus.publish({
+                type: 'task:verification_failed', taskId, agentId,
+                results: vResult.results, durationMs,
+              });
+            }
           }
+        } catch (verifyErr: any) {
+          log.debug({ err: verifyErr.message }, 'Verification gate skipped');
         }
-      } catch (verifyErr: any) {
-        log.debug({ err: verifyErr.message }, 'Verification gate skipped');
       }
 
       await eventBus.publish({
@@ -468,26 +470,28 @@ class AgentManager {
         iterations, toolCalls, durationMs,
       });
 
-      // Auto-extract knowledge from task result
-      try {
-        const { knowledgeBase } = await import('../core/knowledge-base.js');
-        knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
-      } catch { /* non-critical */ }
+      if (!options?.compact) {
+        // Auto-extract knowledge from task result
+        try {
+          const { knowledgeBase } = await import('../core/knowledge-base.js');
+          knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
+        } catch { /* non-critical */ }
 
-      // ── HNSW Vector Memory: Post-task storage ────────────
-      try {
-        const { vectorMemory } = await import('../core/vector-memory.js');
-        // Store: task prompt (context) + output summary
-        const promptSnippet = prompt.slice(0, 200).replace(/\[장기 기억 컨텍스트[\s\S]*?\]/m, '').trim();
-        const outputSummary = output.replace(/\s+/g, ' ').trim().slice(0, 400);
-        if (promptSummary(promptSnippet)) {
-          const memory = `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`;
-          await vectorMemory.add(agentId, memory, 1.0);
-          if (teamMemoryScope) {
-            await vectorMemory.add(teamMemoryScope, memory, 1.0);
+        // ── HNSW Vector Memory: Post-task storage ────────────
+        try {
+          const { vectorMemory } = await import('../core/vector-memory.js');
+          // Store: task prompt (context) + output summary
+          const promptSnippet = prompt.slice(0, 200).replace(/\[장기 기억 컨텍스트[\s\S]*?\]/m, '').trim();
+          const outputSummary = output.replace(/\s+/g, ' ').trim().slice(0, 400);
+          if (promptSummary(promptSnippet)) {
+            const memory = `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`;
+            await vectorMemory.add(agentId, memory, 1.0);
+            if (teamMemoryScope) {
+              await vectorMemory.add(teamMemoryScope, memory, 1.0);
+            }
           }
-        }
-      } catch { /* non-critical */ }
+        } catch { /* non-critical */ }
+      }
 
       // ── AgentEvolver: record success for persona tuning ─
       try {
@@ -646,8 +650,6 @@ class AgentManager {
           'text',
           prompt,
         ];
-      case 'higgsfield':
-        return ['generate', 'create', provider.model || 'higgsfield', '--prompt', prompt];
       default:
         return [...provider.args, prompt];
     }

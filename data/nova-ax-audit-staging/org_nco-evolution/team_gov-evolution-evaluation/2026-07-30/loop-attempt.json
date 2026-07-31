@@ -1,0 +1,124 @@
+{
+  "httpStatus": 200,
+  "attempt": {
+    "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+    "originalRunId": "vrun_716efca7-0d42-435c-aeb6-7eb0cc22caf2",
+    "taskId": "task_yRDfIvg60k_d6nbN",
+    "ownerCompanyId": "org_nco-evolution",
+    "ownerTeamId": "team_gov-evolution-evaluation",
+    "actorId": "claude-code",
+    "status": "completed",
+    "currentIteration": 1,
+    "maxIterations": 5,
+    "latestRunId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+    "createdAt": "2026-07-30T08:01:55.895Z",
+    "updatedAt": "2026-07-30T08:03:32.203Z",
+    "actions": [
+      {
+        "id": "vaction_f877d36541a6f7370b62e8ee7096fe51",
+        "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+        "iteration": 1,
+        "ownerCompanyId": "org_nco-evolution",
+        "ownerTeamId": "team_gov-evolution-evaluation",
+        "institution": "inspection",
+        "failure": "artifact observation failed: artifact path is outside approved verification roots",
+        "action": "Correct the directly observed artifact, publication state, content floor, or artifact hash. Reported failure: artifact observation failed: artifact path is outside approved verification roots",
+        "passCriteria": "A later verification run for the same task must return passed=true for inspection; the new institution decision, not a company claim, resolves this action.",
+        "evidenceRequired": [
+          "directly observed artifact SHA-256",
+          "new inspection result evidence reference"
+        ],
+        "priority": "high",
+        "status": "resolved"
+      },
+      {
+        "id": "vaction_6a10bd0f6a7e52b6c4e79ccf0eb733cb",
+        "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+        "iteration": 1,
+        "ownerCompanyId": "org_nco-evolution",
+        "ownerTeamId": "team_gov-evolution-evaluation",
+        "institution": "optimization",
+        "failure": "no measured improvement over baseline",
+        "action": "Remove the measured regression and pass the regression guard against the declared baseline. Reported failure: no measured improvement over baseline",
+        "passCriteria": "A later verification run for the same task must return passed=true for optimization; the new institution decision, not a company claim, resolves this action.",
+        "evidenceRequired": [
+          "optimization or regression-guard SHA-256",
+          "new optimization result evidence reference"
+        ],
+        "priority": "medium",
+        "status": "resolved"
+      },
+      {
+        "id": "vaction_ed5a9dc5dd7b0c4bf851b60c7fa0ccc4",
+        "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+        "iteration": 1,
+        "ownerCompanyId": "org_nco-evolution",
+        "ownerTeamId": "team_gov-evolution-evaluation",
+        "institution": "validation",
+        "failure": "independent attestation does not match the observed artifact",
+        "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: independent attestation does not match the observed artifact",
+        "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+        "evidenceRequired": [
+          "independent integrity attestation SHA-256",
+          "new validation result evidence reference"
+        ],
+        "priority": "high",
+        "status": "resolved"
+      },
+      {
+        "id": "vaction_4791e1c7cf3e0483be5cb27b702be1ad",
+        "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+        "iteration": 1,
+        "ownerCompanyId": "org_nco-evolution",
+        "ownerTeamId": "team_gov-evolution-evaluation",
+        "institution": "validation",
+        "failure": "mandatory UI inspection classification is missing",
+        "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: mandatory UI inspection classification is missing",
+        "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+        "evidenceRequired": [
+          "independent integrity attestation SHA-256",
+          "new validation result evidence reference"
+        ],
+        "priority": "high",
+        "status": "resolved"
+      }
+    ],
+    "attempts": [
+      {
+        "id": "vattempt_0f6d59e4-07b2-4423-96f3-4b31e3f0ce64",
+        "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+        "iteration": 1,
+        "actorId": "claude-code",
+        "runId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+        "criteria": [
+          {
+            "actionId": "vaction_f877d36541a6f7370b62e8ee7096fe51",
+            "evidenceHashes": [
+              "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+            ]
+          },
+          {
+            "actionId": "vaction_6a10bd0f6a7e52b6c4e79ccf0eb733cb",
+            "evidenceHashes": [
+              "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e"
+            ]
+          },
+          {
+            "actionId": "vaction_ed5a9dc5dd7b0c4bf851b60c7fa0ccc4",
+            "evidenceHashes": [
+              "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+            ]
+          },
+          {
+            "actionId": "vaction_4791e1c7cf3e0483be5cb27b702be1ad",
+            "evidenceHashes": [
+              "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+            ]
+          }
+        ],
+        "decision": "approved",
+        "createdAt": "2026-07-30T08:03:32.203Z"
+      }
+    ]
+  }
+}

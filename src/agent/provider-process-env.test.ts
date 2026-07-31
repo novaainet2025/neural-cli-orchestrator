@@ -3,6 +3,39 @@ import { describe, expect, it } from 'vitest';
 import { buildProviderProcessEnv } from './provider-process-env.js';
 
 describe('buildProviderProcessEnv', () => {
+  it('disables FORCE_COLOR for non-interactive provider subprocesses', () => {
+    const env = buildProviderProcessEnv(
+      'opencode',
+      undefined,
+      {
+        PATH: '/usr/bin',
+        FORCE_COLOR: '3',
+      },
+      '/srv/nco',
+    );
+
+    expect(env.FORCE_COLOR).toBe('0');
+    expect(env.NO_COLOR).toBe('1');
+    expect(env.TERM).toBe('dumb');
+  });
+
+  it('preserves the previous color environment when sanitization is disabled', () => {
+    const env = buildProviderProcessEnv(
+      'opencode',
+      undefined,
+      {
+        PATH: '/usr/bin',
+        FORCE_COLOR: '3',
+        NCO_PROVIDER_COLOR_SANITIZE: 'off',
+      },
+      '/srv/nco',
+    );
+
+    expect(env.FORCE_COLOR).toBe('3');
+    expect(env.NO_COLOR).toBeUndefined();
+    expect(env.TERM).toBeUndefined();
+  });
+
   it('prepends the user-local bin fallback for cursor-agent', () => {
     const env = buildProviderProcessEnv(
       'cursor-agent',

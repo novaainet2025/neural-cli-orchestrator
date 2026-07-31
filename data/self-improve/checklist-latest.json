@@ -1,26 +1,26 @@
 {
-  "generated_at": "2026-07-28T09:05:00+0900",
-  "date": "2026-07-28",
-  "total_items": 241,
+  "generated_at": "2026-07-31T09:05:00+0900",
+  "date": "2026-07-31",
+  "total_items": 254,
   "by_category": {
     "build": 1,
     "command": 24,
     "health": 1,
-    "hook": 85,
+    "hook": 84,
     "mcp": 1,
     "plugin": 4,
-    "provider": 9,
-    "script": 22,
-    "skill": 7,
-    "team": 87
+    "provider": 7,
+    "script": 31,
+    "skill": 15,
+    "team": 86
   },
   "sources": {
-    "provider": "config/ai-providers.json (9)",
-    "team": "/api/teams (87)",
-    "hook": ".claude/hooks + ~/.claude/hooks (85)",
-    "script": "scripts/*.sh (22)",
+    "provider": "config/ai-providers.json (7)",
+    "team": "/api/teams (86)",
+    "hook": ".claude/hooks + ~/.claude/hooks (84)",
+    "script": "scripts/*.sh (31)",
     "command": ".claude/commands/*.md (24)",
-    "skill": "~/.claude/skills/*/SKILL.md (7)",
+    "skill": "~/.claude/skills/*/SKILL.md (15)",
     "plugin": "~/.claude/plugins/cache/* (4)",
     "mcp": "src/mcp grep (expected≥42)",
     "build": "npx tsc --noEmit",
@@ -85,22 +85,6 @@
       "enabled": true
     },
     {
-      "id": "provider:higgsfield",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "higgsfield",
-      "priority": 4,
-      "enabled": true
-    },
-    {
-      "id": "provider:retired-provider",
-      "category": "provider",
-      "kind": "provider-live",
-      "ref": "retired-provider",
-      "priority": 4,
-      "enabled": true
-    },
-    {
       "id": "team:team_sns",
       "category": "team",
       "kind": "team-charter",
@@ -109,46 +93,6 @@
       "name": "SNS 블로그 홍보팀",
       "has_charter": true,
       "slug": "sns"
-    },
-    {
-      "id": "team:team_content-planning",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_content-planning",
-      "priority": 7,
-      "name": "콘텐츠 기획팀",
-      "has_charter": true,
-      "slug": "content-planning"
-    },
-    {
-      "id": "team:team_quality-audit",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_quality-audit",
-      "priority": 7,
-      "name": "품질 검수팀",
-      "has_charter": true,
-      "slug": "quality-audit"
-    },
-    {
-      "id": "team:team_cli-design",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_cli-design",
-      "priority": 7,
-      "name": "CLI UI/UX 디자인팀",
-      "has_charter": true,
-      "slug": "cli-design"
-    },
-    {
-      "id": "team:team_cli-qa",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_cli-qa",
-      "priority": 7,
-      "name": "CLI 검증/QA팀",
-      "has_charter": true,
-      "slug": "cli-qa"
     },
     {
       "id": "team:team_cli-core",
@@ -191,84 +135,14 @@
       "slug": "error-prevention"
     },
     {
-      "id": "team:team_analytics-lead",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_analytics-lead",
-      "priority": 7,
-      "name": "Analytics Lead (analytics-lead)",
-      "has_charter": true,
-      "slug": "analytics-lead"
-    },
-    {
-      "id": "team:team_autonomy-controller",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_autonomy-controller",
-      "priority": 7,
-      "name": "Autonomy Controller (autonomy-controller)",
-      "has_charter": true,
-      "slug": "autonomy-controller"
-    },
-    {
-      "id": "team:team_cfo",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_cfo",
-      "priority": 7,
-      "name": "Chief Financial Officer (cfo)",
-      "has_charter": true,
-      "slug": "cfo"
-    },
-    {
-      "id": "team:team_ax-collab",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_ax-collab",
-      "priority": 7,
-      "name": "Collaboration Agent (ax-collab)",
-      "has_charter": true,
-      "slug": "ax-collab"
-    },
-    {
-      "id": "team:team_ax-discuss",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_ax-discuss",
-      "priority": 7,
-      "name": "Discussion Lead (ax-discuss)",
-      "has_charter": true,
-      "slug": "ax-discuss"
-    },
-    {
       "id": "team:team_governance-officer",
       "category": "team",
       "kind": "team-charter",
       "ref": "team_governance-officer",
       "priority": 7,
-      "name": "Governance Officer (governance-officer)",
+      "name": "거버넌스 감사팀",
       "has_charter": true,
       "slug": "governance-officer"
-    },
-    {
-      "id": "team:team_legal-counsel",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_legal-counsel",
-      "priority": 7,
-      "name": "Legal Counsel (legal-counsel)",
-      "has_charter": true,
-      "slug": "legal-counsel"
-    },
-    {
-      "id": "team:team_sales-director",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_sales-director",
-      "priority": 7,
-      "name": "Sales Director (sales-director)",
-      "has_charter": true,
-      "slug": "sales-director"
     },
     {
       "id": "team:team_ax-security",
@@ -276,7 +150,7 @@
       "kind": "team-charter",
       "ref": "team_ax-security",
       "priority": 7,
-      "name": "Security Agent (ax-security)",
+      "name": "보안 검사팀",
       "has_charter": true,
       "slug": "ax-security"
     },
@@ -286,19 +160,9 @@
       "kind": "team-charter",
       "ref": "team_hr-director",
       "priority": 7,
-      "name": "Team Lifecycle HR Director",
+      "name": "팀 생애주기 인사팀",
       "has_charter": true,
       "slug": "hr-director"
-    },
-    {
-      "id": "team:team_ax-docs",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_ax-docs",
-      "priority": 7,
-      "name": "Docs & Spec Agent (ax-docs)",
-      "has_charter": true,
-      "slug": "ax-docs"
     },
     {
       "id": "team:team_ax-git",
@@ -306,19 +170,9 @@
       "kind": "team-charter",
       "ref": "team_ax-git",
       "priority": 7,
-      "name": "Git Manager (ax-git)",
+      "name": "Git 형상관리팀",
       "has_charter": true,
       "slug": "ax-git"
-    },
-    {
-      "id": "team:team_infra-engineer",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_infra-engineer",
-      "priority": 7,
-      "name": "Infrastructure Engineer (infra-engineer)",
-      "has_charter": true,
-      "slug": "infra-engineer"
     },
     {
       "id": "team:team_marketing-lead",
@@ -326,9 +180,39 @@
       "kind": "team-charter",
       "ref": "team_marketing-lead",
       "priority": 7,
-      "name": "Marketing Lead (marketing-lead)",
+      "name": "마케팅 운영팀",
       "has_charter": true,
       "slug": "marketing-lead"
+    },
+    {
+      "id": "team:team_ax-docs",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-docs",
+      "priority": 7,
+      "name": "문서·명세 관리팀",
+      "has_charter": true,
+      "slug": "ax-docs"
+    },
+    {
+      "id": "team:team_ax-expert-security",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-expert-security",
+      "priority": 7,
+      "name": "보안 전문가팀",
+      "has_charter": true,
+      "slug": "ax-expert-security"
+    },
+    {
+      "id": "team:team_infra-engineer",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_infra-engineer",
+      "priority": 7,
+      "name": "인프라 운영팀",
+      "has_charter": true,
+      "slug": "infra-engineer"
     },
     {
       "id": "team:team_ax-research",
@@ -336,7 +220,7 @@
       "kind": "team-charter",
       "ref": "team_ax-research",
       "priority": 7,
-      "name": "Research Agent (ax-research)",
+      "name": "조사·연구팀",
       "has_charter": true,
       "slug": "ax-research"
     },
@@ -346,29 +230,9 @@
       "kind": "team-charter",
       "ref": "team_support-lead",
       "priority": 7,
-      "name": "Support Lead (support-lead)",
+      "name": "지원 운영팀",
       "has_charter": true,
       "slug": "support-lead"
-    },
-    {
-      "id": "team:team_ax-expert-security",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_ax-expert-security",
-      "priority": 7,
-      "name": "보안 전문가 Expert (ax-expert-보안-전문가)",
-      "has_charter": true,
-      "slug": "ax-expert-security"
-    },
-    {
-      "id": "team:team_research-strategy",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_research-strategy",
-      "priority": 7,
-      "name": "리서치 기획·전략팀",
-      "has_charter": true,
-      "slug": "research-strategy"
     },
     {
       "id": "team:team_research-discovery",
@@ -441,16 +305,6 @@
       "slug": "computer-use-control"
     },
     {
-      "id": "team:team_computer-use-safety",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_computer-use-safety",
-      "priority": 7,
-      "name": "Computer Use 안전·감사팀",
-      "has_charter": true,
-      "slug": "computer-use-safety"
-    },
-    {
       "id": "team:team_computer-use-queue",
       "category": "team",
       "kind": "team-charter",
@@ -511,16 +365,6 @@
       "slug": "tech-port-05-upgrade-regression"
     },
     {
-      "id": "team:team_tech-port-06-improvement-debate",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_tech-port-06-improvement-debate",
-      "priority": 7,
-      "name": "06 Improvement Debate",
-      "has_charter": true,
-      "slug": "tech-port-06-improvement-debate"
-    },
-    {
       "id": "team:team_tech-port-07-value-gate-report",
       "category": "team",
       "kind": "team-charter",
@@ -531,16 +375,6 @@
       "slug": "tech-port-07-value-gate-report"
     },
     {
-      "id": "team:team_tech-port-08-migration-implementation",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_tech-port-08-migration-implementation",
-      "priority": 7,
-      "name": "08 Migration Implementation",
-      "has_charter": true,
-      "slug": "tech-port-08-migration-implementation"
-    },
-    {
       "id": "team:team_tech-port-09-post-migration-verify",
       "category": "team",
       "kind": "team-charter",
@@ -549,56 +383,6 @@
       "name": "09 Post-migration Verification",
       "has_charter": true,
       "slug": "tech-port-09-post-migration-verify"
-    },
-    {
-      "id": "team:team_kd-obsidian",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_kd-obsidian",
-      "priority": 7,
-      "name": "옵시디언 데이터위생부",
-      "has_charter": true,
-      "slug": "kd-obsidian"
-    },
-    {
-      "id": "team:team_kd-memory",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_kd-memory",
-      "priority": 7,
-      "name": "지식·메모리 감사부",
-      "has_charter": true,
-      "slug": "kd-memory"
-    },
-    {
-      "id": "team:team_kd-harness",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_kd-harness",
-      "priority": 7,
-      "name": "루프·하네스 감사부",
-      "has_charter": true,
-      "slug": "kd-harness"
-    },
-    {
-      "id": "team:team_kd-provider",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_kd-provider",
-      "priority": 7,
-      "name": "프로바이더·설정 감사부",
-      "has_charter": true,
-      "slug": "kd-provider"
-    },
-    {
-      "id": "team:team_kd-prompt",
-      "category": "team",
-      "kind": "team-charter",
-      "ref": "team_kd-prompt",
-      "priority": 7,
-      "name": "프롬프트·지시 감사부",
-      "has_charter": true,
-      "slug": "kd-prompt"
     },
     {
       "id": "team:team_triad-build-verify",
@@ -971,6 +755,196 @@
       "slug": "kd-quality-hygiene"
     },
     {
+      "id": "team:team_tech-port-06-decision-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-06-decision-2026",
+      "priority": 7,
+      "name": "06 Porting Decision Council",
+      "has_charter": true,
+      "slug": "tech-port-06-improvement-debate"
+    },
+    {
+      "id": "team:team_tech-port-08-delivery-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-08-delivery-2026",
+      "priority": 7,
+      "name": "08 Migration Delivery",
+      "has_charter": true,
+      "slug": "tech-port-08-migration-implementation"
+    },
+    {
+      "id": "team:team_cli-experience-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_cli-experience-2026",
+      "priority": 7,
+      "name": "CLI 경험 설계팀",
+      "has_charter": true,
+      "slug": "cli-design"
+    },
+    {
+      "id": "team:team_cli-assurance-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_cli-assurance-2026",
+      "priority": 7,
+      "name": "CLI 독립 검증팀",
+      "has_charter": true,
+      "slug": "cli-qa"
+    },
+    {
+      "id": "team:team_computer-use-assurance-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_computer-use-assurance-2026",
+      "priority": 7,
+      "name": "Computer Use 독립 안전·감사팀",
+      "has_charter": true,
+      "slug": "computer-use-safety"
+    },
+    {
+      "id": "team:team_research-strategy-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-strategy-2026",
+      "priority": 7,
+      "name": "리서치 전략·방법론팀",
+      "has_charter": true,
+      "slug": "research-strategy"
+    },
+    {
+      "id": "team:team_ax-business-operations-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-business-operations-2026",
+      "priority": 7,
+      "name": "사업운영·매출분석팀",
+      "has_charter": true,
+      "slug": "ax-business-operations"
+    },
+    {
+      "id": "team:team_ax-decision-coordination-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-decision-coordination-2026",
+      "priority": 7,
+      "name": "의사결정·조정실",
+      "has_charter": true,
+      "slug": "ax-decision-coordination"
+    },
+    {
+      "id": "team:team_content-strategy-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_content-strategy-2026",
+      "priority": 7,
+      "name": "콘텐츠 전략·근거기획팀",
+      "has_charter": true,
+      "slug": "content-planning"
+    },
+    {
+      "id": "team:team_content-build",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_content-build",
+      "priority": 7,
+      "name": "고품질 콘텐츠 제작팀",
+      "has_charter": true,
+      "slug": "content-build"
+    },
+    {
+      "id": "team:team_ui-e2e-verification",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-e2e-verification",
+      "priority": 7,
+      "name": "기능 E2E 확인팀",
+      "has_charter": true,
+      "slug": "ui-e2e-verification"
+    },
+    {
+      "id": "team:team_ui-audit-approval",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-audit-approval",
+      "priority": 7,
+      "name": "UI 독립 감사 승인팀",
+      "has_charter": true,
+      "slug": "ui-audit-approval"
+    },
+    {
+      "id": "team:team_ui-visual-regression",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-visual-regression",
+      "priority": 7,
+      "name": "가독성·디자인 검사팀",
+      "has_charter": true,
+      "slug": "ui-visual-regression"
+    },
+    {
+      "id": "team:team_ui-accessibility",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-accessibility",
+      "priority": 7,
+      "name": "접근성·사용성 검사팀",
+      "has_charter": true,
+      "slug": "ui-accessibility"
+    },
+    {
+      "id": "team:team_ui-visual-design",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-visual-design",
+      "priority": 7,
+      "name": "UI·비주얼 시스템 설계팀",
+      "has_charter": true,
+      "slug": "ui-visual-design"
+    },
+    {
+      "id": "team:team_ui-function-design",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-function-design",
+      "priority": 7,
+      "name": "기능·정보구조 설계팀",
+      "has_charter": true,
+      "slug": "ui-function-design"
+    },
+    {
+      "id": "team:team_ui-ai-interaction-design",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-ai-interaction-design",
+      "priority": 7,
+      "name": "AI 상호작용 설계팀",
+      "has_charter": true,
+      "slug": "ui-ai-interaction-design"
+    },
+    {
+      "id": "team:team_ui-ax-design",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-ax-design",
+      "priority": 7,
+      "name": "AX·에이전트 경험 설계팀",
+      "has_charter": true,
+      "slug": "ui-ax-design"
+    },
+    {
+      "id": "team:team_ui-ux-design",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ui-ux-design",
+      "priority": 7,
+      "name": "UX·사용성 설계팀",
+      "has_charter": true,
+      "slug": "ui-ux-design"
+    },
+    {
       "id": "hook:advisor-start.sh",
       "category": "hook",
       "kind": "bash-syntax",
@@ -1031,13 +1005,6 @@
       "category": "hook",
       "kind": "bash-syntax",
       "ref": "/Users/nova-ai/.claude/hooks/fleet-session-watchdog.sh",
-      "priority": 2
-    },
-    {
-      "id": "hook:higgsfield-auth-check.sh",
-      "category": "hook",
-      "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/higgsfield-auth-check.sh",
       "priority": 2
     },
     {
@@ -1566,6 +1533,20 @@
       "priority": 2
     },
     {
+      "id": "script:scripts/apply-nco-dashboard-ui-fix.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/apply-nco-dashboard-ui-fix.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/audit-pipeline-health.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/audit-pipeline-health.sh",
+      "priority": 3
+    },
+    {
       "id": "script:scripts/auto-report.sh",
       "category": "script",
       "kind": "bash-syntax",
@@ -1584,6 +1565,13 @@
       "category": "script",
       "kind": "bash-syntax",
       "ref": "/Users/nova-ai/project/nco/scripts/brain-capture.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/codex-subagent.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/codex-subagent.sh",
       "priority": 3
     },
     {
@@ -1643,6 +1631,20 @@
       "priority": 3
     },
     {
+      "id": "script:scripts/orphan-process-monitor.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/orphan-process-monitor.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/orphan-triage.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/orphan-triage.sh",
+      "priority": 3
+    },
+    {
       "id": "script:scripts/run-benchmark.sh",
       "category": "script",
       "kind": "bash-syntax",
@@ -1654,6 +1656,27 @@
       "category": "script",
       "kind": "bash-syntax",
       "ref": "/Users/nova-ai/project/nco/scripts/run-fix-test.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-iq-test-full.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-iq-test-step1.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-step1.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-nco-dashboard-verify.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-nco-dashboard-verify.sh",
       "priority": 3
     },
     {
@@ -1696,6 +1719,13 @@
       "category": "script",
       "kind": "bash-syntax",
       "ref": "/Users/nova-ai/project/nco/scripts/team-runner.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/techport08-integrity-attest.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/techport08-integrity-attest.sh",
       "priority": 3
     },
     {
@@ -1902,6 +1932,20 @@
       "priority": 9
     },
     {
+      "id": "skill:find-skills",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/find-skills/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:frontend-design",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/frontend-design/SKILL.md",
+      "priority": 9
+    },
+    {
       "id": "skill:gs-docs-writer",
       "category": "skill",
       "kind": "skill-valid",
@@ -1930,10 +1974,52 @@
       "priority": 9
     },
     {
+      "id": "skill:nco-orchestration",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nco-orchestration/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-ax-control",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-ax-control/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-browser-127-0-0-1-6bb8c4dd",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-6bb8c4dd/SKILL.md",
+      "priority": 9
+    },
+    {
       "id": "skill:retrieval-reflex",
       "category": "skill",
       "kind": "skill-valid",
       "ref": "/Users/nova-ai/.claude/skills/retrieval-reflex/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:setup-matt-pocock-skills",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/setup-matt-pocock-skills/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:subagent-failure-modes",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/project/nco/.claude/skills/subagent-failure-modes/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:subagent-ledger",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/project/nco/.claude/skills/subagent-ledger/SKILL.md",
       "priority": 9
     },
     {

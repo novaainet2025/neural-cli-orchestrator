@@ -1,0 +1,13 @@
+import { readFileSync } from "node:fs";
+import Database from "better-sqlite3";
+const SOURCE = "/Users/nova-ai/project/nco/data/team-runner/team_research-visualization-2026-07-30.md";
+const TASK_ID = "task_FIeI336uBZOo2b42";
+const fileText = readFileSync(SOURCE, "utf8");
+const responseText = fileText.slice(fileText.indexOf("done:"));
+const db = new Database("/Users/nova-ai/project/nco/db/nco.db");
+db.prepare("UPDATE tasks SET response = ? WHERE id = ?").run(responseText, TASK_ID);
+const row = db.prepare("SELECT response FROM tasks WHERE id = ?").get(TASK_ID);
+db.close();
+console.log("endsWith", fileText.endsWith(row.response));
+console.log("fileLen", fileText.length, "respLen", row.response.length);
+process.exit(fileText.endsWith(row.response) ? 0 : 1);

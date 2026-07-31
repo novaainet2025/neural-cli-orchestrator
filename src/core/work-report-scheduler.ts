@@ -8,7 +8,8 @@ import { createLogger } from '../utils/logger.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { agentManager } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
-import { allowQueueProviderFailover, resolveExecutor } from './company-orchestrator.js';
+import { buildComputerUseObservability, probeComputerUseRuntimeSync } from './computer-use-company.js';
+import { allowQueueProviderFailover, listCompanyRuns, resolveExecutor } from './company-orchestrator.js';
 import { resolvePreference } from './provider-registry.js';
 
 const log = createLogger('work-report-scheduler');
@@ -27,7 +28,7 @@ const REDISPATCH_LIMIT = 20;
 const MAX_REDISPATCH_ATTEMPTS = 5;
 const REDISPATCH_BACKOFF_BASE_MS = 5 * 60_000;
 const REDISPATCH_BACKOFF_MAX_MS = 2 * 60 * 60_000;
-const NON_REPORT_EXECUTORS = new Set(['higgsfield', 'openclaw']);
+const NON_REPORT_EXECUTORS = new Set(['openclaw']);
 // 링크 해제 대상 태스크 상태: 이 상태로 끝난 태스크는 업무보고 결과로 수집되지 않고
 // source_task_id=NULL로 해제되어 다음 틱 재발행 대상이 된다.
 export const UNLINK_TASK_STATUSES = ['failed', 'cancelled', 'timed_out', 'lease_expired'] as const;
@@ -80,7 +81,7 @@ export class WorkReportSchedulerRunGate {
   }
 }
 // 회사 보고 fallback: 보고서 작성 가능한 등록 실행자만, 우선순위 순.
-// knownAgents 임의 순회는 media 전용(higgsfield 등)이나 비텍스트 실행자를 고를 수 있다.
+// knownAgents 임의 순회는 비텍스트 실행자나 보고서 작성에 부적합한 실행자를 고를 수 있다.
 const REPORT_CAPABLE_FALLBACK_PRIORITY = [
   'ollama',
   'codex',
@@ -150,6 +151,17 @@ const SUBSTANTIVE_TASK_SLUGS = new Set([
 ]);
 const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
 const EVOLUTION_LEARNING_CONTEXT_FLAG = 'NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT';
+const DECISION_COORDINATION_TEAM_SLUG = 'ax-decision-coordination';
+const DECISION_COORDINATION_CONTEXT_FLAG = 'NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT';
+const VERIFICATION_QUALITY_TEAM_SLUG = 'web-scrape-06-verification-quality';
+const VERIFICATION_QUALITY_CONTEXT_FLAG = 'NCO_VERIFICATION_QUALITY_SAMPLE_CONTEXT';
+const COMPUTER_USE_CONTROL_TEAM_SLUG = 'computer-use-control';
+const COMPUTER_USE_CONTROL_CONTEXT_FLAG = 'NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT';
+const VERIFICATION_UPSTREAM_TEAM_SLUGS = [
+  'web-scrape-03-static-implementation',
+  'web-scrape-04-dynamic-implementation',
+  'web-scrape-05-data-analysis',
+] as const;
 const SNS_TEAM_SLUGS = new Set(['content-planning', 'sns', 'quality-audit']);
 
 function formatMetric(value: number): string {
@@ -172,6 +184,21 @@ function compactNullableContextText(
 
 function evolutionLearningContextEnabled(): boolean {
   const configured = process.env[EVOLUTION_LEARNING_CONTEXT_FLAG]?.trim().toLowerCase();
+  return configured !== '0' && configured !== 'false' && configured !== 'off';
+}
+
+function decisionCoordinationContextEnabled(): boolean {
+  const configured = process.env[DECISION_COORDINATION_CONTEXT_FLAG]?.trim().toLowerCase();
+  return configured !== '0' && configured !== 'false' && configured !== 'off';
+}
+
+function verificationQualitySampleContextEnabled(): boolean {
+  const configured = process.env[VERIFICATION_QUALITY_CONTEXT_FLAG]?.trim().toLowerCase();
+  return configured !== '0' && configured !== 'false' && configured !== 'off';
+}
+
+function computerUseControlContextEnabled(): boolean {
+  const configured = process.env[COMPUTER_USE_CONTROL_CONTEXT_FLAG]?.trim().toLowerCase();
   return configured !== '0' && configured !== 'false' && configured !== 'off';
 }
 
@@ -429,6 +456,344 @@ export function buildTeamDataContext(
     }
     return [];
   });
+
+  // Decision & Coordination Office: 집계만으로는 조정 charter(식별자·핸드오프·귀속)를 수행할 수 없다.
+  // team-runner 경로도 동일 블록을 미러링한다(scripts/team-runner.sh).
+  // 롤백: NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT=off
+  if (
+    team.slug === DECISION_COORDINATION_TEAM_SLUG
+    && decisionCoordinationContextEnabled()
+  ) {
+    collect('decision_coordination_team_tasks', () => {
+      const rows = database.prepare(`
+        SELECT
+          id,
+          status,
+          assigned_to,
+          created_at,
+          completed_at,
+          error,
+          prompt,
+          CASE
+            WHEN json_valid(metadata_json)
+            THEN json_extract(metadata_json, '$.workReportId')
+            ELSE NULL
+          END AS work_report_id
+        FROM tasks
+        WHERE team_id=?
+          AND created_at >= datetime('now', '-48 hours')
+        ORDER BY
+          CASE
+            WHEN status IN ('pending','queued','assigned','running','streaming','reviewing') THEN 0
+            ELSE 1
+          END,
+          COALESCE(completed_at, created_at) DESC,
+          created_at DESC,
+          id DESC
+        LIMIT 8
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        assigned_to: string | null;
+        created_at: string;
+        completed_at: string | null;
+        error: string | null;
+        prompt: string;
+        work_report_id: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[coordination_task_evidence] source_tier=T1(SQLite tasks row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `담당=${compactNullableContextText(row.assigned_to, 80)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `완료=${compactNullableContextText(row.completed_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `workReportId=${compactNullableContextText(row.work_report_id, 100)}`,
+          `지시=${compactContextText(row.prompt, 240)}`,
+        ].join(', '),
+      );
+    });
+
+    collect('decision_coordination_work_reports', () => {
+      const rows = database.prepare(`
+        SELECT id, report_date, report_slot, status, source_task_id, submitted_at
+        FROM work_reports
+        WHERE team_id=?
+          AND report_date >= date('now', '-7 days')
+        ORDER BY report_date DESC, report_slot DESC, updated_at DESC
+        LIMIT 5
+      `).all(teamId) as Array<{
+        id: string;
+        report_date: string;
+        report_slot: string;
+        status: string;
+        source_task_id: string | null;
+        submitted_at: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[coordination_work_report_evidence] source_tier=T1(SQLite work_reports row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `date=${compactContextText(row.report_date, 20)}`,
+          `slot=${compactContextText(row.report_slot, 10)}`,
+          `status=${compactContextText(row.status, 30)}`,
+          `sourceTaskId=${compactNullableContextText(row.source_task_id, 100)}`,
+          `submittedAt=${compactNullableContextText(row.submitted_at, 50)}`,
+        ].join(', '),
+      );
+    });
+
+    if (agentIds.size > 0) {
+      const memberIds = [...agentIds];
+      const placeholders = memberIds.map(() => '?').join(',');
+      collect('decision_coordination_member_tasks', () => {
+        const rows = database.prepare(`
+          SELECT id, assigned_to, status, team_id, created_at, completed_at, error
+          FROM tasks
+          WHERE assigned_to IN (${placeholders})
+            AND created_at >= datetime('now', '-48 hours')
+          ORDER BY COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC
+          LIMIT 10
+        `).all(...memberIds) as Array<{
+          id: string;
+          assigned_to: string | null;
+          status: string;
+          team_id: string | null;
+          created_at: string;
+          completed_at: string | null;
+          error: string | null;
+        }>;
+        return rows.map((row) =>
+          [
+            '[coordination_member_task_evidence] source_tier=T1(SQLite tasks row)',
+            `id=${compactContextText(row.id, 100)}`,
+            `담당=${compactNullableContextText(row.assigned_to, 80)}`,
+            `상태=${compactContextText(row.status, 50)}`,
+            `teamId=${compactNullableContextText(row.team_id, 100)}`,
+            `생성=${compactContextText(row.created_at, 50)}`,
+            `완료=${compactNullableContextText(row.completed_at, 50)}`,
+            `오류=${compactNullableContextText(row.error, 200)}`,
+          ].join(', '),
+        );
+      });
+    }
+  }
+
+  // web-scrape-06-verification-quality: charter는 표본 원문 대조를 요구하지만 team-runner가
+  // 집계 카운트만 주입해 5축 검증이 구조적으로 BLOCKED였다(실측 2026-07-30 러너 산출물).
+  // upstream 파이프라인(03~05)의 evidence_json·result_json·응답 스니펫을 T1으로 주입한다.
+  // 롤백: NCO_VERIFICATION_QUALITY_SAMPLE_CONTEXT=off
+  if (
+    team.slug === VERIFICATION_QUALITY_TEAM_SLUG
+    && verificationQualitySampleContextEnabled()
+  ) {
+    const upstreamPlaceholders = VERIFICATION_UPSTREAM_TEAM_SLUGS.map(() => '?').join(',');
+    collect('verification_upstream_samples', () => {
+      const rows = database.prepare(`
+        SELECT
+          t.id,
+          tm.slug AS team_slug,
+          t.status,
+          t.created_at,
+          t.completed_at,
+          t.response,
+          t.error,
+          t.result_json,
+          t.evidence_json
+        FROM tasks t
+        JOIN teams tm ON tm.id = t.team_id
+        WHERE tm.slug IN (${upstreamPlaceholders})
+          AND t.status IN ('completed','failed','timed_out','lease_expired','cancelled')
+          AND t.created_at >= datetime('now','-48 hours')
+          AND (
+            TRIM(COALESCE(t.evidence_json, '')) <> ''
+            OR TRIM(COALESCE(t.result_json, '')) <> ''
+            OR (
+              t.status = 'completed'
+              AND LENGTH(TRIM(COALESCE(t.response, ''))) > 100
+            )
+          )
+        ORDER BY COALESCE(t.completed_at, t.created_at) DESC, t.created_at DESC, t.id DESC
+        LIMIT 5
+      `).all(...VERIFICATION_UPSTREAM_TEAM_SLUGS) as Array<{
+        id: string;
+        team_slug: string;
+        status: string;
+        created_at: string;
+        completed_at: string | null;
+        response: string | null;
+        error: string | null;
+        result_json: string | null;
+        evidence_json: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[verification_upstream_sample] source_tier=T1(SQLite tasks row)',
+          `upstream_team=${compactContextText(row.team_slug, 80)}`,
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `완료=${compactNullableContextText(row.completed_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `응답(T4-natural-language)=${compactNullableContextText(row.response, 400)}`,
+          `result_json=${compactNullableContextText(row.result_json, 300)}`,
+          `evidence_json=${compactNullableContextText(row.evidence_json, 300)}`,
+        ].join(', '),
+      );
+    });
+
+    collect('verification_team_failures', () => {
+      const rows = database.prepare(`
+        SELECT id, status, created_at, error, response
+        FROM tasks
+        WHERE team_id=?
+          AND status IN ('failed','timed_out','lease_expired','cancelled')
+          AND created_at >= datetime('now','-48 hours')
+        ORDER BY created_at DESC, id DESC
+        LIMIT 5
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        created_at: string;
+        error: string | null;
+        response: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[verification_failure_rca] source_tier=T1(SQLite tasks row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `응답(T4-natural-language)=${compactNullableContextText(row.response, 200)}`,
+        ].join(', '),
+      );
+    });
+  }
+
+  // computer-use-control: charter는 잠금·런타임·MCP Tier-1 확인을 요구하지만 team-runner가
+  // 집계 카운트만 주입해 일일 보고가 "미확인" 반복 → completion=0% 오탐이었다
+  // (실측 2026-07-28~30: team_computer-use-control 일일 산출물 전수).
+  // /api/computer-use/status와 동일한 런타임·활성 run·48h 태스크 오류를 T1으로 주입한다.
+  // 롤백: NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT=off
+  if (
+    team.slug === COMPUTER_USE_CONTROL_TEAM_SLUG
+    && computerUseControlContextEnabled()
+  ) {
+    collect('computer_use_runtime', () => {
+      const runtime = probeComputerUseRuntimeSync();
+      const snapshot = buildComputerUseObservability(runtime);
+      return [
+        [
+          '[computer_use_runtime_evidence] source_tier=T1(nova-use metadata file)',
+          `available=${runtime.available ? '1' : '0'}`,
+          `pid=${runtime.pid ?? '없음'}`,
+          `endpointHost=${compactNullableContextText(runtime.endpointHost ?? null, 80)}`,
+          `error=${compactNullableContextText(runtime.error ?? null, 240)}`,
+          `leaseMs=${snapshot.policy.leaseMs}`,
+          `heartbeatMs=${snapshot.policy.heartbeatMs}`,
+          `maxWaitMs=${snapshot.policy.maxWaitMs}`,
+          `timestamp=${compactContextText(snapshot.timestamp, 50)}`,
+        ].join(', '),
+      ];
+    });
+
+    collect('computer_use_active_runs', () => {
+      const runs = listCompanyRuns(20)
+        .filter((run) => run.orgSlug === 'computer-use' && run.computerUse)
+        .slice(0, 5);
+      return runs.map((run) =>
+        [
+          '[computer_use_active_run_evidence] source_tier=T1(company_runs row)',
+          `runId=${compactContextText(run.id, 100)}`,
+          `status=${compactContextText(run.computerUse!.status, 30)}`,
+          `message=${compactNullableContextText(run.computerUse!.message, 240)}`,
+          `queuedBehindRunId=${compactNullableContextText(run.computerUse!.queuedBehindRunId ?? null, 100)}`,
+          `activatedAt=${compactNullableContextText(run.computerUse!.activatedAt ?? null, 50)}`,
+          `releasedAt=${compactNullableContextText(run.computerUse!.releasedAt ?? null, 50)}`,
+        ].join(', '),
+      );
+    });
+
+    collect('computer_use_control_tasks', () => {
+      const rows = database.prepare(`
+        SELECT
+          id,
+          status,
+          assigned_to,
+          created_at,
+          completed_at,
+          error,
+          CASE
+            WHEN json_valid(metadata_json)
+            THEN json_extract(metadata_json, '$.workReportId')
+            ELSE NULL
+          END AS work_report_id
+        FROM tasks
+        WHERE team_id=?
+          AND created_at >= datetime('now', '-48 hours')
+        ORDER BY
+          CASE
+            WHEN status IN ('pending','queued','assigned','running','streaming','reviewing') THEN 0
+            ELSE 1
+          END,
+          COALESCE(completed_at, created_at) DESC,
+          created_at DESC,
+          id DESC
+        LIMIT 8
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        assigned_to: string | null;
+        created_at: string;
+        completed_at: string | null;
+        error: string | null;
+        work_report_id: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[computer_use_control_task_evidence] source_tier=T1(SQLite tasks row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `담당=${compactNullableContextText(row.assigned_to, 80)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `완료=${compactNullableContextText(row.completed_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `workReportId=${compactNullableContextText(row.work_report_id, 100)}`,
+        ].join(', '),
+      );
+    });
+
+    collect('computer_use_control_failures', () => {
+      const rows = database.prepare(`
+        SELECT id, status, created_at, error, response
+        FROM tasks
+        WHERE team_id=?
+          AND status IN ('failed','timed_out','lease_expired','cancelled')
+          AND created_at >= datetime('now', '-48 hours')
+        ORDER BY created_at DESC, id DESC
+        LIMIT 5
+      `).all(teamId) as Array<{
+        id: string;
+        status: string;
+        created_at: string;
+        error: string | null;
+        response: string | null;
+      }>;
+      return rows.map((row) =>
+        [
+          '[computer_use_control_failure_rca] source_tier=T1(SQLite tasks row)',
+          `id=${compactContextText(row.id, 100)}`,
+          `상태=${compactContextText(row.status, 50)}`,
+          `생성=${compactContextText(row.created_at, 50)}`,
+          `오류=${compactNullableContextText(row.error, 240)}`,
+          `응답(T4-natural-language)=${compactNullableContextText(row.response, 200)}`,
+        ].join(', '),
+      );
+    });
+  }
 
   if (agentIds.size > 0) {
     const ids = [...agentIds];
@@ -1045,24 +1410,62 @@ export function buildReportTaskMetadata(candidate: ReportTaskCandidate): Record<
   return metadata;
 }
 
-async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTaskCandidate[]): Promise<{ created: number; failed: number }> {
+export async function createTeamReportTasks(
+  app: FastifyInstance,
+  candidates: ReportTaskCandidate[],
+): Promise<{
+  created: number;
+  failed: number;
+  deferred: number;
+  attemptedReportIds: string[];
+}> {
   const db = getDb();
   let created = 0;
   let failed = 0;
+  let deferred = 0;
+  const attemptedReportIds: string[] = [];
 
   for (const candidate of candidates) {
     const metadata = buildReportTaskMetadata(candidate);
-    const response = await workReportDispatchGate.run(() => app.inject({
-      method: 'POST',
-      url: '/api/task',
-      payload: {
-        ai: candidate.lead,
-        prompt: candidate.prompt,
-        mode: 'task',
-        callerAgentId: 'work-report-scheduler',
-        metadata,
-      },
-    }));
+    const response = await workReportDispatchGate.run(async () => {
+      // 후보 계산 뒤 직렬 발행 게이트에서 대기하는 동안 회로가 열릴 수 있다.
+      // 실제 POST 직전에 다시 확인해 stale "available" 판정으로 실패 태스크를
+      // 연속 생성하지 않는다. 판정 자체가 실패하면 기존 동작대로 발행을 허용한다.
+      try {
+        if (!circuitBreakerRegistry.getAvailability(candidate.lead).available) return null;
+      } catch (err) {
+        log.warn({
+          reportId: candidate.reportId,
+          lead: candidate.lead,
+          err: err instanceof Error ? err.message : String(err),
+        }, 'Work-report dispatch availability recheck failed — preserving dispatch');
+      }
+
+      attemptedReportIds.push(candidate.reportId);
+      return app.inject({
+        method: 'POST',
+        url: '/api/task',
+        payload: {
+          ai: candidate.lead,
+          prompt: candidate.prompt,
+          mode: 'task',
+          callerAgentId: 'work-report-scheduler',
+          metadata,
+        },
+      });
+    });
+
+    if (response === null) {
+      deferred += 1;
+      log.warn({
+        reportId: candidate.reportId,
+        subjectKind: candidate.subjectKind,
+        subjectId: candidate.subjectId,
+        teamId: candidate.teamId,
+        lead: candidate.lead,
+      }, 'Work-report dispatch deferred — executor circuit became unavailable');
+      continue;
+    }
 
     if (response.statusCode !== 202) {
       failed += 1;
@@ -1100,7 +1503,7 @@ async function createTeamReportTasks(app: FastifyInstance, candidates: ReportTas
     created += 1;
   }
 
-  return { created, failed };
+  return { created, failed, deferred, attemptedReportIds };
 }
 
 export async function issueWorkReports(
@@ -1263,8 +1666,10 @@ export async function issueWorkReports(
     waived,
     teamTasksCreated: teamTaskResult.created,
     teamTasksFailed: teamTaskResult.failed,
+    teamTasksDeferred: teamTaskResult.deferred,
     organizationTasksCreated: orgTaskResult.created,
     organizationTasksFailed: orgTaskResult.failed,
+    organizationTasksDeferred: orgTaskResult.deferred,
   }, 'Work reports issued');
 
   return {
@@ -1519,7 +1924,12 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
   });
 
   const result = await createTeamReportTasks(app, candidates);
-  log.info({ reportDate, redispatched: result.created, failed: result.failed }, 'Unlinked work-report tasks redispatched');
+  log.info({
+    reportDate,
+    redispatched: result.created,
+    failed: result.failed,
+    deferred: result.deferred,
+  }, 'Unlinked work-report tasks redispatched');
 
   // P0-7: 이번 틱에 실제로 재발행을 시도한 보고(batch)만 attempts+1 + 지수 백오프 적용.
   // 발행 자체가 202를 반환해도(생성된 태스크가 나중에 CB open으로 실패) 다음 틱에 다시
@@ -1531,7 +1941,9 @@ async function redispatchUnlinkedTeamReports(app: FastifyInstance, reportDate: s
         updated_at = datetime('now')
     WHERE id = ?
   `);
+  const attemptedReportIds = new Set(result.attemptedReportIds);
   for (const row of batch) {
+    if (!attemptedReportIds.has(row.report_id)) continue;
     const backoffMs = Math.min(
       REDISPATCH_BACKOFF_BASE_MS * 2 ** row.redispatch_attempts,
       REDISPATCH_BACKOFF_MAX_MS,
@@ -1627,7 +2039,12 @@ async function redispatchUnlinkedOrgReports(app: FastifyInstance, reportDate: st
   });
 
   const result = await createTeamReportTasks(app, candidates);
-  log.info({ reportDate, redispatched: result.created, failed: result.failed }, 'Unlinked org work-report tasks redispatched');
+  log.info({
+    reportDate,
+    redispatched: result.created,
+    failed: result.failed,
+    deferred: result.deferred,
+  }, 'Unlinked org work-report tasks redispatched');
 
   const backoffStmt = db.prepare(`
     UPDATE work_reports
@@ -1636,7 +2053,9 @@ async function redispatchUnlinkedOrgReports(app: FastifyInstance, reportDate: st
         updated_at = datetime('now')
     WHERE id = ?
   `);
+  const attemptedReportIds = new Set(result.attemptedReportIds);
   for (const row of batch) {
+    if (!attemptedReportIds.has(row.report_id)) continue;
     const backoffMs = Math.min(
       REDISPATCH_BACKOFF_BASE_MS * 2 ** row.redispatch_attempts,
       REDISPATCH_BACKOFF_MAX_MS,

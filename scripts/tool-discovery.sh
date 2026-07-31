@@ -5,7 +5,7 @@ set -u
 CONFIG_PATH="${CONFIG_PATH:-/Users/nova-ai/project/nco/config/ai-providers.json}"
 RUNTIME_DOC="${RUNTIME_DOC:-/Users/nova-ai/obsidian/mac-obsidian/00-SYSTEM/PROVIDER-RUNTIME.md}"
 KNOWN_PATHS=("/opt/homebrew/bin" "/Users/nova-ai/.local/bin")
-TOOLS=(claude gemini codex opencode cursor-agent copilot hermes hermes-nco openclaw higgsfield aider)
+TOOLS=(claude gemini codex opencode cursor-agent copilot hermes hermes-nco openclaw aider)
 PROVIDERS=(openrouter ollama gemini-deep)
 
 for extra_path in "${KNOWN_PATHS[@]}"; do

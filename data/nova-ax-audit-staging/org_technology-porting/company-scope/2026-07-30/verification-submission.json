@@ -1,0 +1,88 @@
+{
+  "taskId": "task_zfhOCnyCRqgulprd",
+  "companyId": "org_technology-porting",
+  "teamId": "company-scope",
+  "actorId": "codex",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_technology-porting/company-scope/2026-07-30/company-scope-audit-bundle.json",
+    "expectedSha256": "4a56164de182cd1898202af757119adf6943450508c9ac08ff1c8ad1deefc4e7",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "4a56164de182cd1898202af757119adf6943450508c9ac08ff1c8ad1deefc4e7",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "node-sha256-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T06:16:39.280Z",
+      "evidenceHash": "4a56164de182cd1898202af757119adf6943450508c9ac08ff1c8ad1deefc4e7"
+    }
+  },
+  "measurements": [
+    {
+      "name": "hashed-technology-porting-artifacts",
+      "unit": "files",
+      "baseline": 0,
+      "current": 27,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 27,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "node-filesystem-evidence-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T06:16:39.280Z",
+        "evidenceHash": "c0614a14208ceb470f970c432e8a0ccb32710516d37137219dfdfd0c1e080b30"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "company-scope-evidence-integrity-suite",
+      "exitCode": 0,
+      "durationMs": 815,
+      "commandHash": "2fe61fafc17b25b0c46f5e2c5265cfa0ce3144531580aebd9de73e25fda30797",
+      "outputHash": "d8eb90017ae690f2df3f77d48f733d8a3bb5a203221816c0598f5520f607272c",
+      "provenance": {
+        "kind": "ci",
+        "producer": "node-test-independent-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T06:16:39.280Z",
+        "evidenceHash": "d8eb90017ae690f2df3f77d48f733d8a3bb5a203221816c0598f5520f607272c"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "e46eab12d72881a6a2b1c1ba2d167e799a497bd6514002f531bf4c646c4d52b1",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "company-scope-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T06:16:39.280Z",
+      "evidenceHash": "e46eab12d72881a6a2b1c1ba2d167e799a497bd6514002f531bf4c646c4d52b1"
+    }
+  },
+  "requirements": [
+    {
+      "id": "company-scope-audit-bundle-is-grounded-and-reproducible",
+      "satisfied": true,
+      "evidenceHashes": [
+        "4a56164de182cd1898202af757119adf6943450508c9ac08ff1c8ad1deefc4e7",
+        "c0614a14208ceb470f970c432e8a0ccb32710516d37137219dfdfd0c1e080b30",
+        "d8eb90017ae690f2df3f77d48f733d8a3bb5a203221816c0598f5520f607272c",
+        "e46eab12d72881a6a2b1c1ba2d167e799a497bd6514002f531bf4c646c4d52b1"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "company-scope-goal-attestation-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T06:16:39.280Z",
+      "evidenceHash": "2af9760fd8e4cef804fa82eaa8fd6810ea489de4e79afc251b8e8b46c649e04c"
+    }
+  }
+}

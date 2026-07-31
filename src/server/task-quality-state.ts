@@ -20,7 +20,7 @@ export function markTaskQualityRejected(
         error=?,
         completed_at=COALESCE(completed_at, datetime('now')),
         updated_at=datetime('now')
-    WHERE id=? AND status='completed'
+    WHERE id=? AND status IN ('completed','reviewing')
   `).run(reason, taskId);
   return Number(result.changes) === 1;
 }

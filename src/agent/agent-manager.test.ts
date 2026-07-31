@@ -42,16 +42,6 @@ const {
       persona: { systemPrompt: 'test api prompt' },
     },
     {
-      id: 'higgsfield',
-      role: 'media',
-      type: 'cli',
-      command: 'higgsfield',
-      args: [],
-      env: {} as Record<string, string>,
-      model: 'flux_2',
-      persona: { systemPrompt: 'test higgsfield prompt' },
-    },
-    {
       id: 'cursor-agent',
       role: 'review',
       type: 'cli',
@@ -183,7 +173,6 @@ describe('AgentManager', () => {
     circuitBreakerRegistry.reset('aider');
     circuitBreakerRegistry.reset('claude-code');
     circuitBreakerRegistry.reset('api-tools');
-    circuitBreakerRegistry.reset('higgsfield');
     circuitBreakerRegistry.reset('cursor-agent');
   });
 
@@ -204,6 +193,25 @@ describe('AgentManager', () => {
     
     delete process.env.OPENROUTER_API_KEYS;
     agentManager.destroy();
+  });
+
+  it('compact discussion execution skips task memory and repository verification post-processing', async () => {
+    await agentManager.init();
+
+    const result = await agentManager.executeTask(
+      'claude-code',
+      'Discussion R1 compact proposal',
+      { projectDir: '/dummy/project', compact: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockVectorMemorySearch).not.toHaveBeenCalled();
+    expect(mockVectorMemoryAdd).not.toHaveBeenCalled();
+    expect(mockExeca).not.toHaveBeenCalledWith(
+      'git',
+      ['diff', '--name-only'],
+      expect.anything(),
+    );
   });
 
   it('reports provider unavailability with state and reason', () => {
@@ -383,7 +391,7 @@ describe('AgentManager', () => {
       '--print',
       '--trust',
       '--model',
-      'composer-2.5',
+      'auto',
       'Reply exactly: NCO_PROVIDER_PROBE_OK',
     ]));
     expect(circuitBreakerRegistry.getSnapshot('cursor-agent').state).toBe('closed');
@@ -571,39 +579,5 @@ describe('AgentManager', () => {
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
-  });
-
-  it('passes only the exact original prompt to higgsfield without vector-memory lookup', async () => {
-    await agentManager.init();
-
-    const originalPrompt = 'a sunset over mountains with a lake reflection';
-    mockVectorMemorySearch.mockResolvedValueOnce([
-      { id: 'm1', agentId: 'higgsfield', content: 'some memory', score: 0.9, semantic: true, importance: 1, accessCount: 0, createdAt: '2026-01-01' } as any,
-    ]);
-
-    const result = await agentManager.executeTask('higgsfield', originalPrompt, {
-      projectDir: '/dummy/project',
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.output).toBe('mocked output');
-
-    expect(mockExeca).toHaveBeenCalled();
-    const [cmd, args] = mockExeca.mock.calls[0];
-    const promptIndex = args.indexOf('--prompt');
-    const promptArg = args[promptIndex + 1];
-    expect(cmd).toBe('higgsfield');
-    expect(args).toEqual(['generate', 'create', 'flux_2', '--prompt', originalPrompt]);
-    expect(promptIndex).toBeGreaterThan(-1);
-    expect(promptArg).toBe(originalPrompt);
-    expect(promptArg).not.toContain('test higgsfield prompt');
-    expect(promptArg).not.toContain('## Fable Principles');
-    expect(promptArg).not.toContain('## Tools (XML)');
-    expect(promptArg).not.toContain('--- 자동 보강 ---');
-    expect(promptArg).not.toContain('장기 기억 컨텍스트');
-    expect(promptArg).not.toContain('some memory');
-    expect(mockVectorMemorySearch).not.toHaveBeenCalled();
-
-    agentManager.destroy();
   });
 });

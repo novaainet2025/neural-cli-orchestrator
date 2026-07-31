@@ -73,7 +73,7 @@ const TASK_AGENTS: Record<string, string[]> = {
   verify:   ['cursor-agent', 'codex', 'opencode'],
   research: ['opencode', 'codex'],
   ui:       ['agy', 'codex', 'opencode'],
-  media:    ['higgsfield', 'agy'],
+  media:    ['agy'],
   general:  ['opencode', 'codex', 'cursor-agent'],
 };
 

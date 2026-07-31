@@ -1,0 +1,25 @@
+{
+  "monitor": "optimization-regression-monitor",
+  "observedAt": "2026-07-30T08:03:00.136Z",
+  "regressionGuardPassed": true,
+  "baselineCapturedAt": "2026-07-30T08:02:55.321Z",
+  "observed": {
+    "taskTotal": 24,
+    "reportTotal": 9,
+    "submitted": 9,
+    "deliverablesPresent": 8,
+    "integrity": "ok",
+    "oversightScopes": 1
+  },
+  "checks": {
+    "no deliverable files lost": true,
+    "deliverable hashes stable since baseline": true,
+    "task count did not regress": true,
+    "work report count did not regress": true,
+    "submitted reports did not regress": true,
+    "cycle3 diagnosis preserved": true,
+    "evaluation work report preserved": true,
+    "nco database integrity ok": true
+  },
+  "regressions": []
+}

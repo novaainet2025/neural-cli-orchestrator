@@ -18,7 +18,9 @@ function createTask(status = 'running'): Database.Database {
       error TEXT,
       evidence_json TEXT,
       completed_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      team_id TEXT,
+      metadata_json TEXT
     );
     INSERT INTO tasks (id, status) VALUES ('recovered-task', '${status}');
   `);

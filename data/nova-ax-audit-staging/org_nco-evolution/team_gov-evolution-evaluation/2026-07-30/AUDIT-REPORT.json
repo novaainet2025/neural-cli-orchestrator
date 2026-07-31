@@ -1,0 +1,34 @@
+{
+  "generatedAt": "2026-07-30T08:03:32.203Z",
+  "taskId": "task_yRDfIvg60k_d6nbN",
+  "directiveId": "vdir_cb35b6f0-a88c-48f8-82ce-cb39d329c1a8",
+  "companyId": "org_nco-evolution",
+  "teamId": "team_gov-evolution-evaluation",
+  "actorId": "claude-code",
+  "runId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+  "status": "approved",
+  "passedInstitutions": 6,
+  "receiptId": "vrcpt_e2051f15-9067-4c6f-9632-54d939728a37",
+  "completionEventId": "2aa8ee52-3f71-44b2-b30a-feda04da79e4",
+  "remediationLoop": {
+    "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f",
+    "status": "completed",
+    "originalRunId": "vrun_716efca7-0d42-435c-aeb6-7eb0cc22caf2",
+    "resolvedRunId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+    "attemptId": "vattempt_0f6d59e4-07b2-4423-96f3-4b31e3f0ce64"
+  },
+  "institutions": [
+    { "institution": "inspection", "name": "검사기관", "passed": true, "failures": [] },
+    { "institution": "validation", "name": "검증기관", "passed": true, "failures": [] },
+    { "institution": "measurement", "name": "실측기관", "passed": true, "failures": [] },
+    { "institution": "performance", "name": "성능테스트기관", "passed": true, "failures": [] },
+    { "institution": "optimization", "name": "최적화기관", "passed": true, "failures": [] },
+    { "institution": "goal", "name": "목표달성 체크기관", "passed": true, "failures": [] }
+  ],
+  "failures": [],
+  "activeRemediationLoops": 0,
+  "evidenceDir": "/Users/nova-ai/project/nova-ax/evidence/audit-gov-evolution-evaluation-20260730",
+  "stagingDir": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-evolution/team_gov-evolution-evaluation/2026-07-30",
+  "artifactPath": "/Users/nova-ai/project/nova-ax/evidence/audit-gov-evolution-evaluation-20260730/work-report.md",
+  "artifactSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+}

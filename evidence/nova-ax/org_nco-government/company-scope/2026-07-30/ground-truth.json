@@ -1,0 +1,304 @@
+{
+  "collectedAt": "2026-07-30T08:55:06.156Z",
+  "target": {
+    "companyId": "org_nco-government",
+    "teamId": "company-scope"
+  },
+  "databases": {
+    "nco": {
+      "path": "/Users/nova-ai/project/nco/db/nco.db",
+      "integrityCheck": "ok"
+    },
+    "novaAx": {
+      "path": "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+      "production": true,
+      "integrityCheck": "ok"
+    }
+  },
+  "sourceWork": {
+    "organization": {
+      "id": "org_nco-government",
+      "name": "NCO AI Governance and Public Administration Company",
+      "is_active": 1
+    },
+    "activeTeamCount": 5,
+    "workReport": {
+      "id": "wr_EF4bugKnd2-4QXHf",
+      "status": "submitted",
+      "subjectKind": "organization",
+      "subjectId": "org_nco-government",
+      "organizationId": "org_nco-government",
+      "teamId": null,
+      "sourceTaskId": "task_q3Kmlhr00Rg2Tftl",
+      "reportDate": "2026-07-30",
+      "reportSlot": "pm",
+      "submittedAt": "2026-07-30T05:14:00.000Z",
+      "bodySha256": "5b6713e8e5c76393dd736a0375f8ef0ed4c39a8c67b4832f0867c9be17514da6"
+    },
+    "sourceTask": {
+      "id": "task_q3Kmlhr00Rg2Tftl",
+      "status": "completed",
+      "assignedTo": "hermes",
+      "completedAt": "2026-07-30 05:14:00",
+      "error": null,
+      "responseSha256": "5b6713e8e5c76393dd736a0375f8ef0ed4c39a8c67b4832f0867c9be17514da6"
+    },
+    "responseMatchesPersistedBody": true,
+    "mirror": {
+      "path": "/Users/nova-ai/obsidian/mac-obsidian/07-SESSIONS/NCO-WORK-JOURNAL/WORK-REPORTS/2026-07/wr_EF4bugKnd2-4QXHf.md",
+      "sha256": "b885b35638e09fdc074875d1072ce547fbcf49306df185ef8af81bbcdc8f97d3",
+      "byteSize": 4024,
+      "containsWorkReportId": true,
+      "containsBody": true
+    }
+  },
+  "verification": {
+    "scope": {
+      "company_id": "org_nco-government",
+      "team_id": "company-scope",
+      "team_name": "NCO AI Governance and Public Administration Company",
+      "active": 1,
+      "source": "nco",
+      "last_seen_at": "2026-07-30T08:51:07.724Z"
+    },
+    "auditDirective": {
+      "id": "vdir_4d570e05-ab03-4772-ae2d-a4f54b53ab83",
+      "type": "audit_required",
+      "status": "completed",
+      "work_report_id": "audit_req_org_nco-government_company-scope",
+      "task_id": "task_jJHlFjEeTXAUXqOO",
+      "dispatched_at": "2026-07-30T04:22:12.551Z",
+      "last_error": null,
+      "attempt_count": 1,
+      "next_attempt_at": null,
+      "created_at": "2026-07-30T04:14:12.072Z",
+      "updated_at": "2026-07-30T08:49:32.835Z"
+    },
+    "directiveTask": {
+      "id": "task_jJHlFjEeTXAUXqOO",
+      "status": "failed",
+      "assigned_to": "claude-code",
+      "error": "queue_wait_timeout: provider claude-code busy for 1800000ms",
+      "created_at": "2026-07-30 04:22:12",
+      "completed_at": "2026-07-30 05:22:14"
+    },
+    "counts": {
+      "runs": 2,
+      "receipts": 1,
+      "consumptions": 1,
+      "completionEvents": 1,
+      "openLoops": 0
+    },
+    "approvedRun": {
+      "id": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "taskId": "task_jJHlFjEeTXAUXqOO",
+      "companyId": "org_nco-government",
+      "teamId": "company-scope",
+      "actorId": "cursor-agent",
+      "taskType": "operations",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "evidenceDigest": "2c3d24ea43b625c0fc28a7156a30649ab2021ca3dca0ef8f3d449fa2477c1717",
+      "evidenceSummary": {
+        "artifact": {
+          "sha256": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+          "byteSize": 16638,
+          "visibleCharacters": 13203,
+          "contentType": "application/octet-stream",
+          "statusCode": 200,
+          "observedAt": "2026-07-30T08:49:32.835Z",
+          "draftSignals": []
+        },
+        "claimedArtifactHash": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+        "measurementEvidence": [
+          "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74"
+        ],
+        "testEvidence": [
+          "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94"
+        ],
+        "requirementEvidence": [
+          "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+          "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74",
+          "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+          "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+        ],
+        "uiInspection": {
+          "required": false,
+          "reason": "company-scope evidence bundle is a machine-generated JSON document with no rendered UI surface; content-type probe returned non-HTML",
+          "provenance": {
+            "kind": "direct_observation",
+            "producer": "artifact-content-type-probe",
+            "machineProduced": true,
+            "observedAt": "2026-07-30T08:49:32.668Z",
+            "evidenceHash": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          },
+          "artifactSignalsUi": false,
+          "workEvidenceDigest": null
+        },
+        "ignoredClaims": {
+          "selfReportedScorePresent": false,
+          "workJournalPresent": false
+        }
+      },
+      "results": [
+        {
+          "institution": "inspection",
+          "name": "검사기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "institution": "validation",
+          "name": "검증기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "institution": "measurement",
+          "name": "실측기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74"
+          ]
+        },
+        {
+          "institution": "performance",
+          "name": "성능테스트기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94"
+          ]
+        },
+        {
+          "institution": "optimization",
+          "name": "최적화기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+          ]
+        },
+        {
+          "institution": "goal",
+          "name": "목표달성 체크기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+            "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74",
+            "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+            "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+          ]
+        }
+      ],
+      "createdAt": "2026-07-30T08:49:32.835Z"
+    },
+    "receipt": {
+      "id": "vrcpt_0c26a0c3-a470-4dff-8af0-afd07863c3c2",
+      "run_id": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "task_id": "task_jJHlFjEeTXAUXqOO",
+      "company_id": "org_nco-government",
+      "team_id": "company-scope",
+      "actor_id": "cursor-agent",
+      "evidence_digest": "2c3d24ea43b625c0fc28a7156a30649ab2021ca3dca0ef8f3d449fa2477c1717",
+      "issued_at": "2026-07-30T08:49:32.835Z",
+      "consumption_id": "vuse_d4a2ca5e-5e2f-4dbd-b358-cff6409d3bfa",
+      "event_id": "audit-completion-29caa0c0-52d5-4269-98a2-5f32732ea888",
+      "consumed_at": "2026-07-30T08:49:32.843Z"
+    },
+    "loop": {
+      "id": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+      "original_run_id": "vrun_8b895f99-b881-4592-ab1f-787cec7f1465",
+      "task_id": "task_jJHlFjEeTXAUXqOO",
+      "company_id": "org_nco-government",
+      "team_id": "company-scope",
+      "source_actor_id": "cursor-agent",
+      "status": "completed",
+      "current_iteration": 1,
+      "max_iterations": 5,
+      "latest_run_id": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "created_at": "2026-07-30T08:48:39.247Z",
+      "updated_at": "2026-07-30T08:49:32.842Z"
+    },
+    "attempt": {
+      "id": "vattempt_fa2cb0b7-08b1-4bbc-aeeb-858845762abb",
+      "loop_id": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+      "iteration": 1,
+      "actor_id": "cursor-agent",
+      "run_id": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "criteria_json": "[{\"actionId\":\"vaction_69152333254d92f95448672279b74738\",\"evidenceHashes\":[\"c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985\"]},{\"actionId\":\"vaction_46779bb12e95340991daade997160ec8\",\"evidenceHashes\":[\"c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985\"]},{\"actionId\":\"vaction_8292322a189bafe95bfcf5b03d6048b8\",\"evidenceHashes\":[\"c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985\"]}]",
+      "decision": "approved",
+      "created_at": "2026-07-30T08:49:32.842Z",
+      "criteria": [
+        {
+          "actionId": "vaction_69152333254d92f95448672279b74738",
+          "evidenceHashes": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "actionId": "vaction_46779bb12e95340991daade997160ec8",
+          "evidenceHashes": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "actionId": "vaction_8292322a189bafe95bfcf5b03d6048b8",
+          "evidenceHashes": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        }
+      ]
+    },
+    "remediationCounts": {
+      "total": 3,
+      "resolved": 3,
+      "unresolved": 0
+    },
+    "completionEvent": {
+      "id": "audit-completion-29caa0c0-52d5-4269-98a2-5f32732ea888",
+      "timestamp": "2026-07-30T08:49:32.843Z",
+      "agent_id": "cursor-agent",
+      "action": "task_complete",
+      "task_id": "task_jJHlFjEeTXAUXqOO",
+      "company_id": "org_nco-government",
+      "team_id": "company-scope",
+      "receipt_id": "vrcpt_0c26a0c3-a470-4dff-8af0-afd07863c3c2",
+      "metadata_json": "{\"verificationRunId\":\"vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf\",\"uiInspectionRequired\":false}",
+      "metadata": {
+        "verificationRunId": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+        "uiInspectionRequired": false
+      }
+    },
+    "evidenceFiles": {
+      "verifiedArtifact": {
+        "path": "/Users/nova-ai/project/nova-ax/evidence/org_nco-government/company-scope/2026-07-30/company-scope-audit-bundle.json",
+        "sha256": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+        "byteSize": 16638,
+        "matchesInspectionReference": true
+      },
+      "testLog": {
+        "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-government/company-scope/2026-07-30/verification-suite.log",
+        "sha256": "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+        "byteSize": 550,
+        "matchesPerformanceReference": true
+      }
+    }
+  },
+  "runtime": {
+    "health": {
+      "reachable": false,
+      "error": "fetch failed"
+    },
+    "pm2Pid": 53900,
+    "pm2PidAlive": false
+  }
+}

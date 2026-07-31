@@ -1,0 +1,77 @@
+{
+  "schema": "nova-ax.ui-audit-approval.periodic-audit-deliverable.v2",
+  "status": "final",
+  "generatedAt": "2026-07-31T04:03:39.000Z",
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-audit-approval",
+    "subjectTaskId": "task_N73a_tt-ewoyj3hU",
+    "actorId": "cursor-agent"
+  },
+  "groundTruth": {
+    "uiLive": {
+      "url": "http://127.0.0.1:5173/",
+      "httpStatus": 200,
+      "htmlBytes": 664,
+      "htmlSha256": "602bc9ca47ffc710d71a300068ed3731eb8c49734569498e8271a66ae55dd5c6",
+      "containsHtmlDocument": true
+    },
+    "browserEvidence": {
+      "producer": "google-chrome-headless",
+      "screenshots": [
+        {
+          "name": "desktop-1440",
+          "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-audit-approval/2026-07-31/task_N73a_tt-ewoyj3hU/shots/ui-audit-desktop-1440.png",
+          "bytes": 98983,
+          "sha256": "dc1852df849c55c955294e1e2b24c7de71b1c69c3abff9151db29e87dbf221e2"
+        },
+        {
+          "name": "tablet-1024",
+          "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-audit-approval/2026-07-31/task_N73a_tt-ewoyj3hU/shots/ui-audit-tablet-1024.png",
+          "bytes": 92024,
+          "sha256": "a229c0e7ecfc733cefa87d86419ade13a2e551e4c13f91fab1d5f0c80d4121a9"
+        },
+        {
+          "name": "mobile-390",
+          "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-audit-approval/2026-07-31/task_N73a_tt-ewoyj3hU/shots/ui-audit-mobile-390.png",
+          "bytes": 27743,
+          "sha256": "112f9ddc27323b5db41b71954bd66308da61e94d08b0a35e066a7419b9314c21"
+        },
+        {
+          "name": "keyboard-focus",
+          "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-audit-approval/2026-07-31/task_N73a_tt-ewoyj3hU/shots/ui-audit-keyboard-focus.png",
+          "bytes": 98989,
+          "sha256": "60da511b4e597a53d61a761a8c341fc030ef88aa7ac9dc1e96373b9e1cf8f305"
+        }
+      ]
+    },
+    "oversightTotals": {
+      "total": 29,
+      "approved": 19,
+      "rejected": 10,
+      "pending": 0,
+      "consumedReceipts": 13,
+      "activeScopes": 1,
+      "compliantScopes": 0,
+      "unverifiedScopes": 1,
+      "failedScopes": 1,
+      "activeRemediationLoops": 3,
+      "completedRemediationLoops": 3,
+      "exhaustedRemediationLoops": 0,
+      "queuedDirectives": 1,
+      "dispatchedDirectives": 4,
+      "completedDirectives": 4,
+      "cancelledDirectives": 0
+    },
+    "openLoopsCount": 3,
+    "ncoTeamTaskRows": 40,
+    "priorRejectedRun": "vrun_4aa21acd-db0e-4ea0-9e9d-afb472afba11",
+    "remediationLoop": "vloop_9d184149-6d2c-4a85-b171-1a088d57067d"
+  },
+  "independentFindings": {
+    "httpOk": true,
+    "screenshotsCaptured": 4,
+    "htmlBytes": 664,
+    "note": "Fresh chrome-headless screenshots and HTTP body hash under approved nova-ax/evidence roots."
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "taskId": "task_n2jb5eXRa44AI5xx",
+  "companyId": "org_web-scraping",
+  "teamId": "team_web-scrape-04-dynamic-implementation",
+  "actorId": "codex",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/team_web-scrape-04-dynamic-implementation-2026-07-30.md",
+    "expectedSha256": "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "independent-audit-collector-v1",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:37:21.850Z",
+      "evidenceHash": "6add6bd85555cd139c1102164a88bb5c5becd3287c9929fae9d6dcede254bed1"
+    }
+  },
+  "measurements": [
+    {
+      "name": "completed-team-tasks-7d",
+      "unit": "tasks",
+      "baseline": 18,
+      "current": 21,
+      "target": 18,
+      "direction": "higher_is_better",
+      "sampleSize": 44,
+      "provenance": {
+        "kind": "ci",
+        "producer": "nco-sqlite-readonly-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:37:21.850Z",
+        "evidenceHash": "0d2f8a4f543736ff9598690cc47678f1a2f91284958273b32dc39907b04b8eae"
+      }
+    },
+    {
+      "name": "submitted-work-reports-7d",
+      "unit": "reports",
+      "baseline": 8,
+      "current": 10,
+      "target": 8,
+      "direction": "higher_is_better",
+      "sampleSize": 15,
+      "provenance": {
+        "kind": "ci",
+        "producer": "nco-sqlite-readonly-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:37:21.850Z",
+        "evidenceHash": "0d2f8a4f543736ff9598690cc47678f1a2f91284958273b32dc39907b04b8eae"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "web-scraping-route-and-service-regression",
+      "exitCode": 0,
+      "durationMs": 3555,
+      "commandHash": "302450f8bd63513b55b4222ae3cfc49d112939b58b90b513e44fd755f8fd983f",
+      "outputHash": "d7ef774f925d9d2071299ddea1d75bb1f1d2de72bc884ac7226526fdbbfe53e4",
+      "provenance": {
+        "kind": "ci",
+        "producer": "vitest-isolated-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:37:21.850Z",
+        "evidenceHash": "5f0b576e5a1b7495514983e809d4eaec7d1a269f25373595f1444429813aea5f"
+      }
+    },
+    {
+      "name": "scrapling-dynamic-browser-policy-regression",
+      "exitCode": 0,
+      "durationMs": 256,
+      "commandHash": "39d3036f94a9cc3bc3046a7d5f53186112534d4578c8988b0fb163c0408ece70",
+      "outputHash": "5771bc9c29a6f17060a3c40908f19211ab855235cc86c6c8026271e9a570a8e8",
+      "provenance": {
+        "kind": "ci",
+        "producer": "python-unittest-scrapling-policy",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:37:21.850Z",
+        "evidenceHash": "60bbc553070ebb3ccfe5c860fcc2ea6012f4b748cfdedac26af0167f9137cde1"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "ec0482b14b14c4355b9f6a53e90c9d6c15442fc2ecb948d994b2b7ba72a40e9f",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "dynamic-browser-regression-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:37:21.850Z",
+      "evidenceHash": "ec0482b14b14c4355b9f6a53e90c9d6c15442fc2ecb948d994b2b7ba72a40e9f"
+    }
+  },
+  "requirements": [
+    {
+      "id": "routine-audit-evidence-bound",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+        "5a1a13eae46eb7e2e14771a2c297140308a3cef5121582fcea76573bbb60a5af",
+        "0d2f8a4f543736ff9598690cc47678f1a2f91284958273b32dc39907b04b8eae",
+        "fd65b804746c47785a44806f8545ecdf66bd121d90bd9cfe7fd91b9e85b2b745"
+      ]
+    },
+    {
+      "id": "dynamic-browser-policy-regression-green",
+      "satisfied": true,
+      "evidenceHashes": [
+        "d7ef774f925d9d2071299ddea1d75bb1f1d2de72bc884ac7226526fdbbfe53e4",
+        "5771bc9c29a6f17060a3c40908f19211ab855235cc86c6c8026271e9a570a8e8",
+        "ec0482b14b14c4355b9f6a53e90c9d6c15442fc2ecb948d994b2b7ba72a40e9f"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "audit-goal-evidence-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:37:21.850Z",
+      "evidenceHash": "fd65b804746c47785a44806f8545ecdf66bd121d90bd9cfe7fd91b9e85b2b745"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "This scope produces a markdown operations artifact and backend policy/service implementation; no browser UI surface is present.",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "web-scrape-04-ui-presence-classifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:37:21.850Z",
+      "evidenceHash": "f7a3f8298f77cebda4a8cda431f030523d43cf8259766553e82d48a765564f85"
+    }
+  }
+}

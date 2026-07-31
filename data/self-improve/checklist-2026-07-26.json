@@ -85,10 +85,10 @@
       "enabled": true
     },
     {
-      "id": "provider:higgsfield",
+      "id": "provider:retired-media-provider",
       "category": "provider",
       "kind": "provider-live",
-      "ref": "higgsfield",
+      "ref": "retired-media-provider",
       "priority": 4,
       "enabled": true
     },
@@ -1024,10 +1024,10 @@
       "priority": 2
     },
     {
-      "id": "hook:higgsfield-auth-check.sh",
+      "id": "hook:retired-media-provider-auth-check.sh",
       "category": "hook",
       "kind": "bash-syntax",
-      "ref": "/Users/nova-ai/.claude/hooks/higgsfield-auth-check.sh",
+      "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh",
       "priority": 2
     },
     {

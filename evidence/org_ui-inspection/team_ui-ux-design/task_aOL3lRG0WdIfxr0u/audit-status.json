@@ -1,0 +1,145 @@
+{
+  "schema": "nova-ax/pending-audit-evidence/1",
+  "generatedAt": "2026-07-30T16:27:09Z",
+  "scope": {
+    "taskId": "task_aOL3lRG0WdIfxr0u",
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-ux-design",
+    "actorId": "ollama"
+  },
+  "auditStatus": "blocked",
+  "completionClaimed": false,
+  "verification": {
+    "runId": null,
+    "status": "not_submitted",
+    "passedInstitutions": 0,
+    "requiredInstitutions": 6,
+    "receiptId": null,
+    "openRemediationLoops": 0,
+    "receiptConsumptions": 0
+  },
+  "ncoTask": {
+    "status": "cancelled",
+    "completedAt": null,
+    "verificationStatus": "pending",
+    "responseWasExecutedWork": false,
+    "responseObserved": "_tool_call readFile(/tmp/ui-company-audit.Dzaimg/preflight-audit-report.json) _tool_call",
+    "retryCount": 0
+  },
+  "auditDirective": {
+    "id": "vdir_f7f674d4-d09b-44cf-a7e0-36c4cf62b3d3",
+    "type": "audit_required",
+    "status": "queued",
+    "attemptCount": 6,
+    "lastError": "NCO audit task ended as failed",
+    "subjectTaskId": "task_aOL3lRG0WdIfxr0u"
+  },
+  "runtimeChecks": {
+    "novaAxHealth": {
+      "url": "http://localhost:6300/api/health",
+      "httpStatus": 0,
+      "error": "ECONNREFUSED"
+    },
+    "ncoHealth": {
+      "url": "http://localhost:6200/api/health",
+      "httpStatus": 0,
+      "error": "ECONNREFUSED"
+    },
+    "dashboard": {
+      "url": "http://127.0.0.1:5173/",
+      "httpStatus": 0,
+      "error": "ECONNREFUSED"
+    },
+    "temporaryStartup": {
+      "novaAx": "failed: SQLITE_READONLY while loading agents",
+      "nco": "failed: listen EPERM 0.0.0.0:6200"
+    }
+  },
+  "sourceEvidence": {
+    "preflightReport": {
+      "path": "/tmp/ui-company-audit.Dzaimg/preflight-audit-report.json",
+      "sha256": "ddd8cc2c5349c2bdfe645aec76a36515128411f8896cb7d7fed18f9313251aca",
+      "observedAt": "2026-07-30T13:25:50.285Z",
+      "structuredStepCount": 10
+    },
+    "screenshots": [
+      {
+        "path": "/tmp/ui-company-audit.Dzaimg/preflight-01-initial-desktop.png",
+        "sha256": "883e498c6b5a0309346e912e96994f4666b08254ba9e3b7d19f99d4e0e5fb339"
+      },
+      {
+        "path": "/tmp/ui-company-audit.Dzaimg/preflight-08-keyboard-focus.png",
+        "sha256": "c5ea02bc2e06965b6cafdd0856b3ab1720c66b55eaca300620e442be5a4b8c40"
+      },
+      {
+        "path": "/tmp/ui-company-audit.Dzaimg/preflight-10-mobile-390.png",
+        "sha256": "3ed644b53f711b589d22c8bd23700c9805d7435cacae1ccc5a42f45692770dd3"
+      }
+    ],
+    "dashboardSource": {
+      "path": "/Users/nova-ai/project/nco-dashboard/src",
+      "fileCount": 20,
+      "treeDigest": "33f20fbc54361df08a037d5dae08d87b8510cfb402d0da6bc4ea392a7bd7eea4",
+      "keyFiles": [
+        {
+          "path": "/Users/nova-ai/project/nco-dashboard/src/App.tsx",
+          "sha256": "af60af276c27b97ddaa2c77392d446f4cf021a523f4e4a8aeab7dfbe1f3f5b87"
+        },
+        {
+          "path": "/Users/nova-ai/project/nco-dashboard/src/App.css",
+          "sha256": "ecb17ba5edc620af177232a82ac713798f2f14bb3e035d40d047ee23c8aad351"
+        },
+        {
+          "path": "/Users/nova-ai/project/nco-dashboard/src/components/panels/RightPanel.tsx",
+          "sha256": "dc71dee5fca49e123f3b68c41e5dccbed409e09b4fd6b4d926049001c20b577c"
+        },
+        {
+          "path": "/Users/nova-ai/project/nco-dashboard/src/components/panels/Collapsible.tsx",
+          "sha256": "2364a2d07e95cdcd0c90aaf2fab83ca04628b71f28fc663486856d7115dea69b"
+        }
+      ]
+    }
+  },
+  "machineTests": [
+    {
+      "name": "nco-dashboard-typescript-noemit",
+      "command": "npm exec tsc -- --noEmit --pretty false",
+      "cwd": "/Users/nova-ai/project/nco-dashboard",
+      "exitCode": 0,
+      "durationMs": 13025
+    }
+  ],
+  "uxFindings": [
+    {
+      "id": "mobile-primary-actions-offscreen",
+      "severity": "high",
+      "evidence": "At 390x844, the structured report records 8 interactive controls outside the viewport."
+    },
+    {
+      "id": "mobile-overlay-collision",
+      "severity": "high",
+      "evidence": "At 390x844, the HUD and memory/legend overlays have 2 measured intersections."
+    },
+    {
+      "id": "low-contrast-small-type",
+      "severity": "high",
+      "evidence": "The initial desktop state records 16 text samples below 4.5:1, 8 below 3:1, and a 6px minimum font."
+    },
+    {
+      "id": "collapsed-panel-offscreen-controls",
+      "severity": "medium",
+      "evidence": "The collapsed right-panel state records 13 controls offscreen."
+    },
+    {
+      "id": "keyboard-step-not-structured",
+      "severity": "medium",
+      "evidence": "preflight-08-keyboard-focus.png exists and was visually inspected, but no 08-keyboard-focus object exists in the machine report steps."
+    }
+  ],
+  "blockers": [
+    "Nova-AX API is unreachable, so no fresh six-institution verification run can be created.",
+    "The originating NCO task is cancelled rather than reviewing, so POST /api/tasks/task_aOL3lRG0WdIfxr0u/verification cannot transition it to completed.",
+    "No work receipt or independent team_ui-audit-approval receipt exists for this task.",
+    "The live dashboard is unreachable, so the preflight browser evidence cannot be freshly reproduced in this run."
+  ]
+}

@@ -154,10 +154,9 @@ describe('SmartRouter', () => {
   });
 
   describe('provider capability gate', () => {
-    it('keeps media UUID providers out of code and verification work', () => {
-      expect(isTaskCompatibleProvider('higgsfield', 'code')).toBe(false);
-      expect(isTaskCompatibleProvider('higgsfield', 'verify')).toBe(false);
-      expect(isTaskCompatibleProvider('higgsfield', 'media')).toBe(true);
+    it('routes media work only to the registered visual provider', () => {
+      expect(isTaskCompatibleProvider('codex', 'media')).toBe(false);
+      expect(isTaskCompatibleProvider('agy', 'media')).toBe(true);
       expect(isTaskCompatibleProvider('codex', 'code')).toBe(true);
     });
   });

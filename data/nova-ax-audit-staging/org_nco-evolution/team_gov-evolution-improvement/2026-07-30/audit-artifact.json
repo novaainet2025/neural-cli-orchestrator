@@ -1,0 +1,67 @@
+{
+  "schema": "nova-ax.gov-evolution-improvement-audit.v1",
+  "status": "final",
+  "generatedAt": "2026-07-30T08:00:00.000Z",
+  "scope": {
+    "companyId": "org_nco-evolution",
+    "teamId": "team_gov-evolution-improvement",
+    "teamName": "Self-Improvement Laboratory",
+    "directiveTaskId": "task_p7FNVqWeBQK7tu-i",
+    "directiveId": "vdir_8483c349-425d-4bf4-85d1-7eec5f0203f6"
+  },
+  "oversightSnapshot": {
+    "source": "GET /api/verification/oversight?companyId=org_nco-evolution&teamId=team_gov-evolution-improvement",
+    "observedAt": "2026-07-30T07:57:45.291Z",
+    "verificationRunsTotal": 0,
+    "latestStatus": null,
+    "queue": "unverifiedScopeQueue",
+    "activeRemediationLoops": 0,
+    "scopeRegistryReady": true,
+    "directiveStatus": "dispatched"
+  },
+  "deliverables": [
+    {
+      "type": "daily-deliverable",
+      "taskId": "task_k944B3waPbHRdbS1",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-improvement-2026-07-30.md",
+      "evidenceTier": "T1",
+      "finding": "7d tasks 14/11 completed (78.6%); team-level 13/11 (84.6%); codex 90% vs opencode 30% vs claude-code 22%; work_reports 7"
+    },
+    {
+      "type": "self-improve-status",
+      "path": "/Users/nova-ai/project/nco/data/self-improve/status-latest.json",
+      "evidenceTier": "T1",
+      "finding": "checklist 233 items: pass 223 fail 9 defer 1; team category 77/77 pass; provider category 0/8 pass"
+    },
+    {
+      "type": "improvement-checklist",
+      "path": "/Users/nova-ai/project/nco/data/self-improve/checklist-latest.json",
+      "evidenceTier": "T1",
+      "finding": "team_gov-evolution-improvement charter present (has_charter=true, slug gov-evolution-improvement)"
+    },
+    {
+      "type": "improvement-checklist-report",
+      "path": "/Users/nova-ai/project/nco/data/self-improve/checklist-latest.md",
+      "evidenceTier": "T1",
+      "finding": "233 checklist items cataloged 2026-07-30; categories build/command/health/hook/mcp/plugin/provider/script/skill/team"
+    },
+    {
+      "type": "improvement-queue",
+      "path": "/Users/nova-ai/project/nco/data/self-improve/queue.jsonl",
+      "evidenceTier": "T1",
+      "finding": "queued improvement items with hook bash-syntax failures and provider registry gaps documented"
+    }
+  ],
+  "requirements": [
+    {
+      "id": "scope-unverified-acknowledged",
+      "satisfied": true,
+      "detail": "Team had zero prior Nova-AX verification runs before this audit"
+    },
+    {
+      "id": "no-open-remediation-loop",
+      "satisfied": true,
+      "detail": "activeRemediationLoops=0 at audit start"
+    }
+  ]
+}

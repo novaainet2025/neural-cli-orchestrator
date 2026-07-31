@@ -1,0 +1,159 @@
+{
+  "observedAt": "2026-07-30T19:18:05.467Z",
+  "evidenceTier": 1,
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-ux-design"
+  },
+  "auditTaskId": "task_fJg32GBz8EhFZiMQ",
+  "status": "blocked_unverified",
+  "machineContract": {
+    "totalChecks": 11,
+    "passedChecks": 11,
+    "failedChecks": 0,
+    "passed": true,
+    "checks": [
+      {
+        "id": "scope_registry_active",
+        "satisfied": true,
+        "evidence": "Nova-AX verification_scopes active row"
+      },
+      {
+        "id": "audit_task_scope_binding",
+        "satisfied": true,
+        "evidence": "NCO tasks + teams join for the current audit task"
+      },
+      {
+        "id": "source_task_scope_binding",
+        "satisfied": true,
+        "evidence": "NCO tasks + teams join for the observed work result"
+      },
+      {
+        "id": "actual_output_received",
+        "satisfied": true,
+        "evidence": "NCO response and artifact bytes are identical; chars=1991"
+      },
+      {
+        "id": "append_only_ledger_binding",
+        "satisfied": true,
+        "evidence": "work_events task:chunk carries the exact source response and a stored SHA-256 content hash"
+      },
+      {
+        "id": "machine_completion_observed",
+        "satisfied": true,
+        "evidence": "task:completed event/action observed; durationMs=119423; toolCalls=0"
+      },
+      {
+        "id": "prior_independent_contract",
+        "satisfied": true,
+        "evidence": "14/14 prior machine contract checks"
+      },
+      {
+        "id": "referenced_sources_observed",
+        "satisfied": true,
+        "evidence": "5/5 referenced project sources opened and hashed"
+      },
+      {
+        "id": "ux_plan_content_floor",
+        "satisfied": true,
+        "evidence": "required UX plan sections are present in the observed artifact"
+      },
+      {
+        "id": "work_report_obligation_received",
+        "satisfied": true,
+        "evidence": "control-plane workReportId is completed and the actual team output is present in the append-only ledger"
+      },
+      {
+        "id": "fresh_run_required",
+        "satisfied": true,
+        "evidence": "current audit task had 0 prior runs and 0 prior 6/6 approvals"
+      }
+    ]
+  },
+  "artifact": {
+    "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_HR3DMkIa2vgSs86P/task-output.md",
+    "sha256": "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+    "byteSize": 3453,
+    "visibleCharacters": 1991,
+    "modifiedAt": "2026-07-30T17:49:45.568Z"
+  },
+  "submission": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_fJg32GBz8EhFZiMQ/verification-submission.json",
+    "sha256": "c48d4784dc3d6b329d115645c3e4dec1f302b5c6c14cde4765d103f24672fc10"
+  },
+  "submissionAttempt": {
+    "command": "/opt/homebrew/Cellar/node/25.9.0_2/bin/node /Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_fJg32GBz8EhFZiMQ/run-audit.mjs",
+    "cwd": "/Users/nova-ai/project/nova-ax",
+    "exitCode": 1,
+    "signal": null,
+    "stdout": "",
+    "stderr": "\nfile:///Users/nova-ai/project/nova-ax/dist/index.js:167\n            insert.run(a.id, a.name, a.role, a.type, a.model, a.score, a.layer, JSON.stringify(a.capabilities), a.status, a.currentTask, a.successRate, a.totalTasks);\n                   ^\nSqliteError: attempt to write a readonly database\n    at file:///Users/nova-ai/project/nova-ax/dist/index.js:167:20\n    at sqliteTransaction (/Users/nova-ai/project/nova-ax/node_modules/better-sqlite3/lib/methods/transaction.js:65:24)\n    at loadAgents (file:///Users/nova-ai/project/nova-ax/dist/index.js:170:5)\n    at file:///Users/nova-ai/project/nova-ax/dist/index.js:188:14\n    at ModuleJob.run (node:internal/modules/esm/module_job:437:25)\n    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:639:26)\n    at async file:///Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_fJg32GBz8EhFZiMQ/run-audit.mjs:413:17 {\n  code: 'SQLITE_READONLY'\n}\n\nNode.js v25.9.0\n",
+    "error": null
+  },
+  "novaAx": {
+    "runs": [],
+    "receipts": [],
+    "taskLoops": [],
+    "scopeOpenLoops": []
+  },
+  "nco": {
+    "task": {
+      "id": "task_fJg32GBz8EhFZiMQ",
+      "status": "running",
+      "assigned_to": "codex",
+      "team_id": "team_ui-ux-design",
+      "progress": 0,
+      "error": null,
+      "created_at": "2026-07-30 18:09:13",
+      "updated_at": "2026-07-30 19:18:03",
+      "completed_at": null,
+      "metadata": {
+        "projectDir": "/Users/nova-ai/project/nco",
+        "allowProviderFailover": true,
+        "organizationId": "org_ui-inspection",
+        "teamId": "team_ui-ux-design",
+        "workReportId": "audit_req_org_ui-inspection_team_ui-ux-design",
+        "workflowRunId": "wfr__Y28L7etGXyaRXRi",
+        "workflowStage": "implementation",
+        "organizationAuditRequired": true,
+        "companyId": "org_ui-inspection",
+        "auditPriority": 10,
+        "requestedProvider": "opencode",
+        "promptGate": {
+          "score": 100
+        },
+        "attemptedAgents": [
+          "opencode",
+          "claude-code",
+          "codex"
+        ],
+        "reassignedFrom": "claude-code",
+        "escalationHistory": [
+          {
+            "fromAgent": "claude-code",
+            "toAgent": "codex",
+            "reason": "queue_wait_timeout: provider claude-code busy for 1800000ms",
+            "attemptedAgents": [
+              "opencode",
+              "claude-code",
+              "codex"
+            ],
+            "createdAt": "2026-07-30T18:39:14.883Z"
+          }
+        ]
+      }
+    }
+  },
+  "completionCriteria": {
+    "newRunCreated": false,
+    "sixOfSixApproved": false,
+    "receiptIssued": false,
+    "receiptConsumed": false,
+    "noOpenTaskLoops": true
+  },
+  "blockers": [
+    "Nova-AX and NCO loopback HTTP connections are denied in the current sandbox.",
+    "Nova-AX MCP and NCO MCP calls were cancelled by the tool surface.",
+    "In-process official API injection cannot write the Nova-AX DB because it is outside the writable workspace."
+  ]
+}

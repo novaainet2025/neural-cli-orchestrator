@@ -4,6 +4,9 @@
 # 사용: bash scripts/obsidian-provider-mirror.sh [--dry-run]
 set -euo pipefail
 
+# launchd/cron의 축소된 PATH에서도 journal:sync가 Node/npm을 안정적으로 찾게 한다.
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+
 NCO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VAULT="/Users/nova-ai/obsidian/mac-obsidian"
 DEST_BASE="$VAULT/01-AGENTS/_provider-configs"

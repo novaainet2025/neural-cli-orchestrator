@@ -1,0 +1,469 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-07-30T08:48:38.965Z",
+  "scope": {
+    "companyId": "org_nco-government",
+    "teamId": "company-scope"
+  },
+  "auditBinding": {
+    "taskId": "task_jJHlFjEeTXAUXqOO",
+    "directive": {
+      "id": "vdir_4d570e05-ab03-4772-ae2d-a4f54b53ab83",
+      "companyId": "org_nco-government",
+      "teamId": "company-scope",
+      "type": "audit_required",
+      "status": "dispatched",
+      "workReportId": "audit_req_org_nco-government_company-scope",
+      "taskId": "task_jJHlFjEeTXAUXqOO",
+      "loopId": "",
+      "attemptCount": 1,
+      "lastError": null,
+      "createdAt": "2026-07-30T04:14:12.072Z",
+      "updatedAt": "2026-07-30T04:22:12.551Z"
+    },
+    "sourceTask": {
+      "id": "task_jJHlFjEeTXAUXqOO",
+      "status": "failed",
+      "assignedTo": "claude-code",
+      "priority": 5,
+      "createdAt": "2026-07-30 04:22:12",
+      "updatedAt": "2026-07-30 05:22:14",
+      "completedAt": "2026-07-30 05:22:14",
+      "error": "queue_wait_timeout: provider claude-code busy for 1800000ms",
+      "workReportId": "audit_req_org_nco-government_company-scope",
+      "verificationDirectiveId": "vdir_4d570e05-ab03-4772-ae2d-a4f54b53ab83"
+    }
+  },
+  "sourceFacts": {
+    "activeScopes": [
+      {
+        "companyId": "org_nco-government",
+        "teamId": "company-scope",
+        "teamName": "NCO AI Governance and Public Administration Company",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      },
+      {
+        "companyId": "org_nco-government",
+        "teamId": "team_gov-government-constitution",
+        "teamName": "Constitution and Policy",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      },
+      {
+        "companyId": "org_nco-government",
+        "teamId": "team_gov-government-hr",
+        "teamName": "HR Capability and Lifecycle",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      },
+      {
+        "companyId": "org_nco-government",
+        "teamId": "team_gov-government-rights",
+        "teamName": "Rights Ethics and Human Sovereignty",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      },
+      {
+        "companyId": "org_nco-government",
+        "teamId": "team_gov-government-transparency",
+        "teamName": "Transparency Appeals and Public Record",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      },
+      {
+        "companyId": "org_nco-government",
+        "teamId": "team_gov-government-treasury",
+        "teamName": "Treasury and Resource Stewardship",
+        "active": 1,
+        "source": "nco",
+        "lastSeenAt": "2026-07-30T08:46:07.735Z"
+      }
+    ],
+    "taskStatusCounts": [
+      {
+        "status": "cancelled",
+        "count": 5
+      },
+      {
+        "status": "completed",
+        "count": 74
+      },
+      {
+        "status": "failed",
+        "count": 10
+      }
+    ],
+    "latestCompletedTasks": [
+      {
+        "id": "task_QHQV6TfHjo-McmcP",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-30 08:38:06",
+        "workflowStage": "verification",
+        "workReportId": "remediation_vloop_0fc908d2-fc79-49f2-aba8-8ca5d53afefa_1"
+      },
+      {
+        "id": "task_qsdUgDir6oZXlbSp",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 08:32:25",
+        "workflowStage": "verification",
+        "workReportId": "audit_req_org_nco-government_team_gov-government-transparency"
+      },
+      {
+        "id": "task_2vGedEiHRNgEk6_H",
+        "teamId": "team_gov-government-constitution",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 06:24:57",
+        "workflowStage": "implementation",
+        "workReportId": "wr_Ms_qW5YXK8Q1vDA-"
+      },
+      {
+        "id": "task_Is3f-b0cb9HWwA-B",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:21:27",
+        "workflowStage": "implementation",
+        "workReportId": "wr_9RyXwUk60YXG2f6H"
+      },
+      {
+        "id": "task_3ev68nRWTXVxiq6F",
+        "teamId": "team_gov-government-rights",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:19:42",
+        "workflowStage": "implementation",
+        "workReportId": "wr_r8ArZafeFCd-JzCO"
+      },
+      {
+        "id": "task_FqIjdU7v6KTEErLV",
+        "teamId": "team_gov-government-hr",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:17:03",
+        "workflowStage": "implementation",
+        "workReportId": "wr_ILv6kEtU7Sko8_g1"
+      },
+      {
+        "id": "task_Tbu9IKts4Zy--cz6",
+        "teamId": "team_gov-government-treasury",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:11:53",
+        "workflowStage": "implementation",
+        "workReportId": "wr_bzd65HJQjoIJYG7h"
+      },
+      {
+        "id": "task_o6ZWIb5R26zKFDrV",
+        "teamId": "team_gov-government-rights",
+        "assignedTo": "ollama",
+        "status": "completed",
+        "completedAt": "2026-07-30 05:08:44",
+        "workflowStage": "verification",
+        "workReportId": "audit_req_org_nco-government_team_gov-government-rights"
+      },
+      {
+        "id": "task_8cHjYY3_yld-z5FT",
+        "teamId": "team_gov-government-treasury",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:09:24",
+        "workflowStage": "implementation",
+        "workReportId": "wr_48LBY_TuopN84QNz"
+      },
+      {
+        "id": "task_mI3EbGnZyvwUvQKY",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:09:20",
+        "workflowStage": "implementation",
+        "workReportId": "wr_bzbMexCkksFgUS93"
+      },
+      {
+        "id": "task_VH4HyVMTIk0wZO9C",
+        "teamId": "team_gov-government-rights",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:09:01",
+        "workflowStage": "implementation",
+        "workReportId": "wr_C2oxaOsfPoz0Cu7P"
+      },
+      {
+        "id": "task_28EA-zV2EsUqTMHz",
+        "teamId": "team_gov-government-hr",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:07:15",
+        "workflowStage": "implementation",
+        "workReportId": "wr_WX1vObc6bpKr2whZ"
+      },
+      {
+        "id": "task_GnhunJXnfR8NrUuL",
+        "teamId": "team_gov-government-constitution",
+        "assignedTo": "opencode",
+        "status": "completed",
+        "completedAt": "2026-07-30 00:05:10",
+        "workflowStage": "implementation",
+        "workReportId": "wr_JsvI0lBPipQL5E3-"
+      },
+      {
+        "id": "task_NrCU4oZGQt2ctnX-",
+        "teamId": "team_gov-government-treasury",
+        "assignedTo": "hermes",
+        "status": "completed",
+        "completedAt": "2026-07-29 23:21:04",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_Ar9MOUDWKaAG7eQC",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-29 23:20:32",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_s9gmbnAVkOM2UXLn",
+        "teamId": "team_gov-government-rights",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-29 22:17:34",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_uO-QSQKidGSC5mnP",
+        "teamId": "team_gov-government-hr",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-29 22:02:37",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_QtFJvBbmOkWGb4v2",
+        "teamId": "team_gov-government-constitution",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-29 20:48:56",
+        "workflowStage": null,
+        "workReportId": null
+      },
+      {
+        "id": "task_kIuf8zMrGXRtpfD3",
+        "teamId": "team_gov-government-treasury",
+        "assignedTo": "codex",
+        "status": "completed",
+        "completedAt": "2026-07-29 05:13:16",
+        "workflowStage": "implementation",
+        "workReportId": "wr_Yga9lHsCVACxmB7s"
+      },
+      {
+        "id": "task_4uHtN0eDUoKeXBc4",
+        "teamId": "team_gov-government-transparency",
+        "assignedTo": "cursor-agent",
+        "status": "completed",
+        "completedAt": "2026-07-29 05:10:09",
+        "workflowStage": "implementation",
+        "workReportId": "wr_obzE8jnbvLEmxtd6"
+      }
+    ],
+    "verificationRuns": [
+      {
+        "runId": "vrun_5f0157c4-54cb-47a1-b6ae-961c243f904c",
+        "taskId": "task_U9qo7xgewFqjLXvT",
+        "teamId": "team_gov-government-constitution",
+        "actorId": "cursor-agent",
+        "status": "approved",
+        "passedInstitutions": 6,
+        "evidenceDigest": "c79ace22b66e0eccae8f8309950bbf86d8aa663570099db2a3beb63486147985",
+        "createdAt": "2026-07-30T08:45:36.581Z"
+      },
+      {
+        "runId": "vrun_3576d331-f969-4d0c-bc02-82c5749bf2ac",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "approved",
+        "passedInstitutions": 6,
+        "evidenceDigest": "27cf9e0523e99d9935afbf42ea4643a26c90d409af5d856828b74acf237fa122",
+        "createdAt": "2026-07-30T08:40:20.628Z"
+      },
+      {
+        "runId": "vrun_fe9cf39c-88dc-4047-9676-1ae86a59d1f7",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "approved",
+        "passedInstitutions": 6,
+        "evidenceDigest": "bced8862eba477f0ff78ede856053df7b908f95509e054cd1b3ec99ed60f128c",
+        "createdAt": "2026-07-30T08:36:37.046Z"
+      },
+      {
+        "runId": "vrun_d0302554-91d3-4bce-91d0-aed87c454b5f",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "rejected",
+        "passedInstitutions": 5,
+        "evidenceDigest": "2741b27f294e11314ca5e3f4edf9489f01c262285f0c99fd870eb3f97dcefd00",
+        "createdAt": "2026-07-30T08:29:16.898Z"
+      },
+      {
+        "runId": "vrun_ad0e4a1f-9620-4ea2-9552-b23024fc6747",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "rejected",
+        "passedInstitutions": 5,
+        "evidenceDigest": "6658103a44874c943d4dc34094f3a84a11dd0edc5b5b273af5241e18d480fa0c",
+        "createdAt": "2026-07-30T08:28:02.962Z"
+      },
+      {
+        "runId": "vrun_9ef02bde-ed6f-4f56-aab3-04706a443d22",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "approved",
+        "passedInstitutions": 6,
+        "evidenceDigest": "6658103a44874c943d4dc34094f3a84a11dd0edc5b5b273af5241e18d480fa0c",
+        "createdAt": "2026-07-30T05:35:06.700Z"
+      }
+    ],
+    "remediationLoops": [
+      {
+        "loopId": "vloop_0fc908d2-fc79-49f2-aba8-8ca5d53afefa",
+        "originalRunId": "vrun_ad0e4a1f-9620-4ea2-9552-b23024fc6747",
+        "taskId": "task_3U6dw43IfxL6sKiR",
+        "teamId": "team_gov-government-transparency",
+        "actorId": "cursor-agent",
+        "status": "completed",
+        "currentIteration": 1,
+        "maxIterations": 5,
+        "latestRunId": "vrun_fe9cf39c-88dc-4047-9676-1ae86a59d1f7",
+        "createdAt": "2026-07-30T08:28:02.963Z",
+        "updatedAt": "2026-07-30T08:36:37.074Z"
+      }
+    ],
+    "openCompanyScopeLoops": []
+  },
+  "artifactInventory": {
+    "root": "REPORTS",
+    "fileCount": 15,
+    "totalBytes": 95800,
+    "files": [
+      {
+        "path": "REPORTS/2026-07-29-Constitution-and-Policy-오전.md",
+        "byteSize": 13961,
+        "sha256": "5ca531d0378144cf8d024fc39527c8b07e882f0c99123fdaba0c578846f21ec5",
+        "modifiedAt": "2026-07-29T12:15:08.429Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-nco-government-transparency-오후.md",
+        "byteSize": 3829,
+        "sha256": "fbf5aceb53c896cee0a6282b930d4885f6022566c9f15195452ba061eddeff48",
+        "modifiedAt": "2026-07-29T12:14:35.765Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-Treasury-and-Resource-Stewardship-오전.md",
+        "byteSize": 5678,
+        "sha256": "47c81b90d8e8cd0b3834e7b03e40add9d0cfa7f9f391703c8915f032348cc0a9",
+        "modifiedAt": "2026-07-29T12:14:35.764Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-Treasury-and-Resource-Stewardship-오후.md",
+        "byteSize": 2950,
+        "sha256": "0ae7390f43bc769bc3ba86c5928d7247f3f07f3824acc366721c7d166329839b",
+        "modifiedAt": "2026-07-29T12:14:35.764Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-Transparency-Appeals-and-Public-Record-오전.md",
+        "byteSize": 7118,
+        "sha256": "fb6aed95d6c138aeda40c871ad5370bfea114baa7b3d7feaed50ac6001078ba1",
+        "modifiedAt": "2026-07-29T12:14:35.763Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-Transparency-Appeals-and-Public-Record-오후.md",
+        "byteSize": 7685,
+        "sha256": "d63fcb4ad3bb149aa98ee1ad15b9d692d61d6a78f15664b59d8c5ea4c70421af",
+        "modifiedAt": "2026-07-29T12:14:35.763Z"
+      },
+      {
+        "path": "REPORTS/2026-07-28-HR-Capability-Lifecycle-오전.md",
+        "byteSize": 7342,
+        "sha256": "aa97841e2921481f701de6d60236739a966a6710a9d3ffb6e2132d7cc7b6167a",
+        "modifiedAt": "2026-07-29T12:14:35.761Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-Transparency-Appeals-and-Public-Record-오후.md",
+        "byteSize": 7052,
+        "sha256": "47fb5448cc81a950b5e0ad51aa7c689faae0d5fd54e120030169c6c45d0e58ed",
+        "modifiedAt": "2026-07-29T12:14:35.754Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-Treasury-and-Resource-Stewardship-오전.md",
+        "byteSize": 3075,
+        "sha256": "5c289230d36687723ac427c5f24d97cdfae0ac3c1dc0e123aa74aa86f1d2c873",
+        "modifiedAt": "2026-07-29T12:14:35.754Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-Transparency-Appeals-and-Public-Record-오전.md",
+        "byteSize": 5475,
+        "sha256": "ca32ec22d0138c51288486d9c9c86cd396a27ddb37eaca9c9affa73cdd197132",
+        "modifiedAt": "2026-07-29T12:14:35.753Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-HR-Capability-Lifecycle-오전.md",
+        "byteSize": 6731,
+        "sha256": "ae0a854918092532bb9a21a02c47e543b3818718afe087d5c9d843a5f9b710e8",
+        "modifiedAt": "2026-07-29T12:14:35.751Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-HR-Capability-Lifecycle-오후.md",
+        "byteSize": 7578,
+        "sha256": "10cb30d67884b26fab1500e1fccb4bf04a4cd405b1f5862176232a8eb1df8522",
+        "modifiedAt": "2026-07-29T12:14:35.751Z"
+      },
+      {
+        "path": "REPORTS/2026-07-26-투명성이의제기공공기록팀-오후.md",
+        "byteSize": 7768,
+        "sha256": "c7fc2db7e13a89b477fbcd585562b09f757891a809ff4d68fe501e11d9aa030a",
+        "modifiedAt": "2026-07-29T12:14:35.746Z"
+      },
+      {
+        "path": "REPORTS/2026-07-27-NCO-org-topology-audit.md",
+        "byteSize": 3216,
+        "sha256": "1815d5cfc9ed7027756a992e6b4aa55cddad27e8fcce2f2b6569dd0191749307",
+        "modifiedAt": "2026-07-26T16:32:07.197Z"
+      },
+      {
+        "path": "REPORTS/2026-07-26-HR-Capability-Lifecycle-오후.md",
+        "byteSize": 6342,
+        "sha256": "72618ba29cd697ae002238260924fce35379fc27d282482b1898dce28af6be68",
+        "modifiedAt": "2026-07-26T05:55:28.179Z"
+      }
+    ]
+  },
+  "repository": {
+    "head": "1cbe199c362c7f81ceda71e2c0469400fe620200"
+  },
+  "assertions": {
+    "successClaimed": false,
+    "sourceTaskStatus": "failed",
+    "directiveStatus": "dispatched",
+    "note": "이 번들은 관찰된 원본 상태를 보존하며 검증 승인 전 성공을 주장하지 않는다."
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "nova-ax-audit-ground-truth.v1",
+  "observedAt": "2026-07-30T16:51:24Z",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-accessibility",
+  "taskId": "task_GtlvAXGUd5dkXZyl",
+  "outcome": "blocked",
+  "verification": {
+    "runId": null,
+    "receiptId": null,
+    "institutions": {
+      "inspection": "not_submitted",
+      "validation": "not_submitted",
+      "measurement": "not_submitted",
+      "performance": "not_submitted",
+      "optimization": "not_submitted",
+      "goal": "not_submitted"
+    },
+    "targetRunCount": 0,
+    "targetApprovedRunCount": 0,
+    "targetReceiptCount": 0,
+    "targetReceiptConsumptionCount": 0,
+    "openScopeRemediationLoops": 0
+  },
+  "ncoTask": {
+    "status": "cancelled",
+    "assignedTo": "hermes",
+    "verificationStatus": "pending",
+    "verificationReceiptId": null,
+    "completedAt": null,
+    "responseCharacters": 2464,
+    "responseFirstLinePrefix": "done:",
+    "responseSha256": "033e73b1c8f58855754ae076e89370c62f84b906350b432c914d230bd78f175e",
+    "taskStateSha256": "7026e04fedd1b00bef815b877ce54388f82fb480d1be87bd31339d477dc1999a",
+    "storedVerifier": {
+      "command": "npm run build",
+      "startedAt": "2026-07-30T13:05:36.026Z",
+      "exitCode": 0,
+      "recordSha256": "a9a9c74822111de8123d475565236c5439e87043b9989fdd822835a779e0d290"
+    }
+  },
+  "workReportObligation": {
+    "rowsForTeam": 0,
+    "submittedRowsForTeam": 0,
+    "satisfied": false
+  },
+  "independentChecks": {
+    "ncoDatabaseIntegrity": "ok",
+    "novaAxDatabaseIntegrity": "ok",
+    "currentDashboardGitStatusEntries": 18,
+    "currentDashboardGitStatusSha256": "b8a6922d3689567f5c614e1d9ae47cff6c08a9be2590e637a0242c1df9ee724a",
+    "independentBeforeAfterFilesystemSnapshotAvailable": false,
+    "ncoHttp": {
+      "url": "http://127.0.0.1:6200",
+      "httpStatus": 0,
+      "curlExitCode": 7
+    },
+    "novaAxHttp": {
+      "url": "http://127.0.0.1:6300",
+      "httpStatus": 0,
+      "curlExitCode": 7
+    },
+    "novaAxMcpAttempts": 2,
+    "novaAxMcpResult": "user cancelled MCP tool call"
+  },
+  "failedRequirements": [
+    {
+      "id": "response_content_floor",
+      "observed": "2464 characters",
+      "required": "at most 2000 characters"
+    },
+    {
+      "id": "response_protocol_first_line",
+      "observed": "done:",
+      "required": "status: or error:"
+    },
+    {
+      "id": "filesystem_change_zero",
+      "observed": "No independent before/after filesystem snapshot is stored; the NCO verifier subsequently ran npm run build.",
+      "required": "independently machine-verifiable zero filesystem changes"
+    },
+    {
+      "id": "work_report_obligation",
+      "observed": "0 work-report rows and 0 submitted rows for the team",
+      "required": "received/submitted team work report"
+    },
+    {
+      "id": "completion_binding_precondition",
+      "observed": "original task status is cancelled",
+      "required": "NCO verification endpoint requires reviewing"
+    },
+    {
+      "id": "control_plane_availability",
+      "observed": "both NCO and Nova-AX returned curl exit 7 / HTTP 000",
+      "required": "reachable control planes for submission and receipt consumption"
+    }
+  ],
+  "actionsNotTaken": [
+    "No Nova-AX verification run was submitted because the actual evidence does not satisfy the declared requirements.",
+    "No NCO completion POST was made because no approved receipt exists.",
+    "No task state, response, verification database, or receipt data was altered."
+  ]
+}

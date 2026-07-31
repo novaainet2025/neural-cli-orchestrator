@@ -10,6 +10,7 @@
 //   - 파이프라인 이전단계 산출물 = tasks.response 컬럼.
 //   - 완료 대기 = tasks.status 폴링(터미널: completed/failed/timed_out/cancelled).
 import type { FastifyInstance } from 'fastify';
+import type Database from 'better-sqlite3';
 import { getDb } from '../storage/database.js';
 import { checkResponseQuality } from '../verification/response-quality.js';
 import { agentManager } from '../agent/agent-manager.js';
@@ -28,6 +29,7 @@ import {
   buildProtocolSafeHandoff,
   parseCollaborationProtocol,
 } from './collaboration.js';
+import { resolveTaskProjectDir } from '../utils/project-dir.js';
 import {
   BLOCKED_STAGE_OUTCOME_CONTRACT,
   parseBlockedStageOutcome,
@@ -627,6 +629,10 @@ export function allowQueueProviderFailover(orgSlug: string): boolean {
     && NCO_FOUNDATION_COMPANY_POLICIES[normalizedSlug] === undefined;
 }
 
+export function isReadOnlyCompanyGoal(goal: string): boolean {
+  return /읽기\s*전용|read[\s-]*only/i.test(goal);
+}
+
 function isDeclaredTeamExecutor(team: TeamRow, executor: string): boolean {
   return executor === team.lead || team.members.includes(executor);
 }
@@ -1063,10 +1069,7 @@ function launchRunDriver(
     await driveRun(app, run.id, teams, run.projectDir, decomposers, resume);
   })().catch((err) => {
     const current = RUNS.get(run.id);
-    if (current) {
-      current.status = 'failed';
-      current.error = err instanceof Error ? err.message : String(err);
-      current.updatedAt = new Date().toISOString();
+    if (current && applyCompanyRunDriverFailure(current, err)) {
       // 저장소 장애가 원인이라면 다시 throw하지 않고 마지막 best-effort 기록만
       // 시도한다. 실행 드라이버는 이미 중단되어 추가 외부 작업은 진행하지 않는다.
       persistRun(current);
@@ -1079,6 +1082,19 @@ function launchRunDriver(
   }).finally(() => {
     ACTIVE_RUN_DRIVERS.delete(run.id);
   });
+}
+
+export function applyCompanyRunDriverFailure(
+  run: CompanyRun,
+  error: unknown,
+): boolean {
+  // cancelCompanyRun()이 이미 terminal 상태와 취소 사유를 저장했다면, 뒤늦게
+  // 끝난 in-flight driver의 rejection이 그 지상 진실을 failed로 덮어쓰면 안 된다.
+  if (isCompanyRunCancelled(run)) return false;
+  run.status = 'failed';
+  run.error = error instanceof Error ? error.message : String(error);
+  run.updatedAt = new Date().toISOString();
+  return true;
 }
 
 async function reconcilePersistedStages(app: FastifyInstance, run: CompanyRun): Promise<void> {
@@ -1116,6 +1132,7 @@ async function reconcilePersistedStages(app: FastifyInstance, run: CompanyRun): 
 export function resumeCompanyRuns(app: FastifyInstance): number {
   let rows: Array<{ run_json: string }> = [];
   try {
+    closeTerminalCompanyDiscussions(getDb());
     rows = getDb().prepare(`
       SELECT run_json
       FROM company_runs
@@ -1274,12 +1291,16 @@ function ensureCompanyWorkflowRun(run: CompanyRun, teams: TeamRow[]): string {
   return run.workflowRunId;
 }
 
-function selectWorkflowProviders(decomposers: string[]): string[] {
+function selectWorkflowProviders(decomposers: string[], maxProviders = 3): string[] {
   const known = new Set(agentManager.listEnabledIds());
   const available = liveAvailability(known);
   return [...new Set([...decomposers, ...resolvePreference(DECOMPOSER_PREFS), ...known])]
     .filter(provider => known.has(provider) && available(provider))
-    .slice(0, 3);
+    .slice(0, maxProviders);
+}
+
+export function allowSingleProposalAfterBoundedFallback(orgSlug: string): boolean {
+  return orgSlug === 'ui-inspection';
 }
 
 async function ensureCompanyPlanningDiscussion(
@@ -1303,7 +1324,18 @@ async function ensureCompanyPlanningDiscussion(
     return existing?.report ?? '';
   }
 
-  const providers = selectWorkflowProviders(decomposers);
+  // PM2 재시작으로 in-memory discussion 호출이 끊기면 DB의 active 행만 남는다.
+  // 회사 run 복구가 새 토론을 시작하기 전에 이전 호출을 명시적으로 종결해,
+  // 같은 workflow에 여러 active 세션이 누적되는 거짓 진행 상태를 막는다.
+  closeInterruptedCompanyDiscussions(getDb(), workflowRunId);
+
+  // UI회사는 다양한 로컬/CLI provider 상태에서 실제 브라우저 검증을 수행한다.
+  // 세 provider가 동시에 대기열/타임아웃에 걸려 필수 토론 전체가 멈추지 않도록
+  // 최초 라운드부터 가용 후보 5개까지 열고 2개 정족수 도달 시 나머지를 중단한다.
+  const providers = selectWorkflowProviders(
+    decomposers,
+    run.orgSlug === 'ui-inspection' ? 5 : 3,
+  );
   if (providers.length === 0) {
     markWorkflowStage(workflowRunId, 'discussion', 'failed', {
       error: 'no_available_discussion_provider',
@@ -1323,10 +1355,22 @@ async function ensureCompanyPlanningDiscussion(
       ].join('\n'),
       mode: 'discussion',
       providers,
-      maxRounds: 3,
+      // UI회사는 이 토론 뒤 9개 역할 팀과 독립 승인팀이 교차검증한다.
+      // 실행 준비 토론은 2개 이상 독립 R1 제안만 필수로 하고 반복 평가/합성은
+      // 후속 팀 단계에 맡겨, 혼잡 시 토론이 실제 검사를 장시간 가로막지 않게 한다.
+      maxRounds: run.orgSlug === 'ui-inspection' ? 1 : 3,
       initiator: 'company-orchestrator',
       companyRunId: run.id,
       workflowRunId,
+      projectDir: run.projectDir,
+      // 기본 2개 정족수, 동일 참가자 1회 재시도, 대체 provider 1회를 모두
+      // 소진한 뒤에도 제안이 정확히 1개면 UI회사에 한해 degraded quorum으로
+      // 진행한다. 0개 또는 다른 회사는 계속 fail-closed다.
+      allowSingleProposalAfterBoundedFallback:
+        allowSingleProposalAfterBoundedFallback(run.orgSlug),
+      // UI회사는 뒤에서 9개 독립 팀이 실제 교차검증하므로, 필수 토론 R1의
+      // 느린 참가자 하나가 전체 실행을 7분씩 반복 차단하지 않도록 호출 상한만 축소한다.
+      ...(run.orgSlug === 'ui-inspection' ? { proposalTimeoutMs: 240_000 } : {}),
     });
     return report.adoptedProposal;
   } catch (error) {
@@ -1335,6 +1379,36 @@ async function ensureCompanyPlanningDiscussion(
     });
     throw error;
   }
+}
+
+export function closeInterruptedCompanyDiscussions(
+  db: Database.Database,
+  workflowRunId: string,
+): number {
+  return db.prepare(`
+    UPDATE discussions
+    SET status='failed',
+        report=COALESCE(report, 'company_run_discussion_interrupted'),
+        ended_at=COALESCE(ended_at, datetime('now')),
+        updated_at=datetime('now')
+    WHERE workflow_run_id=? AND status='active'
+  `).run(workflowRunId).changes;
+}
+
+export function closeTerminalCompanyDiscussions(db: Database.Database): number {
+  return db.prepare(`
+    UPDATE discussions
+    SET status='failed',
+        report=COALESCE(report, 'company_run_terminal_before_discussion_completed'),
+        ended_at=COALESCE(ended_at, datetime('now')),
+        updated_at=datetime('now')
+    WHERE status='active'
+      AND company_run_id IN (
+        SELECT id
+        FROM company_runs
+        WHERE status NOT IN ('pending','decomposing','dispatching','running','dispatched')
+      )
+  `).run().changes;
 }
 
 async function completeCompanyWorkflowQuality(
@@ -1717,10 +1791,40 @@ export function applyBlockedStageOutcome(
     }
   }
 
-  run.status = 'partial';
+  // 병렬 실행은 모든 collectStage가 정리된 뒤 driveRun이 최종 상태를 확정한다.
+  // 여기서 partial로 조기 터미널화하면 아직 실행 중인 형제 태스크와 workflow stage가
+  // 남아 대시보드가 cancelled/running/pending 혼합 상태가 된다.
+  if (run.mode === 'pipeline') run.status = 'partial';
   run.summary = summarizeRun(run);
   run.error = `stage blocked: ${stage.teamSlug} (${outcome.fingerprint})`;
   return outcome;
+}
+
+export function isRetryableExecutionBlocker(
+  response: string | null | undefined,
+  orgSlug: string,
+): boolean {
+  const normalizedOrgSlug = orgSlug.startsWith('org_') ? orgSlug.slice(4) : orgSlug;
+  if (normalizedOrgSlug !== 'ui-inspection') return false;
+  const outcome = parseBlockedStageOutcome(response);
+  if (!outcome) return false;
+  return /(?:localhost|127\.0\.0\.1|::1|econnrefused|connection refused|failed to connect|couldn'?t connect)/i
+    .test(`${outcome.fingerprint}\n${outcome.evidence}`);
+}
+
+function applyRetryableExecutionBlocker(
+  stage: RunStage,
+  response: string | null | undefined,
+  orgSlug: string,
+): boolean {
+  if (!isRetryableExecutionBlocker(response, orgSlug)) return false;
+  const outcome = parseBlockedStageOutcome(response)!;
+  stage.status = 'failed';
+  stage.error = `retryable execution blocker: ${outcome.fingerprint}`;
+  stage.blockerFingerprint = undefined;
+  stage.blockerEvidence = undefined;
+  stage.blockerEvidenceTier = undefined;
+  return true;
 }
 
 // 루프 소진 후 최종 상태 확정(completed/partial/failed). 취소는 덮어쓰지 않음.
@@ -1799,6 +1903,13 @@ async function runStageWithFailover(
     }
     stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
     stage.outputChars = (result.response ?? '').length;
+    if (applyRetryableExecutionBlocker(stage, result.response, run.orgSlug)) {
+      lastError = stage.error ?? `${exec} retryable execution blocker`;
+      log.warn({ runId: run.id, stage: stage.teamSlug, exec, attempt: i + 1, lastError },
+        'transient execution blocker, trying next executor');
+      touch(run);
+      continue;
+    }
     if (applyBlockedStageOutcome(run, stage, result.response)) {
       touch(run);
       return false;
@@ -1858,6 +1969,11 @@ export async function dispatchStage(
       '',
       BLOCKED_STAGE_OUTCOME_CONTRACT,
     ].join('\n');
+    const resolvedProjectDir = resolveTaskProjectDir({
+      organizationId: run.orgId,
+      teamId: stage.teamId,
+      requestedProjectDir: projectDir,
+    });
     const res = await app.inject({
       method: 'POST',
       url: '/api/task',
@@ -1867,7 +1983,15 @@ export async function dispatchStage(
         mode: 'task',
         callerAgentId: 'company-orchestrator',
         metadata: {
-          projectDir,
+          projectDir: resolvedProjectDir,
+          ...(isReadOnlyCompanyGoal(run.goal) ? { readOnly: true } : {}),
+          ...(run.orgId === 'org_ui-inspection' || run.orgSlug === 'ui-inspection'
+            ? {
+                localNetworkAccess: true,
+                queuePriority: 1,
+                queueWaitMaxMs: 180_000,
+              }
+            : {}),
           allowProviderFailover: allowQueueProviderFailover(run.orgSlug),
           organizationId: run.orgId,
           teamId: stage.teamId,
@@ -2034,6 +2158,10 @@ async function collectStage(app: FastifyInstance, stage: RunStage, run: CompanyR
   }
   stage.outputSnippet = (result.response ?? '').slice(0, PIPELINE_HANDOFF_CHARS);
   stage.outputChars = (result.response ?? '').length;
+  if (applyRetryableExecutionBlocker(stage, result.response, run.orgSlug)) {
+    touch(run);
+    return;
+  }
   if (applyBlockedStageOutcome(run, stage, result.response)) {
     touch(run);
     return;

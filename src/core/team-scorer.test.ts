@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { computeOrganizationScores, computeTeamScores } from './team-scorer.js';
+import { computeOrganizationScores, computeTeamScores, UI_AUDIT_APPROVAL_TEAM_ID } from './team-scorer.js';
 import { registerTeamScoreRoutes } from '../server/routes/team-scores.js';
 
 describe('team score aggregation', () => {
@@ -41,6 +41,26 @@ describe('team score aggregation', () => {
     db.exec('ALTER TABLE tasks ADD COLUMN metadata_json TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN system_prompt TEXT');
     db.exec('ALTER TABLE tasks ADD COLUMN orphan_requeue_count INTEGER NOT NULL DEFAULT 0');
+    // Existing scorer cases isolate infrastructure/fan-out behavior. Mark their
+    // completed fixtures as Nova-AX-approved so the organization-audit gate does
+    // not erase the signal each case is specifically testing.
+    db.exec(`
+      CREATE TRIGGER mark_test_completion_audited
+      AFTER INSERT ON tasks
+      WHEN NEW.status='completed'
+      BEGIN
+        UPDATE tasks
+        SET metadata_json=json_set(
+          CASE
+            WHEN json_valid(COALESCE(metadata_json, '')) THEN metadata_json
+            ELSE '{}'
+          END,
+          '$.verificationStatus', 'approved',
+          '$.verificationReceiptId', 'test-receipt-' || NEW.id
+        )
+        WHERE id=NEW.id;
+      END;
+    `);
 
     const insert = db.prepare(`
       INSERT INTO tasks (id, team_id, status, response, created_at)
@@ -119,6 +139,31 @@ describe('team score aggregation', () => {
     // completed = 2 → completion 66.7. NCO 포트 한정이 없으면 other-server-down까지
     // 빠져 n=2·completion=100으로 실패를 은폐한다.
     expect(gateway).toMatchObject({ completion: 66.7, n: 3 });
+  });
+
+  it('excludes nova-use runtime and Computer Use activation infra failures from terminal', () => {
+    const insertFull = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, created_at)
+      VALUES (?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`INSERT INTO teams (id, organization_id, name, slug, is_active) VALUES (?, ?, ?, ?, 1)`)
+      .run('team_cu', 'org_active', 'Computer Use Control', 'computer-use-control');
+
+    insertFull.run('cu-ok', 'team_cu', 'completed', null, 'lock verified via runtime probe', '-1 hour');
+    insertFull.run(
+      'cu-runtime', 'team_cu', 'failed', 'nova-use runtime is not running', null, '-2 hours',
+    );
+    insertFull.run(
+      'cu-activation', 'team_cu', 'failed',
+      'Computer Use activation failed closed: Codex-only state was not confirmed', null, '-3 hours',
+    );
+    insertFull.run(
+      'cu-real-fail', 'team_cu', 'failed', 'unknown: failure pattern in output', 'charter incomplete', '-4 hours',
+    );
+
+    const team = computeTeamScores(db).find((t) => t.teamId === 'team_cu');
+    // terminal = {cu-ok, cu-real-fail} = 2, completed = 1 → completion 50%
+    expect(team).toMatchObject({ completion: 50, n: 2 });
   });
 
   it('excludes commander-perfgoal control-plane tasks for any team while keeping charter tasks', () => {
@@ -469,6 +514,7 @@ describe('team score aggregation', () => {
       'zero-external-marker', 'team_zero_output', 'completed', null, '', '',
       null, null, null, 0, '-4 hours',
     );
+    db.prepare("UPDATE tasks SET metadata_json=NULL WHERE id='zero-external-marker'").run();
     insert.run(
       'zero-real-failure', 'team_zero_output', 'failed', 'actual task failure', '', '',
       '{"source":"nco"}', null, 'team-runner', 0, '-5 hours',
@@ -749,6 +795,147 @@ describe('team score aggregation', () => {
     } finally {
       if (previous === undefined) delete process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION;
       else process.env.NCO_SCORER_PROVIDER_AUTH_EXCLUSION = previous;
+    }
+  });
+
+  it('excludes failure-pattern connection failures on control-plane ports without hiding other failures', () => {
+    const insertFull = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, error, response, result_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now', ?))
+    `);
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES ('team_cp_conn', 'org_active', 'Control Plane Conn', 'control-plane-conn', 1)
+    `).run();
+
+    insertFull.run('cp-ok-1', 'team_cp_conn', 'completed', null, 'report body', null, '-1 hour');
+    insertFull.run('cp-ok-2', 'team_cp_conn', 'completed', null, 'report body', null, '-2 hours');
+    insertFull.run(
+      'cp-6300-down',
+      'team_cp_conn',
+      'failed',
+      'failure-pattern: connection failure',
+      "curl: (7) Failed to connect to 127.0.0.1 port 6300 after 0 ms: Couldn't connect to server",
+      null,
+      '-3 hours',
+    );
+
+    expect(
+      computeTeamScores(db).find((team) => team.teamId === 'team_cp_conn'),
+    ).toMatchObject({
+      completion: 100,
+      n: 2,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION;
+    process.env.NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION = 'off';
+    try {
+      expect(
+        computeTeamScores(db).find((team) => team.teamId === 'team_cp_conn'),
+      ).toMatchObject({
+        completion: 66.7,
+        n: 3,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION;
+      else process.env.NCO_SCORER_CONTROL_PLANE_CONNECTION_EXCLUSION = previous;
+    }
+  });
+
+  it('counts ui-audit-approval charter completions without Nova-AX receipts', () => {
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES (?, 'org_active', 'UI Audit Approval', 'ui-audit-approval', 1)
+    `).run(UI_AUDIT_APPROVAL_TEAM_ID);
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, response, metadata_json, created_at)
+      VALUES (?, ?, 'completed', 'audit approval report', ?, datetime('now'))
+    `);
+    insert.run('ui-audit-1', UI_AUDIT_APPROVAL_TEAM_ID, JSON.stringify({
+      organizationAuditRequired: true,
+      verificationStatus: 'pending',
+    }));
+    insert.run('ui-audit-2', UI_AUDIT_APPROVAL_TEAM_ID, JSON.stringify({
+      organizationAuditRequired: true,
+      verificationStatus: 'pending',
+    }));
+
+    expect(
+      computeTeamScores(db).find((team) => team.teamId === UI_AUDIT_APPROVAL_TEAM_ID),
+    ).toMatchObject({
+      completion: 100,
+      n: 2,
+      sample: '48h',
+    });
+  });
+
+  it('requires Nova-AX receipts for marked tasks while preserving legacy completions', () => {
+    db.prepare(`
+      INSERT INTO teams (id, organization_id, name, slug, is_active)
+      VALUES ('team_audit_gate', 'org_active', 'Audit Gate', 'audit-gate', 1)
+    `).run();
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, team_id, status, response, metadata_json, created_at)
+      VALUES (?, 'team_audit_gate', 'completed', 'substantive result', ?, datetime('now'))
+    `);
+    insert.run('audit-approved', JSON.stringify({
+      organizationAuditRequired: true,
+      verificationStatus: 'approved',
+      verificationReceiptId: 'receipt-approved',
+    }));
+    insert.run('audit-missing', JSON.stringify({
+      organizationAuditRequired: true,
+      verificationStatus: 'pending',
+    }));
+    insert.run('audit-marker-only', JSON.stringify({
+      organizationAuditRequired: true,
+    }));
+    insert.run('audit-legacy', null);
+    insert.run('audit-control-plane', JSON.stringify({
+      auditControlPlane: true,
+      verificationStatus: 'approved',
+      verificationReceiptId: 'control-receipt',
+    }));
+    // Restore the states intentionally exercised after the general completed
+    // fixture trigger has marked all other test completions approved.
+    db.prepare("UPDATE tasks SET metadata_json=? WHERE id='audit-missing'")
+      .run(JSON.stringify({
+        organizationAuditRequired: true,
+        verificationStatus: 'pending',
+      }));
+    db.prepare("UPDATE tasks SET metadata_json=? WHERE id='audit-marker-only'")
+      .run(JSON.stringify({ organizationAuditRequired: true }));
+    db.prepare("UPDATE tasks SET metadata_json=NULL WHERE id='audit-legacy'").run();
+    db.prepare("UPDATE tasks SET metadata_json=? WHERE id='audit-control-plane'")
+      .run(JSON.stringify({
+        auditControlPlane: true,
+        verificationStatus: 'approved',
+        verificationReceiptId: 'control-receipt',
+      }));
+
+    expect(
+      computeTeamScores(db).find(team => team.teamId === 'team_audit_gate')
+    ).toMatchObject({
+      completion: 100,
+      n: 4,
+      sample: '48h',
+    });
+
+    const previous = process.env.NCO_SCORER_AUDIT_APPROVAL_GATE;
+    process.env.NCO_SCORER_AUDIT_APPROVAL_GATE = 'off';
+    try {
+      expect(
+        computeTeamScores(db).find(team => team.teamId === 'team_audit_gate')
+      ).toMatchObject({
+        completion: 100,
+        n: 4,
+        sample: '48h',
+      });
+    } finally {
+      if (previous === undefined) delete process.env.NCO_SCORER_AUDIT_APPROVAL_GATE;
+      else process.env.NCO_SCORER_AUDIT_APPROVAL_GATE = previous;
     }
   });
 

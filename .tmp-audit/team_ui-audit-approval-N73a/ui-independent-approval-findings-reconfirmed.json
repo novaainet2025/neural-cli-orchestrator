@@ -1,0 +1,19 @@
+{
+  "workEvidenceDigest": "35b59a303814f32028647f87cf57e815f639a02e7f4d79bb24f1d7bf70e6909b",
+  "liveUiHtmlSha256": "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d",
+  "liveScreenshotSha256": "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0",
+  "preflightReportSha256": "ddd8cc2c5349c2bdfe645aec76a36515128411f8896cb7d7fed18f9313251aca",
+  "preflightTotals": {
+    "overlaps": 2,
+    "clipped": 0,
+    "offscreen": 21,
+    "tinyTargets": 116,
+    "consoleErrors": 1
+  },
+  "openLoopCountAtCollection": 2,
+  "openLoopIds": [
+    "vloop_df49259e-6b53-4f6e-8fe6-b33fb1056a77",
+    "vloop_e21f5c26-11d4-4110-9548-0faddacdd15b"
+  ],
+  "reconfirmedAt": "2026-07-31T03:43:39.000Z"
+}

@@ -1,11 +1,12 @@
 import Database from 'better-sqlite3';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildReportPrompt,
   buildReportTaskMetadata,
   buildOrganizationDataContext,
   buildOrganizationReportPrompt,
   buildTeamDataContext,
+  createTeamReportTasks,
   ingestCompletedReportTasks,
   isWorkReportSnapshotRefreshEnabled,
   refreshWorkReportPromptSnapshot,
@@ -14,14 +15,21 @@ import {
   WorkReportDispatchGate,
   WorkReportSchedulerRunGate,
 } from './work-report-scheduler.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 describe('work report real-data context', () => {
   let db: Database.Database;
   const originalEvolutionLearningContextFlag =
     process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
+  const originalDecisionCoordinationContextFlag =
+    process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT;
+  const originalComputerUseControlContextFlag =
+    process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT;
 
   beforeEach(() => {
     delete process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
+    delete process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT;
+    delete process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT;
     db = new Database(':memory:');
     db.exec(`
       CREATE TABLE teams (id TEXT PRIMARY KEY, organization_id TEXT, name TEXT, slug TEXT NOT NULL, lead TEXT, charter TEXT, is_active INTEGER DEFAULT 1, created_at TEXT DEFAULT (datetime('now')));
@@ -31,6 +39,7 @@ describe('work report real-data context', () => {
       );
       CREATE TABLE tasks (
         id TEXT PRIMARY KEY, team_id TEXT, status TEXT NOT NULL,
+        assigned_to TEXT,
         prompt TEXT NOT NULL DEFAULT '', response TEXT, error TEXT,
         result_json TEXT, evidence_json TEXT, metadata_json TEXT,
         created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now')),
@@ -43,7 +52,7 @@ describe('work report real-data context', () => {
       );
       CREATE TABLE work_reports (
         id TEXT PRIMARY KEY, team_id TEXT, organization_id TEXT, report_date TEXT NOT NULL,
-        status TEXT NOT NULL, due_at TEXT, source_task_id TEXT, summary_json TEXT,
+        report_slot TEXT, status TEXT NOT NULL, due_at TEXT, source_task_id TEXT, summary_json TEXT,
         title TEXT, body_md TEXT, submitted_at TEXT, lateness_minutes INTEGER DEFAULT 0,
         updated_at TEXT DEFAULT (datetime('now'))
       );
@@ -69,12 +78,25 @@ describe('work report real-data context', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     db.close();
     if (originalEvolutionLearningContextFlag === undefined) {
       delete process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT;
     } else {
       process.env.NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT =
         originalEvolutionLearningContextFlag;
+    }
+    if (originalDecisionCoordinationContextFlag === undefined) {
+      delete process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT;
+    } else {
+      process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT =
+        originalDecisionCoordinationContextFlag;
+    }
+    if (originalComputerUseControlContextFlag === undefined) {
+      delete process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT;
+    } else {
+      process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT =
+        originalComputerUseControlContextFlag;
     }
   });
 
@@ -268,6 +290,120 @@ describe('work report real-data context', () => {
     expect(otherContext).not.toContain('내부 자연어 주장');
   });
 
+  it('injects bounded coordination evidence with in-progress tasks and member attribution', () => {
+    process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT = '1';
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, ?)')
+      .run('team_coord', 'ax-decision-coordination', 'claude-code');
+    db.prepare(`
+      INSERT INTO team_members (id, team_id, member_type, member_ref)
+      VALUES ('m1', 'team_coord', 'provider', 'cursor-agent'),
+             ('m2', 'team_coord', 'provider', 'hermes')
+    `).run();
+    db.prepare(`
+      INSERT INTO tasks (
+        id, team_id, status, assigned_to, prompt, metadata_json, created_at, completed_at
+      )
+      VALUES (
+        'coord-running', 'team_coord', 'running', 'claude-code', '진행 중 조정',
+        '{"workReportId":"wr-coord"}', datetime('now', '-1 hour'), NULL
+      )
+    `).run();
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, prompt, created_at, completed_at)
+      VALUES ('coord-done', 'team_coord', 'completed', '완료 조정', datetime('now', '-2 hours'), datetime('now', '-90 minutes'))
+    `).run();
+    db.prepare(`
+      INSERT INTO work_reports (
+        id, team_id, organization_id, report_date, report_slot, status, source_task_id, submitted_at
+      )
+      VALUES ('wr-coord', 'team_coord', 'org_ax', date('now'), 'am', 'submitted', 'coord-done', datetime('now'))
+    `).run();
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, assigned_to, status, created_at, completed_at)
+      VALUES ('member-task', 'team_other', 'hermes', 'failed', datetime('now', '-3 hours'), datetime('now', '-2 hours'))
+    `).run();
+
+    const context = buildTeamDataContext('team_coord', db, () => []);
+
+    expect(context).toContain('[coordination_task_evidence]');
+    expect(context).toContain('id=coord-running');
+    expect(context).toContain('상태=running');
+    expect(context).toContain('workReportId=wr-coord');
+    expect(context).toContain('id=coord-done');
+    expect(context).toContain('[coordination_work_report_evidence]');
+    expect(context).toContain('sourceTaskId=coord-done');
+    expect(context).toContain('[coordination_member_task_evidence]');
+    expect(context).toContain('id=member-task');
+    expect(context).toContain('teamId=team_other');
+  });
+
+  it('keeps decision coordination evidence reversible and other team context unchanged', () => {
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_coord', 'ax-decision-coordination');
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_other', 'analytics');
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, prompt)
+      VALUES ('coord-task', 'team_coord', 'completed', '조정 지시')
+    `).run();
+
+    process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT = '0';
+    const disabledContext = buildTeamDataContext('team_coord', db, () => []);
+    process.env.NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT = '1';
+    const otherContext = buildTeamDataContext('team_other', db, () => []);
+
+    expect(disabledContext).not.toContain('[coordination_task_evidence]');
+    expect(otherContext).not.toContain('[coordination_task_evidence]');
+  });
+
+  it('injects bounded computer-use-control runtime and task failure evidence', () => {
+    process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT = '1';
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, ?)')
+      .run('team_cu_control', 'computer-use-control', 'codex');
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, assigned_to, error, created_at, completed_at)
+      VALUES (
+        'cu-failed', 'team_cu_control', 'failed', 'codex',
+        'Computer Use activation failed closed: Codex-only state was not confirmed',
+        datetime('now', '-2 hours'), datetime('now', '-90 minutes')
+      )
+    `).run();
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, assigned_to, created_at)
+      VALUES ('cu-running', 'team_cu_control', 'running', 'codex', datetime('now', '-1 hour'))
+    `).run();
+
+    const context = buildTeamDataContext('team_cu_control', db, () => []);
+
+    expect(context).toContain('[computer_use_runtime_evidence]');
+    expect(context).toContain('source_tier=T1(nova-use metadata file)');
+    expect(context).toContain('[computer_use_control_task_evidence]');
+    expect(context).toContain('id=cu-running');
+    expect(context).toContain('상태=running');
+    expect(context).toContain('[computer_use_control_failure_rca]');
+    expect(context).toContain('id=cu-failed');
+    expect(context).toContain('Computer Use activation failed');
+  });
+
+  it('keeps computer-use-control evidence reversible and other team context unchanged', () => {
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_cu_control', 'computer-use-control');
+    db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)')
+      .run('team_other', 'analytics');
+    db.prepare(`
+      INSERT INTO tasks (id, team_id, status, prompt)
+      VALUES ('cu-task', 'team_cu_control', 'completed', '제어 상태 보고')
+    `).run();
+
+    process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT = '0';
+    const disabledContext = buildTeamDataContext('team_cu_control', db, () => []);
+    process.env.NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT = '1';
+    const otherContext = buildTeamDataContext('team_other', db, () => []);
+
+    expect(disabledContext).not.toContain('[computer_use_runtime_evidence]');
+    expect(otherContext).not.toContain('[computer_use_runtime_evidence]');
+  });
+
   it('states the honest fallback when a team has no available data', () => {
     db.prepare('INSERT INTO teams (id, slug, lead) VALUES (?, ?, NULL)').run('team_empty', 'empty-team');
 
@@ -407,6 +543,39 @@ describe('work report real-data context', () => {
     expect(TASK_DISPATCH_STAGGER_MS).toBe(5_000);
     expect(starts).toEqual([0, 5_000, 10_000]);
     expect(sleeps).toEqual([5_000, 5_000]);
+  });
+
+  it('defers a report when its executor circuit opens before the dispatch POST', async () => {
+    vi.spyOn(circuitBreakerRegistry, 'getAvailability').mockReturnValue({
+      agentId: 'claude-code',
+      status: 'gated:generic',
+      available: false,
+      reason: 'generic',
+      circuitState: 'open',
+      cooldownUntil: '2026-07-30T00:10:00.000Z',
+    });
+    const inject = vi.fn();
+
+    const result = await createTeamReportTasks(
+      { inject } as never,
+      [{
+        reportId: 'wr-circuit-race',
+        subjectKind: 'team',
+        subjectId: 'team_self-improvement',
+        teamId: 'team_self-improvement',
+        organizationId: 'org_nco-self',
+        lead: 'claude-code',
+        prompt: '[업무보고 작성] 회로 전환 경합 테스트',
+      }],
+    );
+
+    expect(result).toEqual({
+      created: 0,
+      failed: 0,
+      deferred: 1,
+      attemptedReportIds: [],
+    });
+    expect(inject).not.toHaveBeenCalled();
   });
 
   it('skips an overlapping scheduler reconciliation until the active run finishes', async () => {

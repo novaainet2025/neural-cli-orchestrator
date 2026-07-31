@@ -54,7 +54,7 @@
 | 완료 | 14개 (28.0%) |
 | 대기 중 | 29개 |
 | 실패 | 4개 (실패율: 8.0%) ✅ |
-| 투입 에이전트 | claude-code, codex, cursor-agent, discussion-engine, higgsfield, retired-provider, opencode |
+| 투입 에이전트 | claude-code, codex, cursor-agent, discussion-engine, retired-media-provider, retired-provider, opencode |
 | 사용 모드 | full-pipeline, hive, inter-session, mesh, nova-ax, parallel, task |
 
 > 실패율 기준: ≤10% 정상 | 현재 8.0% ✅

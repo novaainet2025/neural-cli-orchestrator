@@ -8,7 +8,7 @@
 - agent 상태 (주입 데이터 기준 / Evidence Tier 1):
   - claude-code: idle, 작업 1238건, 성공률 35%, 24h실패 12 — 성공률 낮음, 모니터링 필요
   - opencode: idle, 작업 2034건, 성공률 73%, 24h실패 15
-  - codex/cursor-agent/ollama/agy/hermes/higgsfield/retired-provider: 전원 idle
+  - codex/cursor-agent/ollama/agy/hermes/retired-media-provider/retired-provider: 전원 idle
   - gemini/aider/openclaw: offline — Computer Use 에이전트인 openclaw가 offline이므로 CU 요청 발생 시 대체 경로(직접 API) 필요
 
 **2. 현재 상태**

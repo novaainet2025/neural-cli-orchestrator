@@ -1,0 +1,193 @@
+{
+  "observedAt": "2026-07-30T08:49:32.668Z",
+  "taskId": "task_jJHlFjEeTXAUXqOO",
+  "artifactPath": "/Users/nova-ai/project/nova-ax/evidence/org_nco-government/company-scope/2026-07-30/company-scope-audit-bundle.json",
+  "stagingArtifactPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-government/company-scope/2026-07-30/company-scope-audit-bundle.json",
+  "evidenceDir": "/Users/nova-ai/project/nova-ax/evidence/org_nco-government/company-scope/2026-07-30",
+  "artifactHash": "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+  "testLogPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-government/company-scope/2026-07-30/verification-suite.log",
+  "testOutputHash": "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+  "testExitCode": 0,
+  "testDurationMs": 135,
+  "submissionPath": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-government/company-scope/2026-07-30/verification-submission.json",
+  "verification": {
+    "httpStatus": 200,
+    "body": {
+      "runId": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "requiredInstitutions": 6,
+      "results": [
+        {
+          "institution": "inspection",
+          "name": "검사기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "institution": "validation",
+          "name": "검증기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+          ]
+        },
+        {
+          "institution": "measurement",
+          "name": "실측기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74"
+          ]
+        },
+        {
+          "institution": "performance",
+          "name": "성능테스트기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94"
+          ]
+        },
+        {
+          "institution": "optimization",
+          "name": "최적화기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+          ]
+        },
+        {
+          "institution": "goal",
+          "name": "목표달성 체크기관",
+          "passed": true,
+          "failures": [],
+          "evidenceRefs": [
+            "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985",
+            "829e966d05870391223047d4838f85383f6628b3cb6c6000620d03bfd795ea74",
+            "b3589b00ffccb479407e70ed1965c82ef89b1239fcaa86504ecb85fe0f156b94",
+            "24f87b1aea61b3a87d029acfc8f53fe049ed611cfaae0269c22b0f83d812e914"
+          ]
+        }
+      ],
+      "evidenceDigest": "2c3d24ea43b625c0fc28a7156a30649ab2021ca3dca0ef8f3d449fa2477c1717",
+      "receiptId": "vrcpt_0c26a0c3-a470-4dff-8af0-afd07863c3c2",
+      "issuedAt": "2026-07-30T08:49:32.835Z"
+    }
+  },
+  "remediationAttempt": {
+    "httpStatus": 200,
+    "body": {
+      "loopId": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+      "originalRunId": "vrun_8b895f99-b881-4592-ab1f-787cec7f1465",
+      "taskId": "task_jJHlFjEeTXAUXqOO",
+      "ownerCompanyId": "org_nco-government",
+      "ownerTeamId": "company-scope",
+      "actorId": "cursor-agent",
+      "status": "completed",
+      "currentIteration": 1,
+      "maxIterations": 5,
+      "latestRunId": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+      "createdAt": "2026-07-30T08:48:39.247Z",
+      "updatedAt": "2026-07-30T08:49:32.842Z",
+      "actions": [
+        {
+          "id": "vaction_69152333254d92f95448672279b74738",
+          "loopId": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+          "iteration": 1,
+          "ownerCompanyId": "org_nco-government",
+          "ownerTeamId": "company-scope",
+          "institution": "inspection",
+          "failure": "artifact observation failed: artifact path is outside approved verification roots",
+          "action": "Correct the directly observed artifact, publication state, content floor, or artifact hash. Reported failure: artifact observation failed: artifact path is outside approved verification roots",
+          "passCriteria": "A later verification run for the same task must return passed=true for inspection; the new institution decision, not a company claim, resolves this action.",
+          "evidenceRequired": [
+            "directly observed artifact SHA-256",
+            "new inspection result evidence reference"
+          ],
+          "priority": "high",
+          "status": "resolved"
+        },
+        {
+          "id": "vaction_46779bb12e95340991daade997160ec8",
+          "loopId": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+          "iteration": 1,
+          "ownerCompanyId": "org_nco-government",
+          "ownerTeamId": "company-scope",
+          "institution": "validation",
+          "failure": "independent attestation does not match the observed artifact",
+          "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: independent attestation does not match the observed artifact",
+          "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+          "evidenceRequired": [
+            "independent integrity attestation SHA-256",
+            "new validation result evidence reference"
+          ],
+          "priority": "high",
+          "status": "resolved"
+        },
+        {
+          "id": "vaction_8292322a189bafe95bfcf5b03d6048b8",
+          "loopId": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+          "iteration": 1,
+          "ownerCompanyId": "org_nco-government",
+          "ownerTeamId": "company-scope",
+          "institution": "validation",
+          "failure": "mandatory UI inspection classification is missing",
+          "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: mandatory UI inspection classification is missing",
+          "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+          "evidenceRequired": [
+            "independent integrity attestation SHA-256",
+            "new validation result evidence reference"
+          ],
+          "priority": "high",
+          "status": "resolved"
+        }
+      ],
+      "attempts": [
+        {
+          "id": "vattempt_fa2cb0b7-08b1-4bbc-aeeb-858845762abb",
+          "loopId": "vloop_367538a9-48b3-46d7-a59e-134fd33e449b",
+          "iteration": 1,
+          "actorId": "cursor-agent",
+          "runId": "vrun_5d26ae3d-d702-4d91-9093-bce581abbfbf",
+          "criteria": [
+            {
+              "actionId": "vaction_69152333254d92f95448672279b74738",
+              "evidenceHashes": [
+                "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+              ]
+            },
+            {
+              "actionId": "vaction_46779bb12e95340991daade997160ec8",
+              "evidenceHashes": [
+                "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+              ]
+            },
+            {
+              "actionId": "vaction_8292322a189bafe95bfcf5b03d6048b8",
+              "evidenceHashes": [
+                "c13d81d90fa51ebf2e5f7d42adfd88f14d17cc7d69b23e44b89fdb95b7ce0985"
+              ]
+            }
+          ],
+          "decision": "approved",
+          "createdAt": "2026-07-30T08:49:32.842Z"
+        }
+      ]
+    }
+  },
+  "completionEvent": {
+    "httpStatus": 200,
+    "body": {
+      "ok": true,
+      "id": "audit-completion-29caa0c0-52d5-4269-98a2-5f32732ea888",
+      "status": "task_complete"
+    }
+  }
+}

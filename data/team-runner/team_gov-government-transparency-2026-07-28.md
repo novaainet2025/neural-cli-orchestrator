@@ -35,7 +35,7 @@ done: Transparency Appeals and Public Record — **기록·이의제기 실태�
 - “원결정 당사자만으로 재심하지 않음” 준수 여부
 - 사후 덮어쓰기 vs append-only 정정 이력 존재 여부
 - 실패 1건·24h 실패 11건의 공개기록 연계
-- claude-code / opencode / codex / agy / higgsfield 에이전트 지표 (미주입)
+- claude-code / opencode / codex / agy / retired-media-provider 에이전트 지표 (미주입)
 
 ## 2) 현재 상태
 

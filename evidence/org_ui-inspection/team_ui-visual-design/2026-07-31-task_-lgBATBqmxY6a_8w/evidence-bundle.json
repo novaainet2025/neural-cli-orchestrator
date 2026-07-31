@@ -1,0 +1,260 @@
+{
+  "generatedAt": "2026-07-31T04:29:16.389Z",
+  "taskId": "task_-lgBATBqmxY6a_8w",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-visual-design",
+  "evidencePolicy": "Direct SQLite ledger reads and an executed Nova-AX verification unit suite; no LLM claims are decision inputs.",
+  "checks": [
+    {
+      "id": "target-task-exists",
+      "passed": true,
+      "observed": 1
+    },
+    {
+      "id": "target-task-completed",
+      "passed": true,
+      "observed": "completed"
+    },
+    {
+      "id": "target-scope-matches",
+      "passed": true,
+      "observed": {
+        "companyId": "org_ui-inspection",
+        "teamId": "team_ui-visual-design"
+      }
+    },
+    {
+      "id": "nco-verification-metadata-approved",
+      "passed": true,
+      "observed": "approved"
+    },
+    {
+      "id": "prior-run-approved-six-of-six",
+      "passed": true,
+      "observed": {
+        "runId": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "status": "approved",
+        "passedInstitutions": 6
+      }
+    },
+    {
+      "id": "prior-receipt-matches-nco-metadata",
+      "passed": true,
+      "observed": {
+        "novaAxReceiptId": "vrcpt_c068f513-d193-4821-b22c-96eac9cc16a4",
+        "ncoReceiptId": "vrcpt_c068f513-d193-4821-b22c-96eac9cc16a4"
+      }
+    },
+    {
+      "id": "prior-receipt-consumed",
+      "passed": true,
+      "observed": {
+        "consumptionId": "vuse_336609d1-1c7e-4475-b06d-842403aa0e2b",
+        "eventId": "nco-audit-approved:task_-lgBATBqmxY6a_8w:1785449169327",
+        "consumedAt": "2026-07-30T22:06:09.328Z"
+      }
+    },
+    {
+      "id": "six-institution-results-present",
+      "passed": true,
+      "observed": [
+        "goal",
+        "inspection",
+        "measurement",
+        "optimization",
+        "performance",
+        "validation"
+      ]
+    },
+    {
+      "id": "no-open-antisybil-loop",
+      "passed": true,
+      "observed": 0
+    },
+    {
+      "id": "all-existing-loops-completed",
+      "passed": true,
+      "observed": {
+        "total": 2,
+        "completed": 2
+      }
+    },
+    {
+      "id": "verification-unit-suite-passed",
+      "passed": true,
+      "observed": {
+        "exitCode": 0,
+        "durationMs": 3057,
+        "outputHash": "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff"
+      }
+    }
+  ],
+  "failedChecks": [],
+  "records": {
+    "taskRows": [
+      {
+        "id": "task_-lgBATBqmxY6a_8w",
+        "status": "completed",
+        "assigned_to": "agy",
+        "team_id": "team_ui-visual-design",
+        "company_id": "org_ui-inspection",
+        "verification_status": "approved",
+        "verification_receipt_id": "vrcpt_c068f513-d193-4821-b22c-96eac9cc16a4",
+        "response_characters": 953,
+        "response_sha3_256": "34C294EBAA3C9E2E2BEAD9E86857AFA4E544BACE83B5CB65C3C4A2C8E6792B57",
+        "updated_at": "2026-07-30 22:06:09",
+        "completed_at": "2026-07-30 22:06:09"
+      }
+    ],
+    "verificationRows": [
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "task_id": "task_-lgBATBqmxY6a_8w",
+        "company_id": "org_ui-inspection",
+        "team_id": "team_ui-visual-design",
+        "actor_id": "nova-ax-visual-design-auditor",
+        "status": "approved",
+        "passed_institutions": 6,
+        "evidence_digest": "21df6e899e525bc3fd864200f6a3a0dfc15f4904f2cea14c5fb7b97b2a3b86cd",
+        "results_json": "[{\"institution\":\"inspection\",\"name\":\"검사기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"1f4fca22fb08974e9bb9bc70829bf92528499235cb149b0c7dc971c7fe641192\"]},{\"institution\":\"validation\",\"name\":\"검증기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"1f4fca22fb08974e9bb9bc70829bf92528499235cb149b0c7dc971c7fe641192\"]},{\"institution\":\"measurement\",\"name\":\"실측기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"67b99cbb771309f420f6c09147c5261102f74cc6c791c3ae33092b43538145f3\",\"a5eec445fdd70824e60afdbd88a471c979501338e45e2d691589ef34737f8d60\",\"4a516dea135b2694d46848ea8168fa9069cb75a833c68dfa24b626e2c2bf276a\"]},{\"institution\":\"performance\",\"name\":\"성능테스트기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"67b99cbb771309f420f6c09147c5261102f74cc6c791c3ae33092b43538145f3\",\"66d84db96b8ea85b4a294422d477dff6a343a0ee68521753fd60aa3070f6116c\",\"f179b5cc0397c9fd4ff3da0ceeb4bdae9bb5e73e8412a26fb59097da57d4048e\",\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"5d57e7b0591c35a79a88d2a3b3eda5c2e5d0a7a3705d150d6b34c45e11edd76d\",\"4a516dea135b2694d46848ea8168fa9069cb75a833c68dfa24b626e2c2bf276a\",\"d736045576940ab88dca5d900403fa1dc201b839008c5cb1023ae5c313c0dc33\",\"4060c2d350ab75e6faf761a974bd25065942b7e38f4ff49219cd0f1a10d7b5cf\",\"85a58727a713dc35f46eac9be62ee0ab7f8406b4886e78c21f58a54b8f965b0b\",\"a5eec445fdd70824e60afdbd88a471c979501338e45e2d691589ef34737f8d60\"]},{\"institution\":\"optimization\",\"name\":\"최적화기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"898eb980eb1abba9e82bf3205a24f753946f78bc3c46421e74d4c18804008bdf\"]},{\"institution\":\"goal\",\"name\":\"목표달성 체크기관\",\"passed\":true,\"failures\":[],\"evidenceRefs\":[\"67b99cbb771309f420f6c09147c5261102f74cc6c791c3ae33092b43538145f3\",\"f179b5cc0397c9fd4ff3da0ceeb4bdae9bb5e73e8412a26fb59097da57d4048e\",\"1f4fca22fb08974e9bb9bc70829bf92528499235cb149b0c7dc971c7fe641192\",\"a5eec445fdd70824e60afdbd88a471c979501338e45e2d691589ef34737f8d60\",\"4a516dea135b2694d46848ea8168fa9069cb75a833c68dfa24b626e2c2bf276a\",\"75a995a895f0aef986c94adbcc711a4e5ce00608506e2c4cb8490b4f01533e29\",\"85a58727a713dc35f46eac9be62ee0ab7f8406b4886e78c21f58a54b8f965b0b\",\"4060c2d350ab75e6faf761a974bd25065942b7e38f4ff49219cd0f1a10d7b5cf\",\"d736045576940ab88dca5d900403fa1dc201b839008c5cb1023ae5c313c0dc33\"]}]",
+        "created_at": "2026-07-30T22:05:53.529Z",
+        "receipt_id": "vrcpt_c068f513-d193-4821-b22c-96eac9cc16a4",
+        "issued_at": "2026-07-30T22:05:53.529Z",
+        "consumption_id": "vuse_336609d1-1c7e-4475-b06d-842403aa0e2b",
+        "event_id": "nco-audit-approved:task_-lgBATBqmxY6a_8w:1785449169327",
+        "consumed_at": "2026-07-30T22:06:09.328Z"
+      }
+    ],
+    "priorInstitutionRows": [
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "goal",
+        "passed": 1,
+        "failures": "[]"
+      },
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "inspection",
+        "passed": 1,
+        "failures": "[]"
+      },
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "measurement",
+        "passed": 1,
+        "failures": "[]"
+      },
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "optimization",
+        "passed": 1,
+        "failures": "[]"
+      },
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "performance",
+        "passed": 1,
+        "failures": "[]"
+      },
+      {
+        "run_id": "vrun_e9ec5a19-97ba-4fda-a20e-cac9558b5ad9",
+        "institution": "validation",
+        "passed": 1,
+        "failures": "[]"
+      }
+    ],
+    "loopRows": [
+      {
+        "loop_id": "vloop_75c54b54-1af2-4d37-8293-952a894b6f03",
+        "original_run_id": "vrun_0189910b-9568-4b59-a672-056c86ed465f",
+        "task_id": "task_gpLhwvfaPdvEEYjR",
+        "source_actor_id": "cursor-agent",
+        "status": "completed",
+        "current_iteration": 1,
+        "max_iterations": 5,
+        "latest_run_id": "vrun_d971dbdd-24f0-4447-a7a9-6a3514440d92",
+        "created_at": "2026-07-30T12:13:26.482Z",
+        "updated_at": "2026-07-30T12:54:40.206Z",
+        "attempt_id": "vattempt_89ffafbc-f947-4ea6-89d4-7b90cc3e4a0b",
+        "attempt_iteration": 1,
+        "attempt_decision": "approved",
+        "attempt_run_id": "vrun_d971dbdd-24f0-4447-a7a9-6a3514440d92",
+        "attempt_created_at": "2026-07-30T12:54:40.206Z"
+      },
+      {
+        "loop_id": "vloop_d95a11a1-84be-41a6-9d96-7ce254d18e2c",
+        "original_run_id": "vrun_783b18db-9079-4117-9a26-d461ed88dc13",
+        "task_id": "task_qKGyR_FquuE5XKku",
+        "source_actor_id": "hermes",
+        "status": "completed",
+        "current_iteration": 1,
+        "max_iterations": 5,
+        "latest_run_id": "vrun_68ce3342-7115-47ab-957c-9946bd0b4c9a",
+        "created_at": "2026-07-30T13:22:22.831Z",
+        "updated_at": "2026-07-30T13:23:16.594Z",
+        "attempt_id": "vattempt_ce2a0f4d-d06f-441c-9c56-b60202da68bf",
+        "attempt_iteration": 1,
+        "attempt_decision": "approved",
+        "attempt_run_id": "vrun_68ce3342-7115-47ab-957c-9946bd0b4c9a",
+        "attempt_created_at": "2026-07-30T13:23:16.594Z"
+      }
+    ]
+  },
+  "commandRecords": [
+    {
+      "name": "nco-target-task-ledger",
+      "commandLine": "/usr/bin/sqlite3 -readonly -json /Users/nova-ai/project/nco/db/nco.db SELECT id,status,assigned_to,team_id,\n          json_extract(metadata_json,'$.companyId') AS company_id,\n          json_extract(metadata_json,'$.verificationStatus') AS verification_status,\n          json_extract(metadata_json,'$.verificationReceiptId') AS verification_receipt_id,\n          length(COALESCE(response,'')) AS response_characters,\n          hex(sha3(COALESCE(response,''),256)) AS response_sha3_256,\n          updated_at,completed_at\n     FROM tasks WHERE id='task_-lgBATBqmxY6a_8w';",
+      "exitCode": 0,
+      "durationMs": 9,
+      "commandHash": "1263f468722bb52a88d33e822727eeab76f174a7183ebdb825e3c1cbaa0e871a",
+      "outputHash": "491339277713391d5c0cad8ad9e879afa252590ebfde902c2c7f659a15d6eafa",
+      "outputBytes": 430,
+      "stderrHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedAt": "2026-07-31T04:29:13.270Z"
+    },
+    {
+      "name": "nova-ax-target-verification-ledger",
+      "commandLine": "/usr/bin/sqlite3 -readonly -json /Users/nova-ai/project/nova-ax/db/nova-ax.db SELECT v.id AS run_id,v.task_id,v.company_id,v.team_id,v.actor_id,\n          v.status,v.passed_institutions,v.evidence_digest,v.results_json,v.created_at,\n          r.id AS receipt_id,r.issued_at,\n          c.id AS consumption_id,c.event_id,c.consumed_at\n     FROM verification_runs v\n     LEFT JOIN verification_receipts r ON r.run_id=v.id\n     LEFT JOIN verification_receipt_consumptions c ON c.receipt_id=r.id\n    WHERE v.task_id='task_-lgBATBqmxY6a_8w'\n    ORDER BY v.created_at DESC;",
+      "exitCode": 0,
+      "durationMs": 15,
+      "commandHash": "8ec4f4cd9c71b98e70ae9fd145fd5eaa2960cbd589c10693921fc9e182a36537",
+      "outputHash": "7e5fb19e6bc8070b080b97fba33454e83132b8f3bd21acabb6ecbc9961196134",
+      "outputBytes": 3064,
+      "stderrHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedAt": "2026-07-31T04:29:13.286Z"
+    },
+    {
+      "name": "nova-ax-scope-antisybil-loops",
+      "commandLine": "/usr/bin/sqlite3 -readonly -json /Users/nova-ai/project/nova-ax/db/nova-ax.db SELECT l.id AS loop_id,l.original_run_id,l.task_id,l.source_actor_id,l.status,\n          l.current_iteration,l.max_iterations,l.latest_run_id,l.created_at,l.updated_at,\n          a.id AS attempt_id,a.iteration AS attempt_iteration,a.decision AS attempt_decision,\n          a.run_id AS attempt_run_id,a.created_at AS attempt_created_at\n     FROM verification_loops l\n     LEFT JOIN verification_loop_attempts a ON a.loop_id=l.id\n    WHERE l.company_id='org_ui-inspection' AND l.team_id='team_ui-visual-design'\n    ORDER BY l.created_at,a.iteration;",
+      "exitCode": 0,
+      "durationMs": 38,
+      "commandHash": "1a74fff9c92c74473a76303fa27c44ff69de723cb0cf06c61fa519e83ce35918",
+      "outputHash": "07a2329b1048e98153020edd6d48000c321785bd9c15bf8b888b6a5c6bc3a991",
+      "outputBytes": 1217,
+      "stderrHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedAt": "2026-07-31T04:29:13.324Z"
+    },
+    {
+      "name": "nova-ax-target-institution-results",
+      "commandLine": "/usr/bin/sqlite3 -readonly -json /Users/nova-ai/project/nova-ax/db/nova-ax.db SELECT v.id AS run_id,\n          json_extract(j.value,'$.institution') AS institution,\n          json_extract(j.value,'$.passed') AS passed,\n          json_extract(j.value,'$.failures') AS failures\n     FROM verification_runs v,json_each(v.results_json) j\n    WHERE v.task_id='task_-lgBATBqmxY6a_8w'\n    ORDER BY v.created_at DESC,json_extract(j.value,'$.institution');",
+      "exitCode": 0,
+      "durationMs": 6,
+      "commandHash": "94be43d9e30ab4e7d7e62ecd1bc7df998f84bdfe872326553bcb36534fe2e4be",
+      "outputHash": "abe6e9154959f67ce954e8117e83864b2e57c732715478475dcaada8982c42cb",
+      "outputBytes": 659,
+      "stderrHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedAt": "2026-07-31T04:29:13.331Z"
+    },
+    {
+      "name": "nova-ax-verification-unit-suite",
+      "commandLine": "/opt/homebrew/bin/npm run test:verification:unit",
+      "exitCode": 0,
+      "durationMs": 3057,
+      "commandHash": "237b078cc70035157553b8baf454fea4d903fe397cf259f6aee864128822169c",
+      "outputHash": "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff",
+      "outputBytes": 3236,
+      "stderrHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "observedAt": "2026-07-31T04:29:16.387Z"
+    }
+  ]
+}

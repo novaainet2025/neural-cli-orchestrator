@@ -1,0 +1,213 @@
+{
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-ax-design",
+    "taskId": "task_pevcTEWfvszz8vXe"
+  },
+  "task": {
+    "id": "task_pevcTEWfvszz8vXe",
+    "status": "cancelled",
+    "assignedTo": "hermes",
+    "teamId": "team_ui-ax-design",
+    "companyId": "org_ui-inspection",
+    "verificationStatus": "pending",
+    "createdAt": "2026-07-30 16:05:23",
+    "updatedAt": "2026-07-30 16:15:27",
+    "completedAt": null,
+    "responseSha256": "82ad9a391e5221bf7cc129375db93690dfda48c2b6fe3c4819ea325c01fd4ab3",
+    "responseCodepoints": 2469,
+    "responseUtf8Bytes": 3940
+  },
+  "completionAction": {
+    "id": "evt_wO-3SPB9BFRWCs2I",
+    "agentId": "hermes",
+    "actionType": "task:completed",
+    "createdAt": "2026-07-30 16:08:15",
+    "detailSha256": "8bd9d2353d88e77ac9777f9e845cebe821969191ac60ae28a6f40404d6dbf8d4"
+  },
+  "checks": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "detail": [
+      {
+        "id": "C1_sections",
+        "requirement": "출력형식 7개 섹션 전부 존재",
+        "passed": true,
+        "observed": {
+          "expectedSections": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "observedSections": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        }
+      },
+      {
+        "id": "C2_artifact_paths",
+        "requirement": "산출물 명세에 경로와 확장자 3건 이상",
+        "passed": true,
+        "observed": {
+          "count": 3,
+          "declaredPaths": [
+            "docs/ui-audit/ax-experience-inspection-plan.md",
+            "output/ui-audit/ax-observations.json",
+            "output/ui-audit/ax-summary.md"
+          ]
+        }
+      },
+      {
+        "id": "C3_quantified_criteria",
+        "requirement": "검증 기준 5건 이상이며 각 항목에 숫자 임계값 또는 이진 판정식 존재",
+        "passed": true,
+        "observed": {
+          "count": 6,
+          "quantified": 6
+        }
+      },
+      {
+        "id": "C4_risks_with_mitigation",
+        "requirement": "반대 의견·위험 3건 이상이며 각각 완화책 포함",
+        "passed": true,
+        "observed": {
+          "count": 4,
+          "mitigated": 4
+        }
+      },
+      {
+        "id": "C5_peer_review",
+        "requirement": "상호 평가 대상 2팀 이상이며 각 항목에 검증 질문 존재",
+        "passed": true,
+        "observed": {
+          "count": 2,
+          "withQuestion": 2
+        }
+      },
+      {
+        "id": "C6_unverified_declared",
+        "requirement": "[미확인] 목록이 비어 있지 않음",
+        "passed": true,
+        "observed": {
+          "count": 4
+        }
+      },
+      {
+        "id": "C7_entry_exit",
+        "requirement": "Entry Criteria와 Exit Criteria 모두 명시",
+        "passed": true,
+        "observed": {
+          "hasEntry": true,
+          "hasExit": true
+        }
+      },
+      {
+        "id": "C8_declared_artifacts_absent",
+        "requirement": "읽기 전용 설계 작업이 선언한 후속 산출물 파일을 생성하지 않음",
+        "passed": true,
+        "observed": {
+          "createdArtifacts": [],
+          "probed": [
+            "docs/ui-audit/ax-experience-inspection-plan.md",
+            "output/ui-audit/ax-observations.json",
+            "output/ui-audit/ax-summary.md"
+          ]
+        }
+      },
+      {
+        "id": "C9_zero_fs_mutation_in_window",
+        "requirement": "작업 실행 시간창 중 대상 저장소 파일 변경 0건",
+        "passed": true,
+        "observed": {
+          "mutatedInWindow": [],
+          "startUtc": "2026-07-30T16:05:23.000Z",
+          "endUtc": "2026-07-30T16:15:28.000Z"
+        }
+      },
+      {
+        "id": "C10_content_ceiling",
+        "requirement": "Markdown 제어문자·공백을 제외한 실질 본문 2,000자 이내",
+        "passed": true,
+        "observed": {
+          "substantiveCharacters": 1848,
+          "rawCodepoints": 2469,
+          "threshold": 2000
+        }
+      }
+    ]
+  },
+  "negativeControl": {
+    "taskId": "task_pevcTEWfvszz8vXe",
+    "source": "deterministic-response-mutation-suite",
+    "total": 7,
+    "detected": 7,
+    "mutations": [
+      {
+        "id": "drop_section_7",
+        "detected": true
+      },
+      {
+        "id": "remove_artifact_extensions",
+        "detected": true
+      },
+      {
+        "id": "remove_numeric_oracles",
+        "detected": true
+      },
+      {
+        "id": "remove_mitigations",
+        "detected": true
+      },
+      {
+        "id": "remove_peer_questions",
+        "detected": true
+      },
+      {
+        "id": "remove_entry",
+        "detected": true
+      },
+      {
+        "id": "inflate_content",
+        "detected": true
+      }
+    ]
+  },
+  "filesystem": {
+    "targetRepo": "/Users/nova-ai/project/nco-dashboard",
+    "excludedDirectories": [
+      ".git",
+      "node_modules",
+      "dist"
+    ],
+    "window": {
+      "startUtc": "2026-07-30T16:05:23.000Z",
+      "endUtc": "2026-07-30T16:15:28.000Z"
+    },
+    "declaredPaths": [
+      "docs/ui-audit/ax-experience-inspection-plan.md",
+      "output/ui-audit/ax-observations.json",
+      "output/ui-audit/ax-summary.md"
+    ],
+    "createdArtifacts": [],
+    "mutatedInWindow": []
+  },
+  "digests": {
+    "deliverable": "82ad9a391e5221bf7cc129375db93690dfda48c2b6fe3c4819ea325c01fd4ab3",
+    "checks": "4887644cf09f3445d65f152041b871140108ed86a49b5b148e2f2e817edeadba",
+    "negativeControl": "762d264576018c26e7b04f2c9336cd86579ed13d104533158f75f3466766b9f4",
+    "filesystemProbe": "0084e54c5bd15f25f316b559d9907558f1984ef700719439dfbfa2ed41c40014"
+  },
+  "status": "final",
+  "collectedAt": "2026-07-30T17:03:29.761Z"
+}

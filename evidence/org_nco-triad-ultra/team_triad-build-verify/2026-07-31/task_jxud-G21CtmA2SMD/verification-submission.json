@@ -1,0 +1,139 @@
+{
+  "taskId": "task_jxud-G21CtmA2SMD",
+  "companyId": "org_nco-triad-ultra",
+  "teamId": "team_triad-build-verify",
+  "actorId": "codex",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nco/evidence/org_nco-triad-ultra/team_triad-build-verify/2026-07-31/task_jxud-G21CtmA2SMD/task-output.md",
+    "expectedSha256": "c8559353ad6f29f5ae04d1118f6f32f9edefa39b624209352d2fef5886018e41",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "c8559353ad6f29f5ae04d1118f6f32f9edefa39b624209352d2fef5886018e41",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "sha256sum-utility",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:53:30Z",
+      "evidenceHash": "c8559353ad6f29f5ae04d1118f6f32f9edefa39b624209352d2fef5886018e41"
+    }
+  },
+  "measurements": [
+    {
+      "name": "independent-probes-passed",
+      "unit": "probes",
+      "baseline": 0,
+      "current": 2,
+      "target": 2,
+      "direction": "higher_is_better",
+      "sampleSize": 2,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "nco-sqlite-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:53:30Z",
+        "evidenceHash": "ac25fbcfe023e682cddc3cb860fcedfbbe4b662c7342e39b42b29c9d5203a4e5"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "artifact-db-response-exact-match",
+      "exitCode": 0,
+      "durationMs": 204,
+      "commandHash": "beba782c9bdfc77acd8e4a32678fcd2b154c3fcc5a0b2a0d2a3acd74162da10f",
+      "outputHash": "624bd4249bb15f8bb68da4298b1f1f36d8255fc526b1640e5ecc86d376ea7714",
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "nco-audit-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:53:30Z",
+        "evidenceHash": "624bd4249bb15f8bb68da4298b1f1f36d8255fc526b1640e5ecc86d376ea7714"
+      }
+    },
+    {
+      "name": "source-aggregate-sql-checks",
+      "exitCode": 0,
+      "durationMs": 80,
+      "commandHash": "16f69b2c76b5de7175dc3e63fff3330ebae190c633e284ecba527dc930c2e984",
+      "outputHash": "c8d3bb2b8a1330355232730efc1bf5090d69caea9f5469ef66b5ade27c1f7845",
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "nco-audit-probe",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T03:53:30Z",
+        "evidenceHash": "c8d3bb2b8a1330355232730efc1bf5090d69caea9f5469ef66b5ade27c1f7845"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "ac25fbcfe023e682cddc3cb860fcedfbbe4b662c7342e39b42b29c9d5203a4e5",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "nco-audit-probe",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:53:30Z",
+      "evidenceHash": "ac25fbcfe023e682cddc3cb860fcedfbbe4b662c7342e39b42b29c9d5203a4e5"
+    }
+  },
+  "requirements": [
+    {
+      "id": "report-body-matches-source-task",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c8559353ad6f29f5ae04d1118f6f32f9edefa39b624209352d2fef5886018e41",
+        "624bd4249bb15f8bb68da4298b1f1f36d8255fc526b1640e5ecc86d376ea7714"
+      ]
+    },
+    {
+      "id": "task-aggregate-reconciled",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c8d3bb2b8a1330355232730efc1bf5090d69caea9f5469ef66b5ade27c1f7845"
+      ]
+    },
+    {
+      "id": "work-report-aggregate-reconciled",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c8d3bb2b8a1330355232730efc1bf5090d69caea9f5469ef66b5ade27c1f7845"
+      ]
+    },
+    {
+      "id": "agent-performance-reconciled",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c8d3bb2b8a1330355232730efc1bf5090d69caea9f5469ef66b5ade27c1f7845"
+      ]
+    },
+    {
+      "id": "reporting-obligation-state-disclosed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "ac25fbcfe023e682cddc3cb860fcedfbbe4b662c7342e39b42b29c9d5203a4e5"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "nco-sqlite-probe",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:53:30Z",
+      "evidenceHash": "ac25fbcfe023e682cddc3cb860fcedfbbe4b662c7342e39b42b29c9d5203a4e5"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "Text-only operational work report; no UI artifact.",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "file-content-inspector",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T03:53:30Z",
+      "evidenceHash": "c8559353ad6f29f5ae04d1118f6f32f9edefa39b624209352d2fef5886018e41"
+    }
+  }
+}

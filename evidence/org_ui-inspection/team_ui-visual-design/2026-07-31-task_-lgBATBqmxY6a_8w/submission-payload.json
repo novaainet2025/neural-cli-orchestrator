@@ -1,0 +1,210 @@
+{
+  "taskId": "task_-lgBATBqmxY6a_8w",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-visual-design",
+  "actorId": "agy",
+  "taskType": "software",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-visual-design/2026-07-31-task_-lgBATBqmxY6a_8w/audit-report.md",
+    "expectedSha256": "d41eaa6df8e69667d193a68367dcd9cd332ee1b7668639850756e26b8095dbb2",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "d41eaa6df8e69667d193a68367dcd9cd332ee1b7668639850756e26b8095dbb2",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "node-sha256-independent-auditor",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:29:16.390Z",
+      "evidenceHash": "d41eaa6df8e69667d193a68367dcd9cd332ee1b7668639850756e26b8095dbb2"
+    }
+  },
+  "measurements": [
+    {
+      "name": "independent-machine-check-failures",
+      "unit": "checks",
+      "baseline": 11,
+      "current": 0,
+      "target": 0,
+      "direction": "lower_is_better",
+      "sampleSize": 11,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-ledger-auditor",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "2ce982cdb561b402797bdf6f0aa1a1d887fb714482aa8971e3468fe2d7e48813"
+      }
+    },
+    {
+      "name": "open-antisybil-loops",
+      "unit": "loops",
+      "baseline": 2,
+      "current": 0,
+      "target": 0,
+      "direction": "lower_is_better",
+      "sampleSize": 2,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-loop-auditor",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "07a2329b1048e98153020edd6d48000c321785bd9c15bf8b888b6a5c6bc3a991"
+      }
+    },
+    {
+      "name": "verification-suite-failures",
+      "unit": "suites",
+      "baseline": 1,
+      "current": 0,
+      "target": 0,
+      "direction": "lower_is_better",
+      "sampleSize": 1,
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "node-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "nco-target-task-ledger",
+      "exitCode": 0,
+      "durationMs": 9,
+      "commandHash": "1263f468722bb52a88d33e822727eeab76f174a7183ebdb825e3c1cbaa0e871a",
+      "outputHash": "491339277713391d5c0cad8ad9e879afa252590ebfde902c2c7f659a15d6eafa",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "491339277713391d5c0cad8ad9e879afa252590ebfde902c2c7f659a15d6eafa"
+      }
+    },
+    {
+      "name": "nova-ax-target-verification-ledger",
+      "exitCode": 0,
+      "durationMs": 15,
+      "commandHash": "8ec4f4cd9c71b98e70ae9fd145fd5eaa2960cbd589c10693921fc9e182a36537",
+      "outputHash": "7e5fb19e6bc8070b080b97fba33454e83132b8f3bd21acabb6ecbc9961196134",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "7e5fb19e6bc8070b080b97fba33454e83132b8f3bd21acabb6ecbc9961196134"
+      }
+    },
+    {
+      "name": "nova-ax-scope-antisybil-loops",
+      "exitCode": 0,
+      "durationMs": 38,
+      "commandHash": "1a74fff9c92c74473a76303fa27c44ff69de723cb0cf06c61fa519e83ce35918",
+      "outputHash": "07a2329b1048e98153020edd6d48000c321785bd9c15bf8b888b6a5c6bc3a991",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "07a2329b1048e98153020edd6d48000c321785bd9c15bf8b888b6a5c6bc3a991"
+      }
+    },
+    {
+      "name": "nova-ax-target-institution-results",
+      "exitCode": 0,
+      "durationMs": 6,
+      "commandHash": "94be43d9e30ab4e7d7e62ecd1bc7df998f84bdfe872326553bcb36534fe2e4be",
+      "outputHash": "abe6e9154959f67ce954e8117e83864b2e57c732715478475dcaada8982c42cb",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "sqlite3-cli",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "abe6e9154959f67ce954e8117e83864b2e57c732715478475dcaada8982c42cb"
+      }
+    },
+    {
+      "name": "nova-ax-verification-unit-suite",
+      "exitCode": 0,
+      "durationMs": 3057,
+      "commandHash": "237b078cc70035157553b8baf454fea4d903fe397cf259f6aee864128822169c",
+      "outputHash": "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff",
+      "provenance": {
+        "kind": "independent_verifier",
+        "producer": "node-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-31T04:29:16.390Z",
+        "evidenceHash": "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "4f668921971366654148a86dbb7ee86eb362365b44a9bd73adbbcfc2af0c65b0",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "node-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:29:16.390Z",
+      "evidenceHash": "4f668921971366654148a86dbb7ee86eb362365b44a9bd73adbbcfc2af0c65b0"
+    }
+  },
+  "requirements": [
+    {
+      "id": "target-task-ground-truth-collected",
+      "satisfied": true,
+      "evidenceHashes": [
+        "491339277713391d5c0cad8ad9e879afa252590ebfde902c2c7f659a15d6eafa",
+        "1674e7cd0bcc7681e94a6ddbb06fae9ac05c1a40956367f0d300c30395d5f702"
+      ]
+    },
+    {
+      "id": "prior-completion-binding-verified",
+      "satisfied": true,
+      "evidenceHashes": [
+        "7e5fb19e6bc8070b080b97fba33454e83132b8f3bd21acabb6ecbc9961196134",
+        "abe6e9154959f67ce954e8117e83864b2e57c732715478475dcaada8982c42cb"
+      ]
+    },
+    {
+      "id": "antisybil-loop-gate-clear",
+      "satisfied": true,
+      "evidenceHashes": [
+        "07a2329b1048e98153020edd6d48000c321785bd9c15bf8b888b6a5c6bc3a991"
+      ]
+    },
+    {
+      "id": "independent-verification-suite-passed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6f2b64577b7015eeab0a48f4cd0c041868d1b7a91f62334fea2a25e82ca80bff",
+        "d41eaa6df8e69667d193a68367dcd9cd332ee1b7668639850756e26b8095dbb2"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "sqlite3-ledger-goal-auditor",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:29:16.390Z",
+      "evidenceHash": "1674e7cd0bcc7681e94a6ddbb06fae9ac05c1a40956367f0d300c30395d5f702"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "The verified artifact is a Markdown ledger-audit report, not a rendered user interface.",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "artifact-content-classifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-31T04:29:16.390Z",
+      "evidenceHash": "d41eaa6df8e69667d193a68367dcd9cd332ee1b7668639850756e26b8095dbb2"
+    }
+  },
+  "selfReportedScore": 0,
+  "workJournal": "Ignored by policy; see machine evidence files."
+}

@@ -234,11 +234,12 @@ class Commander {
   }
 
   /**
-   * Pick an available agent from a layer. Falls back to first agent in list.
+   * Pick an available agent from a layer. Falls back to another usable agent.
    */
   private pickAvailableAgent(layer: LayerName): string {
     const layerAgents = LAYERS[layer].agents;
-    const enabledIds = new Set(agentManager.listEnabledIds());
+    const enabledAgentIds = agentManager.listEnabledIds();
+    const enabledIds = new Set(enabledAgentIds);
     // 사용가능 = enabled + availability 허용. probe는 복구 확인용으로 허용하되,
     // quota 게이트의 probe는 제외 — 복구 확인은 전용 1토큰 프로브(agent-manager)가 담당하며
     // 사용자 태스크가 첫 희생양이 되면 안 된다 (리뷰 HIGH, 2026-07-08).
@@ -257,12 +258,21 @@ class Commander {
       }
     }
 
-    // 계층 후보 전부 불가 → enabled+circuit닫힘 아무거나, 그것도 없으면 enabled 첫번째
-    const anyUsable = agentManager.listEnabledIds().find(usable);
-    const fallback = anyUsable || agentManager.listEnabledIds()[0] || layerAgents[0];
-    log.warn({ layer, fallback, tier: tierOf(fallback) },
-      `layer ${layer}: 우선 에이전트 모두 불가 → fallback ${fallback}`);
-    return fallback;
+    // 계층 후보 전부 불가 → 다른 계층의 건강한 enabled 에이전트까지만 fallback.
+    // 모든 회로가 gated인데 enabled 첫 항목을 강제 선택하면 executeTask가 즉시
+    // "Circuit breaker open"으로 실패해 장애 태스크를 추가 생성한다.
+    const fallback = enabledAgentIds.find(usable);
+    if (fallback) {
+      log.warn({ layer, fallback, tier: tierOf(fallback) },
+        `layer ${layer}: 우선 에이전트 모두 불가 → fallback ${fallback}`);
+      return fallback;
+    }
+
+    const candidates = enabledAgentIds.length > 0 ? enabledAgentIds : [...layerAgents];
+    log.error({ layer, candidates }, `layer ${layer}: 사용 가능한 에이전트 없음`);
+    throw new Error(
+      `No available provider for ${layer} layer (candidates: ${candidates.join(', ') || 'none'})`,
+    );
   }
 
   private failResult(

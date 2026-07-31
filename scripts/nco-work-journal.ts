@@ -18,6 +18,7 @@ import {
 } from '../src/core/work-event-ledger.js';
 
 const DEFAULT_VAULT = '/Users/nova-ai/obsidian/mac-obsidian';
+const MAX_OBSIDIAN_EVENT_SUMMARY_BYTES = 64 * 1024;
 const DEFAULT_REPOSITORIES = [
   resolve(process.cwd()),
   DEFAULT_VAULT,
@@ -64,6 +65,16 @@ function text(value: unknown): string {
   if (value == null) return '';
   const redacted = clean(String(value));
   return String(redacted).replaceAll('```', '``\\`');
+}
+
+function tableText(value: unknown, maxLength = 120): string {
+  const normalized = text(value)
+    .replace(/\s+/g, ' ')
+    .replaceAll('|', '\\|')
+    .trim();
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength - 1)}…`
+    : normalized;
 }
 
 function yaml(value: unknown): string {
@@ -711,19 +722,31 @@ function kstDate(value: unknown): string {
 
 function renderJournalDay(date: string, rows: SqlRow[]): string {
   const categoryCounts = new Map<string, number>();
+  const typeCounts = new Map<string, number>();
   for (const row of rows) {
     const category = String(row.category);
     categoryCounts.set(category, (categoryCounts.get(category) ?? 0) + 1);
+    const eventType = String(row.event_type);
+    typeCounts.set(eventType, (typeCounts.get(eventType) ?? 0) + 1);
   }
   const counts = Array.from(categoryCounts.entries())
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([category, count]) => `- ${category}: ${count}`)
+    .map(([category, count]) => `| ${tableText(category, 60)} | ${count} |`)
     .join('\n');
+  const types = Array.from(typeCounts.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 30)
+    .map(([eventType, count]) => `| ${tableText(eventType, 80)} | ${count} |`)
+    .join('\n');
+  const recentRows = rows.slice(-50).reverse();
+  const firstOccurredAt = rows.at(0)?.occurred_at ?? '—';
+  const lastOccurredAt = rows.at(-1)?.occurred_at ?? '—';
 
   return `---
 entity: nco-work-event-journal
 date: ${yaml(date)}
 event_count: ${rows.length}
+detail_storage: sqlite
 tags:
   - nco/events
   - nco/date/${date}
@@ -732,34 +755,31 @@ tags:
 
 ## 요약
 
+- 전체 이벤트: ${rows.length}
+- 최초 시각: ${text(firstOccurredAt)}
+- 최종 시각: ${text(lastOccurredAt)}
+- 전체 상세·증거 원본: NCO SQLite \`work_events\` 테이블
+
+## 분류별 집계
+
+| 분류 | 개수 |
+|---|---:|
 ${counts}
 
-## 전체 이벤트
+## 주요 이벤트 유형
 
-${rows.map(row => `### ${text(row.occurred_at)} · ${text(row.title)}
+| 유형 | 개수 |
+|---|---:|
+${types}
 
-- ID: \`${text(row.id)}\`
-- 유형: \`${text(row.event_type)}\`
-- 분류/심각도/결과: \`${text(row.category)}\` / \`${text(row.severity)}\` / \`${text(row.outcome)}\`
-- 소스: \`${text(row.source)}\`
-- 작업: ${text(row.task_id || '—')}
-- 에이전트/세션: ${text(row.agent_id || '—')} / ${text(row.session_id || '—')}
-- 프로젝트/워크트리: ${text(row.project_path || '—')} / ${text(row.worktree_path || '—')}
-- 브랜치/커밋: ${text(row.branch || '—')} / ${text(row.commit_sha || '—')}
-- 요약: ${text(row.summary || '—')}
-- 체인: previous \`${text(String(row.previous_hash ?? '').slice(0, 12) || 'root')}\` → current \`${text(String(row.content_hash).slice(0, 12))}\`
+## 최근 이벤트
 
-#### 상세
-
-${renderJson(parseJson(row.detail_json))}
-
-#### 증거
-
-${renderJson(parseJson(row.evidence_json, []))}
-`).join('\n\n')}
+| 시각 | 분류 | 유형 | 결과 | 제목 |
+|---|---|---|---|---|
+${recentRows.map(row => `| ${tableText(row.occurred_at, 32)} | ${tableText(row.category, 24)} | ${tableText(row.event_type, 48)} | ${tableText(row.outcome || '—', 20)} | ${tableText(row.title, 120)} |`).join('\n')}
 
 ---
-_Append-only SQLite 원장에서 생성. 수정은 새 정정 이벤트로 기록._
+_Obsidian 안정성을 위해 집계와 최근 50개만 표시합니다. 전체 상세는 append-only SQLite 원장에 보존되며, 정정은 기존 행 변경이 아니라 새 이벤트로 추가합니다._
 `;
 }
 
@@ -810,6 +830,12 @@ function exportVault(db: Database.Database, vault: string): ExportStats {
   }
   for (const [date, rows] of byDate) {
     const content = renderJournalDay(date, rows);
+    const summaryBytes = Buffer.byteLength(content);
+    if (summaryBytes > MAX_OBSIDIAN_EVENT_SUMMARY_BYTES) {
+      throw new Error(
+        `Obsidian event summary exceeds ${MAX_OBSIDIAN_EVENT_SUMMARY_BYTES} bytes: ${date} (${summaryBytes})`,
+      );
+    }
     const path = join(root, 'EVENTS', `${date}.md`);
     if (writeIfChanged(db, `events:${date}`, path, content, stats)) stats.journalDays++;
   }
@@ -866,13 +892,13 @@ ${categoryRows.map(row => `| ${text(row.category)} | ${text(row.count)} | ${text
 ## 저장 구조
 
 - \`TASKS/YYYY-MM/\`: 작업별 전체 프롬프트·결과·오류·검증·이벤트
-- \`EVENTS/YYYY-MM-DD.md\`: 날짜별 전체 이벤트와 증거
+- \`EVENTS/YYYY-MM-DD.md\`: 날짜별 집계와 최근 이벤트 요약
 - \`WORK-REPORTS/YYYY-MM/\`: 업무·성과·목표 보고서
 - \`08-IMPROVEMENTS/NCO/\`: 문제·근본 원인·개선·검증
 
 ## 무결성
 
-SQLite \`work_events\`는 UPDATE/DELETE가 차단된 append-only 원장이다. 각 이벤트는 이전 이벤트 해시를 포함하며, 정정은 기존 행 변경이 아니라 새 이벤트로 추가한다.
+SQLite \`work_events\`는 전체 상세·증거를 보존하는 append-only 원장이다. UPDATE/DELETE가 차단되며, 각 이벤트는 이전 이벤트 해시를 포함한다. Obsidian에는 Renderer 안정성을 위해 작은 일별 요약만 내보낸다.
 `;
   writeIfChanged(db, 'journal:index', join(root, 'INDEX.md'), index, stats);
   return stats;

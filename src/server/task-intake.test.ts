@@ -8,10 +8,13 @@ import {
   findActiveWorkReportTask,
   getWorkReportId,
   GOV_COMMAND_INTAKE_RESPONSE_CONTRACT,
+  INCIDENT_COMMAND_RESPONSE_CONTRACT,
+  RESILIENCE_REVIEW_RESPONSE_CONTRACT,
   hasResponseContract,
   inferTaskType,
   isCodeWorkPrompt,
   isPerformanceGoalInputPrompt,
+  isReadOnlyTaskPrompt,
   isTextOnlyPrompt,
   isWorkReportPrompt,
   shouldApplyPromptGateForProvider,
@@ -278,6 +281,66 @@ describe('task-intake helpers', () => {
     }).prompt).not.toContain(GOV_COMMAND_INTAKE_RESPONSE_CONTRACT);
   });
 
+  it('adds the incident-command evidence contract once to HR company runs only', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_gov-command-incident',
+      companyRunId: 'corun_nco-self-improve-cycle1',
+    };
+    const first = applyPromptGate(
+      '[HR DIRECTIVE] Improve team Incident and Continuity Command. Current score=6.1, completion=0%.',
+      metadata,
+    );
+    const retry = applyPromptGate(first.prompt, metadata);
+
+    expect(first.prompt).toContain(INCIDENT_COMMAND_RESPONSE_CONTRACT);
+    expect(first.prompt).toContain('T1(파일·DB row·HTTP 본문·명령 출력)');
+    expect(first.prompt).toContain('bounded 되돌리기');
+    expect(retry.prompt.match(/\[Incident Command 응답·증거 계약\]/g)).toHaveLength(1);
+    expect(hasResponseContract(first.prompt)).toBe(true);
+
+    expect(applyPromptGate('[업무보고 작성] 2026-07-30 오후 보고서를 작성하라.', {
+      projectDir: '/repo',
+      teamId: 'team_gov-command-incident',
+      workReportId: 'wr_example',
+    }).prompt).not.toContain(INCIDENT_COMMAND_RESPONSE_CONTRACT);
+
+    expect(applyPromptGate('[목표] 독립 인시던트 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_gov-command-incident',
+    }).prompt).not.toContain(INCIDENT_COMMAND_RESPONSE_CONTRACT);
+  });
+
+  it('adds the resilience-review evidence contract once to HR company runs only', () => {
+    const metadata = {
+      projectDir: '/repo',
+      teamId: 'team_gov-assurance-resilience',
+      companyRunId: 'corun_nco-self-improve-cycle1',
+    };
+    const first = applyPromptGate(
+      '[HR DIRECTIVE] Improve team Reliability and Resilience Review. Current score=6.1, completion=0%.',
+      metadata,
+    );
+    const retry = applyPromptGate(first.prompt, metadata);
+
+    expect(first.prompt).toContain(RESILIENCE_REVIEW_RESPONSE_CONTRACT);
+    expect(first.prompt).toContain('T1(HTTP 응답 본문·DB row·파일·명령 출력)');
+    expect(first.prompt).toContain('bounded 되돌리기');
+    expect(retry.prompt.match(/\[Resilience Review 응답·증거 계약\]/g)).toHaveLength(1);
+    expect(hasResponseContract(first.prompt)).toBe(true);
+
+    expect(applyPromptGate('[업무보고 작성] 2026-07-30 오후 보고서를 작성하라.', {
+      projectDir: '/repo',
+      teamId: 'team_gov-assurance-resilience',
+      workReportId: 'wr_example',
+    }).prompt).not.toContain(RESILIENCE_REVIEW_RESPONSE_CONTRACT);
+
+    expect(applyPromptGate('[목표] 독립 복원력 검토 태스크', {
+      projectDir: '/repo',
+      teamId: 'team_gov-assurance-resilience',
+    }).prompt).not.toContain(RESILIENCE_REVIEW_RESPONSE_CONTRACT);
+  });
+
   it('keeps tool-description false reports rejected while allowing an honest blocked status', () => {
     const prompt = applyPromptGate('[목표] cli-design 저점 원인을 검증한다', {
       projectDir: '/repo',
@@ -351,6 +414,76 @@ describe('task-intake helpers', () => {
     expect(tersePingVerifier).toBeUndefined();
   });
 
+  it('does not run a write-producing build verifier for read-only UI company checks', () => {
+    const prompt = [
+      '[목표] UI회사 실행 경로를 검증한다.',
+      '담당 범위에서 최소 1개의 읽기 전용 T1 근거를 확인한다.',
+      '[제약] 대상 저장소의 파일 생성·수정·삭제·포맷·커밋·설치 금지.',
+      '[검증기준] 실제 파일 내용과 HTTP GET 본문을 대조한다.',
+    ].join('\n');
+
+    expect(isCodeWorkPrompt(prompt)).toBe(true);
+    expect(isReadOnlyTaskPrompt(prompt)).toBe(true);
+    expect(isReadOnlyTaskPrompt(
+      '[실행 검증] UI회사 작업을 읽기 전용으로 검증한다. 파일 생성·수정·삭제는 금지한다.',
+    )).toBe(true);
+    expect(isReadOnlyTaskPrompt(
+      '[실행 검증] UI회사 작업을 읽기 전용으로 실제 실행한다. build는 금지한다.',
+    )).toBe(true);
+    expect(buildDefaultVerifierWithFs({
+      prompt,
+      metadata: { projectDir: '/repo', companyRunId: 'corun_ui' },
+      verifier: undefined,
+    }, () => true)).toBeUndefined();
+  });
+
+  it('uses a read-only prompt contract and repairs legacy code-work enrichment', () => {
+    const metadata = {
+      projectDir: '/repo',
+      companyRunId: 'corun_ui',
+      teamId: 'team_ui-visual-design',
+      readOnly: true,
+    };
+    const fresh = applyPromptGate(
+      '[회사 목표] UI회사 작업을 읽기 전용으로 실제 실행한다. 파일 쓰기·build 금지.',
+      metadata,
+    );
+    const legacy = applyPromptGate([
+      '[회사 목표] UI회사 작업을 읽기 전용으로 실제 실행한다.',
+      '[컨텍스트] 프로젝트: /repo',
+      '[목표] UI를 검사한다.',
+      '[제약] 파일 수정 금지.',
+      '[출력형식] (자동 보강) 변경 파일 목록 + 핵심 diff 요약.',
+      '[검증기준] (자동 보강) cd /repo && 빌드/타입체크 통과.',
+    ].join('\n'), metadata);
+
+    for (const result of [fresh, legacy]) {
+      expect(result.prompt).toContain('읽기 전용 점검 결과와 실제 확인 근거 요약 (파일 변경 없음).');
+      expect(result.prompt).toContain('파일 변경 없음 — 빌드/타입체크 불필요');
+      expect(result.prompt).not.toContain('변경 파일 목록 + 핵심 diff 요약');
+      expect(result.prompt).not.toContain('cd /repo && 빌드/타입체크 통과');
+    }
+  });
+
+  it('supports an explicit readOnly metadata contract without weakening code tasks', () => {
+    const prompt = 'src/server/gateway.ts 버그 수정';
+
+    expect(buildDefaultVerifierWithFs({
+      prompt,
+      metadata: { projectDir: '/repo', readOnly: true },
+      verifier: undefined,
+    }, () => true)).toBeUndefined();
+    expect(buildDefaultVerifierWithFs({
+      prompt,
+      metadata: { projectDir: '/repo' },
+      verifier: undefined,
+    }, () => true)).toEqual({
+      type: 'run',
+      command: 'npm run build',
+      timeoutMs: 120_000,
+    });
+  });
+
   it('does not assign a build verifier to work reports after prompt enrichment', () => {
     const prompt = [
       '[업무보고 작성] 2026-07-24 오전 보고서를 작성하라.',
@@ -417,8 +550,7 @@ describe('task-intake helpers', () => {
     expect(inferTaskType('새 모듈 구현')).toBe('implementation');
   });
 
-  it('applies the prompt gate to normal or unspecified providers, but not higgsfield', () => {
-    expect(shouldApplyPromptGateForProvider('higgsfield')).toBe(false);
+  it('applies the prompt gate to normal or unspecified providers', () => {
     expect(shouldApplyPromptGateForProvider('codex')).toBe(true);
     expect(shouldApplyPromptGateForProvider(undefined)).toBe(true);
   });

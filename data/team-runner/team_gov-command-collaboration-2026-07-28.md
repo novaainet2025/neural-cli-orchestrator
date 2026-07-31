@@ -20,7 +20,7 @@
 - 메시지 프로토콜(`done:/status:/error:/question:`) 위반 감사: 미확인
 - 의사결정 로그 저장소 존재 여부: 미확인
 - 충돌 해결 프로세스 기록: 미확인
-- opencode/codex/agy/higgsfield의 `/api/agents` 통계: **제공되지 않음** (헤더의 상태 문자열만 T4)
+- opencode/codex/agy/retired-media-provider의 `/api/agents` 통계: **제공되지 않음** (헤더의 상태 문자열만 T4)
 - 실패 4개 태스크의 구체적 원인: **제공되지 않음** (확인 위해 `GET /api/tasks?status=failed` 필요)
 - work_reports 3건의 내용: **제공되지 않음** (확인 위해 `GET /api/work_reports` 필요)
 

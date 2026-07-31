@@ -9,7 +9,7 @@
 - `[work_reports]` 최근 7일 — submitted=3 — [Evidence Tier 3] ✅ 사용 가능
 - `[/api/teams]` 팀 태스크 누계 — 전체=5, 완료=5, 실패=0, 진행=0, 대기=0, 완료율=100.0% — [Evidence Tier 3] ✅ 사용 가능
 - `[/api/agents]` 5개 에이전트 상태 — [Evidence Tier 3] ✅ 사용 가능
-- cursor-agent, agy, higgsfield, retired-provider: **데이터 없음** — `/api/agents`에 해당 에이전트 행이 실데이터로 주입되지 않음 → 미확인
+- cursor-agent, agy, retired-media-provider, retired-provider: **데이터 없음** — `/api/agents`에 해당 에이전트 행이 실데이터로 주입되지 않음 → 미확인
 
 **주요 관찰:**
 1. **claude-code 위험 신호**: 태스크=2300, 성공률=19%, 24시간실패=73 — 전체 태스크의 37.7%를 차지하나 성공률이 극히 낮고 실패 집중도가 높음 (73/2,300=3.17% 단순비지만 24시간에 73건 실패는 운영상 심각). 상태=error.
@@ -38,7 +38,7 @@
 ## (3) 다음에 필요한 작업 제안
 
 **T1 확인 필요 항목 (도구/커맨드 실행 가능할 때):**
-1. `curl -s localhost:6200/api/agents | jq` — 4개 누락 에이전트(cursor-agent, agy, higgsfield, retired-provider) 상태 수집
+1. `curl -s localhost:6200/api/agents | jq` — 4개 누락 에이전트(cursor-agent, agy, retired-media-provider, retired-provider) 상태 수집
 2. `sqlite3 data/nco.db "SELECT COUNT(*), type FROM memories GROUP BY type"` — 지식 저장소 테이블 스키마 및 레코드 수 확인
 3. `cat db/migrations/*.sql | grep -i "memory\|knowledge\|artifact"` — 저장소 마이그레이션 현황
 4. `ls -la .claude/memory_backups/ 2>/dev/null || echo "no backup dir"` — 백업 정책 존재 여부 확인
@@ -55,5 +55,5 @@
 - 삭제 정책(soft-delete/ hard-delete/ TTL) — 미확인
 - 백업·복구 절차 존재 여부 — 미확인
 - 보안·비밀정보 필터링 정책 — 미확인
-- 4개 에이전트(cursor-agent, agy, higgsfield, retired-provider) 상세 상태 — 미확인
+- 4개 에이전트(cursor-agent, agy, retired-media-provider, retired-provider) 상세 상태 — 미확인
 - `/api/teams`와 개별 에이전트 태스크 수 불일치 원인 — 미확인 (스키마 문서 필요)

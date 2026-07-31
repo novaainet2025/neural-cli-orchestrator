@@ -72,9 +72,6 @@ export function sortProvidersByCostOrder(ids: string[]): string[] {
 }
 
 export function isTaskCompatibleProvider(agentId: string, taskType: TaskType): boolean {
-  // Higgsfield의 Type-C 출력은 이미지 job UUID다. code/verify 토론에 섞이면 UUID가
-  // 정상 제안처럼 채택될 수 있으므로 media 요청 외에는 후보가 될 수 없다.
-  if (agentId === 'higgsfield') return taskType === 'media';
   if (taskType === 'media') return agentId === 'agy';
   return true;
 }

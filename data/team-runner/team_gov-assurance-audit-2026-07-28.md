@@ -29,7 +29,7 @@
 | hermes | working | 2173 | **57%** | 2 | **Concerning** |
 | retired-provider | working | 553 | 78% | 1 | Moderate |
 
-**Agents with no data provided** (unverified — no 실데이터 entry): opencode, codex, agy, higgsfield, copilot, openrouter, gemini-deep, aider — 8 of 13+ agents missing.
+**Agents with no data provided** (unverified — no 실데이터 entry): opencode, codex, agy, retired-media-provider, copilot, openrouter, gemini-deep, aider — 8 of 13+ agents missing.
 
 ### Work Reports
 
@@ -63,13 +63,13 @@
 |---|--------|-----------|-------|
 | 1 | **Investigate claude-code** — read latest error logs, check agent configuration, run health endpoint (`:6200/health`) | 73 failures/24h + 19% success = highest risk | Architect |
 | 2 | **Verify hermes 57% success rate** — check agent error logs, inspect recent task failures | Second-worst reliability score | Architect |
-| 3 | **Collect 실데이터 for missing agents** — query `/api/agents` endpoint for opencode, codex, agy, higgsfield, copilot | 8/13+ agents have no observable state | Architect |
+| 3 | **Collect 실데이터 for missing agents** — query `/api/agents` endpoint for opencode, codex, agy, retired-media-provider, copilot | 8/13+ agents have no observable state | Architect |
 | 4 | **Require verification receipts on all work_reports** — audit existing 3 submissions for compliance; enforce receipt format going forward | 100% of current work product lacks evidence-tier documentation | Governance Officer |
 | 5 | **Escalate claude-code failure pattern** — determine root cause (rate-limited? provider error? misconfiguration?) before task count grows beyond 2300 | Failure rate has been sustained across 2300 tasks | Architect / Governance |
 
 ### Unverified / Remaining
 - Verification receipt content for all 3 work_reports: **unknown**
 - Actual HTTP or file-level verification of any 실데이터 value: **not performed** (text-only mode prevents tool use)
-- Agent state for opencode, codex, agy, higgsfield, copilot, openrouter, gemini-deep, aider: **no data provided**
+- Agent state for opencode, codex, agy, retired-media-provider, copilot, openrouter, gemini-deep, aider: **no data provided**
 - Task IDs, descriptions, and failure reasons for the 2 failed tasks: **not provided**
 - Whether claude-code's `error` state is a transient condition or permanent failure: **unknown**

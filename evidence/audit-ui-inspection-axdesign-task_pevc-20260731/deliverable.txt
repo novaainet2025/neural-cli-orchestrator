@@ -1,0 +1,54 @@
+done: AX 착수 전 실행 설계만 수립했습니다. [Evidence Tier 1] `RightPanel.tsx`의 실패 재실행·오류 상세, `CommunicationPanel.tsx`의 계보/메시지/heartbeat, `CollabPanel.tsx`의 락·합의·REST 실패 표시, `useNCOGraph.ts`의 활동 도구 필드를 읽어 확인했습니다. 전·후 `git status --porcelain` 출력도 동일했고 파일 변경은 0건입니다.
+
+## 팀명
+
+AX·에이전트 경험 설계팀
+
+### 1. 점검 스코프 (대상 컴포넌트·뷰포트·시나리오 목록)
+
+`RightPanel`, `CommunicationPanel`, `CollabPanel`, `ActivityTicker`, `App`의 토스트/그래프 상태를 대상으로 1512×945, 1024×768, 390×844에서 점검합니다.
+
+- AX-01: 태스크 입력 근거·담당 에이전트·queued/working/종료 상태
+- AX-02: 세션별 도구/행동/파일/프로젝트 활동 근거
+- AX-03: 실패 원문·분류·재실행 결과
+- AX-04: 초기 로드, REST unavailable/empty, WS live의 출처 구분
+- AX-05: 하위 에이전트 계보, DM/broadcast, heartbeat, 락
+- AX-06: 도구 권한, 사람 인계·승인·수락 정보의 표시 또는 부재 고지
+
+### 2. 산출물 명세 (경로 + 형식 + 필수 필드 표)
+
+|경로|형식|필수 필드|
+|---|---|---|
+|`docs/ui-audit/ax-experience-inspection-plan.md`|Markdown|`planVersion`, `scope`, `viewports`, `scenarioId`, `fixture`, `oracle`, `owner`, `exclusions`|
+|`output/ui-audit/ax-observations.json`|JSON|`schemaVersion`, `runId`, `scenarioId`, `viewport`, `observedAt`, `source`, `expected`, `actual`, `verdict`, `evidence[]`, `consoleErrors[]`, `network[]`|
+|`output/ui-audit/ax-summary.md`|Markdown|`executiveResult`, `passFail`, `failedCriteria`, `reproduction`, `risk`, `remaining`|
+
+### 3. 검증 기준 (측정 가능한 PASS 조건, 임계값 숫자 포함)
+
+- 6개 시나리오 각각 `verdict ∈ {PASS,FAIL}` 및 `evidence.length ≥ 1`.
+- 상태·담당자·prompt·발생시각은 원천 fixture/API와 필드 일치율 100%.
+- 모든 상태 레코드의 `status/source/observedAt` 비공백률 100%.
+- 실패 태스크는 오류 분류+원문 표시율 100%; 재실행 1회 클릭당 `POST` 1건, 3초 내 결과 기록.
+- heartbeat는 경과시간 `>90,000ms`이면 `stale`, 그 이하면 stale 아님: 100% 일치.
+- 권한/인계 데이터가 없으면 공백 대신 `unavailableReason` 표시율 100%.
+
+### 4. 상호 평가 관점 (평가할 팀 2개 + 각 팀에 던질 검증 질문)
+
+- 데이터/API 실패상태 팀(정식 팀명 [미확인]): 500·빈 응답·지연을 어떤 HTTP 본문/시각으로 구분하며, AX 화면의 `source/observedAt`과 100% 대조 가능한가?
+- 접근성·시각회귀 팀(정식 팀명 [미확인]): 세 뷰포트에서 재실행·상태·인계 제어가 잘림 없이 키보드 접근 가능하며, 실패 근거가 읽히는가?
+
+### 5. 반대 의견·위험 (최소 3건, 각각 완화책 포함)
+
+- 기존 `dashboard-visual-test.ts`는 IS·NCO 태스크를 전송함. 완화: 무변경 fixture/격리 서버만 사용.
+- 폴링·WS 시점 차이로 오판 가능. 완화: 원천별 timestamp를 저장하고 8초 이내만 동일 시점 비교.
+- prompt/error에 민감 정보가 있을 수 있음. 완화: 값은 해시·마스킹하고 스키마 검증은 유지.
+- 권한·인계 API 계약은 확인되지 않음. 완화: 계약 부재 자체를 FAIL 또는 명시적 unavailable로 기록.
+
+### 6. Entry/Exit Criteria
+
+Entry: Git 기준선 캡처, 쓰기 없는 격리 fixture, AX-01~06의 성공·실패·빈·지연 데이터, API 원천/시각 제공.  
+Exit: 세 산출물 스키마 검증 100%, 6개 시나리오 판정 100%, 모든 FAIL에 재현 근거 1건 이상, Git 상태 불변.
+
+### 7. [미확인] 목록
+
+실제 런타임/API 본문, 화면 렌더링, 도구 권한·사람 인계 데이터 계약, 다른 8개 팀의 정식 명칭은 미확인입니다. Playwright·스크린샷·테스트는 실행하지 않았습니다.

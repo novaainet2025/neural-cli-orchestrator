@@ -1,0 +1,23 @@
+{
+  "taskId": "task_QiaoWW-V7AoIk2hP",
+  "report": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/audit-report.json",
+    "sha256": "e9e6dbd9167840114fa73c9b4db624092e80526d77193b4f54b0d82cc03da5ec"
+  },
+  "deliverable": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/task-deliverable.md",
+    "sha256": "278cad4a147619307df982ad8909cd564d118ad18c87b68d2df9699ec6ec5016"
+  },
+  "checks": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/machine-checks.json",
+    "sha256": "58b5b082d59ffff8de746be3e94e7f3cfb65bd25b01c4d8dc7b502375cc2fafe"
+  },
+  "negativeControl": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/negative-control.json",
+    "sha256": "eee53ab902e4c58598fa4d9df7f324e13f240a24acb5f297b7256f4d749fb553"
+  },
+  "provenance": {
+    "path": "/Users/nova-ai/project/nco/evidence/org_ui-inspection/team_ui-accessibility/2026-07-31/task_QiaoWW-V7AoIk2hP/provenance.json",
+    "sha256": "4c0cdad03f7ca084af9fcd7ef1e43efe1b45a76d6012034aec01bce9179198a9"
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "schema": "nova-ax.ui-audit-approval.periodic-audit-deliverable.v1",
+  "status": "final",
+  "generatedAt": "2026-07-31T03:43:39.000Z",
+  "scope": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-audit-approval",
+    "subjectTaskId": "task_N73a_tt-ewoyj3hU",
+    "workerTaskId": "task_M7qNwNb3TN8iJXwF",
+    "actorId": "cursor-agent",
+    "workEvidenceDigest": "35b59a303814f32028647f87cf57e815f639a02e7f4d79bb24f1d7bf70e6909b"
+  },
+  "groundTruth": {
+    "subjectTask": {
+      "id": "task_N73a_tt-ewoyj3hU",
+      "status": "failed",
+      "assigned_to": "opencode",
+      "error": "orphaned: server restart (poison — requeued 2x)",
+      "team_id": "team_ui-audit-approval"
+    },
+    "workerTask": {
+      "id": "task_M7qNwNb3TN8iJXwF",
+      "status": "queued",
+      "assigned_to": "cursor-agent",
+      "team_id": "team_ui-audit-approval"
+    },
+    "oversightTotals": {
+      "total": 28,
+      "approved": 19,
+      "rejected": 9,
+      "pending": 0,
+      "consumedReceipts": 13,
+      "activeScopes": 1,
+      "compliantScopes": 1,
+      "unverifiedScopes": 0,
+      "failedScopes": 0,
+      "activeRemediationLoops": 2,
+      "completedRemediationLoops": 3,
+      "exhaustedRemediationLoops": 0,
+      "queuedDirectives": 3,
+      "dispatchedDirectives": 0,
+      "completedDirectives": 5,
+      "cancelledDirectives": 0
+    },
+    "openLoops": [
+      {
+        "id": "vloop_df49259e-6b53-4f6e-8fe6-b33fb1056a77",
+        "task_id": "task_J4g18X1S58eCMt98_ui_approval",
+        "source_actor_id": "designer",
+        "status": "action_required"
+      },
+      {
+        "id": "vloop_e21f5c26-11d4-4110-9548-0faddacdd15b",
+        "task_id": "task_wh8zk8d9NjmytbAf",
+        "source_actor_id": "cursor-agent",
+        "status": "action_required"
+      }
+    ],
+    "uiLive": {
+      "url": "http://127.0.0.1:5173/",
+      "htmlSha256": "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d",
+      "htmlBytes": 664,
+      "containsHtmlDocument": true
+    },
+    "browserEvidence": {
+      "preflightReportSha256": "ddd8cc2c5349c2bdfe645aec76a36515128411f8896cb7d7fed18f9313251aca",
+      "preflightTotals": {
+        "overlaps": 2,
+        "clipped": 0,
+        "offscreen": 21,
+        "tinyTargets": 116,
+        "consoleErrors": 1
+      },
+      "files": [
+        {
+          "name": "preflight-01-initial-desktop.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-01-initial-desktop.png",
+          "byteSize": 84119,
+          "sha256": "883e498c6b5a0309346e912e96994f4666b08254ba9e3b7d19f99d4e0e5fb339"
+        },
+        {
+          "name": "preflight-02-groups-collapsed.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-02-groups-collapsed.png",
+          "byteSize": 84622,
+          "sha256": "b60b51ebc5e5296f6d48d99942fbedb7972b30855deff405a97844867b76c97f"
+        },
+        {
+          "name": "preflight-03-groups-expanded.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-03-groups-expanded.png",
+          "byteSize": 92928,
+          "sha256": "4dd5418d300f0f53c1c8e7142b0e4c6924d83a774f936e99cf74a18244e38046"
+        },
+        {
+          "name": "preflight-03b-hud-open.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-03b-hud-open.png",
+          "byteSize": 100944,
+          "sha256": "eb1eab085e741e557ebb7615284f70827aea7f6d20d6724d0d29b36daba04ba6"
+        },
+        {
+          "name": "preflight-04-spacing-75.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-04-spacing-75.png",
+          "byteSize": 100872,
+          "sha256": "236065329d4cca2b762efae974d74c3a7ebf9189c68787688a11791ee0efe806"
+        },
+        {
+          "name": "preflight-05-spacing-180.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-05-spacing-180.png",
+          "byteSize": 101151,
+          "sha256": "18818b9ce88d932b99bac15e6dc6decfc21992a4b68d7e037341211bb7506e5d"
+        },
+        {
+          "name": "preflight-06-overlays-all-open.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-06-overlays-all-open.png",
+          "byteSize": 124413,
+          "sha256": "f9303e7291ccc0ef77bd1761075f56678cd081b92ed6c6b1369f0aee14ed7209"
+        },
+        {
+          "name": "preflight-07-right-panel-collapsed.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-07-right-panel-collapsed.png",
+          "byteSize": 86936,
+          "sha256": "3dec076299824da0262e146aa745c3aaf47011f22a967ba83522d7899975d8c2"
+        },
+        {
+          "name": "preflight-08-keyboard-focus.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-08-keyboard-focus.png",
+          "byteSize": 124303,
+          "sha256": "c5ea02bc2e06965b6cafdd0856b3ab1720c66b55eaca300620e442be5a4b8c40"
+        },
+        {
+          "name": "preflight-09-tablet-1024.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-09-tablet-1024.png",
+          "byteSize": 111254,
+          "sha256": "d92a3ccb8711350de3afc6a546d2f6afff9091a4301ea33446506de9de725047"
+        },
+        {
+          "name": "preflight-10-mobile-390.png",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-10-mobile-390.png",
+          "byteSize": 83636,
+          "sha256": "3ed644b53f711b589d22c8bd23700c9805d7435cacae1ccc5a42f45692770dd3"
+        },
+        {
+          "name": "preflight-audit-report.json",
+          "path": "/tmp/ui-company-audit.Dzaimg/preflight-audit-report.json",
+          "byteSize": 56856,
+          "sha256": "ddd8cc2c5349c2bdfe645aec76a36515128411f8896cb7d7fed18f9313251aca"
+        },
+        {
+          "name": "live-ui-desktop.png",
+          "path": "/Users/nova-ai/project/nco/.tmp-audit/team_ui-audit-approval-N73a/live-ui-desktop.png",
+          "byteSize": 110281,
+          "sha256": "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0"
+        }
+      ],
+      "liveScreenshotSha256": "4fa44e4df523c42dd2add41ed5c2f05f6abe09b933aa22c004bf559a6a90e0a0"
+    }
+  },
+  "counters": {
+    "teamTaskRows": 40,
+    "axRuns": 28,
+    "approvedRuns": 19,
+    "openLoops": 2,
+    "browserFilesHashed": 13,
+    "liveUiHttpBytes": 664,
+    "liveScreenshotBytes": 110281,
+    "preflightReportBytes": 56856
+  },
+  "executions": [
+    {
+      "name": "curl-nco-teams",
+      "exitCode": 0,
+      "durationMs": 50,
+      "commandHash": "f46a44bda3fa8c06a3bbc4621534d808e0985915294d6744361de9ab29f2ea8a",
+      "outputHash": "8cb33c76740b74d1c6457dd77c0a72e27b9d71c5a7310e68314f96b59b799b4e"
+    },
+    {
+      "name": "curl-ax-oversight",
+      "exitCode": 0,
+      "durationMs": 80,
+      "commandHash": "3e9cc8579aa4557b4958d0c30ead124d185c7fccc3f52578700ca7a8602d0749",
+      "outputHash": "47d53b33e0df07104813660b3a0e4b99bf569e735b7f4d5eeccbad84e6844edb"
+    },
+    {
+      "name": "curl-nco-subject",
+      "exitCode": 0,
+      "durationMs": 40,
+      "commandHash": "72ee142bbe5a10fca914459f7adf9265ec2406e54c95cd7eab8ef1877db01952",
+      "outputHash": "01eae7068d29981a1c7e1a18d42f17e451a4e206b339878bc0b71aa9bec4f271"
+    },
+    {
+      "name": "curl-ui-home",
+      "exitCode": 0,
+      "durationMs": 30,
+      "commandHash": "c131c678e36daa33b17f187d79a8b924ab2ab054c4ebd637cd414bdf69edc414",
+      "outputHash": "68448e8db604c6c6ba47076c0261e4556877e4e462e570e6a1c22a09ac2ce83d"
+    },
+    {
+      "name": "chrome-headless-browser-visual-screenshot",
+      "exitCode": 0,
+      "durationMs": 18393,
+      "commandHash": "c7d5363c80965c0b58d3200574ec527fb1144703fa130a0bbeff4e171378928b",
+      "outputHash": "dd290ee81156a05d8f79757f2617bb8af9aad98f86243f640bfd141b01fb6182"
+    },
+    {
+      "name": "sqlite-nco-team-tasks",
+      "exitCode": 0,
+      "durationMs": 20,
+      "commandHash": "1d1754a85720584812fb78b18e81459954885d2304d00f9784be420bdab8b1aa",
+      "outputHash": "d20159ef0877b8882b66a700f299a3a5403817d2a0cf769a0e3a82d7125b0d30"
+    },
+    {
+      "name": "sqlite-ax-runs",
+      "exitCode": 0,
+      "durationMs": 20,
+      "commandHash": "d36424a2337b719709de69090e36bbeaa67f2c69112508c92c879923dfaa291c",
+      "outputHash": "6c1aadf05b628cc13e7487da0d57c49ef0f9798d31c65eb094a4f4d8cd4db0ca"
+    },
+    {
+      "name": "sqlite-ax-loops",
+      "exitCode": 0,
+      "durationMs": 15,
+      "commandHash": "7ca771fa4e190b1216e381fb076f2524a0e952b484da3463c08d61760523c9b5",
+      "outputHash": "28c629a08934516af40c4b56c9503505390ec0631f472a633d428aff62b8bf5c"
+    }
+  ],
+  "excludedInputs": [
+    "self_report",
+    "work_log",
+    "llm_claim",
+    "self_assigned_score"
+  ]
+}

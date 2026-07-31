@@ -58,7 +58,7 @@ const COLD_START_PRIORS: Record<string, Record<string, number>> = {
   verify:   { 'cursor-agent': 1.5, codex: 1.3, opencode: 1.1, copilot: 1.0 },
   research: { copilot: 1.5, opencode: 1.2, agy: 1.1, 'cursor-agent': 1.0 },
   ui:       { agy: 1.5, opencode: 1.3, codex: 1.1, 'cursor-agent': 1.0 },
-  media:    { higgsfield: 1.8, agy: 1.3 },
+  media:    { agy: 1.3 },
   general:  { opencode: 1.2, codex: 1.1, 'cursor-agent': 1.1 },
 };
 
@@ -80,12 +80,27 @@ const DERIVED_PRIOR_SPAN = 0.09;   // 상한 1.09 — 큐레이션 최저 가산
  * 미등록 id 는 파생하지 않는다 — 퇴출된 프로바이더가 prior 를 얻으면 안 된다.
  */
 function derivedPrior(agentId: string, taskType: string): number | undefined {
+  return derivedPriorFromRank(agentId, capabilityRank(taskType as ProviderTaskType));
+}
+
+function derivedPriorFromRank(agentId: string, ranked: readonly string[]): number | undefined {
   if (!isRegistered(agentId)) return undefined;
-  const ranked = capabilityRank(taskType as ProviderTaskType);
   const position = ranked.indexOf(agentId);
   if (position === -1) return undefined;
   const span = Math.max(1, ranked.length - 1);
   return DERIVED_PRIOR_FLOOR + DERIVED_PRIOR_SPAN * (1 - position / span);
+}
+
+interface PerformanceSummaryRow {
+  avg_quality: number;
+  success_rate: number;
+  total_runs: number;
+  last_updated?: string;
+}
+
+interface OperationalWeight {
+  weight: number;
+  sampleCount: number;
 }
 
 export function computeOperationalReliabilityWeight(
@@ -111,30 +126,10 @@ class AdaptiveScorer {
         `SELECT avg_quality, success_rate, total_runs, last_updated
          FROM agent_performance_summary
          WHERE agent_id=? AND task_type=?`
-      ).get(agentId, taskType) as any;
-
-      const domainPrior = COLD_START_PRIORS[taskType]?.[agentId];
-      const globalPrior = COLD_START_PRIORS['general']?.[agentId];
-      // 큐레이션(도메인 → general) 이 있으면 그것이 우선이고, 없을 때만
-      // config 파생값을 쓴다. 마지막 폴백은 종전과 같은 중립 1.0.
-      const prior = domainPrior ?? globalPrior ?? derivedPrior(agentId, taskType) ?? 1.0;
-      const updatedAt = typeof row?.last_updated === 'string' ? Date.parse(row.last_updated) : Number.NaN;
-      const fresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= PERFORMANCE_FRESHNESS_MS;
-
-      if (!row || row.total_runs < MIN_SAMPLES || !fresh) {
-        // Domain quality data is sparse/stale for several providers. Blend the
-        // cold-start domain prior with recent operational reliability so the
-        // live routers do not keep following a month-old single-provider row.
-        const operational = this.getOperationalWeight(agentId);
-        if (!operational) return prior;
-        const confidence = Math.min(0.7, operational.sampleCount / 50);
-        return operational.weight * confidence + prior * (1 - confidence);
-      }
-
-      // 충분한 데이터: EWM 학습 가중치 + prior 블렌딩 (데이터 적을수록 prior 비중 ↑)
-      const learnedWeight = this.computeWeight(row.avg_quality, row.success_rate);
-      const confidence = Math.min(1, row.total_runs / 20);
-      return learnedWeight * confidence + prior * (1 - confidence);
+      ).get(agentId, taskType) as PerformanceSummaryRow | undefined;
+      const operational = this.getOperationalWeight(agentId);
+      const derivedRank = capabilityRank(taskType as ProviderTaskType);
+      return this.computeWeightFromInputs(agentId, taskType, row, operational, derivedRank);
     } catch {
       return 1.0;
     }
@@ -144,19 +139,41 @@ class AdaptiveScorer {
    * 에이전트 목록에 대한 특정 도메인 가중치 맵 반환
    */
   getWeightsForTask(agentIds: string[], taskType: string): Record<string, number> {
-    const result: Record<string, number> = {};
-    for (const id of agentIds) {
-      result[id] = this.getWeight(id, taskType);
+    if (agentIds.length === 0) return {};
+    if (agentIds.length === 1) {
+      return { [agentIds[0]]: this.getWeight(agentIds[0], taskType) };
     }
-    return result;
+    try {
+      const derivedRank = capabilityRank(taskType as ProviderTaskType);
+      const performanceRows = this.batchFetchPerformanceRows(agentIds, taskType);
+      const operationalWeights = this.batchFetchOperationalWeights(agentIds);
+      const result: Record<string, number> = {};
+      for (const agentId of agentIds) {
+        result[agentId] = this.computeWeightFromInputs(
+          agentId,
+          taskType,
+          performanceRows.get(agentId),
+          operationalWeights.get(agentId) ?? null,
+          derivedRank,
+        );
+      }
+      return result;
+    } catch {
+      const result: Record<string, number> = {};
+      for (const id of agentIds) {
+        result[id] = 1.0;
+      }
+      return result;
+    }
   }
 
   /**
    * 가중치 기준 최적 에이전트 순위
    */
   rankAgents(agentIds: string[], taskType: string): Array<{ agentId: string; weight: number }> {
+    const weights = this.getWeightsForTask(agentIds, taskType);
     return agentIds
-      .map(id => ({ agentId: id, weight: this.getWeight(id, taskType) }))
+      .map(id => ({ agentId: id, weight: weights[id] ?? 1.0 }))
       .sort((a, b) => b.weight - a.weight);
   }
 
@@ -178,11 +195,15 @@ class AdaptiveScorer {
   ): number {
     if (results.length === 0) return 0;
 
+    const weights = this.getWeightsForTask(
+      results.map(({ agentId }) => agentId),
+      taskType,
+    );
     let totalWeight = 0;
     let weightedSum = 0;
 
     for (const { agentId, score } of results) {
-      const w = this.getWeight(agentId, taskType);
+      const w = weights[agentId] ?? 1.0;
       weightedSum += score * w;
       totalWeight += w;
     }
@@ -285,6 +306,81 @@ class AdaptiveScorer {
   }
 
   // ── 내부: 가중치 계산식 ───────────────────────────────────────────────
+  private computeWeightFromInputs(
+    agentId: string,
+    taskType: string,
+    row: PerformanceSummaryRow | undefined,
+    operational: OperationalWeight | null,
+    derivedRank: readonly string[],
+  ): number {
+    const domainPrior = COLD_START_PRIORS[taskType]?.[agentId];
+    const globalPrior = COLD_START_PRIORS['general']?.[agentId];
+    const prior = domainPrior ?? globalPrior ?? derivedPriorFromRank(agentId, derivedRank) ?? 1.0;
+    const updatedAt = typeof row?.last_updated === 'string' ? Date.parse(row.last_updated) : Number.NaN;
+    const fresh = Number.isFinite(updatedAt) && Date.now() - updatedAt <= PERFORMANCE_FRESHNESS_MS;
+
+    if (!row || row.total_runs < MIN_SAMPLES || !fresh) {
+      if (!operational) return prior;
+      const confidence = Math.min(0.7, operational.sampleCount / 50);
+      return operational.weight * confidence + prior * (1 - confidence);
+    }
+
+    const learnedWeight = this.computeWeight(row.avg_quality, row.success_rate);
+    const confidence = Math.min(1, row.total_runs / 20);
+    return learnedWeight * confidence + prior * (1 - confidence);
+  }
+
+  private batchFetchPerformanceRows(
+    agentIds: string[],
+    taskType: string,
+  ): Map<string, PerformanceSummaryRow> {
+    const db = getDb();
+    const placeholders = agentIds.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT agent_id, avg_quality, success_rate, total_runs, last_updated
+       FROM agent_performance_summary
+       WHERE agent_id IN (${placeholders}) AND task_type=?`,
+    ).all(...agentIds, taskType) as Array<PerformanceSummaryRow & { agent_id: string }>;
+    const result = new Map<string, PerformanceSummaryRow>();
+    for (const row of rows) {
+      result.set(row.agent_id, row);
+    }
+    return result;
+  }
+
+  private batchFetchOperationalWeights(agentIds: string[]): Map<string, OperationalWeight> {
+    const db = getDb();
+    const placeholders = agentIds.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT agent_id,
+             COUNT(*) AS samples,
+             AVG(success) AS success_rate,
+             AVG(CASE WHEN success=1 THEN duration_ms END) AS avg_duration_ms
+      FROM agent_evolution_log
+      WHERE agent_id IN (${placeholders})
+        AND created_at >= datetime('now', ?)
+      GROUP BY agent_id
+    `).all(...agentIds, `-${OPERATIONAL_WINDOW_DAYS} days`) as Array<{
+      agent_id: string;
+      samples?: number;
+      success_rate?: number;
+      avg_duration_ms?: number;
+    }>;
+    const result = new Map<string, OperationalWeight>();
+    for (const row of rows) {
+      const sampleCount = Number(row.samples ?? 0);
+      if (sampleCount < MIN_SAMPLES) continue;
+      result.set(row.agent_id, {
+        sampleCount,
+        weight: computeOperationalReliabilityWeight(
+          Number(row.success_rate ?? 0),
+          Number(row.avg_duration_ms ?? 0),
+        ),
+      });
+    }
+    return result;
+  }
+
   private computeWeight(avgQuality: number, successRate: number): number {
     // quality 0-100 → 0-1.5 (75점 = 1.0 기준점)
     const qualityWeight = (avgQuality / 75) * 1.0;

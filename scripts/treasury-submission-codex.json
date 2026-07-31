@@ -1,0 +1,191 @@
+{
+  "taskId": "task_xvV9Pw13uv63Tn0v",
+  "companyId": "org_nco-government",
+  "teamId": "team_gov-government-treasury",
+  "actorId": "codex",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/gov-government-treasury/2026-07-30/audit-artifact.json",
+    "expectedSha256": "ddbd32c38bd12a7e0f8fd1455426886a53fe036675b9dbcacf96e56f5de12b5c",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "ddbd32c38bd12a7e0f8fd1455426886a53fe036675b9dbcacf96e56f5de12b5c",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "sha256-file-observer",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:51:38.104Z",
+      "evidenceHash": "ddbd32c38bd12a7e0f8fd1455426886a53fe036675b9dbcacf96e56f5de12b5c"
+    }
+  },
+  "measurements": [
+    {
+      "name": "completed-team-task-rows",
+      "unit": "tasks",
+      "baseline": 0,
+      "current": 15,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 17,
+      "provenance": {
+        "kind": "ci",
+        "producer": "sqlite-readonly-task-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "c34cbbe3cf66c3a7a21a85c0f0238bb3164f4162273129480652dac7b8f099cb"
+      }
+    },
+    {
+      "name": "submitted-work-report-rows",
+      "unit": "reports",
+      "baseline": 0,
+      "current": 9,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 9,
+      "provenance": {
+        "kind": "ci",
+        "producer": "sqlite-readonly-work-report-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "846b1e6db45d398da6a5f43010614d106350f4bdf31b0e2c387dc65eb2830abd"
+      }
+    },
+    {
+      "name": "hashed-source-artifacts",
+      "unit": "files",
+      "baseline": 0,
+      "current": 4,
+      "target": 4,
+      "direction": "higher_is_better",
+      "sampleSize": 4,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "filesystem-sha256-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "9260796bb374bf8e177d4299cb5085b5988a87b5aee4ba8d3b1c9e69df0c0e73"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "nova-ax-verification-suite",
+      "exitCode": 0,
+      "durationMs": 2205,
+      "commandHash": "b7d2576517a8e38d6547cd7d0efd8a453291390302adf065557974a14d87436c",
+      "outputHash": "1f5a3c6fddd9cda8837aef8dbef82839b7b44d6a10bf316f6acf62c9be706559",
+      "provenance": {
+        "kind": "ci",
+        "producer": "nova-ax-verification-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "1f5a3c6fddd9cda8837aef8dbef82839b7b44d6a10bf316f6acf62c9be706559"
+      }
+    },
+    {
+      "name": "nco-db-quick-check",
+      "exitCode": 0,
+      "durationMs": 4037,
+      "commandHash": "980db388078bc802042ca842b287897a33416879a09296700da3d53709da0b9e",
+      "outputHash": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+      "provenance": {
+        "kind": "ci",
+        "producer": "nco-sqlite-integrity-checker",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"
+      }
+    },
+    {
+      "name": "nova-ax-db-quick-check",
+      "exitCode": 0,
+      "durationMs": 464,
+      "commandHash": "669933a152169e198f98182ca80b3103de50ea57375466edd7a2b399ad25d64a",
+      "outputHash": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+      "provenance": {
+        "kind": "ci",
+        "producer": "nova-ax-sqlite-integrity-checker",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:51:38.104Z",
+        "evidenceHash": "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "e901365862ce58bb3fbe9353abff486988e3d84531d89776a429c4562293f0b5",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "audit-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:51:38.104Z",
+      "evidenceHash": "e901365862ce58bb3fbe9353abff486988e3d84531d89776a429c4562293f0b5"
+    }
+  },
+  "requirements": [
+    {
+      "id": "active-verification-scope",
+      "satisfied": true,
+      "evidenceHashes": [
+        "1ec13fbd4757b97ec8e5cee437b8b7637820492a2787b525320e836ba31f2e65"
+      ]
+    },
+    {
+      "id": "directive-binding",
+      "satisfied": true,
+      "evidenceHashes": [
+        "460900b59b88bb6d830e0c892ff9d705a0919830e451d31dbecc7b52e88144c2"
+      ]
+    },
+    {
+      "id": "actual-team-results-collected",
+      "satisfied": true,
+      "evidenceHashes": [
+        "c34cbbe3cf66c3a7a21a85c0f0238bb3164f4162273129480652dac7b8f099cb",
+        "eba3a8efa931003b45c6b87445460158da02e8a92a6a4d9c983f070b1568f199",
+        "846b1e6db45d398da6a5f43010614d106350f4bdf31b0e2c387dc65eb2830abd"
+      ]
+    },
+    {
+      "id": "source-artifacts-hashed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "d116ce63c138706ce98efad4d2cc68c69949998fb60e5cd657946e945a9593e1",
+        "5c289230d36687723ac427c5f24d97cdfae0ac3c1dc0e123aa74aa86f1d2c873",
+        "47c81b90d8e8cd0b3834e7b03e40add9d0cfa7f9f391703c8915f032348cc0a9",
+        "0ae7390f43bc769bc3ba86c5928d7247f3f07f3824acc366721c7d166329839b"
+      ]
+    },
+    {
+      "id": "independent-machine-checks-pass",
+      "satisfied": true,
+      "evidenceHashes": [
+        "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+        "2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df",
+        "1f5a3c6fddd9cda8837aef8dbef82839b7b44d6a10bf316f6acf62c9be706559"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "audit-goal-evidence-linker",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:51:38.104Z",
+      "evidenceHash": "549ba4ee7159909ecc9bffa0fe96c7a958ee16e7c154a2eb4226106864fc17bc"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "Machine classification: final JSON audit artifact with no HTML or interactive UI surface.",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "artifact-surface-classifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:51:38.104Z",
+      "evidenceHash": "a77a38a90af564cc0b9b749febc9e744ae86db8c9a758181712ae205994039a4"
+    }
+  }
+}

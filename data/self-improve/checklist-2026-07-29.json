@@ -1,0 +1,1917 @@
+{
+  "generated_at": "2026-07-29T22:25:33+0900",
+  "date": "2026-07-29",
+  "total_items": 235,
+  "by_category": {
+    "build": 1,
+    "command": 24,
+    "health": 1,
+    "hook": 85,
+    "mcp": 1,
+    "plugin": 4,
+    "provider": 8,
+    "script": 22,
+    "skill": 12,
+    "team": 77
+  },
+  "sources": {
+    "provider": "config/ai-providers.json (8)",
+    "team": "/api/teams (77)",
+    "hook": ".claude/hooks + ~/.claude/hooks (85)",
+    "script": "scripts/*.sh (22)",
+    "command": ".claude/commands/*.md (24)",
+    "skill": "~/.claude/skills/*/SKILL.md (12)",
+    "plugin": "~/.claude/plugins/cache/* (4)",
+    "mcp": "src/mcp grep (expected≥42)",
+    "build": "npx tsc --noEmit",
+    "health": "/health"
+  },
+  "missing_sources": [],
+  "items": [
+    {
+      "id": "provider:claude-code",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "claude-code",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:opencode",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "opencode",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:codex",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "codex",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:cursor-agent",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "cursor-agent",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:ollama",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "ollama",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:agy",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "agy",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:hermes",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "hermes",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "provider:retired-media-provider",
+      "category": "provider",
+      "kind": "provider-live",
+      "ref": "retired-media-provider",
+      "priority": 4,
+      "enabled": true
+    },
+    {
+      "id": "team:team_sns",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_sns",
+      "priority": 7,
+      "name": "SNS 블로그 홍보팀",
+      "has_charter": true,
+      "slug": "sns"
+    },
+    {
+      "id": "team:team_cli-core",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_cli-core",
+      "priority": 7,
+      "name": "CLI 코어 개발팀",
+      "has_charter": true,
+      "slug": "cli-core"
+    },
+    {
+      "id": "team:team_self-learning",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_self-learning",
+      "priority": 7,
+      "name": "자가학습팀",
+      "has_charter": true,
+      "slug": "self-learning"
+    },
+    {
+      "id": "team:team_self-improvement",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_self-improvement",
+      "priority": 7,
+      "name": "자가개선팀",
+      "has_charter": true,
+      "slug": "self-improvement"
+    },
+    {
+      "id": "team:team_error-prevention",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_error-prevention",
+      "priority": 7,
+      "name": "중복에러방지팀",
+      "has_charter": true,
+      "slug": "error-prevention"
+    },
+    {
+      "id": "team:team_governance-officer",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_governance-officer",
+      "priority": 7,
+      "name": "Governance Officer (governance-officer)",
+      "has_charter": true,
+      "slug": "governance-officer"
+    },
+    {
+      "id": "team:team_ax-security",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-security",
+      "priority": 7,
+      "name": "Security Agent (ax-security)",
+      "has_charter": true,
+      "slug": "ax-security"
+    },
+    {
+      "id": "team:team_hr-director",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_hr-director",
+      "priority": 7,
+      "name": "Team Lifecycle HR Director",
+      "has_charter": true,
+      "slug": "hr-director"
+    },
+    {
+      "id": "team:team_ax-docs",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-docs",
+      "priority": 7,
+      "name": "Docs & Spec Agent (ax-docs)",
+      "has_charter": true,
+      "slug": "ax-docs"
+    },
+    {
+      "id": "team:team_ax-git",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-git",
+      "priority": 7,
+      "name": "Git Manager (ax-git)",
+      "has_charter": true,
+      "slug": "ax-git"
+    },
+    {
+      "id": "team:team_infra-engineer",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_infra-engineer",
+      "priority": 7,
+      "name": "Infrastructure Engineer (infra-engineer)",
+      "has_charter": true,
+      "slug": "infra-engineer"
+    },
+    {
+      "id": "team:team_marketing-lead",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_marketing-lead",
+      "priority": 7,
+      "name": "Marketing Lead (marketing-lead)",
+      "has_charter": true,
+      "slug": "marketing-lead"
+    },
+    {
+      "id": "team:team_ax-research",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-research",
+      "priority": 7,
+      "name": "Research Agent (ax-research)",
+      "has_charter": true,
+      "slug": "ax-research"
+    },
+    {
+      "id": "team:team_support-lead",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_support-lead",
+      "priority": 7,
+      "name": "Support Lead (support-lead)",
+      "has_charter": true,
+      "slug": "support-lead"
+    },
+    {
+      "id": "team:team_ax-expert-security",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-expert-security",
+      "priority": 7,
+      "name": "보안 전문가 Expert (ax-expert-보안-전문가)",
+      "has_charter": true,
+      "slug": "ax-expert-security"
+    },
+    {
+      "id": "team:team_research-discovery",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-discovery",
+      "priority": 7,
+      "name": "탐색·수집팀 (Discovery)",
+      "has_charter": true,
+      "slug": "research-discovery"
+    },
+    {
+      "id": "team:team_research-analysis",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-analysis",
+      "priority": 7,
+      "name": "분석·추론팀 (Analysis)",
+      "has_charter": true,
+      "slug": "research-analysis"
+    },
+    {
+      "id": "team:team_research-verification",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-verification",
+      "priority": 7,
+      "name": "검증·팩트체크팀 (Verify)",
+      "has_charter": true,
+      "slug": "research-verification"
+    },
+    {
+      "id": "team:team_research-writing",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-writing",
+      "priority": 7,
+      "name": "집필·리포팅팀 (Report)",
+      "has_charter": true,
+      "slug": "research-writing"
+    },
+    {
+      "id": "team:team_research-visualization",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-visualization",
+      "priority": 7,
+      "name": "시각화·미디어팀 (Viz)",
+      "has_charter": true,
+      "slug": "research-visualization"
+    },
+    {
+      "id": "team:team_content-quality",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_content-quality",
+      "priority": 7,
+      "name": "고품질 검수팀",
+      "has_charter": true,
+      "slug": "content-quality"
+    },
+    {
+      "id": "team:team_computer-use-control",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_computer-use-control",
+      "priority": 7,
+      "name": "Computer Use 제어 코디네이터팀",
+      "has_charter": true,
+      "slug": "computer-use-control"
+    },
+    {
+      "id": "team:team_computer-use-queue",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_computer-use-queue",
+      "priority": 7,
+      "name": "Computer Use 요청·대기·보고팀",
+      "has_charter": true,
+      "slug": "computer-use-queue"
+    },
+    {
+      "id": "team:team_tech-port-01-source-discovery",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-01-source-discovery",
+      "priority": 7,
+      "name": "01 Source Discovery",
+      "has_charter": true,
+      "slug": "tech-port-01-source-discovery"
+    },
+    {
+      "id": "team:team_tech-port-02-safety-license",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-02-safety-license",
+      "priority": 7,
+      "name": "02 Safety and License",
+      "has_charter": true,
+      "slug": "tech-port-02-safety-license"
+    },
+    {
+      "id": "team:team_tech-port-03-recovery-checkpoint",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-03-recovery-checkpoint",
+      "priority": 7,
+      "name": "03 Recovery Checkpoint",
+      "has_charter": true,
+      "slug": "tech-port-03-recovery-checkpoint"
+    },
+    {
+      "id": "team:team_tech-port-04-baseline-benchmark",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-04-baseline-benchmark",
+      "priority": 7,
+      "name": "04 Baseline Benchmark",
+      "has_charter": true,
+      "slug": "tech-port-04-baseline-benchmark"
+    },
+    {
+      "id": "team:team_tech-port-05-upgrade-regression",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-05-upgrade-regression",
+      "priority": 7,
+      "name": "05 Upgrade Regression",
+      "has_charter": true,
+      "slug": "tech-port-05-upgrade-regression"
+    },
+    {
+      "id": "team:team_tech-port-07-value-gate-report",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-07-value-gate-report",
+      "priority": 7,
+      "name": "07 Value Gate Report",
+      "has_charter": true,
+      "slug": "tech-port-07-value-gate-report"
+    },
+    {
+      "id": "team:team_tech-port-09-post-migration-verify",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-09-post-migration-verify",
+      "priority": 7,
+      "name": "09 Post-migration Verification",
+      "has_charter": true,
+      "slug": "tech-port-09-post-migration-verify"
+    },
+    {
+      "id": "team:team_triad-build-verify",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_triad-build-verify",
+      "priority": 7,
+      "name": "Triad Build & Verify",
+      "has_charter": true,
+      "slug": "triad-build-verify"
+    },
+    {
+      "id": "team:team_triad-command-judge",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_triad-command-judge",
+      "priority": 7,
+      "name": "Triad Command & Judge",
+      "has_charter": true,
+      "slug": "triad-command-judge"
+    },
+    {
+      "id": "team:team_triad-experience-challenge",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_triad-experience-challenge",
+      "priority": 7,
+      "name": "Triad Experience Challenge",
+      "has_charter": true,
+      "slug": "triad-experience-challenge"
+    },
+    {
+      "id": "team:team_web-scrape-01-intake-strategy",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-01-intake-strategy",
+      "priority": 7,
+      "name": "01 Intake Strategy and Compliance",
+      "has_charter": true,
+      "slug": "web-scrape-01-intake-strategy"
+    },
+    {
+      "id": "team:team_web-scrape-02-source-discovery",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-02-source-discovery",
+      "priority": 7,
+      "name": "02 Source Discovery and Mapping",
+      "has_charter": true,
+      "slug": "web-scrape-02-source-discovery"
+    },
+    {
+      "id": "team:team_web-scrape-03-static-implementation",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-03-static-implementation",
+      "priority": 7,
+      "name": "03 Static Extraction Implementation",
+      "has_charter": true,
+      "slug": "web-scrape-03-static-implementation"
+    },
+    {
+      "id": "team:team_web-scrape-04-dynamic-implementation",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-04-dynamic-implementation",
+      "priority": 7,
+      "name": "04 Dynamic Browser Implementation",
+      "has_charter": true,
+      "slug": "web-scrape-04-dynamic-implementation"
+    },
+    {
+      "id": "team:team_web-scrape-05-data-analysis",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-05-data-analysis",
+      "priority": 7,
+      "name": "05 Data Analysis and Normalization",
+      "has_charter": true,
+      "slug": "web-scrape-05-data-analysis"
+    },
+    {
+      "id": "team:team_web-scrape-06-verification-quality",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-06-verification-quality",
+      "priority": 7,
+      "name": "06 Verification and Data Quality",
+      "has_charter": true,
+      "slug": "web-scrape-06-verification-quality"
+    },
+    {
+      "id": "team:team_web-scrape-07-report-delivery",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_web-scrape-07-report-delivery",
+      "priority": 7,
+      "name": "07 Reporting and Delivery",
+      "has_charter": true,
+      "slug": "web-scrape-07-report-delivery"
+    },
+    {
+      "id": "team:team_hr-incubator-2026-w30",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_hr-incubator-2026-w30",
+      "priority": 7,
+      "name": "HR Incubator 2026-W30",
+      "has_charter": true,
+      "slug": "hr-incubator-2026-w30"
+    },
+    {
+      "id": "team:team_gov-engineering-build",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-engineering-build",
+      "priority": 7,
+      "name": "Build and Automation",
+      "has_charter": true,
+      "slug": "gov-engineering-build"
+    },
+    {
+      "id": "team:team_gov-command-collaboration",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-command-collaboration",
+      "priority": 7,
+      "name": "Collaboration Mesh and Protocol",
+      "has_charter": true,
+      "slug": "gov-command-collaboration"
+    },
+    {
+      "id": "team:team_gov-government-constitution",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-government-constitution",
+      "priority": 7,
+      "name": "Constitution and Policy",
+      "has_charter": true,
+      "slug": "gov-government-constitution"
+    },
+    {
+      "id": "team:team_gov-evolution-learning",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-evolution-learning",
+      "priority": 7,
+      "name": "Continuous Learning",
+      "has_charter": true,
+      "slug": "gov-evolution-learning"
+    },
+    {
+      "id": "team:team_gov-evolution-evaluation",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-evolution-evaluation",
+      "priority": 7,
+      "name": "Evaluation and Simulation",
+      "has_charter": true,
+      "slug": "gov-evolution-evaluation"
+    },
+    {
+      "id": "team:team_gov-assurance-audit",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-assurance-audit",
+      "priority": 7,
+      "name": "Evidence Audit and Compliance",
+      "has_charter": true,
+      "slug": "gov-assurance-audit"
+    },
+    {
+      "id": "team:team_gov-engineering-experts",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-engineering-experts",
+      "priority": 7,
+      "name": "Expert Council and Research",
+      "has_charter": true,
+      "slug": "gov-engineering-experts"
+    },
+    {
+      "id": "team:team_gov-government-hr",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-government-hr",
+      "priority": 7,
+      "name": "HR Capability and Lifecycle",
+      "has_charter": true,
+      "slug": "gov-government-hr"
+    },
+    {
+      "id": "team:team_gov-command-incident",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-command-incident",
+      "priority": 7,
+      "name": "Incident and Continuity Command",
+      "has_charter": true,
+      "slug": "gov-command-incident"
+    },
+    {
+      "id": "team:team_gov-assurance-verification",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-assurance-verification",
+      "priority": 7,
+      "name": "Independent Verification",
+      "has_charter": true,
+      "slug": "gov-assurance-verification"
+    },
+    {
+      "id": "team:team_gov-engineering-release",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-engineering-release",
+      "priority": 7,
+      "name": "Integration and Release",
+      "has_charter": true,
+      "slug": "gov-engineering-release"
+    },
+    {
+      "id": "team:team_gov-evolution-memory",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-evolution-memory",
+      "priority": 7,
+      "name": "Knowledge and Memory Stewardship",
+      "has_charter": true,
+      "slug": "gov-evolution-memory"
+    },
+    {
+      "id": "team:team_gov-command-intake",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-command-intake",
+      "priority": 7,
+      "name": "Mission Intake and Portfolio",
+      "has_charter": true,
+      "slug": "gov-command-intake"
+    },
+    {
+      "id": "team:team_gov-command-routing",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-command-routing",
+      "priority": 7,
+      "name": "Orchestrator and Adaptive Routing",
+      "has_charter": true,
+      "slug": "gov-command-routing"
+    },
+    {
+      "id": "team:team_gov-engineering-reliability",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-engineering-reliability",
+      "priority": 7,
+      "name": "Platform Reliability and Operations",
+      "has_charter": true,
+      "slug": "gov-engineering-reliability"
+    },
+    {
+      "id": "team:team_gov-assurance-redteam",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-assurance-redteam",
+      "priority": 7,
+      "name": "Red Team and Adversarial Review",
+      "has_charter": true,
+      "slug": "gov-assurance-redteam"
+    },
+    {
+      "id": "team:team_gov-assurance-resilience",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-assurance-resilience",
+      "priority": 7,
+      "name": "Reliability and Resilience Review",
+      "has_charter": true,
+      "slug": "gov-assurance-resilience"
+    },
+    {
+      "id": "team:team_gov-government-rights",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-government-rights",
+      "priority": 7,
+      "name": "Rights Ethics and Human Sovereignty",
+      "has_charter": true,
+      "slug": "gov-government-rights"
+    },
+    {
+      "id": "team:team_gov-assurance-safety",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-assurance-safety",
+      "priority": 7,
+      "name": "Security Privacy and Safety",
+      "has_charter": true,
+      "slug": "gov-assurance-safety"
+    },
+    {
+      "id": "team:team_gov-evolution-improvement",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-evolution-improvement",
+      "priority": 7,
+      "name": "Self-Improvement Laboratory",
+      "has_charter": true,
+      "slug": "gov-evolution-improvement"
+    },
+    {
+      "id": "team:team_gov-evolution-skills",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-evolution-skills",
+      "priority": 7,
+      "name": "Skill Academy and Capability Transfer",
+      "has_charter": true,
+      "slug": "gov-evolution-skills"
+    },
+    {
+      "id": "team:team_gov-command-strategic",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-command-strategic",
+      "priority": 7,
+      "name": "Strategic Command",
+      "has_charter": true,
+      "slug": "gov-command-strategic"
+    },
+    {
+      "id": "team:team_gov-engineering-architecture",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-engineering-architecture",
+      "priority": 7,
+      "name": "Systems Architecture",
+      "has_charter": true,
+      "slug": "gov-engineering-architecture"
+    },
+    {
+      "id": "team:team_gov-government-transparency",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-government-transparency",
+      "priority": 7,
+      "name": "Transparency Appeals and Public Record",
+      "has_charter": true,
+      "slug": "gov-government-transparency"
+    },
+    {
+      "id": "team:team_gov-government-treasury",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_gov-government-treasury",
+      "priority": 7,
+      "name": "Treasury and Resource Stewardship",
+      "has_charter": true,
+      "slug": "gov-government-treasury"
+    },
+    {
+      "id": "team:team_kd-quality-hygiene",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_kd-quality-hygiene",
+      "priority": 7,
+      "name": "Quality and Hygiene",
+      "has_charter": true,
+      "slug": "kd-quality-hygiene"
+    },
+    {
+      "id": "team:team_tech-port-06-decision-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-06-decision-2026",
+      "priority": 7,
+      "name": "06 Porting Decision Council",
+      "has_charter": true,
+      "slug": "tech-port-06-improvement-debate"
+    },
+    {
+      "id": "team:team_tech-port-08-delivery-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_tech-port-08-delivery-2026",
+      "priority": 7,
+      "name": "08 Migration Delivery",
+      "has_charter": true,
+      "slug": "tech-port-08-migration-implementation"
+    },
+    {
+      "id": "team:team_ax-business-operations-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-business-operations-2026",
+      "priority": 7,
+      "name": "Business Operations & Revenue Intelligence",
+      "has_charter": true,
+      "slug": "ax-business-operations"
+    },
+    {
+      "id": "team:team_cli-experience-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_cli-experience-2026",
+      "priority": 7,
+      "name": "CLI 경험 설계팀",
+      "has_charter": true,
+      "slug": "cli-design"
+    },
+    {
+      "id": "team:team_cli-assurance-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_cli-assurance-2026",
+      "priority": 7,
+      "name": "CLI 독립 검증팀",
+      "has_charter": true,
+      "slug": "cli-qa"
+    },
+    {
+      "id": "team:team_computer-use-assurance-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_computer-use-assurance-2026",
+      "priority": 7,
+      "name": "Computer Use 독립 안전·감사팀",
+      "has_charter": true,
+      "slug": "computer-use-safety"
+    },
+    {
+      "id": "team:team_ax-decision-coordination-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_ax-decision-coordination-2026",
+      "priority": 7,
+      "name": "Decision & Coordination Office",
+      "has_charter": true,
+      "slug": "ax-decision-coordination"
+    },
+    {
+      "id": "team:team_research-strategy-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_research-strategy-2026",
+      "priority": 7,
+      "name": "리서치 전략·방법론팀",
+      "has_charter": true,
+      "slug": "research-strategy"
+    },
+    {
+      "id": "team:team_content-strategy-2026",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_content-strategy-2026",
+      "priority": 7,
+      "name": "콘텐츠 전략·근거기획팀",
+      "has_charter": true,
+      "slug": "content-planning"
+    },
+    {
+      "id": "team:team_content-build",
+      "category": "team",
+      "kind": "team-charter",
+      "ref": "team_content-build",
+      "priority": 7,
+      "name": "고품질 콘텐츠 제작팀",
+      "has_charter": true,
+      "slug": "content-build"
+    },
+    {
+      "id": "hook:advisor-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/advisor-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:advisor-stop.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/advisor-stop.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:anthropic-usage-bars.inc.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/anthropic-usage-bars.inc.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:canonical-drift-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/canonical-drift-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:carryover-collect.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/carryover-collect.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:carryover.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/carryover.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:end-of-turn-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/end-of-turn-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:file-conflict-guard.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/file-conflict-guard.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:fleet-session-watchdog.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/fleet-session-watchdog.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:retired-media-provider-auth-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:improvement-inject.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/improvement-inject.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:inter-session-auto-responder.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/inter-session-auto-responder.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:inter-session-idle-emit.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/inter-session-idle-emit.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:inter-session-name.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/inter-session-name.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:inter-session-setup.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/inter-session-setup.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:loop-lesson.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/loop-lesson.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:memory-snapshot.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/memory-snapshot.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-auto-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-auto-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-autoresponder.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-autoresponder.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-broadcast.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-broadcast.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-delegate.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-delegate.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-heartbeat-daemon.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-heartbeat-daemon.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-heartbeat.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-heartbeat.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-inbox-poller.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-inbox-poller.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-list.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-list.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-plugin-guard.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-plugin-guard.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-precheck.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-precheck.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-progress.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-progress.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-receiver-spawn.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-receiver-spawn.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-register.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-register.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-send.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-send.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-status.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-status.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:mesh-task-guard.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/mesh-task-guard.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-agent-enforce.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-agent-enforce.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-auto-heal-worker.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-auto-heal-worker.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-auto-heal.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-auto-heal.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-autoloop-stop.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-autoloop-stop.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-bridge-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-bridge-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-collab-inject.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-collab-inject.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-collab-record.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-collab-record.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-failure-capture.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-failure-capture.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-gap-postsession.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-gap-postsession.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-health-monitor.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-health-monitor.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-name-resolver.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-name-resolver.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-perf-tracker.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-perf-tracker.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-redis-ensure.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-redis-ensure.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-route.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-route.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-rules-inject.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-rules-inject.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-secret-scan.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-secret-scan.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-session-report.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-session-report.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-session-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-session-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-statusline.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-statusline.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-stop-global.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-stop-global.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-stop-quality-gate.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-stop-quality-gate.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-task-classifier.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-task-classifier.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-track-agent-use.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-track-agent-use.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-userprompt-dispatch.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-userprompt-dispatch.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-workflow-inject.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-workflow-inject.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-workflow-rules.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nco-workflow-rules.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:no-false-report-gate.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/no-false-report-gate.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nova-sns-stop-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-sns-stop-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nova-voice-tts-pretool.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-pretool.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nova-voice-tts-progress.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts-progress.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nova-voice-tts.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/nova-voice-tts.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:obsidian-context-inject.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/obsidian-context-inject.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:obsidian-sync-on-stop.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/obsidian-sync-on-stop.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:patch-inter-session.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/patch-inter-session.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:post-edit-nco-review.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/post-edit-nco-review.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:post-install-sync.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/post-install-sync.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:pre-edit-nco-gate.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/pre-edit-nco-gate.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:secret-exfil-guard.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/secret-exfil-guard.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:session-goal-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/session-goal-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:session-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/session-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:statusline-limit-guard.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/statusline-limit-guard.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:test.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/test.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:tool-activity-reporter.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/tool-activity-reporter.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:universal-verify.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/universal-verify.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:user-prompt-nco-context.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/user-prompt-nco-context.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:user-prompt-nco-route.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/user-prompt-nco-route.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:user-prompt-status.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/.claude/hooks/user-prompt-status.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:end-of-turn-check.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/.claude/hooks/end-of-turn-check.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-statusline.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/.claude/hooks/nco-statusline.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:nco-stop-quality-gate.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/.claude/hooks/nco-stop-quality-gate.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:session-start.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/.claude/hooks/session-start.sh",
+      "priority": 2
+    },
+    {
+      "id": "hook:user-prompt-nco-context.sh",
+      "category": "hook",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/.claude/hooks/user-prompt-nco-context.sh",
+      "priority": 2
+    },
+    {
+      "id": "script:scripts/auto-report.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/auto-report.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/bootstrap.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/bootstrap.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/brain-capture.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/brain-capture.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/copy-nova-docs-design.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/copy-nova-docs-design.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/daily-blog-promo.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/daily-blog-promo.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/dynamic-workflow.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/dynamic-workflow.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/fleet-sync.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/fleet-sync.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/nco-daily-self-review.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/nco-daily-self-review.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/obsidian-provider-context-wire.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/obsidian-provider-context-wire.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/obsidian-provider-mirror.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/obsidian-provider-mirror.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/obsidian-second-brain-build.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/obsidian-second-brain-build.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-benchmark.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-benchmark.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-fix-test.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-fix-test.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/run-patch.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-patch.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/self-improve/_synthtest.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/self-improve/_synthtest.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/self-improve/build-checklist.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/self-improve/build-checklist.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/self-improve/run-checks.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/self-improve/run-checks.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/setup-nco.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/setup-nco.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/team-runner.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/team-runner.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/test-bootstrap.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/test-bootstrap.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/tool-discovery.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/tool-discovery.sh",
+      "priority": 3
+    },
+    {
+      "id": "script:scripts/workflow-score.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/workflow-score.sh",
+      "priority": 3
+    },
+    {
+      "id": "command:claude-gemma-pipeline.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/claude-gemma-pipeline.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-agent.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-agent.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-ceo.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-ceo.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-commander.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-commander.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-conductor.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-conductor.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-discussion.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-discussion.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-do.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-do.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-gap.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-gap.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-kanban.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-kanban.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-leaderboard.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-leaderboard.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-learn.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-learn.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-mesh-ping.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-mesh-ping.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-mesh.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-mesh.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-metrics.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-metrics.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-next-parallel.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-next-parallel.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-next.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-next.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-ollama.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-ollama.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-plan.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-plan.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-providers.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-providers.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-safety.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-safety.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-start.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-start.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-status.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-status.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-task.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-task.md",
+      "priority": 8
+    },
+    {
+      "id": "command:nco-workflow-full.md",
+      "category": "command",
+      "kind": "file-nonempty",
+      "ref": "/Users/nova-ai/project/nco/.claude/commands/nco-workflow-full.md",
+      "priority": 8
+    },
+    {
+      "id": "skill:agent-reach",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/agent-reach/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:anthropics-skills-pdf-74ffa04d",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/anthropics-skills-pdf-74ffa04d/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:gs-docs-writer",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/gs-docs-writer/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:hwp-edit-workflow",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/hwp-edit-workflow/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:hwp-toolkit-guide",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/hwp-toolkit-guide/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:hwp-unified",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/hwp-unified/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nco-orchestration",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nco-orchestration/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-ax-control",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-ax-control/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-browser-127-0-0-1-4b6d2915",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-4b6d2915/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-browser-127-0-0-1-6bb8c4dd",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-6bb8c4dd/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:nova-browser-127-0-0-1-b244b52e",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-b244b52e/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "skill:retrieval-reflex",
+      "category": "skill",
+      "kind": "skill-valid",
+      "ref": "/Users/nova-ai/.claude/skills/retrieval-reflex/SKILL.md",
+      "priority": 9
+    },
+    {
+      "id": "plugin:claude-code-warp",
+      "category": "plugin",
+      "kind": "dir-exists",
+      "ref": "/Users/nova-ai/.claude/plugins/cache/claude-code-warp",
+      "priority": 10
+    },
+    {
+      "id": "plugin:claude-plugins-official",
+      "category": "plugin",
+      "kind": "dir-exists",
+      "ref": "/Users/nova-ai/.claude/plugins/cache/claude-plugins-official",
+      "priority": 10
+    },
+    {
+      "id": "plugin:inter-session",
+      "category": "plugin",
+      "kind": "dir-exists",
+      "ref": "/Users/nova-ai/.claude/plugins/cache/inter-session",
+      "priority": 10
+    },
+    {
+      "id": "plugin:nova-use",
+      "category": "plugin",
+      "kind": "dir-exists",
+      "ref": "/Users/nova-ai/.claude/plugins/cache/nova-use",
+      "priority": 10
+    },
+    {
+      "id": "mcp:tools",
+      "category": "mcp",
+      "kind": "mcp-count",
+      "ref": "/Users/nova-ai/project/nco/src/mcp",
+      "priority": 6,
+      "expected_min": 42
+    },
+    {
+      "id": "build:tsc",
+      "category": "build",
+      "kind": "tsc-noemit",
+      "ref": "/Users/nova-ai/project/nco",
+      "priority": 1
+    },
+    {
+      "id": "health:nco",
+      "category": "health",
+      "kind": "http-health",
+      "ref": "http://localhost:6200/health",
+      "priority": 5
+    }
+  ]
+}

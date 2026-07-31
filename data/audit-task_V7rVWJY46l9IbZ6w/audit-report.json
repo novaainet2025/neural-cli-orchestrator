@@ -1,0 +1,76 @@
+{
+  "scope": {
+    "companyId": "org_web-scraping",
+    "teamId": "team_web-scrape-07-report-delivery",
+    "taskId": "task_V7rVWJY46l9IbZ6w",
+    "actorId": "claude-code"
+  },
+  "operationalNovaAx": {
+    "databasePath": "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+    "targetRuns": 0,
+    "openRemediationLoops": 0,
+    "directive": {
+      "id": "vdir_b84fd71f-8c24-4a37-8900-09cd5ef6d3e6",
+      "type": "audit_required",
+      "status": "queued",
+      "attemptCount": 7,
+      "lastError": "NCO audit task status unavailable: fetch failed",
+      "updatedAt": "2026-07-31T03:40:35.000Z"
+    },
+    "auditStatus": "not_submitted"
+  },
+  "recoveredValidationInstance": {
+    "executionMode": "in-process Fastify inject over a consistent operational SQLite backup",
+    "databasePath": "/Users/nova-ai/project/nco/data/audit-task_V7rVWJY46l9IbZ6w/nova-ax-audit.sqlite",
+    "databaseSha256": "815323af23455bbf0fe60c325563a1ec0b3cdd573f0c5f3adf804b044a4efb62",
+    "runId": "vrun_920cdb3b-4a8b-4ecd-8dda-7edd8e0e07d5",
+    "status": "approved",
+    "passedInstitutions": 6,
+    "requiredInstitutions": 6,
+    "receiptId": "vrcpt_de3553e8-9145-4a3e-89f6-eac244a53ee8",
+    "receiptConsumedAt": "2026-07-31T04:30:45.605Z",
+    "evidenceDigest": "0bdee37f0eee831f983230f47b5d178a628f5a7dd2978685f8568dc6250d6ff9",
+    "institutions": [
+      { "institution": "inspection", "passed": true, "failures": [] },
+      { "institution": "validation", "passed": true, "failures": [] },
+      { "institution": "measurement", "passed": true, "failures": [] },
+      { "institution": "performance", "passed": true, "failures": [] },
+      { "institution": "optimization", "passed": true, "failures": [] },
+      { "institution": "goal", "passed": true, "failures": [] }
+    ],
+    "openRemediationLoops": 0,
+    "taskBoundDirectiveStatusAfterRace": "queued"
+  },
+  "ncoOriginal": {
+    "databasePath": "/Users/nova-ai/project/nco/db/nco.db",
+    "verificationRoute": "POST /api/tasks/task_V7rVWJY46l9IbZ6w/verification",
+    "routeStatusCode": 200,
+    "taskStatus": "completed",
+    "storedProgress": 0,
+    "projectedHttpProgress": 100,
+    "verificationStatus": "approved",
+    "verificationReceiptId": "vrcpt_de3553e8-9145-4a3e-89f6-eac244a53ee8",
+    "verificationApprovedAt": "2026-07-31T04:30:45.619Z",
+    "completedAt": "2026-07-31 04:30:45"
+  },
+  "workReport": {
+    "id": "wr_ovIT78TKQSeamy4W",
+    "status": "late",
+    "submittedAt": "2026-07-31T04:30:45.000Z",
+    "bodyPersisted": true
+  },
+  "evidence": {
+    "reportPath": "/Users/nova-ai/project/nco/data/audit-task_V7rVWJY46l9IbZ6w/report.md",
+    "reportSha256": "cb232021d7187cc8a0f4df90ae3bd61e3ab6b5962ae9366b320051002df29ace",
+    "testEvidencePath": "/Users/nova-ai/project/nco/data/audit-task_V7rVWJY46l9IbZ6w/test-evidence.json",
+    "testEvidenceSha256": "289a0ec74dbebe0378a499d2a5c360bad206883423a8214bae961b969ec18c75",
+    "verifierPath": "/Users/nova-ai/project/nco/data/audit-task_V7rVWJY46l9IbZ6w/verify-report.mjs",
+    "verifierSha256": "d32a49a0416fec353e8c30dbd6e088acdd5a2a6d11407c99f0c6f431b0a6734a"
+  },
+  "remainingFailures": [
+    "The operational Nova-AX database has zero verification runs for the target task.",
+    "The NCO task is completed with a receipt that exists only in the recovered validation database.",
+    "The task-bound audit directive is still queued.",
+    "Operational Nova-AX HTTP and MCP access were unavailable in this execution environment."
+  ]
+}

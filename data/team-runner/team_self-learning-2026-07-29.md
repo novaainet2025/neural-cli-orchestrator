@@ -26,7 +26,7 @@ done: [Evidence Tier 1] 이 태스크에 주입된 실데이터 원문과 아래
 - `agy`: 상태 `idle`, 누적 태스크 641건, 성공률 89%, 최근 24시간 실패 0건입니다. 최근 안정적으로 보이지만 다른 에이전트보다 누적 태스크가 적고 성공률의 집계 기간·분모가 미확인입니다.
 - 제공된 네 에이전트의 최근 24시간 실패는 총 83건이며, 이 중 `claude-code`와 `opencode`가 78건, 약 94.0%를 차지합니다.
 - `codex=working`인데 팀 태스크 진행 수가 0인 것은 관측 시각 또는 집계 범위 차이일 수 있습니다. 원인은 미확인입니다.
-- `cursor-agent`, `ollama`, `hermes`, `higgsfield`, `retired-provider`의 상태·성공률·최근 실패 데이터는 제공되지 않았습니다.
+- `cursor-agent`, `ollama`, `hermes`, `retired-media-provider`, `retired-provider`의 상태·성공률·최근 실패 데이터는 제공되지 않았습니다.
 
 ### 장기 기억 검색 품질
 

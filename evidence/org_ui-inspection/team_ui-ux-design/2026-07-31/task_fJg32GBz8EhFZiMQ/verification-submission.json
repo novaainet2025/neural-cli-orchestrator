@@ -1,0 +1,199 @@
+{
+  "taskId": "task_fJg32GBz8EhFZiMQ",
+  "companyId": "org_ui-inspection",
+  "teamId": "team_ui-ux-design",
+  "actorId": "codex",
+  "taskType": "general",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_HR3DMkIa2vgSs86P/task-output.md",
+    "expectedSha256": "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ux-scope-integrity-verifier-v2",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T19:18:05.319Z",
+      "evidenceHash": "7634d40f1a0784f400d7461dd3f0b30b81174c5219ce0c693a50cb26971b6869"
+    }
+  },
+  "measurements": [
+    {
+      "name": "ux-scope-ground-truth-contract",
+      "unit": "checks",
+      "baseline": 0,
+      "current": 11,
+      "target": 11,
+      "direction": "higher_is_better",
+      "sampleSize": 11,
+      "provenance": {
+        "kind": "monitor",
+        "producer": "ux-scope-contract-measurer-v2",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T19:18:05.319Z",
+        "evidenceHash": "ba8d1ee85b773415dabc1fd45357ee33af6b7cf7470f2a4d8b05e7493e71df94"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "ux-scope-machine-audit",
+      "exitCode": 0,
+      "durationMs": 633,
+      "commandHash": "70549069554587d4f0e20028a9001db5b0fe051a503fca8135c499a8651db2ee",
+      "outputHash": "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+      "provenance": {
+        "kind": "ci",
+        "producer": "ux-scope-audit-runner-v2",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T19:18:05.319Z",
+        "evidenceHash": "6196572e4d3e0f6306e25c8f365e6061c60c9231f8a41a16eea96f79fc69f65a"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "da582ca69810b0fdef6cac87b5bd67dcdeae7189ae49b9ad13e0bc006b180b67",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "ux-scope-regression-guard-v2",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T19:18:05.319Z",
+      "evidenceHash": "dfe15f754112931721545473fb06db413934af50e5ca8001abb83dd4ce0a3bc1"
+    }
+  },
+  "requirements": [
+    {
+      "id": "scope_registry_active",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "audit_task_scope_binding",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "source_task_scope_binding",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "actual_output_received",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "append_only_ledger_binding",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "machine_completion_observed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "prior_independent_contract",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "referenced_sources_observed",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "ux_plan_content_floor",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "work_report_obligation_received",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    },
+    {
+      "id": "fresh_run_required",
+      "satisfied": true,
+      "evidenceHashes": [
+        "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+        "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e",
+        "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+        "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ux-scope-goal-attestor-v2",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T19:18:05.319Z",
+      "evidenceHash": "205be1ec56f014142ddd60549c87cf64aa288262323b3ad86164e5b55ba80273"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "The observed deliverable is a final Markdown UX inspection plan; it does not expose an interactive user interface.",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "ux-plan-ui-presence-classifier-v2",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T19:18:05.319Z",
+      "evidenceHash": "806b039a38d52427b0d15bb7f11c216f356026738757010626352f10a657d762"
+    }
+  }
+}

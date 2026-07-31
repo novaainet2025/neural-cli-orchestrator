@@ -1,0 +1,36 @@
+{
+  "taskId": "task_pevcTEWfvszz8vXe",
+  "source": "deterministic-response-mutation-suite",
+  "total": 7,
+  "detected": 7,
+  "mutations": [
+    {
+      "id": "drop_section_7",
+      "detected": true
+    },
+    {
+      "id": "remove_artifact_extensions",
+      "detected": true
+    },
+    {
+      "id": "remove_numeric_oracles",
+      "detected": true
+    },
+    {
+      "id": "remove_mitigations",
+      "detected": true
+    },
+    {
+      "id": "remove_peer_questions",
+      "detected": true
+    },
+    {
+      "id": "remove_entry",
+      "detected": true
+    },
+    {
+      "id": "inflate_content",
+      "detected": true
+    }
+  ]
+}

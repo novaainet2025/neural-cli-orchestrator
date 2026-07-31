@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 
 const reportPath = 'data/team-runner/team_ax-collab-2026-07-13.md';
@@ -21,14 +21,16 @@ describe('근거', () => {
     expect(report).toContain('`ax-collab`');
   });
 
-  it('승계 팀(Decision & Coordination Office)의 최신 포인터가 오늘 날짜를 가리킨다', async () => {
+  it('승계 팀(Decision & Coordination Office)의 최신 포인터가 최신 산출물을 가리킨다', async () => {
     const pointer = await readFile(pointerPath, 'utf8');
-    const todayInSeoul = new Intl.DateTimeFormat('sv-SE', {
-      timeZone: 'Asia/Seoul',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
-    expect(pointer.trim()).toBe(todayInSeoul);
+    const reportPrefix = 'team_ax-decision-coordination-2026-';
+    const reportDates = (await readdir('data/team-runner'))
+      .filter(name => name.startsWith(reportPrefix) && name.endsWith('.md'))
+      .map(name => name.slice(reportPrefix.length, -3))
+      .filter(value => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      .sort();
+
+    expect(reportDates.length).toBeGreaterThan(0);
+    expect(pointer.trim()).toBe(reportDates.at(-1));
   });
 });

@@ -10,7 +10,7 @@ import {
 import { getDb } from '../storage/database.js';
 import { createId } from '../utils/id.js';
 import { createLogger } from '../utils/logger.js';
-import { resolveInternalProjectDir } from '../utils/project-dir.js';
+import { resolveInternalProjectDir, resolveTaskProjectDir } from '../utils/project-dir.js';
 
 const log = createLogger('team-lifecycle');
 
@@ -536,7 +536,11 @@ async function triggerSelfImprovementCompany(
         goal: directive.goal,
         mode: 'pipeline',
         dryRun: false,
-        projectDir: resolveInternalProjectDir(),
+        projectDir: resolveTaskProjectDir({
+          teamId: directive.team.teamId,
+          organizationId: directive.team.organizationId,
+          requestedProjectDir: resolveInternalProjectDir(),
+        }),
       }),
       signal: AbortSignal.timeout(30_000),
     });

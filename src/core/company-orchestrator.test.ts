@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import Database from 'better-sqlite3';
 import {
   rankTeam,
   orderTeams,
@@ -14,6 +15,7 @@ import {
   buildDecompositionPrompt,
   buildPipelineHandoffSubtask,
   allowQueueProviderFailover,
+  isReadOnlyCompanyGoal,
   validateCompanyPolicy,
   NCO_FOUNDATION_COMPANY_POLICIES,
   OrchestrationError,
@@ -22,13 +24,18 @@ import {
   isSubstantiveOutput,
   isCompanyStageOutputAcceptable,
   cancelCompanyRun,
+  applyCompanyRunDriverFailure,
   abortTimedOutCompanyTask,
   applyBlockedStageOutcome,
+  isRetryableExecutionBlocker,
   dispatchStage,
   isCompanyRunBlocked,
   isCompanyRunCancelled,
   seedCompanyRunForTest,
   getCompanyRun,
+  closeInterruptedCompanyDiscussions,
+  closeTerminalCompanyDiscussions,
+  allowSingleProposalAfterBoundedFallback,
   type TeamRow,
   type CompanyRun,
   type RunStage,
@@ -157,6 +164,82 @@ describe('rankTeam', () => {
       slug: 'research-strategy', name: '리서치 기획·전략팀',
       charter: '① 리서치 질문 정의·방법론 설계. 탐색수집팀 핸드오프',
     }))).toBe(1);
+  });
+});
+
+describe('company discussion restart recovery', () => {
+  it('UI회사만 bounded fallback 소진 뒤 단일 제안을 허용한다', () => {
+    expect(allowSingleProposalAfterBoundedFallback('ui-inspection')).toBe(true);
+    expect(allowSingleProposalAfterBoundedFallback('research')).toBe(false);
+    expect(allowSingleProposalAfterBoundedFallback('nco-engineering')).toBe(false);
+  });
+
+  it('회사 목표의 명시적 읽기 전용 계약을 하위 작업 메타데이터에 사용할 수 있게 감지한다', () => {
+    expect(isReadOnlyCompanyGoal('UI회사를 읽기 전용으로 실제 실행한다')).toBe(true);
+    expect(isReadOnlyCompanyGoal('Run the UI company as a read-only audit')).toBe(true);
+    expect(isReadOnlyCompanyGoal('UI회사가 설계 파일을 수정한다')).toBe(false);
+  });
+
+  it('같은 workflow의 중단된 active 토론만 failed로 종결한다', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE discussions (
+        id TEXT PRIMARY KEY,
+        workflow_run_id TEXT,
+        company_run_id TEXT,
+        status TEXT,
+        report TEXT,
+        ended_at TEXT,
+        updated_at TEXT
+      );
+      INSERT INTO discussions (id,workflow_run_id,status)
+      VALUES
+        ('stale','workflow-1','active'),
+        ('done','workflow-1','completed'),
+        ('other','workflow-2','active');
+    `);
+
+    expect(closeInterruptedCompanyDiscussions(db, 'workflow-1')).toBe(1);
+    expect(db.prepare(
+      'SELECT status,report,ended_at FROM discussions WHERE id=?',
+    ).get('stale')).toMatchObject({
+      status: 'failed',
+      report: 'company_run_discussion_interrupted',
+    });
+    expect(db.prepare('SELECT status FROM discussions WHERE id=?').get('done'))
+      .toEqual({ status: 'completed' });
+    expect(db.prepare('SELECT status FROM discussions WHERE id=?').get('other'))
+      .toEqual({ status: 'active' });
+    db.close();
+  });
+
+  it('종결된 회사 run에 남은 active 토론을 startup에서 정리한다', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE company_runs (id TEXT PRIMARY KEY, status TEXT);
+      CREATE TABLE discussions (
+        id TEXT PRIMARY KEY,
+        company_run_id TEXT,
+        status TEXT,
+        report TEXT,
+        ended_at TEXT,
+        updated_at TEXT
+      );
+      INSERT INTO company_runs (id,status)
+      VALUES ('failed-run','failed'),('live-run','running');
+      INSERT INTO discussions (id,company_run_id,status)
+      VALUES ('stale','failed-run','active'),('live','live-run','active');
+    `);
+
+    expect(closeTerminalCompanyDiscussions(db)).toBe(1);
+    expect(db.prepare('SELECT status,report FROM discussions WHERE id=?').get('stale'))
+      .toEqual({
+        status: 'failed',
+        report: 'company_run_terminal_before_discussion_completed',
+      });
+    expect(db.prepare('SELECT status FROM discussions WHERE id=?').get('live'))
+      .toEqual({ status: 'active' });
+    db.close();
   });
 });
 
@@ -749,6 +832,31 @@ describe('cancelCompanyRun', () => {
     expect(inject).toHaveBeenCalledTimes(1);
   });
 
+  it('취소 후 늦게 도착한 driver rejection이 cancellation 상태·사유를 덮어쓰지 않는다', async () => {
+    const app = { inject: vi.fn() } as unknown as import('fastify').FastifyInstance;
+    const runId = `run_cancel_driver_race_${Date.now()}`;
+    seedCompanyRunForTest(makeTestRun({
+      id: runId,
+      status: 'running',
+      stages: [makeStage({ teamSlug: 'a', status: 'running' })],
+    }));
+
+    await expect(cancelCompanyRun(app, runId)).resolves.toEqual({
+      ok: true,
+      status: 'cancelled',
+    });
+    const run = getCompanyRun(runId)!;
+    const cancellationError = run.error;
+
+    expect(applyCompanyRunDriverFailure(run, new Error('late driver failure'))).toBe(false);
+    expect(run.status).toBe('cancelled');
+    expect(run.error).toBe(cancellationError);
+    expect(run.stages[0]).toMatchObject({
+      status: 'cancelled',
+      error: 'run cancelled',
+    });
+  });
+
   it('이미 종료된 run 은 상태를 바꾸지 않고 idempotent ack', async () => {
     const inject = vi.fn();
     const app = { inject } as unknown as import('fastify').FastifyInstance;
@@ -837,6 +945,38 @@ describe('structured company stage BLOCKED outcome', () => {
       summary: { total: 3, succeeded: 1, failed: 0, blocked: 1, skipped: 1 },
     });
     expect(isCompanyRunBlocked(run)).toBe(true);
+  });
+
+  it('병렬 run은 형제 stage 수집이 끝나기 전에 partial로 조기 종료하지 않는다', () => {
+    const blocked = makeStage({ teamSlug: 'ui-audit', status: 'running', taskId: 'task-blocked' });
+    const sibling = makeStage({ teamSlug: 'ui-e2e', status: 'running', taskId: 'task-running' });
+    const run = makeTestRun({
+      id: `run_parallel_blocked_${Date.now()}`,
+      mode: 'parallel',
+      status: 'running',
+      stages: [blocked, sibling],
+    });
+
+    applyBlockedStageOutcome(run, blocked, blockedResponse);
+
+    expect(run.status).toBe('running');
+    expect(sibling.status).toBe('running');
+    expect(isCompanyRunBlocked(run)).toBe(true);
+  });
+
+  it('localhost sandbox 차단은 영구 감사 차단이 아니라 bounded retry 대상으로 분류한다', () => {
+    const response = [
+      'status: 로컬 UI 확인이 연결 거부로 중단되었습니다.',
+      'STAGE_OUTCOME: BLOCKED',
+      'BLOCKER_FINGERPRINT: UI-LOCALHOST-ECONNREFUSED',
+      'BLOCKER_EVIDENCE: curl: (7) Failed to connect to 127.0.0.1 port 5173',
+      'EVIDENCE_TIER: 1',
+    ].join('\n');
+
+    expect(isRetryableExecutionBlocker(response, 'ui-inspection')).toBe(true);
+    expect(isRetryableExecutionBlocker(response, 'org_ui-inspection')).toBe(true);
+    expect(isRetryableExecutionBlocker(response, 'research')).toBe(false);
+    expect(isRetryableExecutionBlocker(blockedResponse, 'ui-inspection')).toBe(false);
   });
 
   it('근거 없는 BLOCKED는 구조화 차단으로 인정하지 않아 기존 실패·재시도 경로를 유지한다', () => {

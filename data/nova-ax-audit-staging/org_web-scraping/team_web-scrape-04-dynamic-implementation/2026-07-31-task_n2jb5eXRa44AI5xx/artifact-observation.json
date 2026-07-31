@@ -1,0 +1,32 @@
+{
+  "artifact": {
+    "path": "/Users/nova-ai/project/nova-ax/team_web-scrape-04-dynamic-implementation-2026-07-30.md",
+    "sha256": "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+    "bytes": 2995
+  },
+  "implementation": [
+    {
+      "path": "/Users/nova-ai/project/nco/src/services/webScrapingService.ts",
+      "sha256": "37d65b9dba0525b4711c2eb9a1d1e4c5fe764e05bd6dc638ba31ba7e11ef7714",
+      "bytes": 6370
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/src/server/routes/web-scraping.ts",
+      "sha256": "1894e5bb97f88bd26940ae7bd1e3ed284d8c1fa8c0c6133be06ce188dcb8d420",
+      "bytes": 9772
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/integrations/scrapling/nco_scrapling/policy.py",
+      "sha256": "239db14e7790fdc784b5f9a1fa84a0e9d15516dcd41dc00fba9af8d0548c9b5e",
+      "bytes": 11397
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/integrations/scrapling/nco_scrapling/runner.py",
+      "sha256": "4f10647051fdff19bc519b8579e3c4cbe8a8b75f394f811cfe1360b82b61b6ff",
+      "bytes": 10828
+    }
+  ],
+  "observedAt": "2026-07-31T04:37:21.850Z",
+  "producer": "independent-audit-collector-v1",
+  "machineProduced": true
+}

@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "team": "team_error-prevention",
+    "target": "team_gov-command-incident",
+    "slug": "gov-command-incident",
+    "generated": "2026-07-30",
+    "cycle": "1/3",
+    "author": "중복에러방지팀 (Discussion R1 합의)",
+    "purpose": "Cross-verify score=6.1/completion=0% root cause; register GATE-INCIDENT-C1-R1 intake contract; avoid false team-failure reports."
+  },
+  "root_cause_verdict": {
+    "primary": {
+      "id": "RC-INCIDENT-C1-AUDIT-GATE",
+      "verdict": "GLOBAL_SCORER_ARTIFACT",
+      "tier": "T1_prior_report",
+      "evidence": [
+        "REPORTS/2026-07-30-gov-transparency-audit-gate-regression.md: 85/85 teams completion=0",
+        "REPORTS/2026-07-30-시각화-미디어팀-오후.md: score=6.6 pattern matches 0.1×volume with completion=0",
+        "src/core/team-scorer.ts AUDIT_APPROVED_COMPLETION + gateway organizationAuditRequired injection",
+        "scripts/audit-pipeline-health.ts AP-3_approved baseline expected 0 in rollout window"
+      ],
+      "false_report_risk": "Claiming incident team operational failure from completion=0% alone is FALSE_REPORT"
+    },
+    "secondary": {
+      "id": "RC-INCIDENT-C1-OBSERVATION-LOOP",
+      "verdict": "OPERATIONAL_QUALITY_GAP",
+      "tier": "T1_file",
+      "evidence": [
+        "data/team-runner/team_gov-command-incident-2026-07-28.md: done: + 다수 미확인 동시 존재",
+        "data/team-runner/team_gov-command-incident-2026-07-30.md: claude-code 22%/24h실패12, 상태 불일치"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "id": "GATE-INCIDENT-C1-R1",
+      "type": "new",
+      "status": "IMPLEMENTED",
+      "layer": "task intake (prompt-gate / applyTeamResponseContract)",
+      "location": "src/core/response-contract.ts INCIDENT_COMMAND_RESPONSE_CONTRACT + src/server/task-intake.ts",
+      "rule": "Inject incident evidence contract when companyRunId is set and teamId=team_gov-command-incident. Require T1 evidence, verifiable success criteria, bounded rollback. Exclude daily work-report tasks (workReportId without companyRunId).",
+      "rollback": "Revert response-contract.ts + task-intake.ts commit; no env toggle required"
+    },
+    {
+      "id": "CB-INCIDENT-C1-R2",
+      "type": "observation",
+      "status": "NOT_CHANGED",
+      "layer": "CircuitBreaker / collaboration-loop-guard",
+      "rule": "Protocol-echo and GATE-COLLAB-C3-R1 already cover done:/status: reconversion globally. No incident-specific CB threshold change — blast radius unverified.",
+      "evidence": "src/server/gateway.ts isProtocolReconversionGateEnabled"
+    },
+    {
+      "id": "SCORER-INCIDENT-C1-R3",
+      "type": "observation",
+      "status": "OUT_OF_SCOPE_THIS_SESSION",
+      "layer": "team-scorer AUDIT_APPROVED_COMPLETION",
+      "rule": "Do not edit team-scorer.ts from incident cycle 1 (lease boundary per transparency audit report). Verify via tests/audit-gate-invariants.test.ts + npx tsx scripts/audit-pipeline-health.ts.",
+      "rollback": "NCO_SCORER_AUDIT_APPROVAL_GATE=off (platform owner)"
+    }
+  ],
+  "false_report_cross_verification": [
+    {
+      "claim": "completion=0% proves incident team cannot execute charter",
+      "verdict": "FALSE_REPORT",
+      "tier": "T1_prior_report",
+      "evidence": "7-day team-runner reports show 62–73% task completion; 0% is 48h scorer numerator under audit gate"
+    },
+    {
+      "claim": "claude-code failure is incident-team-specific root cause of score=6.1",
+      "verdict": "PARTIAL_TRUE_OPERATIONAL_NOT_SCORER",
+      "tier": "T1_file",
+      "evidence": "Agent degradation is real in daily reports but does not explain org-wide 0% completion pattern"
+    },
+    {
+      "claim": "GATE-INCIDENT-C1-R1 fabricates completions",
+      "verdict": "FALSE_REPORT",
+      "tier": "T1_file",
+      "evidence": "Contract is intake-only; tightens done: claims with T1 requirement — does not alter team-scorer SQL"
+    }
+  ]
+}

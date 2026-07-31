@@ -11,32 +11,40 @@ import {
 import { runHourlyRoleAudit } from '../../core/hourly-role-oversight.js';
 import { getDb } from '../../storage/database.js';
 
-// [이벤트루프 보호 2026-07-26] computeTeamScores는 호출당 ~340-450ms 동기 CPU(73팀,
-// tasks 27k 조인 6중 CASE 집계). 대시보드 다중 클라이언트 폴링이 겹치면 호출이 적체되어
-// 이벤트 루프가 재포화됨(CDP 프로파일 82% 점유 실측). 점수는 48h/7d 윈도 집계라
-// 15초 staleness는 무해 → 라우트 레벨 TTL 캐시. cron/lifecycle 등 내부 호출은 비캐시 유지.
-const SCORE_CACHE_TTL_MS = 15_000;
+// [이벤트루프 보호] computeTeamScores는 큰 tasks 테이블의 응답/메타데이터까지 검사하는
+// 동기 SQLite 집계다. 대시보드는 teams/scores와 org/scores를 동시에 30초마다 요청하므로,
+// 라우트별 독립 계산은 같은 집계를 연속 두 번 실행해 health/run 요청까지 막는다.
+// 두 라우트가 하나의 팀 점수 스냅샷을 공유하고, 48h/7d 이동창의 표시 점수는 5분 TTL로
+// 제한한다. cron/lifecycle의 명시적 내부 계산은 이 표시 캐시를 거치지 않는다.
+const SCORE_CACHE_TTL_MS = 5 * 60_000;
+type TeamScoresSnapshot = ReturnType<typeof computeTeamScores>;
 
 export async function registerTeamScoreRoutes(
   app: FastifyInstance,
   database: Database.Database = getDb(),
 ): Promise<void> {
-  let teamScoresCache: { at: number; data: unknown } | null = null;
+  let teamScoresCache: { at: number; data: TeamScoresSnapshot } | null = null;
   let orgScoresCache: { at: number; data: unknown } | null = null;
 
-  app.get('/api/teams/scores', async () => {
+  const readTeamScores = (): TeamScoresSnapshot => {
     if (teamScoresCache && Date.now() - teamScoresCache.at < SCORE_CACHE_TTL_MS) {
       return teamScoresCache.data;
     }
     const data = computeTeamScores(database);
     teamScoresCache = { at: Date.now(), data };
+    // 회사 점수는 이 팀 스냅샷에서 파생되므로 팀 스냅샷 갱신 시 함께 무효화한다.
+    orgScoresCache = null;
     return data;
+  };
+
+  app.get('/api/teams/scores', async () => {
+    return readTeamScores();
   });
   app.get('/api/org/scores', async () => {
     if (orgScoresCache && Date.now() - orgScoresCache.at < SCORE_CACHE_TTL_MS) {
       return orgScoresCache.data;
     }
-    const data = computeOrganizationScores(database);
+    const data = computeOrganizationScores(database, readTeamScores());
     orgScoresCache = { at: Date.now(), data };
     return data;
   });

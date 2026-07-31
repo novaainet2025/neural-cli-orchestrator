@@ -1,0 +1,169 @@
+{
+  "taskId": "task_yRDfIvg60k_d6nbN",
+  "companyId": "org_nco-evolution",
+  "teamId": "team_gov-evolution-evaluation",
+  "actorId": "claude-code",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "file:///Users/nova-ai/project/nova-ax/evidence/audit-gov-evolution-evaluation-20260730/work-report.md",
+    "expectedSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+    "status": "final",
+    "publishedAt": "2026-07-30T17:02:55Z"
+  },
+  "integrityAttestation": {
+    "observedSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "shasum-openssl-cross-attestor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:02:55Z",
+      "evidenceHash": "e975825504fe3274257a552ee43cefbfe9bb6f901158239d9ae170e799b1072a"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "Machine classification: Markdown operations report; no HTML or interactive UI surface.",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "artifact-surface-classification-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:02:55.735Z",
+      "evidenceHash": "cad0d0d8f423f23c91c62390158fe8d091678aebb75f41e4159ac61f58fe9004"
+    }
+  },
+  "measurements": [
+    {
+      "name": "team-task-volume",
+      "unit": "tasks",
+      "baseline": 0,
+      "current": 24,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 24,
+      "provenance": {
+        "kind": "ci",
+        "producer": "nova-ax-evaluation-team-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:02:57.529Z",
+        "evidenceHash": "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441"
+      }
+    },
+    {
+      "name": "work-report-submission-rate",
+      "unit": "percent-submitted",
+      "baseline": 100,
+      "current": 100,
+      "target": 95,
+      "direction": "higher_is_better",
+      "sampleSize": 9,
+      "provenance": {
+        "kind": "ci",
+        "producer": "nova-ax-evaluation-team-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:02:57.529Z",
+        "evidenceHash": "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441"
+      }
+    },
+    {
+      "name": "evaluation-deliverable-preservation-rate",
+      "unit": "percent-deliverables-present",
+      "baseline": 100,
+      "current": 100,
+      "target": 100,
+      "direction": "higher_is_better",
+      "sampleSize": 8,
+      "provenance": {
+        "kind": "ci",
+        "producer": "nova-ax-evaluation-team-metrics-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:02:57.529Z",
+        "evidenceHash": "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "work-report-claim-verification-vs-source-databases",
+      "exitCode": 0,
+      "durationMs": 215,
+      "commandHash": "6bb0a190811a65c1309c0d2795385784dbf03cbe08d6c5ea124106c6d4f60793",
+      "outputHash": "ad6c5df7663a85c108e781c6e5cf7e9ad74e24a17afe99754b922b57e44ff8d0",
+      "provenance": {
+        "kind": "ci",
+        "producer": "ci-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:02:56.110Z",
+        "evidenceHash": "ad6c5df7663a85c108e781c6e5cf7e9ad74e24a17afe99754b922b57e44ff8d0"
+      }
+    },
+    {
+      "name": "claim-verifier-mutation-negative-control",
+      "exitCode": 0,
+      "durationMs": 1121,
+      "commandHash": "fcdc2b1d1c2ca0cf72bfb27e95af187ff0840c581a4f9df131bcc4b241684efd",
+      "outputHash": "0a4024810d80e9848a40d59c0bf75399c8abf1bb6877a1d06ba6751827d83ae4",
+      "provenance": {
+        "kind": "ci",
+        "producer": "ci-test-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T08:02:57.343Z",
+        "evidenceHash": "0a4024810d80e9848a40d59c0bf75399c8abf1bb6877a1d06ba6751827d83ae4"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "optimization-regression-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:00.136Z",
+      "evidenceHash": "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e"
+    }
+  },
+  "requirements": [
+    {
+      "id": "collect-in-scope-work-results",
+      "satisfied": true,
+      "evidenceHashes": [
+        "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+        "ad6c5df7663a85c108e781c6e5cf7e9ad74e24a17afe99754b922b57e44ff8d0"
+      ]
+    },
+    {
+      "id": "preserve-evaluation-deliverables",
+      "satisfied": true,
+      "evidenceHashes": [
+        "0025ed38a4e5b759ae2c85b041b4343580bbd8981c3fd2bc9e4d735190bfb22e",
+        "6a001c7ff3ceb7b4341b39586fd4dc68930451bd9e0e817ba15ebc6fbc2a3894"
+      ]
+    },
+    {
+      "id": "evaluation-operational-kpis-met",
+      "satisfied": true,
+      "evidenceHashes": [
+        "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441"
+      ]
+    },
+    {
+      "id": "preserve-raw-results-and-no-unmeasured-claims",
+      "satisfied": true,
+      "evidenceHashes": [
+        "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e",
+        "0a4024810d80e9848a40d59c0bf75399c8abf1bb6877a1d06ba6751827d83ae4",
+        "e975825504fe3274257a552ee43cefbfe9bb6f901158239d9ae170e799b1072a",
+        "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "monitor",
+      "producer": "acceptance-monitor",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T08:03:00.247Z",
+      "evidenceHash": "01da4d60a3bb1f83608f9c099cad0288c5584fda2c5df0d7b344ee991046e2b2"
+    }
+  }
+}

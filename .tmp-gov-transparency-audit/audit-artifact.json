@@ -1,0 +1,107 @@
+{
+  "schema": "nova-ax.gov-government-transparency-audit.v1",
+  "status": "final",
+  "generatedAt": "2026-07-30T05:35:00.000Z",
+  "scope": {
+    "companyId": "org_nco-government",
+    "teamId": "team_gov-government-transparency",
+    "teamName": "Transparency Appeals and Public Record",
+    "directiveTaskId": "task_3U6dw43IfxL6sKiR",
+    "directiveId": "vdir_51c00213-223f-4dc3-b0cc-d7963bd42b1f"
+  },
+  "oversightSnapshot": {
+    "source": "GET /api/verification/oversight?companyId=org_nco-government&teamId=team_gov-government-transparency",
+    "observedAt": "2026-07-30T05:29:12.454Z",
+    "verificationRunsTotal": 0,
+    "latestStatus": null,
+    "queue": "unverifiedScopeQueue",
+    "activeRemediationLoops": 0,
+    "dispatchedDirectives": 1,
+    "scopeRegistryReady": true
+  },
+  "deliverables": [
+    {
+      "type": "team-runner-daily",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-government-transparency-2026-07-30.md",
+      "evidenceTier": "T1",
+      "finding": "Daily team-runner output documents transparency metrics, agent state inconsistencies, and unverified decision-registry gaps with done:/unverified protocol"
+    },
+    {
+      "type": "team-runner-daily",
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-government-transparency-2026-07-29.md",
+      "evidenceTier": "T1",
+      "finding": "Prior daily team-runner artifact for continuity and trend comparison"
+    },
+    {
+      "type": "work-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-28-Transparency-Appeals-and-Public-Record-오후.md",
+      "reportDate": "2026-07-28",
+      "slot": "pm",
+      "note": "Operational report with task metrics and transparency mandate alignment"
+    },
+    {
+      "type": "work-report",
+      "path": "/Users/nova-ai/project/nco/REPORTS/2026-07-28-Transparency-Appeals-and-Public-Record-오전.md",
+      "reportDate": "2026-07-28",
+      "slot": "am",
+      "note": "Morning operational report for same team"
+    },
+    {
+      "type": "foundation-topology",
+      "path": "/Users/nova-ai/project/nco/src/core/company-orchestrator.ts",
+      "evidenceTier": "T1",
+      "finding": "gov-government-transparency registered in NCO_GOVERNMENT_STAGE_SLUGS under nco-government company policy (manager: hermes)"
+    },
+    {
+      "type": "foundation-migration",
+      "path": "/Users/nova-ai/project/nco/db/migrations/086_nco_ai_government_foundation.sql",
+      "evidenceTier": "T1",
+      "finding": "team_gov-government-transparency seeded with cursor-agent, ollama, opencode provider members"
+    }
+  ],
+  "transparencyFindings": {
+    "operationalMetrics": {
+      "tasksLast7Days": 12,
+      "completedLast7Days": 10,
+      "failedLast7Days": 2,
+      "completionRate7d": 83.3,
+      "workReportsSubmitted": 6,
+      "workReportsMissed": 1,
+      "source": "team-runner 2026-07-30 injected data blocks"
+    },
+    "agentRiskSignals": {
+      "opencodeSuccessRate": 30,
+      "cursorAgentSuccessRate": 95,
+      "agentStateConflict": "team header working vs /api/agents idle for opencode and cursor-agent",
+      "source": "team-runner 2026-07-30 section 1.3-1.4"
+    },
+    "transparencyRegistryGaps": {
+      "decisionRegistry": "unverified — not in injected data",
+      "appealsLog": "unverified — not in injected data",
+      "correctionChain": "unverified — not in injected data",
+      "failedTaskDetails": "unverified — 2 failures without task IDs in injected data"
+    }
+  },
+  "requirements": [
+    {
+      "id": "scope-unverified-acknowledged",
+      "satisfied": true,
+      "detail": "Team had zero prior Nova-AX verification runs before this audit"
+    },
+    {
+      "id": "no-open-remediation-loop",
+      "satisfied": true,
+      "detail": "activeRemediationLoops=0 at audit start"
+    },
+    {
+      "id": "independent-mechanical-evidence",
+      "satisfied": true,
+      "detail": "Oversight HTTP body and artifact file hashes collected independently"
+    },
+    {
+      "id": "transparency-deliverables-cataloged",
+      "satisfied": true,
+      "detail": "Team-runner markdown, REPORTS files, and foundation topology code cataloged as deliverables"
+    }
+  ]
+}

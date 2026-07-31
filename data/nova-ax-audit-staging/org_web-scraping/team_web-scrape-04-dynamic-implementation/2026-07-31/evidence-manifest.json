@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-07-30T19:09:59.044Z",
+  "taskId": "task_pnxUEketwozTapq7",
+  "companyId": "org_web-scraping",
+  "teamId": "team_web-scrape-04-dynamic-implementation",
+  "actorId": "codex",
+  "readyForSubmission": true,
+  "files": {
+    "artifact": {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_web-scrape-04-dynamic-implementation-2026-07-30.md",
+      "sha256": "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+      "bytes": 2995
+    },
+    "artifactObservation": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/artifact-observation.json",
+      "sha256": "3d763af8388742b6aafde92c2839f5f34ec6137c761a4c44fd02ca57bcaacdbf",
+      "bytes": 1193
+    },
+    "machineSnapshot": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/machine-snapshot.json",
+      "sha256": "13044c8816eb41541f545e2a54b153abd6dfd252791b4062317e1df251d338e6",
+      "bytes": 2395
+    },
+    "vitestOutput": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/vitest-output.txt",
+      "sha256": "c6ec2eb368471b860f92a8418cfaf4932e1e33d17259c185c3ec2844d3aba49c",
+      "bytes": 18203
+    },
+    "scraplingPolicyOutput": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/scrapling-policy-output.txt",
+      "sha256": "5771bc9c29a6f17060a3c40908f19211ab855235cc86c6c8026271e9a570a8e8",
+      "bytes": 1506
+    },
+    "submissionPayload": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31/submission-payload.json",
+      "sha256": "3351b5bd74ce5708145752375a7ee8a89b1137e7d4c7f3b97d2743ee09b5a781",
+      "bytes": 5022
+    }
+  },
+  "testRuns": {
+    "vitest": {
+      "exitCode": 0,
+      "durationMs": 2164,
+      "files": 2,
+      "tests": 7
+    },
+    "python": {
+      "exitCode": 0,
+      "durationMs": 245,
+      "tests": 11
+    }
+  },
+  "measurements": {
+    "completedTasks": 21,
+    "submittedReports": 10,
+    "totalTasks": 29,
+    "totalReports": 14
+  }
+}

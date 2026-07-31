@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-07-31T04:37:21.850Z",
+  "taskId": "task_n2jb5eXRa44AI5xx",
+  "companyId": "org_web-scraping",
+  "teamId": "team_web-scrape-04-dynamic-implementation",
+  "actorId": "codex",
+  "readyForSubmission": true,
+  "files": {
+    "artifact": {
+      "path": "/Users/nova-ai/project/nova-ax/team_web-scrape-04-dynamic-implementation-2026-07-30.md",
+      "sha256": "6b7a63d55bb00494ec64d21f653775099e6a6dfc822392e138326a52b603d886",
+      "bytes": 2995
+    },
+    "artifactObservation": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31-task_n2jb5eXRa44AI5xx/artifact-observation.json",
+      "sha256": "5a1a13eae46eb7e2e14771a2c297140308a3cef5121582fcea76573bbb60a5af",
+      "bytes": 1180
+    },
+    "machineSnapshot": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31-task_n2jb5eXRa44AI5xx/machine-snapshot.json",
+      "sha256": "0d2f8a4f543736ff9598690cc47678f1a2f91284958273b32dc39907b04b8eae",
+      "bytes": 2492
+    },
+    "vitestOutput": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31-task_n2jb5eXRa44AI5xx/vitest-output.txt",
+      "sha256": "d7ef774f925d9d2071299ddea1d75bb1f1d2de72bc884ac7226526fdbbfe53e4",
+      "bytes": 36467
+    },
+    "scraplingPolicyOutput": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31-task_n2jb5eXRa44AI5xx/scrapling-policy-output.txt",
+      "sha256": "5771bc9c29a6f17060a3c40908f19211ab855235cc86c6c8026271e9a570a8e8",
+      "bytes": 1506
+    },
+    "submissionPayload": {
+      "path": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_web-scraping/team_web-scrape-04-dynamic-implementation/2026-07-31-task_n2jb5eXRa44AI5xx/submission-payload.json",
+      "sha256": "11ee1eea9f7f5218e31de1b90807d781579ab6c2efc922ac9dabcfca7fd8b2c4",
+      "bytes": 5009
+    }
+  },
+  "testRuns": {
+    "vitest": {
+      "exitCode": 0,
+      "durationMs": 3555,
+      "files": 2,
+      "tests": 7
+    },
+    "python": {
+      "exitCode": 0,
+      "durationMs": 256,
+      "tests": 11
+    }
+  },
+  "measurements": {
+    "completedTasks": 21,
+    "submittedReports": 10,
+    "totalTasks": 44,
+    "totalReports": 15
+  }
+}

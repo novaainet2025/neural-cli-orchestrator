@@ -9,7 +9,7 @@
 ## 오늘 수행한 핵심 업무
 - 변경 이력 점검: `git log --oneline --since='2026-07-15 00:00' -- src/ scripts/ config/ docs/`로 지난 보고(2026-07-15) 이후 범위를 확인했다. 해당 범위에서 잡힌 커밋은 `44226c4`(보고서 파일 생성) 1건뿐이었고, `src/`·`config/`·`scripts/`·`docs/`의 코드·설정 변경은 없었다. 즉 지난 보고 이후 신규 스펙 변경은 발생하지 않았다.
 - 이월 이슈 재점검: 신규 변경이 없으므로 지난 보고에서 남긴 문서·스펙 불일치 항목들이 여전히 유효한지를 저장소 정적 점검으로 재확인했다.
-- 프로바이더 개수 대조: `config/ai-providers.json`의 등록 `id`는 `claude-code, opencode, codex, cursor-agent, copilot, openrouter, ollama, retired-local-provider, agy, hermes, higgsfield, retired-provider, openai` 총 13개였다. 반면 `CLAUDE.md:7`은 여전히 "9 AI agents"라고 기술하며 8개 이름만 나열하고 있어, 개수와 구성 모두 불일치가 지속되고 있음을 재확인했다.
+- 프로바이더 개수 대조: `config/ai-providers.json`의 등록 `id`는 `claude-code, opencode, codex, cursor-agent, copilot, openrouter, ollama, retired-local-provider, agy, hermes, retired-media-provider, retired-provider, openai` 총 13개였다. 반면 `CLAUDE.md:7`은 여전히 "9 AI agents"라고 기술하며 8개 이름만 나열하고 있어, 개수와 구성 모두 불일치가 지속되고 있음을 재확인했다.
 - 이벤트 처리 대조: `discussion:provider_failed` 이벤트는 `src/core/discussion-engine.ts` 5개 지점(154·385·554·671·722행)에서 발행되고 있으나, `src/server/monitor.ts`는 여전히 `discussion:provider_started`·`discussion:provider_completed`만 처리하고 실패 이벤트에 대한 처리는 없는 상태였다. 발행과 소비의 비대칭이 그대로 남아 있다.
 - 변경 이력 문서 점검: 릴리스 단위 변경 이력을 모으는 `CHANGELOG.md`가 저장소 루트와 `docs/` 아래 모두 여전히 부재함을 확인했다.
 

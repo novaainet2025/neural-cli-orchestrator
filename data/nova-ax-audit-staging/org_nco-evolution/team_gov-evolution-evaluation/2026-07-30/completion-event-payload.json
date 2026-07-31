@@ -1,0 +1,16 @@
+{
+  "agentId": "claude-code",
+  "agentName": "Claude Code",
+  "action": "task_complete",
+  "description": "team_gov-evolution-evaluation 정기 감사: 평가 설계 산출물 인벤토리 및 6기관 검증 완료",
+  "taskId": "task_yRDfIvg60k_d6nbN",
+  "companyId": "org_nco-evolution",
+  "teamId": "team_gov-evolution-evaluation",
+  "receiptId": "vrcpt_e2051f15-9067-4c6f-9632-54d939728a37",
+  "metadata": {
+    "runId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+    "evidenceDigest": "9c70d255ffbe1d9c99c093c089c2accaeed4450ff18fbdebddc4594a8ce91ea8",
+    "evidenceDir": "evidence/audit-gov-evolution-evaluation-20260730",
+    "loopId": "vloop_047582eb-7a6b-4d47-a661-499eee16fb6f"
+  }
+}

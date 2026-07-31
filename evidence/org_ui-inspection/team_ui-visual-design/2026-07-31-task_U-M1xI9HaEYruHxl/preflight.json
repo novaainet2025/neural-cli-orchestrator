@@ -1,0 +1,56 @@
+{
+  "observedAt": "2026-07-30T16:24:06.316Z",
+  "ncoQuickCheck": "ok",
+  "novaQuickCheck": "ok",
+  "registry": {
+    "activeOrganizations": 16,
+    "activeTeams": 85,
+    "expectedActiveScopes": 101,
+    "registeredActiveScopes": 101,
+    "missingScopes": [],
+    "unexpectedScopes": [],
+    "targetScopeActive": true,
+    "uiApprovalScopeActive": true
+  },
+  "taskBefore": {
+    "id": "task_U-M1xI9HaEYruHxl",
+    "status": "reviewing",
+    "teamId": "team_ui-visual-design",
+    "assignedTo": "codex",
+    "metadataJson": "{\"projectDir\":\"/Users/nova-ai/project/nco\",\"allowProviderFailover\":true,\"organizationId\":\"org_ui-inspection\",\"teamId\":\"team_ui-visual-design\",\"workReportId\":\"remediation_vloop_75c54b54-1af2-4d37-8293-952a894b6f03_1\",\"workflowRunId\":\"wfr_yUSwBV8tpLrdxa5y\",\"workflowStage\":\"implementation\",\"organizationAuditRequired\":true,\"companyId\":\"org_ui-inspection\",\"auditPriority\":10,\"requestedProvider\":\"codex\",\"promptGate\":{\"score\":100},\"verificationStatus\":\"pending\",\"verificationAuditQueuedAt\":\"2026-07-30T16:16:38.815Z\"}",
+    "companyId": "org_ui-inspection"
+  },
+  "existingRuns": [
+    {
+      "runId": "vrun_46a92caa-3853-4200-806a-6777ccc9ee41",
+      "teamId": "team_ui-visual-design",
+      "actorId": "codex",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "createdAt": "2026-07-30T14:47:45.653Z"
+    },
+    {
+      "runId": "vrun_bd0b5481-2c6b-4866-ac94-f52b343b9342",
+      "teamId": "team_ui-audit-approval",
+      "actorId": "cursor-agent",
+      "status": "approved",
+      "passedInstitutions": 6,
+      "createdAt": "2026-07-30T14:47:45.699Z"
+    }
+  ],
+  "existingOpenLoops": [],
+  "unconsumedExistingReceipts": [
+    {
+      "receiptId": "vrcpt_43d50f78-a291-4314-9354-c564ecf37c57",
+      "runId": "vrun_46a92caa-3853-4200-806a-6777ccc9ee41",
+      "teamId": "team_ui-visual-design",
+      "issuedAt": "2026-07-30T14:47:45.653Z"
+    },
+    {
+      "receiptId": "vrcpt_93a10a17-e622-49ac-ae4f-672e43ccb4d5",
+      "runId": "vrun_bd0b5481-2c6b-4866-ac94-f52b343b9342",
+      "teamId": "team_ui-audit-approval",
+      "issuedAt": "2026-07-30T14:47:45.699Z"
+    }
+  ]
+}

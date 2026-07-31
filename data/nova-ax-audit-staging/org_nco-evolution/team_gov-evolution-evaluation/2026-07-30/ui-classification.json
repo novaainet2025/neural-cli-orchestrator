@@ -1,0 +1,10 @@
+{
+  "classifier": "artifact-surface-classification-monitor",
+  "artifact": "file:///Users/nova-ai/project/nova-ax/evidence/audit-gov-evolution-evaluation-20260730/work-report.md",
+  "artifactSha256": "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+  "extension": ".md",
+  "observedContentType": "application/octet-stream",
+  "uiInspectionRequired": false,
+  "reason": "Machine classification: Markdown operations report; no HTML or interactive UI surface.",
+  "observedAt": "2026-07-30T08:02:55.735Z"
+}

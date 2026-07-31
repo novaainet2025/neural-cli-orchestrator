@@ -168,6 +168,29 @@ function asOptionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+/**
+ * providers 인자를 배열로 정규화한다.
+ *
+ * MCP 도구 스키마는 모든 파라미터를 {type:'string'} 으로 노출한다(toMcpTool 참조).
+ * 그래서 호출자는 providers 를 "codex,agy" 같은 문자열로 보내는데,
+ * /api/realtime/{parallel,discussion,consensus} 는 z.array(z.string()) 을 요구한다.
+ * 정규화 없이 그대로 넘기면 항상 400 "expected array, received string" 이 났다.
+ * 이미 배열로 온 경우도 그대로 통과시키고, 비어 있으면 undefined 를 돌려
+ * 라우트가 기본 프로바이더를 고르도록 둔다.
+ */
+function toProviderList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const arr = value.map(v => String(v).trim()).filter(Boolean);
+    return arr.length ? arr : undefined;
+  }
+  if (typeof value !== 'string') return undefined;
+  const arr = value
+    .split(/[,\s]+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return arr.length ? arr : undefined;
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -225,13 +248,15 @@ export async function handleTool(name: string, args: Record<string, unknown>): P
         callerAgentId: _aid,
       })));
     }
-    case 'nco_parallel': return JSON.stringify(await ncoPost('/api/realtime/parallel', { prompt: args.prompt, providers: args.providers }));
-    case 'nco_discussion': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, providers: args.providers, maxRounds: args.maxRounds }));
-    case 'nco_consensus': return JSON.stringify(await ncoPost('/api/realtime/consensus', { prompt: args.prompt, providers: args.providers }));
+    case 'nco_parallel': return JSON.stringify(await ncoPost('/api/realtime/parallel', { prompt: args.prompt, providers: toProviderList(args.providers) }));
+    case 'nco_discussion': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, providers: toProviderList(args.providers), maxRounds: args.maxRounds ? Number(args.maxRounds) : undefined }));
+    case 'nco_consensus': return JSON.stringify(await ncoPost('/api/realtime/consensus', { prompt: args.prompt, providers: toProviderList(args.providers) }));
     case 'nco_hive': return JSON.stringify(await ncoPost('/api/realtime/discussion', { prompt: args.prompt, mode: 'hive' }));
     case 'nco_conductor': return JSON.stringify(await ncoPost('/api/conductor', { prompt: args.prompt }));
     case 'nco_commander': return JSON.stringify(await ncoPost('/api/commander', { prompt: args.prompt }));
-    case 'nco_broadcast': return JSON.stringify(await ncoPost('/api/chat/messages', { message: args.message, broadcast: true }));
+    // /api/chat/messages 는 body.broadcast 를 읽지 않는다(단일 에이전트로만 전달).
+    // 실제 팬아웃은 /api/broadcast 가 담당한다 — agentManager.listEnabledIds() 전체로 보낸다.
+    case 'nco_broadcast': return JSON.stringify(await ncoPost('/api/broadcast', { message: args.message }));
     // Status
     case 'nco_status': return JSON.stringify(await ncoFetch('/health'));
     case 'nco_providers': return JSON.stringify(await ncoFetch('/api/ai-providers'));

@@ -1,0 +1,74 @@
+{
+  "httpStatus": 200,
+  "runId": "vrun_e6aea119-8a79-48b3-82f3-e9645834ed59",
+  "status": "approved",
+  "passedInstitutions": 6,
+  "requiredInstitutions": 6,
+  "results": [
+    {
+      "institution": "inspection",
+      "name": "검사기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+      ]
+    },
+    {
+      "institution": "validation",
+      "name": "검증기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4"
+      ]
+    },
+    {
+      "institution": "measurement",
+      "name": "실측기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441"
+      ]
+    },
+    {
+      "institution": "performance",
+      "name": "성능테스트기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "ad6c5df7663a85c108e781c6e5cf7e9ad74e24a17afe99754b922b57e44ff8d0",
+        "0a4024810d80e9848a40d59c0bf75399c8abf1bb6877a1d06ba6751827d83ae4"
+      ]
+    },
+    {
+      "institution": "optimization",
+      "name": "최적화기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e"
+      ]
+    },
+    {
+      "institution": "goal",
+      "name": "목표달성 체크기관",
+      "passed": true,
+      "failures": [],
+      "evidenceRefs": [
+        "4f8005c5b59335970a5a91d3860cb64d8a9d9c35e3b4e1e16f5aa5f50bd899c4",
+        "ad6c5df7663a85c108e781c6e5cf7e9ad74e24a17afe99754b922b57e44ff8d0",
+        "0025ed38a4e5b759ae2c85b041b4343580bbd8981c3fd2bc9e4d735190bfb22e",
+        "6a001c7ff3ceb7b4341b39586fd4dc68930451bd9e0e817ba15ebc6fbc2a3894",
+        "92ef08d7ebd641f58f3a13a1af028ab852785dd2b5bb6958fee9e9d8edd92441",
+        "d7460027f3c1e5351fb884c9459594ca422db0d1d84164ae54413b177f2a806e",
+        "0a4024810d80e9848a40d59c0bf75399c8abf1bb6877a1d06ba6751827d83ae4",
+        "e975825504fe3274257a552ee43cefbfe9bb6f901158239d9ae170e799b1072a"
+      ]
+    }
+  ],
+  "evidenceDigest": "9c70d255ffbe1d9c99c093c089c2accaeed4450ff18fbdebddc4594a8ce91ea8",
+  "receiptId": "vrcpt_e2051f15-9067-4c6f-9632-54d939728a37",
+  "issuedAt": "2026-07-30T08:03:00.429Z"
+}

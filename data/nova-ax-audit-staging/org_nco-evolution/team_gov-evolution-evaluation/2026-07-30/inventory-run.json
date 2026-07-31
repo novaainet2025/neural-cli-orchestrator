@@ -1,0 +1,78 @@
+{
+  "startedAt": "2026-07-30T08:02:55.321Z",
+  "finishedAt": "2026-07-30T08:02:55.389Z",
+  "before": {
+    "present": 8,
+    "expected": 8
+  },
+  "after": {
+    "present": 8,
+    "expected": 8
+  },
+  "items": [
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation-2026-07-26.md",
+      "exists": true,
+      "byteSize": 4367,
+      "sha256": "a9ebc2f3e6a04bb76e8793506c8dca25833446685edbfca63131f21c911574ab",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation-2026-07-27.md",
+      "exists": true,
+      "byteSize": 1696,
+      "sha256": "ed58eacf64d94d69a9bd8a28e63a6114fd18dafdaeb36d123f6d70fc3a17a6d1",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation-2026-07-28.md",
+      "exists": true,
+      "byteSize": 1512,
+      "sha256": "00a8891e335cbe31660d68f23fbdf87dd3f8bb66a1c53ba0eafe849dc4347128",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation-2026-07-29.md",
+      "exists": true,
+      "byteSize": 2195,
+      "sha256": "c7e46d06c99fdf79e9c7494d9bd2e3231b80a79c4c2796233f6be8fc8694c739",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation-2026-07-30.md",
+      "exists": true,
+      "byteSize": 1312,
+      "sha256": "2176b895ee4df9cd999d8f55be181436a864272ab5fdb665ee67c2eb6f85408b",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/data/team-runner/team_gov-evolution-evaluation.last",
+      "exists": true,
+      "byteSize": 11,
+      "sha256": "6d7d17cea48f2c4d8b89fc38afd8ef13cac9aea5caf20ac7e23b3700cd7fa86c",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/evaluation/work_reports/2026-07-27.txt",
+      "exists": true,
+      "byteSize": 1535,
+      "sha256": "1e1a3a0b0bd9f14b77be14d737733d3998fc6336f84d867c1ad856b6da0ce318",
+      "verified": true
+    },
+    {
+      "path": "/Users/nova-ai/project/nco/obsidian_vault/improvement_notes/team-gov-evolution-evaluation-cycle3-diagnosis.md",
+      "exists": true,
+      "byteSize": 4885,
+      "sha256": "b1b74ff859121bf963cfc2f5d69f0f19dd079dff04e70080a57c59c3e962fa6e",
+      "verified": true
+    }
+  ],
+  "missingPaths": [],
+  "hashDrift": [],
+  "invariants": {
+    "all expected deliverables present": true,
+    "hashes stable since baseline capture": true,
+    "cycle3 diagnosis preserved": true,
+    "evaluation work report preserved": true
+  }
+}

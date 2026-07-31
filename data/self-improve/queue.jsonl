@@ -18,7 +18,7 @@
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-23T21:20:00+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-23T21:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-23T21:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
@@ -64,7 +64,7 @@
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-25T15:20:00+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-25T15:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-25T15:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
@@ -78,7 +78,7 @@
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T00:20:04+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T00:20:04+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T00:20:04+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
@@ -91,7 +91,7 @@
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T07:20:13+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T07:20:13+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T07:20:13+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
@@ -103,7 +103,7 @@
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
-{"ts": "2026-07-26T08:20:03+0900", "id": "provider:higgsfield", "category": "provider", "kind": "provider-live", "ref": "higgsfield", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-26T08:20:03+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:retired-provider", "category": "provider", "kind": "provider-live", "ref": "retired-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
 {"ts": "2026-07-26T08:20:03+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
@@ -143,3 +143,132 @@
 {"ts": "2026-07-29T04:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)"}
 {"ts": "2026-07-29T08:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
 {"ts": "2026-07-29T15:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-29T22:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-29T22:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-29T22:21:49+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=8 < enabled=9 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-30T07:20:02+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-30T08:20:00+0900", "id": "skill:nova-browser-127-0-0-1-4b6d2915", "category": "skill", "kind": "skill-valid", "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-4b6d2915/SKILL.md", "priority": 9, "detail": "SKILL.md 없음"}
+{"ts": "2026-07-30T08:20:00+0900", "id": "skill:nova-browser-127-0-0-1-b244b52e", "category": "skill", "kind": "skill-valid", "ref": "/Users/nova-ai/.claude/skills/nova-browser-127-0-0-1-b244b52e/SKILL.md", "priority": 9, "detail": "SKILL.md 없음"}
+{"ts": "2026-07-30T13:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T14:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T15:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T17:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T18:20:01+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T18:20:01+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T19:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: <urlopen error timed out>"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T20:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: <urlopen error timed out>"}
+{"ts": "2026-07-30T21:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T21:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T21:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-30T22:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T22:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-30T22:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-30T23:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T00:20:00+0900", "id": "provider:retired-media-provider", "category": "provider", "kind": "provider-live", "ref": "retired-media-provider", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T01:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T01:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T02:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T02:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T02:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T03:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-31T03:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T03:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T04:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T04:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T04:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T05:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T05:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T06:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T06:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T07:20:00+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T07:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T07:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T08:20:01+0900", "id": "hook:retired-media-provider-auth-check.sh", "category": "hook", "kind": "bash-syntax", "ref": "/Users/nova-ai/.claude/hooks/retired-media-provider-auth-check.sh", "priority": 2, "detail": "파일 없음"}
+{"ts": "2026-07-31T08:20:01+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T08:20:01+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=7 < enabled=8 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "build:tsc", "category": "build", "kind": "tsc-noemit", "ref": "/Users/nova-ai/project/nco", "priority": 1, "detail": "tsc exit=127 (파싱 불가): env: node: No such file or directory"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "script:scripts/run-iq-test-full.sh", "category": "script", "kind": "bash-syntax", "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh", "priority": 3, "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T09:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: [Errno 54] Connection reset by peer"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "script:scripts/run-iq-test-full.sh", "category": "script", "kind": "bash-syntax", "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh", "priority": 3, "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:agy", "category": "provider", "kind": "provider-live", "ref": "agy", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:claude-code", "category": "provider", "kind": "provider-live", "ref": "claude-code", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:codex", "category": "provider", "kind": "provider-live", "ref": "codex", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:cursor-agent", "category": "provider", "kind": "provider-live", "ref": "cursor-agent", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:hermes", "category": "provider", "kind": "provider-live", "ref": "hermes", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:ollama", "category": "provider", "kind": "provider-live", "ref": "ollama", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "provider:opencode", "category": "provider", "kind": "provider-live", "ref": "opencode", "priority": 4, "detail": "NCO offline — 등록 확인 불가"}
+{"ts": "2026-07-31T10:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: <urlopen error timed out>"}
+{"ts": "2026-07-31T11:20:00+0900", "id": "script:scripts/run-iq-test-full.sh", "category": "script", "kind": "bash-syntax", "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh", "priority": 3, "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"}
+{"ts": "2026-07-31T11:20:00+0900", "id": "provider:registry", "category": "provider", "kind": "registry-anomaly", "ref": "/health", "priority": 4, "detail": "health.providerCount=6 < enabled=7 (일부 프로바이더 미등록 의심)"}
+{"ts": "2026-07-31T12:20:00+0900", "id": "script:scripts/run-iq-test-full.sh", "category": "script", "kind": "bash-syntax", "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh", "priority": 3, "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"}
+{"ts": "2026-07-31T12:20:00+0900", "id": "health:nco", "category": "health", "kind": "http-health", "ref": "http://localhost:6200/health", "priority": 5, "detail": "health 실패: timed out"}
+{"ts": "2026-07-31T13:20:00+0900", "id": "script:scripts/run-iq-test-full.sh", "category": "script", "kind": "bash-syntax", "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh", "priority": 3, "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"}

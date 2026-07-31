@@ -27,7 +27,7 @@
 
 **충돌·가용성**
 - Team 블록: `cursor-agent: working (task_vPNsg6K2w4xUKCaN)` vs `/api/agents`: `cursor-agent: idle` → **상태 불일치, 어느 쪽이 현재 진실인지 미확인**
-- hermes/higgsfield/agy 등 성공률·실패수: **미확인** (주입 없음)
+- hermes/retired-media-provider/agy 등 성공률·실패수: **미확인** (주입 없음)
 - bugfix 대상 파일·증상·재현절차: **미확인**
 
 ---
@@ -63,7 +63,7 @@
 **unverified/remaining**
 - bugfix 구체 대상·diff·빌드/테스트 결과 (수행·관측 없음)
 - 에이전트 상태 충돌의 진실값
-- hermes/higgsfield/agy/codex 등 상세 지표
+- hermes/retired-media-provider/agy/codex 등 상세 지표
 - 독립감사 승인 여부 (주입 없음 → **미확인**)
 - 기계 검증 영수증 재실행 (도구 금지로 **미실행**)
 

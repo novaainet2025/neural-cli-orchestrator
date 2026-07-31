@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-07-30T19:18:05.317Z",
+  "scope": {
+    "company_id": "org_ui-inspection",
+    "team_id": "team_ui-ux-design",
+    "team_name": "UX·사용성 설계팀",
+    "active": 1,
+    "source": "nco",
+    "last_seen_at": "2026-07-30T19:17:35.084Z"
+  },
+  "auditTask": {
+    "id": "task_fJg32GBz8EhFZiMQ",
+    "status": "running",
+    "assignedTo": "codex",
+    "organizationId": "org_ui-inspection",
+    "teamId": "team_ui-ux-design",
+    "workReportId": "audit_req_org_ui-inspection_team_ui-ux-design",
+    "createdAt": "2026-07-30 18:09:13",
+    "updatedAt": "2026-07-30 19:18:03"
+  },
+  "sourceTask": {
+    "id": "task_HR3DMkIa2vgSs86P",
+    "status": "cancelled",
+    "assignedTo": "codex",
+    "organizationId": "org_ui-inspection",
+    "teamId": "team_ui-ux-design",
+    "responseChars": 1991,
+    "responseSha256": "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+    "chunkEvent": {
+      "id": "evt_8SzuB77UVkiGa_oX",
+      "contentHash": "18d468b3ab2889036ea8a23e45937aee6470dc81b6afad80e4cac2fde2f81065",
+      "occurredAt": "2026-07-30T16:41:24.182Z"
+    },
+    "completedEvent": {
+      "id": "evt_WjBrAOjyygwry5LB",
+      "contentHash": "ea7195d7de33c59a40b900d41c404d0bf040c94e7e1ff13c4a81ac77e2836232",
+      "occurredAt": "2026-07-30T16:41:34.046Z"
+    }
+  },
+  "artifact": {
+    "path": "/Users/nova-ai/project/nova-ax/evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_HR3DMkIa2vgSs86P/task-output.md",
+    "sha256": "6a396cf57bdd61a009ae0f6f2d93e50882aa5de7d808f74c736a0859dd830952",
+    "byteSize": 3453,
+    "visibleCharacters": 1991,
+    "modifiedAt": "2026-07-30T17:49:45.568Z"
+  },
+  "directive": {
+    "id": "vdir_b3c238db-a059-4e4d-a999-c9afb565d1bb",
+    "type": "audit_required",
+    "status": "completed",
+    "work_report_id": "audit_req_org_ui-inspection_team_ui-ux-design",
+    "subject_task_id": null,
+    "task_id": null,
+    "attempt_count": 9,
+    "last_error": "NCO audit task remained queued beyond 45 minutes",
+    "created_at": "2026-07-30T10:43:36.893Z",
+    "updated_at": "2026-07-30T17:50:09.034Z"
+  },
+  "priorRuns": [],
+  "activeLoopsBefore": [],
+  "projectObservations": [
+    {
+      "path": "/Users/nova-ai/project/nco-dashboard/src/App.tsx",
+      "sha256": "af60af276c27b97ddaa2c77392d446f4cf021a523f4e4a8aeab7dfbe1f3f5b87",
+      "byteSize": 119835,
+      "modifiedAt": "2026-07-30T12:43:35.758Z"
+    },
+    {
+      "path": "/Users/nova-ai/project/nco-dashboard/src/components/canvas/PhysicsGraph.tsx",
+      "sha256": "f1a4d304a496270f3de8a621543eb7f4a378fd2e083b2cbbb6a1f04036be7ee0",
+      "byteSize": 252297,
+      "modifiedAt": "2026-07-30T10:55:28.274Z"
+    },
+    {
+      "path": "/Users/nova-ai/project/nco-dashboard/src/components/panels/RightPanel.tsx",
+      "sha256": "dc71dee5fca49e123f3b68c41e5dccbed409e09b4fd6b4d926049001c20b577c",
+      "byteSize": 144506,
+      "modifiedAt": "2026-07-30T12:43:35.757Z"
+    },
+    {
+      "path": "/Users/nova-ai/project/nco-dashboard/src/pages/WorkReportsPage.tsx",
+      "sha256": "b49a00cd35bac75256787b6fd5767e22e620dd05a0b5199cb3dcc004ae12ae1f",
+      "byteSize": 16932,
+      "modifiedAt": "2026-07-23T12:28:32.123Z"
+    },
+    {
+      "path": "/Users/nova-ai/project/nco-dashboard/scripts/ui-audit.mjs",
+      "sha256": "7ec380374fa00118320a50405b17b208af10a823443ac616e3f82cb19cf37527",
+      "byteSize": 12602,
+      "modifiedAt": "2026-07-30T11:05:29.966Z"
+    }
+  ],
+  "contract": {
+    "totalChecks": 11,
+    "passedChecks": 11,
+    "failedChecks": 0,
+    "passed": true,
+    "checks": [
+      {
+        "id": "scope_registry_active",
+        "satisfied": true,
+        "evidence": "Nova-AX verification_scopes active row"
+      },
+      {
+        "id": "audit_task_scope_binding",
+        "satisfied": true,
+        "evidence": "NCO tasks + teams join for the current audit task"
+      },
+      {
+        "id": "source_task_scope_binding",
+        "satisfied": true,
+        "evidence": "NCO tasks + teams join for the observed work result"
+      },
+      {
+        "id": "actual_output_received",
+        "satisfied": true,
+        "evidence": "NCO response and artifact bytes are identical; chars=1991"
+      },
+      {
+        "id": "append_only_ledger_binding",
+        "satisfied": true,
+        "evidence": "work_events task:chunk carries the exact source response and a stored SHA-256 content hash"
+      },
+      {
+        "id": "machine_completion_observed",
+        "satisfied": true,
+        "evidence": "task:completed event/action observed; durationMs=119423; toolCalls=0"
+      },
+      {
+        "id": "prior_independent_contract",
+        "satisfied": true,
+        "evidence": "14/14 prior machine contract checks"
+      },
+      {
+        "id": "referenced_sources_observed",
+        "satisfied": true,
+        "evidence": "5/5 referenced project sources opened and hashed"
+      },
+      {
+        "id": "ux_plan_content_floor",
+        "satisfied": true,
+        "evidence": "required UX plan sections are present in the observed artifact"
+      },
+      {
+        "id": "work_report_obligation_received",
+        "satisfied": true,
+        "evidence": "control-plane workReportId is completed and the actual team output is present in the append-only ledger"
+      },
+      {
+        "id": "fresh_run_required",
+        "satisfied": true,
+        "evidence": "current audit task had 0 prior runs and 0 prior 6/6 approvals"
+      }
+    ]
+  },
+  "execution": {
+    "command": "node evidence/org_ui-inspection/team_ui-ux-design/2026-07-31/task_fJg32GBz8EhFZiMQ/run-audit.mjs",
+    "commandHash": "70549069554587d4f0e20028a9001db5b0fe051a503fca8135c499a8651db2ee",
+    "exitCode": 0,
+    "durationMs": 633,
+    "outputHash": "ecd8ed93f34e238f2a7427e9b5eedda7870cad368324d3c5ad54b7eebb7e594e"
+  }
+}

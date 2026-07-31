@@ -1,0 +1,39 @@
+{
+  "control": "claim-verifier-mutation-negative-control",
+  "observedAt": "2026-07-30T08:02:57.343Z",
+  "verdict": "PASS",
+  "mutantsTested": 5,
+  "mutantsRejected": 5,
+  "results": [
+    {
+      "name": "inflate task total",
+      "applied": true,
+      "verifierExit": 1,
+      "rejected": true
+    },
+    {
+      "name": "hide a failed task",
+      "applied": true,
+      "verifierExit": 1,
+      "rejected": true
+    },
+    {
+      "name": "overstate submitted reports",
+      "applied": true,
+      "verifierExit": 1,
+      "rejected": true
+    },
+    {
+      "name": "understate deliverable count",
+      "applied": true,
+      "verifierExit": 1,
+      "rejected": true
+    },
+    {
+      "name": "claim zero missing when not",
+      "applied": true,
+      "verifierExit": 1,
+      "rejected": true
+    }
+  ]
+}

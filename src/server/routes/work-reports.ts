@@ -447,9 +447,11 @@ export async function registerWorkReportRoutes(app: FastifyInstance): Promise<vo
     const submittedAt = new Date().toISOString();
     const dueAt = new Date(report.due_at);
     const lateMs = Number.isNaN(dueAt.getTime()) ? 0 : Math.max(0, Date.parse(submittedAt) - dueAt.getTime());
-    const status: WorkReportStatus = lateMs > 0 ? 'late' : 'submitted';
+    // missed 재제출은 submitted로 기록하고 지연은 lateness_minutes에 보존(제출율 KPI와 정합).
+    const status: WorkReportStatus =
+      report.status === 'missed' ? 'submitted' : (lateMs > 0 ? 'late' : 'submitted');
     const latenessMinutes = lateMs > 0 ? Math.ceil(lateMs / 60_000) : 0;
-    // missed 재제출은 설계대로 late 전이를 허용하되, was_missed 이력을 summary_json에 병합 보존(리뷰 반영)
+    // missed 재제출 시 was_missed 이력을 summary_json에 병합 보존(리뷰 반영)
     let summaryObj: Record<string, unknown> | null = null;
     if (body.summaryJson !== undefined && body.summaryJson !== null) {
       summaryObj = (typeof body.summaryJson === 'object' && !Array.isArray(body.summaryJson))
@@ -488,6 +490,38 @@ export async function registerWorkReportRoutes(app: FastifyInstance): Promise<vo
       WHERE wr.id=?
     `).get(id) as WorkReportRow;
 
+    return { report: serializeReport(updated) };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/work-reports/:id/backfill-submitted', async (req, reply) => {
+    const { id } = req.params;
+    const db = getDb();
+    const report = db.prepare('SELECT * FROM work_reports WHERE id=?').get(id) as WorkReportRow | undefined;
+    if (!report) return reply.code(404).send({ error: `work report not found: ${id}` });
+    if (!report.body_md || !report.body_md.trim()) {
+      return reply.code(400).send({ error: 'body_md required before backfill-submitted' });
+    }
+    if (report.status === 'waived') return reply.code(409).send({ error: 'waived work report cannot be backfilled' });
+    db.prepare(`
+      UPDATE work_reports
+      SET status='submitted', updated_at=datetime('now')
+      WHERE id=?
+    `).run(id);
+    const updated = db.prepare(`
+      SELECT
+        wr.*,
+        CASE
+          WHEN wr.subject_kind='organization' THEN so.name
+          ELSE st.name
+        END AS subject_name,
+        oo.name AS organization_name,
+        st.name AS team_name
+      FROM work_reports wr
+      LEFT JOIN organizations so ON wr.subject_kind='organization' AND wr.subject_id = so.id
+      LEFT JOIN teams st ON wr.subject_kind='team' AND wr.subject_id = st.id
+      LEFT JOIN organizations oo ON wr.organization_id = oo.id
+      WHERE wr.id=?
+    `).get(id) as WorkReportRow;
     return { report: serializeReport(updated) };
   });
 

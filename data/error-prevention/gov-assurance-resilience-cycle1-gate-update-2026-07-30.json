@@ -1,0 +1,81 @@
+{
+  "meta": {
+    "team": "team_error-prevention",
+    "target": "team_gov-assurance-resilience",
+    "slug": "gov-assurance-resilience",
+    "generated": "2026-07-30",
+    "cycle": "1/3",
+    "author": "중복에러방지팀 (Discussion R1 합의)",
+    "purpose": "Cross-verify score=6.1/completion=0% root cause; register GATE-RESILIENCE-C1-R1 intake contract; avoid false team-failure reports."
+  },
+  "root_cause_verdict": {
+    "primary": {
+      "id": "RC-RESILIENCE-C1-AUDIT-GATE",
+      "verdict": "GLOBAL_SCORER_ARTIFACT",
+      "tier": "T1_prior_report",
+      "evidence": [
+        "REPORTS/2026-07-30-gov-assurance-safety-cycle1-discussion-R1.md: identical score=6.1/completion=0%/n=6",
+        "src/core/team-scorer.ts L230-241: pending grandfathering (safety cycle 1 fix)",
+        "data/team-runner/team_gov-assurance-resilience-2026-07-30.md: 7-day tasks 12/12 completed, 0 failed",
+        "scripts/audit-pipeline-health.ts AP-3_approved baseline expected 0 in rollout window"
+      ],
+      "false_report_risk": "Claiming resilience team operational failure from completion=0% alone is FALSE_REPORT"
+    },
+    "secondary": {
+      "id": "RC-RESILIENCE-C1-T1-GAP",
+      "verdict": "OPERATIONAL_QUALITY_GAP",
+      "tier": "T1_file",
+      "evidence": [
+        "data/team-runner/team_gov-assurance-resilience-2026-07-30.md: done: + gateway/WS/backup 미확인 coexist",
+        "data/team-runner/team_gov-assurance-resilience-2026-07-30.md: hermes 57%, cursor-agent idle/working mismatch"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "id": "GATE-RESILIENCE-C1-R1",
+      "type": "new",
+      "status": "IMPLEMENTED",
+      "layer": "task intake (prompt-gate / applyTeamResponseContract)",
+      "location": "src/core/response-contract.ts RESILIENCE_REVIEW_RESPONSE_CONTRACT + src/server/task-intake.ts",
+      "rule": "Inject resilience evidence contract when companyRunId is set and teamId=team_gov-assurance-resilience. Require T1 for availability/recovery claims, verifiable success criteria, bounded rollback. Exclude daily work-report tasks (workReportId without companyRunId).",
+      "rollback": "Revert response-contract.ts + task-intake.ts commit; no env toggle required"
+    },
+    {
+      "id": "SCORER-RESILIENCE-C1-R2",
+      "type": "observation",
+      "status": "ALREADY_APPLIED",
+      "layer": "team-scorer AUDIT_APPROVED_COMPLETION",
+      "rule": "pending grandfathering applied in safety cycle 1 — no duplicate edit from resilience session. Verify via tests/audit-gate-invariants.test.ts.",
+      "rollback": "NCO_SCORER_AUDIT_APPROVAL_GATE=off (platform owner)"
+    },
+    {
+      "id": "CB-RESILIENCE-C1-R3",
+      "type": "observation",
+      "status": "NOT_CHANGED",
+      "layer": "CircuitBreaker / provider routing",
+      "rule": "hermes/ollama low success rates are operational signals but do not explain org-wide completion=0%. No provider-specific CB threshold change — blast radius unverified.",
+      "evidence": "data/team-runner/team_gov-assurance-resilience-2026-07-30.md agent table"
+    }
+  ],
+  "false_report_cross_verification": [
+    {
+      "claim": "completion=0% proves resilience team cannot execute charter",
+      "verdict": "FALSE_REPORT",
+      "tier": "T1_file",
+      "evidence": "7-day team-runner: tasks 12/12 completed, 0 failed; 0% is 48h scorer numerator under audit gate"
+    },
+    {
+      "claim": "hermes 57% success rate is root cause of score=6.1",
+      "verdict": "PARTIAL_TRUE_OPERATIONAL_NOT_SCORER",
+      "tier": "T1_file",
+      "evidence": "Agent degradation is real in daily report but does not explain score formula 0.9×0+0.1×volume"
+    },
+    {
+      "claim": "GATE-RESILIENCE-C1-R1 fabricates completions",
+      "verdict": "FALSE_REPORT",
+      "tier": "T1_file",
+      "evidence": "Contract is intake-only; tightens done: claims with T1 requirement — does not alter team-scorer SQL"
+    }
+  ]
+}

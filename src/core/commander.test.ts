@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const executeTask = vi.fn();
 const listEnabledIds = vi.fn(() => ['claude-code', 'codex', 'cursor-agent']);
+const getAvailability = vi.fn(() => ({
+  available: true,
+  status: 'available',
+  reason: null as string | null,
+}));
 const publish = vi.fn(async () => undefined);
 
 vi.mock('../agent/agent-manager.js', () => ({
@@ -17,12 +22,25 @@ vi.mock('./event-bus.js', () => ({
   },
 }));
 
+vi.mock('../security/circuit-breaker-registry.js', () => ({
+  circuitBreakerRegistry: {
+    getAvailability,
+  },
+}));
+
 const { commander } = await import('./commander.js');
 
 describe('Commander', () => {
   beforeEach(() => {
     executeTask.mockReset();
-    listEnabledIds.mockClear();
+    listEnabledIds.mockReset();
+    listEnabledIds.mockReturnValue(['claude-code', 'codex', 'cursor-agent']);
+    getAvailability.mockReset();
+    getAvailability.mockReturnValue({
+      available: true,
+      status: 'available',
+      reason: null,
+    });
     publish.mockClear();
   });
 
@@ -82,5 +100,19 @@ describe('Commander', () => {
     expect(result.status).toBe('failed');
     expect(result.finalOutput).toContain('empty or placeholder execution plan');
     expect(executeTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not dispatch when every enabled provider is circuit-gated', async () => {
+    getAvailability.mockReturnValue({
+      available: false,
+      status: 'gated:generic',
+      reason: 'generic',
+    });
+
+    const result = await commander.executeCommand('implement a safe improvement');
+
+    expect(result.status).toBe('failed');
+    expect(result.finalOutput).toContain('No available provider for management layer');
+    expect(executeTask).not.toHaveBeenCalled();
   });
 });

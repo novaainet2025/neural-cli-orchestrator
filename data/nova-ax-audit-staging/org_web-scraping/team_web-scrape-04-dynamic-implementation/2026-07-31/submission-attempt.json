@@ -1,0 +1,39 @@
+{
+  "attemptedAt": "2026-07-30T19:12:14.713Z",
+  "taskId": "task_pnxUEketwozTapq7",
+  "actorId": "codex",
+  "novaAxHealth": {
+    "ok": false,
+    "status": 0,
+    "startedAt": "2026-07-30T19:12:14.714Z",
+    "finishedAt": "2026-07-30T19:12:14.790Z",
+    "error": {
+      "name": "TypeError",
+      "message": "fetch failed",
+      "cause": {
+        "code": "EPERM",
+        "syscall": "connect",
+        "address": "127.0.0.1",
+        "port": 6300
+      }
+    }
+  },
+  "ncoTask": {
+    "ok": false,
+    "status": 0,
+    "startedAt": "2026-07-30T19:12:14.790Z",
+    "finishedAt": "2026-07-30T19:12:14.792Z",
+    "error": {
+      "name": "TypeError",
+      "message": "fetch failed",
+      "cause": {
+        "code": "EPERM",
+        "syscall": "connect",
+        "address": "127.0.0.1",
+        "port": 6200
+      }
+    }
+  },
+  "verification": null,
+  "binding": null
+}

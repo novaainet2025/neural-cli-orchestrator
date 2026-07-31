@@ -1,0 +1,18 @@
+{
+  "ncoIntegrity": true,
+  "novaAxIntegrity": true,
+  "scopeActive": true,
+  "sourceBound": true,
+  "mirrorBound": true,
+  "approvedSixOfSix": true,
+  "receiptBound": true,
+  "receiptConsumed": true,
+  "loopCompleted": true,
+  "attemptApproved": true,
+  "actionsResolved": true,
+  "completionBound": true,
+  "directiveCompleted": true,
+  "noOpenLoop": true,
+  "artifactHashMatched": true,
+  "testHashMatched": true
+}

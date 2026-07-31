@@ -1,0 +1,441 @@
+{
+  "auditCompletedAt": "2026-07-30T07:57:57.784Z",
+  "scope": {
+    "companyId": "org_nco-evolution",
+    "teamId": "team_gov-evolution-skills",
+    "taskId": "task_k3A4UTcYGBJpJZ_K"
+  },
+  "artifactSha256": "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+  "evidencePaths": {
+    "staging": "/Users/nova-ai/project/nco/data/nova-ax-audit-staging/org_nco-evolution/team_gov-evolution-skills/2026-07-30/audit-artifact.json",
+    "verified": "/Users/nova-ai/project/nova-ax/evidence/org_nco-evolution/team_gov-evolution-skills/2026-07-30/audit-artifact.json"
+  },
+  "initialRun": {
+    "httpStatus": 200,
+    "runId": "vrun_fc1439c4-fd80-4729-b288-642472a83170",
+    "decision": "rejected",
+    "passedInstitutions": 4,
+    "results": [
+      {
+        "institution": "inspection",
+        "name": "검사기관",
+        "passed": false,
+        "failures": [
+          "artifact observation failed: artifact path is outside approved verification roots"
+        ],
+        "evidenceRefs": []
+      },
+      {
+        "institution": "validation",
+        "name": "검증기관",
+        "passed": false,
+        "failures": [
+          "independent attestation does not match the observed artifact"
+        ],
+        "evidenceRefs": [
+          "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+        ]
+      },
+      {
+        "institution": "measurement",
+        "name": "실측기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "be1ecbbefd378d8f2a62c6a0e2dc42b36901b2751dfe8729200325ed974dec59"
+        ]
+      },
+      {
+        "institution": "performance",
+        "name": "성능테스트기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "c62f4aac654ed7ce2151cf566914ce27df034304cb557a2af30fd917e70e5526"
+        ]
+      },
+      {
+        "institution": "optimization",
+        "name": "최적화기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "76d25b9fa7aa8ea3bda3963b4fb73926c81ea47a1c07d3cbb5e86e8d1d3b770d"
+        ]
+      },
+      {
+        "institution": "goal",
+        "name": "목표달성 체크기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+          "be1ecbbefd378d8f2a62c6a0e2dc42b36901b2751dfe8729200325ed974dec59",
+          "691ec317ed5fb3cdc384854a8e53b466314dd01729c16e8ea9c733259716b597"
+        ]
+      }
+    ],
+    "failures": [
+      {
+        "institution": "inspection",
+        "failures": [
+          "artifact observation failed: artifact path is outside approved verification roots"
+        ]
+      },
+      {
+        "institution": "validation",
+        "failures": [
+          "independent attestation does not match the observed artifact"
+        ]
+      }
+    ]
+  },
+  "verificationRun": {
+    "httpStatus": 200,
+    "runId": "vrun_571d80bd-9b91-4c69-8118-8de2f75321d8",
+    "decision": "approved",
+    "passedInstitutions": 6,
+    "receiptId": "vrcpt_bdb1c39e-4563-4073-b073-dbbae59bbad7",
+    "results": [
+      {
+        "institution": "inspection",
+        "name": "검사기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+        ]
+      },
+      {
+        "institution": "validation",
+        "name": "검증기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+        ]
+      },
+      {
+        "institution": "measurement",
+        "name": "실측기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "618286af93a479f5c9b370c42b4241354162fb89ba3556e3a5fa3eeaeecfcd8c"
+        ]
+      },
+      {
+        "institution": "performance",
+        "name": "성능테스트기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "7d7ebd6deac883b38a4a1ccd6b665d3ba701d293167689f80ab0bcc6ae279426"
+        ]
+      },
+      {
+        "institution": "optimization",
+        "name": "최적화기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "76d25b9fa7aa8ea3bda3963b4fb73926c81ea47a1c07d3cbb5e86e8d1d3b770d"
+        ]
+      },
+      {
+        "institution": "goal",
+        "name": "목표달성 체크기관",
+        "passed": true,
+        "failures": [],
+        "evidenceRefs": [
+          "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096",
+          "618286af93a479f5c9b370c42b4241354162fb89ba3556e3a5fa3eeaeecfcd8c",
+          "b196c33aef8f14feb4db8c9fa4327a1c5bfc1b7722e7f42ed6129c41a403742c"
+        ]
+      }
+    ],
+    "failures": []
+  },
+  "testExitCode": 0,
+  "completionEvent": {
+    "httpStatus": 200,
+    "activityId": "d5180884-493d-4e23-a3a6-52c40a111fe2",
+    "receiptConsumed": true,
+    "body": {
+      "ok": true,
+      "id": "d5180884-493d-4e23-a3a6-52c40a111fe2",
+      "status": "task_complete"
+    }
+  },
+  "oversightAfter": {
+    "commander": "Supreme Verification Commander",
+    "institutions": [
+      {
+        "id": "inspection",
+        "name": "검사기관",
+        "mandate": "산출물을 직접 열어 존재·상태·내용·해시를 검사"
+      },
+      {
+        "id": "validation",
+        "name": "검증기관",
+        "mandate": "실측 해시와 독립 증명의 무결성·독립성을 검증"
+      },
+      {
+        "id": "measurement",
+        "name": "실측기관",
+        "mandate": "신선한 기계 실측값·표본·목표 달성을 검증"
+      },
+      {
+        "id": "performance",
+        "name": "성능테스트기관",
+        "mandate": "실행된 테스트의 종료코드·시간·출력 증거를 검증"
+      },
+      {
+        "id": "optimization",
+        "name": "최적화기관",
+        "mandate": "기준선 대비 개선과 무회귀를 검증"
+      },
+      {
+        "id": "goal",
+        "name": "목표달성 체크기관",
+        "mandate": "모든 요구사항과 실제 증거의 연결을 검증"
+      }
+    ],
+    "policy": "6/6 unanimous approval per task; any unresolved task failure makes the scope non-compliant",
+    "totals": {
+      "total": 2,
+      "approved": 1,
+      "rejected": 1,
+      "pending": 0,
+      "consumedReceipts": 1,
+      "activeScopes": 1,
+      "compliantScopes": 1,
+      "unverifiedScopes": 0,
+      "failedScopes": 0,
+      "activeRemediationLoops": 0,
+      "completedRemediationLoops": 1,
+      "exhaustedRemediationLoops": 0,
+      "queuedDirectives": 0,
+      "dispatchedDirectives": 0,
+      "completedDirectives": 2,
+      "cancelledDirectives": 0
+    },
+    "scopes": [
+      {
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-skills",
+        "total": 2,
+        "approved": 1,
+        "rejected": 1
+      }
+    ],
+    "historicalRejectedRuns": [
+      {
+        "runId": "vrun_fc1439c4-fd80-4729-b288-642472a83170",
+        "taskId": "task_k3A4UTcYGBJpJZ_K",
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-skills",
+        "actorId": "cursor-agent",
+        "passedInstitutions": 4,
+        "createdAt": "2026-07-30T07:55:36.040Z"
+      }
+    ],
+    "failureQueue": [],
+    "unverifiedScopeQueue": [],
+    "remediationLoops": [
+      {
+        "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+        "originalRunId": "vrun_fc1439c4-fd80-4729-b288-642472a83170",
+        "taskId": "task_k3A4UTcYGBJpJZ_K",
+        "ownerCompanyId": "org_nco-evolution",
+        "ownerTeamId": "team_gov-evolution-skills",
+        "actorId": "cursor-agent",
+        "status": "completed",
+        "currentIteration": 1,
+        "maxIterations": 5,
+        "latestRunId": "vrun_571d80bd-9b91-4c69-8118-8de2f75321d8",
+        "createdAt": "2026-07-30T07:55:36.050Z",
+        "updatedAt": "2026-07-30T07:57:57.756Z",
+        "actions": [
+          {
+            "id": "vaction_c8736df34155bb54370a8f4179e75ef3",
+            "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+            "iteration": 1,
+            "ownerCompanyId": "org_nco-evolution",
+            "ownerTeamId": "team_gov-evolution-skills",
+            "institution": "inspection",
+            "failure": "artifact observation failed: artifact path is outside approved verification roots",
+            "action": "Correct the directly observed artifact, publication state, content floor, or artifact hash. Reported failure: artifact observation failed: artifact path is outside approved verification roots",
+            "passCriteria": "A later verification run for the same task must return passed=true for inspection; the new institution decision, not a company claim, resolves this action.",
+            "evidenceRequired": [
+              "directly observed artifact SHA-256",
+              "new inspection result evidence reference"
+            ],
+            "priority": "high",
+            "status": "resolved"
+          },
+          {
+            "id": "vaction_4960d56f59581690193e82c0301e6543",
+            "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+            "iteration": 1,
+            "ownerCompanyId": "org_nco-evolution",
+            "ownerTeamId": "team_gov-evolution-skills",
+            "institution": "validation",
+            "failure": "independent attestation does not match the observed artifact",
+            "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: independent attestation does not match the observed artifact",
+            "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+            "evidenceRequired": [
+              "independent integrity attestation SHA-256",
+              "new validation result evidence reference"
+            ],
+            "priority": "high",
+            "status": "resolved"
+          }
+        ],
+        "attempts": [
+          {
+            "id": "vattempt_81afc4af-5fdb-41c5-a07a-58ccae657a38",
+            "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+            "iteration": 1,
+            "actorId": "cursor-agent",
+            "runId": "vrun_571d80bd-9b91-4c69-8118-8de2f75321d8",
+            "criteria": [
+              {
+                "actionId": "vaction_c8736df34155bb54370a8f4179e75ef3",
+                "evidenceHashes": [
+                  "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+                ]
+              },
+              {
+                "actionId": "vaction_4960d56f59581690193e82c0301e6543",
+                "evidenceHashes": [
+                  "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+                ]
+              }
+            ],
+            "decision": "approved",
+            "createdAt": "2026-07-30T07:57:57.756Z"
+          }
+        ]
+      }
+    ],
+    "nextActions": [],
+    "directives": [
+      {
+        "id": "vdir_c2c0b9b7-4c14-4b9d-a7a9-148e42396198",
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-skills",
+        "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+        "type": "remediation",
+        "status": "completed",
+        "workReportId": "remediation_vloop_0a1cf355-2725-4f79-9824-f4983774ab0e_1",
+        "taskId": "task_g-upYfo9pN5bVEWv",
+        "dispatchedAt": "2026-07-30T07:55:43.327Z",
+        "lastError": null,
+        "attemptCount": 1,
+        "nextAttemptAt": null,
+        "scopeType": "team"
+      },
+      {
+        "id": "vdir_45a73987-c713-4d20-b946-b0feca444e6c",
+        "companyId": "org_nco-evolution",
+        "teamId": "team_gov-evolution-skills",
+        "loopId": "",
+        "type": "audit_required",
+        "status": "completed",
+        "workReportId": "audit_req_org_nco-evolution_team_gov-evolution-skills",
+        "taskId": "task_k3A4UTcYGBJpJZ_K",
+        "dispatchedAt": "2026-07-30T04:21:20.603Z",
+        "lastError": null,
+        "attemptCount": 1,
+        "nextAttemptAt": null,
+        "scopeType": "team"
+      }
+    ],
+    "runtime": {
+      "scopeRegistryReady": true,
+      "scopeRegistryLastSyncedAt": "2026-07-30T07:57:45.293Z"
+    }
+  },
+  "loopAttempt": {
+    "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+    "httpStatus": 200,
+    "status": "completed",
+    "currentIteration": 1,
+    "body": {
+      "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+      "originalRunId": "vrun_fc1439c4-fd80-4729-b288-642472a83170",
+      "taskId": "task_k3A4UTcYGBJpJZ_K",
+      "ownerCompanyId": "org_nco-evolution",
+      "ownerTeamId": "team_gov-evolution-skills",
+      "actorId": "cursor-agent",
+      "status": "completed",
+      "currentIteration": 1,
+      "maxIterations": 5,
+      "latestRunId": "vrun_571d80bd-9b91-4c69-8118-8de2f75321d8",
+      "createdAt": "2026-07-30T07:55:36.050Z",
+      "updatedAt": "2026-07-30T07:57:57.756Z",
+      "actions": [
+        {
+          "id": "vaction_c8736df34155bb54370a8f4179e75ef3",
+          "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+          "iteration": 1,
+          "ownerCompanyId": "org_nco-evolution",
+          "ownerTeamId": "team_gov-evolution-skills",
+          "institution": "inspection",
+          "failure": "artifact observation failed: artifact path is outside approved verification roots",
+          "action": "Correct the directly observed artifact, publication state, content floor, or artifact hash. Reported failure: artifact observation failed: artifact path is outside approved verification roots",
+          "passCriteria": "A later verification run for the same task must return passed=true for inspection; the new institution decision, not a company claim, resolves this action.",
+          "evidenceRequired": [
+            "directly observed artifact SHA-256",
+            "new inspection result evidence reference"
+          ],
+          "priority": "high",
+          "status": "resolved"
+        },
+        {
+          "id": "vaction_4960d56f59581690193e82c0301e6543",
+          "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+          "iteration": 1,
+          "ownerCompanyId": "org_nco-evolution",
+          "ownerTeamId": "team_gov-evolution-skills",
+          "institution": "validation",
+          "failure": "independent attestation does not match the observed artifact",
+          "action": "Replace invalid, stale, dependent, or mismatched integrity attestation evidence. Reported failure: independent attestation does not match the observed artifact",
+          "passCriteria": "A later verification run for the same task must return passed=true for validation; the new institution decision, not a company claim, resolves this action.",
+          "evidenceRequired": [
+            "independent integrity attestation SHA-256",
+            "new validation result evidence reference"
+          ],
+          "priority": "high",
+          "status": "resolved"
+        }
+      ],
+      "attempts": [
+        {
+          "id": "vattempt_81afc4af-5fdb-41c5-a07a-58ccae657a38",
+          "loopId": "vloop_0a1cf355-2725-4f79-9824-f4983774ab0e",
+          "iteration": 1,
+          "actorId": "cursor-agent",
+          "runId": "vrun_571d80bd-9b91-4c69-8118-8de2f75321d8",
+          "criteria": [
+            {
+              "actionId": "vaction_c8736df34155bb54370a8f4179e75ef3",
+              "evidenceHashes": [
+                "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+              ]
+            },
+            {
+              "actionId": "vaction_4960d56f59581690193e82c0301e6543",
+              "evidenceHashes": [
+                "593225c8014bfa7c61641883d750f38ff8416e7423bc4abd0e2f17008fdfb096"
+              ]
+            }
+          ],
+          "decision": "approved",
+          "createdAt": "2026-07-30T07:57:57.756Z"
+        }
+      ]
+    }
+  }
+}

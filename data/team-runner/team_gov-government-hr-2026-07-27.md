@@ -31,7 +31,7 @@ done: [Evidence Tier 3 — 주입 실데이터·팀 스냅샷 수치만 근거; 
 
 **팀 스냅샷(프롬프트 Team 섹션)**
 - working: opencode(`task_Wn-B-S4Z4BSyc7bA`), cursor-agent(`task_uErkQt7j8DFcDo-y`), agy(`task_6PXDEr5QmOuZCf3I`)
-- idle: claude-code, codex, ollama, hermes, higgsfield, retired-provider
+- idle: claude-code, codex, ollama, hermes, retired-media-provider, retired-provider
 - 역할 중복·권력분립 훼손 여부: **미확인** (역할 매트릭스·감사 이력 미주입)
 - 역량 공백(예: 보안/법무/재무 전담 커버리지): **미확인**
 - 협력 품질(핸드오프·재작업률·합의 충돌): **미확인** (work_reports=1건만 존재, 내용 미주입)
@@ -83,7 +83,7 @@ done: [Evidence Tier 3 — 주입 실데이터·팀 스냅샷 수치만 근거; 
 - 보호관찰·소프트퇴출·팀 생성/보호 감사 트레일
 - 권력분립 준수 여부
 - work_reports submitted=1의 실제 내용
-- claude-code/codex/agy/opencode/higgsfield/retired-provider의 /api/agents KPI(미주입)
+- claude-code/codex/agy/opencode/retired-media-provider/retired-provider의 /api/agents KPI(미주입)
 - 파일·빌드·테스트·커밋·HTTP/DB 직접 검증(본 턴 수행 불가·미실시)
 
 **Gap:** HR 의사결정(보호관찰/퇴출/승계)에 필요한 T1 근거 ≈ 대부분 미수집. 완료 주장은 “관찰 보고 작성”에 한정.

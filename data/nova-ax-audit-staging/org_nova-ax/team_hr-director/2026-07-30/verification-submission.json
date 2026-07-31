@@ -1,0 +1,131 @@
+{
+  "taskId": "task_6U9HdSXrBErDX2CZ",
+  "companyId": "org_nova-ax",
+  "teamId": "team_hr-director",
+  "actorId": "cursor-agent",
+  "taskType": "operations",
+  "artifact": {
+    "uri": "/Users/nova-ai/project/nova-ax/evidence/org_nova-ax/team_hr-director/2026-07-30/hr-director-audit-bundle-cycle1.json",
+    "expectedSha256": "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+    "status": "final"
+  },
+  "integrityAttestation": {
+    "observedSha256": "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "node-sha256-integrity-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:07:46.104Z",
+      "evidenceHash": "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1"
+    }
+  },
+  "uiInspection": {
+    "required": false,
+    "reason": "감사 번들은 렌더링 표면이 없는 기계 생성 JSON 문서이며 파일 관측 content-type은 비-HTML이다",
+    "provenance": {
+      "kind": "direct_observation",
+      "producer": "artifact-content-type-probe",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:07:46.104Z",
+      "evidenceHash": "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1"
+    }
+  },
+  "measurements": [
+    {
+      "name": "cataloged-hr-director-deliverables",
+      "unit": "files",
+      "baseline": 0,
+      "current": 37,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 37,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "hr-director-evidence-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:07:46.104Z",
+        "evidenceHash": "944964e88b99c23481ef5b8ef484d37f8202d2f5d9e09a9a5c2ad52e45435671"
+      }
+    },
+    {
+      "name": "db-grounded-submitted-work-reports",
+      "unit": "rows",
+      "baseline": 0,
+      "current": 28,
+      "target": 1,
+      "direction": "higher_is_better",
+      "sampleSize": 44,
+      "provenance": {
+        "kind": "direct_observation",
+        "producer": "nco-db-work-report-collector",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:07:46.104Z",
+        "evidenceHash": "ddd327a8af058892d54e78be2a53a5bd72db468979d559c95756f11b68de5082"
+      }
+    }
+  ],
+  "testRuns": [
+    {
+      "name": "hr-director-evidence-integrity-suite",
+      "exitCode": 0,
+      "durationMs": 142,
+      "commandHash": "e928fcd6f0cc5bc849f26016c175fc0c7f5b1e538dea5354b0ef77487ed94522",
+      "outputHash": "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8",
+      "provenance": {
+        "kind": "ci",
+        "producer": "node-test-independent-runner",
+        "machineProduced": true,
+        "observedAt": "2026-07-30T09:07:46.104Z",
+        "evidenceHash": "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8"
+      }
+    }
+  ],
+  "optimization": {
+    "regressionGuardPassed": true,
+    "evidenceHash": "5dbc7c009004ccd502c113a3245a4faadf75efc62281f6f3a68a7de1b9b87185",
+    "provenance": {
+      "kind": "monitor",
+      "producer": "hr-director-regression-guard",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:07:46.104Z",
+      "evidenceHash": "5dbc7c009004ccd502c113a3245a4faadf75efc62281f6f3a68a7de1b9b87185"
+    }
+  },
+  "requirements": [
+    {
+      "id": "hr-director-audit-bundle-is-grounded-and-reproducible",
+      "satisfied": true,
+      "evidenceHashes": [
+        "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+        "944964e88b99c23481ef5b8ef484d37f8202d2f5d9e09a9a5c2ad52e45435671",
+        "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8"
+      ]
+    },
+    {
+      "id": "hr-director-work-reports-have-no-phantom-submissions",
+      "satisfied": true,
+      "evidenceHashes": [
+        "ddd327a8af058892d54e78be2a53a5bd72db468979d559c95756f11b68de5082",
+        "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8"
+      ]
+    },
+    {
+      "id": "hr-director-persistence-crosscheck-is-machine-derived",
+      "satisfied": true,
+      "evidenceHashes": [
+        "957db8ec2511e0e5b7ff34734b0885fb0497c7bced451fbb933b94592908a3f1",
+        "4febe00b656fe8b00aa95be06e533f6e7363fa52e0badb98b23bfc989e35a0e8",
+        "5dbc7c009004ccd502c113a3245a4faadf75efc62281f6f3a68a7de1b9b87185"
+      ]
+    }
+  ],
+  "goalAttestation": {
+    "provenance": {
+      "kind": "independent_verifier",
+      "producer": "hr-director-goal-attestation-verifier",
+      "machineProduced": true,
+      "observedAt": "2026-07-30T09:07:46.104Z",
+      "evidenceHash": "cad9a20ad8adedef2414f9c8130525e2df82d12b97e612bad6011eca6ca77682"
+    }
+  }
+}

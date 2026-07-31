@@ -16,6 +16,7 @@ STATE_DIR="${NCO_DIR}/data/team-runner"
 LOCK_FILE="/tmp/nova-local-llm.lock"
 POLL_INTERVAL=10
 MAX_POLLS=42   # 팀당 최대 7분
+POLL_HTTP_TIMEOUT=5
 # 로컬 모델 우선 체인 (무료·로컬 우선 — 두뇌는 유료, 워커는 로컬 원칙)
 # 2026-07-12: ollama가 현재 에이전트 레지스트리에 미등록(POST /api/task → "Unknown agent 'ollama'")이라
 #   전 체인 실패의 원인이었다. 게이트 가용한 로컬 무료 워커 hermes로 교체. ollama 재등록 시 되돌릴 것.
@@ -93,9 +94,49 @@ PY
 )
 [ -n "${KNOWN_AIS}" ] && log INFO "레지스트리 에이전트: ${KNOWN_AIS}"
 
+# 팀 lead와 provider 구성원을 등록 순서대로 반환한다. generic AI_CHAIN은 이 체인이
+# 모두 실패한 뒤에만 사용한다. 팀 구성원을 건너뛰고 비구성원 결과가 팀 점수에 귀속되는
+# 것을 막기 위한 team-affinity 경계다.
+team_executor_chain() { # $1=runnable.json $2=teamId
+  python3 - "$1" "$2" <<'PY'
+import json, sys
+
+teams = json.load(open(sys.argv[1]))
+team = next(team for team in teams if team["id"] == sys.argv[2])
+candidates = [team.get("lead") or ""]
+candidates.extend(
+    member.get("ref", "")
+    for member in team.get("members", [])
+    if isinstance(member, dict) and member.get("type") == "provider"
+)
+seen = set()
+print(" ".join(
+    candidate for candidate in candidates
+    if candidate and not (candidate in seen or seen.add(candidate))
+))
+PY
+}
+
+# 기능·정보구조 설계팀의 48h 저점 표본은 선언 팀원 소진 뒤 범용 로컬 체인으로
+# 넘어간 두 건이었다: ollama는 startup warning만 남기고 hardcap timeout,
+# hermes는 텍스트 전용 지시에서 실행할 수 없는 tsc 결과를 주장했다.
+# 이 팀에 한해 UI 설계 역량 provider(agy)까지만 bounded fallback으로 허용한다.
+# 전원 불가용이면 새 저신뢰 실패를 만들지 않고 해당 일일 실행을 미완료로 남긴다.
+# 런타임 롤백: NCO_UI_FUNCTION_DESIGN_CAPABILITY_FALLBACK=off.
+team_fallback_chain() { # $1=teamId $2=teamSlug
+  if [ "$1" = "team_ui-function-design" ] || [ "$2" = "ui-function-design" ]; then
+    case "${NCO_UI_FUNCTION_DESIGN_CAPABILITY_FALLBACK:-on}" in
+      0|false|False|FALSE|off|Off|OFF) printf '%s\n' "${AI_CHAIN}" ;;
+      *) printf '%s\n' "agy" ;;
+    esac
+    return 0
+  fi
+  printf '%s\n' "${AI_CHAIN}"
+}
+
 create_task() { # $1=ai $2=teamId(에서 charter/lead 로드) → taskId
   python3 - "$1" "$2" "${TMP_DIR}/runnable.json" "${NCO_DIR}" "${TMP_DIR}" <<'PY' > "${TMP_DIR}/body.json"
-import json, sys, glob, os, re, datetime, sqlite3, subprocess
+import json, sys, glob, os, re, datetime, sqlite3, subprocess, urllib.parse
 ai, team_id, path = sys.argv[1], sys.argv[2], sys.argv[3]
 project_dir = sys.argv[4] if len(sys.argv) > 4 else "/Users/nova-ai/project/nco"
 tmp_dir = sys.argv[5]
@@ -113,10 +154,59 @@ is_self_improvement = team.get("slug") == "self-improvement" or team_id == "team
 # 롤백: NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT=off (재배포·재빌드 불필요, 프롬프트 바이트 동일 복원).
 EVOLUTION_LEARNING_TEAM_SLUG = "gov-evolution-learning"
 is_evolution_learning = team.get("slug") == EVOLUTION_LEARNING_TEAM_SLUG
+DECISION_COORDINATION_TEAM_SLUG = "ax-decision-coordination"
+is_decision_coordination = team.get("slug") == DECISION_COORDINATION_TEAM_SLUG
+VERIFICATION_QUALITY_TEAM_SLUG = "web-scrape-06-verification-quality"
+is_verification_quality = team.get("slug") == VERIFICATION_QUALITY_TEAM_SLUG
+COMPUTER_USE_CONTROL_TEAM_SLUG = "computer-use-control"
+is_computer_use_control = team.get("slug") == COMPUTER_USE_CONTROL_TEAM_SLUG
+VERIFICATION_UPSTREAM_TEAM_SLUGS = (
+    "web-scrape-03-static-implementation",
+    "web-scrape-04-dynamic-implementation",
+    "web-scrape-05-data-analysis",
+)
 
 def evolution_learning_context_enabled():
     configured = os.environ.get("NCO_EVOLUTION_LEARNING_EVIDENCE_CONTEXT", "").strip().lower()
     return configured not in ("0", "false", "off")
+
+def decision_coordination_context_enabled():
+    configured = os.environ.get("NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT", "").strip().lower()
+    return configured not in ("0", "false", "off")
+
+def verification_quality_sample_context_enabled():
+    configured = os.environ.get("NCO_VERIFICATION_QUALITY_SAMPLE_CONTEXT", "").strip().lower()
+    return configured not in ("0", "false", "off")
+
+def computer_use_control_context_enabled():
+    configured = os.environ.get("NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT", "").strip().lower()
+    return configured not in ("0", "false", "off")
+
+def probe_computer_use_runtime_sync():
+    try:
+        if sys.platform == "darwin":
+            path = os.path.join(os.path.expanduser("~"), "Library", "Application Support", "nova-use", "nova-runtime.json")
+        elif sys.platform == "win32":
+            appdata = os.environ.get("APPDATA")
+            if not appdata:
+                raise RuntimeError("APPDATA is unavailable")
+            path = os.path.join(appdata, "nova-use", "nova-runtime.json")
+        else:
+            xdg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+            path = os.path.join(xdg, "nova-use", "nova-runtime.json")
+        info = os.stat(path)
+        if not os.path.isfile(path) or info.st_size <= 0 or info.st_size > 16384:
+            raise RuntimeError("nova-use runtime metadata is invalid")
+        raw = json.load(open(path, encoding="utf-8"))
+        pid = raw.get("pid")
+        if not isinstance(pid, int) or pid <= 0:
+            raise RuntimeError("nova-use runtime pid is invalid")
+        os.kill(pid, 0)
+        endpoint = raw.get("endpoint", "")
+        host = urllib.parse.urlparse(endpoint).hostname or "없음"
+        return {"available": True, "pid": pid, "endpointHost": host, "error": None}
+    except Exception as exc:
+        return {"available": False, "pid": None, "endpointHost": None, "error": str(exc)}
 
 def compact_text(value, limit):
     compacted = " ".join(str(value).split())
@@ -330,6 +420,207 @@ def build_team_data_context():
         except (OSError, sqlite3.Error):
             pass
 
+    # ax-decision-coordination 전용: 조정 charter에 필요한 식별자·귀속·보고 연결 근거를 넣는다.
+    #   src/core/work-report-scheduler.ts의 동일 블록과 같은 쿼리·라벨·상한을 쓴다.
+    #   집계만 주입하면 팀 보고서가 4스냅샷 연속 "원본 데이터 미제공"으로 이월됐다(실측 REPORTS).
+    # 롤백: NCO_DECISION_COORDINATION_EVIDENCE_CONTEXT=off
+    if is_decision_coordination and db is not None and decision_coordination_context_enabled():
+        try:
+            coord_rows = db.execute(
+                "SELECT id, status, assigned_to, created_at, completed_at, error, prompt, "
+                "CASE WHEN json_valid(metadata_json) "
+                "THEN json_extract(metadata_json,'$.workReportId') ELSE NULL END AS work_report_id "
+                "FROM tasks WHERE team_id=? "
+                "AND created_at >= datetime('now','-48 hours') "
+                "ORDER BY CASE WHEN status IN "
+                "('pending','queued','assigned','running','streaming','reviewing') THEN 0 ELSE 1 END, "
+                "COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC LIMIT 8",
+                (team_id,),
+            ).fetchall()
+            for row in coord_rows:
+                lines.append(", ".join([
+                    "[coordination_task_evidence] source_tier=T1(SQLite tasks row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[1], 50)}",
+                    f"담당={compact_nullable(row[2], 80)}",
+                    f"생성={compact_text(row[3], 50)}",
+                    f"완료={compact_nullable(row[4], 50)}",
+                    f"오류={compact_nullable(row[5], 240)}",
+                    f"workReportId={compact_nullable(row[7], 100)}",
+                    f"지시={compact_text(row[6], 240)}",
+                ]))
+            wr_rows = db.execute(
+                "SELECT id, report_date, report_slot, status, source_task_id, submitted_at "
+                "FROM work_reports WHERE team_id=? AND report_date >= date('now','-7 days') "
+                "ORDER BY report_date DESC, report_slot DESC, updated_at DESC LIMIT 5",
+                (team_id,),
+            ).fetchall()
+            for row in wr_rows:
+                lines.append(", ".join([
+                    "[coordination_work_report_evidence] source_tier=T1(SQLite work_reports row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"date={compact_text(row[1], 20)}",
+                    f"slot={compact_text(row[2], 10)}",
+                    f"status={compact_text(row[3], 30)}",
+                    f"sourceTaskId={compact_nullable(row[4], 100)}",
+                    f"submittedAt={compact_nullable(row[5], 50)}",
+                ]))
+            member_refs = {team.get("lead") or ""}
+            member_refs.update(
+                member.get("ref", "") for member in team.get("members", [])
+                if isinstance(member, dict) and member.get("type") == "provider"
+            )
+            member_refs = [ref for ref in member_refs if ref]
+            if member_refs:
+                placeholders = ",".join("?" for _ in member_refs)
+                member_rows = db.execute(
+                    f"SELECT id, assigned_to, status, team_id, created_at, completed_at, error "
+                    f"FROM tasks WHERE assigned_to IN ({placeholders}) "
+                    "AND created_at >= datetime('now','-48 hours') "
+                    "ORDER BY COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC LIMIT 10",
+                    tuple(member_refs),
+                ).fetchall()
+                for row in member_rows:
+                    lines.append(", ".join([
+                        "[coordination_member_task_evidence] source_tier=T1(SQLite tasks row)",
+                        f"id={compact_text(row[0], 100)}",
+                        f"담당={compact_nullable(row[1], 80)}",
+                        f"상태={compact_text(row[2], 50)}",
+                        f"teamId={compact_nullable(row[3], 100)}",
+                        f"생성={compact_text(row[4], 50)}",
+                        f"완료={compact_nullable(row[5], 50)}",
+                        f"오류={compact_nullable(row[6], 200)}",
+                    ]))
+        except (OSError, sqlite3.Error):
+            pass
+
+    # web-scrape-06-verification-quality 전용: upstream(03~05) 표본·실패 RCA를 T1으로 주입한다.
+    #   src/core/work-report-scheduler.ts와 동일 쿼리·라벨·상한. 롤백: NCO_VERIFICATION_QUALITY_SAMPLE_CONTEXT=off
+    if is_verification_quality and db is not None and verification_quality_sample_context_enabled():
+        try:
+            upstream_placeholders = ",".join("?" for _ in VERIFICATION_UPSTREAM_TEAM_SLUGS)
+            upstream_rows = db.execute(
+                "SELECT t.id, tm.slug, t.status, t.created_at, t.completed_at, t.response, t.error, "
+                "t.result_json, t.evidence_json "
+                "FROM tasks t JOIN teams tm ON tm.id = t.team_id "
+                f"WHERE tm.slug IN ({upstream_placeholders}) "
+                "AND t.status IN ('completed','failed','timed_out','lease_expired','cancelled') "
+                "AND t.created_at >= datetime('now','-48 hours') "
+                "AND (TRIM(COALESCE(t.evidence_json,'')) <> '' "
+                "OR TRIM(COALESCE(t.result_json,'')) <> '' "
+                "OR (t.status='completed' AND LENGTH(TRIM(COALESCE(t.response,''))) > 100)) "
+                "ORDER BY COALESCE(t.completed_at, t.created_at) DESC, t.created_at DESC, t.id DESC "
+                "LIMIT 5",
+                VERIFICATION_UPSTREAM_TEAM_SLUGS,
+            ).fetchall()
+            for row in upstream_rows:
+                lines.append(", ".join([
+                    "[verification_upstream_sample] source_tier=T1(SQLite tasks row)",
+                    f"upstream_team={compact_text(row[1], 80)}",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[2], 50)}",
+                    f"생성={compact_text(row[3], 50)}",
+                    f"완료={compact_nullable(row[4], 50)}",
+                    f"오류={compact_nullable(row[6], 240)}",
+                    f"응답(T4-natural-language)={compact_nullable(row[5], 400)}",
+                    f"result_json={compact_nullable(row[7], 300)}",
+                    f"evidence_json={compact_nullable(row[8], 300)}",
+                ]))
+            failure_rows = db.execute(
+                "SELECT id, status, created_at, error, response FROM tasks "
+                "WHERE team_id=? AND status IN ('failed','timed_out','lease_expired','cancelled') "
+                "AND created_at >= datetime('now','-48 hours') "
+                "ORDER BY created_at DESC, id DESC LIMIT 5",
+                (team_id,),
+            ).fetchall()
+            for row in failure_rows:
+                lines.append(", ".join([
+                    "[verification_failure_rca] source_tier=T1(SQLite tasks row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[1], 50)}",
+                    f"생성={compact_text(row[2], 50)}",
+                    f"오류={compact_nullable(row[3], 240)}",
+                    f"응답(T4-natural-language)={compact_nullable(row[4], 200)}",
+                ]))
+        except (OSError, sqlite3.Error):
+            pass
+
+    # computer-use-control 전용: 잠금·런타임·48h 태스크 오류를 T1으로 주입한다.
+    #   src/core/work-report-scheduler.ts와 동일 라벨·상한. 롤백: NCO_COMPUTER_USE_CONTROL_EVIDENCE_CONTEXT=off
+    if is_computer_use_control and db is not None and computer_use_control_context_enabled():
+        try:
+            runtime = probe_computer_use_runtime_sync()
+            lines.append(", ".join([
+                "[computer_use_runtime_evidence] source_tier=T1(nova-use metadata file)",
+                f"available={'1' if runtime['available'] else '0'}",
+                f"pid={runtime['pid'] if runtime['pid'] is not None else '없음'}",
+                f"endpointHost={compact_nullable(runtime['endpointHost'], 80)}",
+                f"error={compact_nullable(runtime['error'], 240)}",
+            ]))
+            run_rows = db.execute(
+                "SELECT run_json FROM company_runs ORDER BY created_at DESC LIMIT 20"
+            ).fetchall()
+            for row in run_rows:
+                try:
+                    run = json.loads(row[0])
+                except (TypeError, ValueError):
+                    continue
+                if run.get("orgSlug") != "computer-use" or not run.get("computerUse"):
+                    continue
+                cu = run["computerUse"]
+                lines.append(", ".join([
+                    "[computer_use_active_run_evidence] source_tier=T1(company_runs row)",
+                    f"runId={compact_text(run.get('id', ''), 100)}",
+                    f"status={compact_text(cu.get('status', ''), 30)}",
+                    f"message={compact_nullable(cu.get('message'), 240)}",
+                    f"queuedBehindRunId={compact_nullable(cu.get('queuedBehindRunId'), 100)}",
+                    f"activatedAt={compact_nullable(cu.get('activatedAt'), 50)}",
+                    f"releasedAt={compact_nullable(cu.get('releasedAt'), 50)}",
+                ]))
+                if sum(1 for line in lines if line.startswith("[computer_use_active_run_evidence]")) >= 5:
+                    break
+            cu_task_rows = db.execute(
+                "SELECT id, status, assigned_to, created_at, completed_at, error, "
+                "CASE WHEN json_valid(metadata_json) "
+                "THEN json_extract(metadata_json,'$.workReportId') ELSE NULL END AS work_report_id "
+                "FROM tasks WHERE team_id=? "
+                "AND created_at >= datetime('now','-48 hours') "
+                "ORDER BY CASE WHEN status IN "
+                "('pending','queued','assigned','running','streaming','reviewing') THEN 0 ELSE 1 END, "
+                "COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC LIMIT 8",
+                (team_id,),
+            ).fetchall()
+            for row in cu_task_rows:
+                lines.append(", ".join([
+                    "[computer_use_control_task_evidence] source_tier=T1(SQLite tasks row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[1], 50)}",
+                    f"담당={compact_nullable(row[2], 80)}",
+                    f"생성={compact_text(row[3], 50)}",
+                    f"완료={compact_nullable(row[4], 50)}",
+                    f"오류={compact_nullable(row[5], 240)}",
+                    f"workReportId={compact_nullable(row[6], 100)}",
+                ]))
+            failure_rows = db.execute(
+                "SELECT id, status, created_at, error, response "
+                "FROM tasks WHERE team_id=? "
+                "AND status IN ('failed','timed_out','lease_expired','cancelled') "
+                "AND created_at >= datetime('now','-48 hours') "
+                "ORDER BY created_at DESC, id DESC LIMIT 5",
+                (team_id,),
+            ).fetchall()
+            for row in failure_rows:
+                lines.append(", ".join([
+                    "[computer_use_control_failure_rca] source_tier=T1(SQLite tasks row)",
+                    f"id={compact_text(row[0], 100)}",
+                    f"상태={compact_text(row[1], 50)}",
+                    f"생성={compact_text(row[2], 50)}",
+                    f"오류={compact_nullable(row[3], 240)}",
+                    f"응답(T4-natural-language)={compact_nullable(row[4], 200)}",
+                ]))
+        except (OSError, sqlite3.Error):
+            pass
+
     if db is not None:
         db.close()
 
@@ -409,7 +700,13 @@ else:
 # 2026-07-12: 백엔드가 metadata.projectDir을 필수로 요구(POST /api/task → 400 "invalid_project_dir").
 #   미포함 시 전 팀 태스크 생성이 거부되어 팀이 산출물을 못 냈다. 러너 기준 디렉터리를 주입한다.
 body = {"ai": ai, "callerAgentId": "team-runner", "prompt": prompt,
-        "metadata": {"projectDir": project_dir}}
+        "metadata": {
+            "projectDir": project_dir,
+            # 생성 시점부터 원자적으로 팀에 귀속해 task-queue의 팀 실행자 체인을 활성화한다.
+            "teamId": team_id,
+            # 같은 task의 팀 밖 tier escalation은 막고 아래 outer chain이 fallback을 통제한다.
+            "allowProviderFailover": False,
+        }}
 if verifier is not None:
     body["verifier"] = verifier
 print(json.dumps(body, ensure_ascii=False))
@@ -420,7 +717,7 @@ PY
     | python3 -c 'import json,sys; print(json.load(sys.stdin).get("taskId",""))'; } 2>/dev/null || echo ""
 }
 
-poll_done() { # $1=taskId $2=teamId $3=teamSlug → completed면 response 저장 후 0
+poll_done() { # $1=taskId $2=teamId $3=teamSlug → 0=완료, 1=terminal 실패, 2=여전히 active
   local attempt=0 status=""
   local self_improvement=false
   if [ "$2" = "team_self-improvement" ] || [ "$3" = "self-improvement" ]; then
@@ -429,7 +726,7 @@ poll_done() { # $1=taskId $2=teamId $3=teamSlug → completed면 response 저장
   while [ "${attempt}" -lt "${MAX_POLLS}" ]; do
     attempt=$((attempt + 1))
     # 백엔드 재시작 등 일시 장애 시 curl/파싱 실패해도 러너가 죽지 않도록 (set -e 보호)
-    status=$( { curl -s "${API_BASE}/task/$1" -o "${TMP_DIR}/task.json" \
+    status=$( { curl -s --max-time "${POLL_HTTP_TIMEOUT}" "${API_BASE}/task/$1" -o "${TMP_DIR}/task.json" \
       && python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["task"]["status"])' "${TMP_DIR}/task.json"; } 2>/dev/null || echo "")
     case "${status}" in
       completed)
@@ -461,7 +758,9 @@ poll_done() { # $1=taskId $2=teamId $3=teamSlug → completed면 response 저장
     esac
     sleep "${POLL_INTERVAL}"
   done
-  return 1
+  # 로컬 관찰 예산이 끝났을 뿐 백엔드 태스크는 terminal이 아니다. 이를 실패(1)로
+  # 취급하면 같은 팀의 fallback과 다음 팀 태스크가 기존 실행과 겹쳐 중복 표본을 만든다.
+  return 2
 }
 
 record_improvement_note() { # $1=taskId $2=agent $3=responsePath
@@ -505,7 +804,7 @@ while [ "${IDX}" -lt "${N_TEAMS}" ]; do
   TEAM_ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[int(sys.argv[2])]["id"])' "${TMP_DIR}/runnable.json" "${IDX}")
   TEAM_NAME=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[int(sys.argv[2])]["name"])' "${TMP_DIR}/runnable.json" "${IDX}")
   TEAM_SLUG=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[int(sys.argv[2])]["slug"])' "${TMP_DIR}/runnable.json" "${IDX}")
-  TEAM_LEAD=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[int(sys.argv[2])]["lead"])' "${TMP_DIR}/runnable.json" "${IDX}")
+  TEAM_EXECUTORS=$(team_executor_chain "${TMP_DIR}/runnable.json" "${TEAM_ID}")
   IDX=$((IDX + 1))
 
   # 일일 중복 방지
@@ -515,8 +814,9 @@ while [ "${IDX}" -lt "${N_TEAMS}" ]; do
     continue
   fi
 
-  # 체인: 팀 lead를 최우선, 이후 AI_CHAIN 순서 (중복 제거)
-  CHAIN="${TEAM_LEAD} ${AI_CHAIN}"
+  # 체인: 팀 lead → provider 구성원 → 팀별 bounded fallback (중복 제거)
+  TEAM_FALLBACKS=$(team_fallback_chain "${TEAM_ID}" "${TEAM_SLUG}")
+  CHAIN="${TEAM_EXECUTORS} ${TEAM_FALLBACKS}"
   DONE_AI=""
   for ai in ${CHAIN}; do
     [ -z "${ai}" ] && continue
@@ -531,6 +831,7 @@ while [ "${IDX}" -lt "${N_TEAMS}" ]; do
     curl -s -X POST "${API_BASE}/teams/${TEAM_ID}/tasks" -H 'Content-Type: application/json' \
       -d "{\"taskId\":\"${TID}\"}" > /dev/null || true
     log INFO "${TEAM_NAME}: taskId=${TID} (ai=${ai}) 실행 — 완료까지 대기(순차)"
+    poll_rc=0
     if poll_done "${TID}" "${TEAM_ID}" "${TEAM_SLUG}"; then
       if [ "${TEAM_ID}" = "team_self-improvement" ] || [ "${TEAM_SLUG}" = "self-improvement" ]; then
         if ! record_improvement_note "${TID}" "${ai}" "${TMP_DIR}/response.md"; then
@@ -544,6 +845,12 @@ while [ "${IDX}" -lt "${N_TEAMS}" ]; do
       log INFO "${TEAM_NAME}: 완료 → ${OUT}"
       DONE_AI="${ai}"
       break
+    else
+      poll_rc=$?
+    fi
+    if [ "${poll_rc}" -eq 2 ]; then
+      log WARN "${TEAM_NAME}: taskId=${TID} 로컬 대기 예산 종료, 백엔드 active 유지 — 중복 fallback 없이 러너 중단"
+      break 2
     fi
     log WARN "${TEAM_NAME}: ai=${ai} 실패 — 다음 후보"
   done

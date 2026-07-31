@@ -1,0 +1,93 @@
+{
+  "collector": "node-independent-readonly-audit",
+  "actorSeparation": {
+    "auditedActor": "hermes",
+    "evidenceProducer": "codex-machine-audit",
+    "independent": true
+  },
+  "ncoDatabase": "/Users/nova-ai/project/nco/db/nco.db",
+  "ncoDatabaseReadOnly": true,
+  "novaAxDatabase": "/Users/nova-ai/project/nova-ax/db/nova-ax.db",
+  "novaAxDatabaseReadOnly": true,
+  "targetRepository": "/Users/nova-ai/project/nco-dashboard",
+  "taskMetadata": {
+    "companyId": "org_ui-inspection",
+    "teamId": "team_ui-accessibility",
+    "workflowStage": "implementation"
+  },
+  "sourceExistence": [
+    {
+      "relativePath": "src/App.tsx",
+      "exists": true,
+      "sha256": "af60af276c27b97ddaa2c77392d446f4cf021a523f4e4a8aeab7dfbe1f3f5b87",
+      "byteSize": 119835
+    },
+    {
+      "relativePath": "src/components/canvas/PhysicsGraph.tsx",
+      "exists": true,
+      "sha256": "f1a4d304a496270f3de8a621543eb7f4a378fd2e083b2cbbb6a1f04036be7ee0",
+      "byteSize": 252297
+    },
+    {
+      "relativePath": "src/components/panels/RightPanel.tsx",
+      "exists": true,
+      "sha256": "dc71dee5fca49e123f3b68c41e5dccbed409e09b4fd6b4d926049001c20b577c",
+      "byteSize": 144506
+    },
+    {
+      "relativePath": "src/components/panels/CollabPanel.tsx",
+      "exists": true,
+      "sha256": "0f591c6813a493d5b1e4405413677d0dd1ec0b6a58001b95f45dc72d6aea0de5",
+      "byteSize": 23022
+    },
+    {
+      "relativePath": "src/components/panels/CommunicationPanel.tsx",
+      "exists": true,
+      "sha256": "09eb3319918d58d388b43748c82142a62ea29ec4635ea15436d15f96637f2e9e",
+      "byteSize": 9893
+    },
+    {
+      "relativePath": "src/pages/GoalsPage.tsx",
+      "exists": true,
+      "sha256": "0c560eaba300f6f24f3be2475c66db283ea0b4214b797a37eb331f5199b068d2",
+      "byteSize": 13369
+    },
+    {
+      "relativePath": "src/pages/PerformancePage.tsx",
+      "exists": true,
+      "sha256": "cbbe21c6e0b87dbf6bd5c7b1ad125af69e2c7a4405db3bf78a7a5f1f59a6dc9a",
+      "byteSize": 14308
+    },
+    {
+      "relativePath": "src/pages/WorkReportsPage.tsx",
+      "exists": true,
+      "sha256": "b49a00cd35bac75256787b6fd5767e22e620dd05a0b5199cb3dcc004ae12ae1f",
+      "byteSize": 16932
+    },
+    {
+      "relativePath": "scripts/ui-audit.mjs",
+      "exists": true,
+      "sha256": "7ec380374fa00118320a50405b17b208af10a823443ac616e3f82cb19cf37527",
+      "byteSize": 12602
+    },
+    {
+      "relativePath": "scripts/viewport-check-temp.mjs",
+      "exists": true,
+      "sha256": "0092ab6b1ce15891a1198307995ee53e935e88c1835baadd656d27eb59e9b080",
+      "byteSize": 3031
+    },
+    {
+      "relativePath": "scripts/verify-communication.mjs",
+      "exists": true,
+      "sha256": "3dfd6eb42751db88116d84aa29d9d4df336aeea5ffc29b3d68db885b0f54c029",
+      "byteSize": 5730
+    },
+    {
+      "relativePath": "tests/dashboard-visual-test.ts",
+      "exists": true,
+      "sha256": "541179af3265c57a131acb8002e74c29562282999492ce9084c063b6e3b074c1",
+      "byteSize": 5265
+    }
+  ],
+  "collectedAt": "2026-07-30T17:04:17.745Z"
+}

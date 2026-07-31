@@ -1,0 +1,21 @@
+{
+  "schema": "nova-ax.treasury-audit-artifact.v1",
+  "status": "final",
+  "generatedAt": "2026-07-30T09:51:38.104Z",
+  "scope": {
+    "companyId": "org_nco-government",
+    "teamId": "team_gov-government-treasury",
+    "teamName": "Treasury and Resource Stewardship",
+    "taskId": "task_xvV9Pw13uv63Tn0v",
+    "directiveId": "vdir_5f6e3e83-0b38-4c9d-acd3-37fd934fab9f"
+  },
+  "actualWorkResults": {
+    "period": "rolling 7 days at collection time",
+    "completedTasks": 15,
+    "failedTasks": 2,
+    "cancelledTasks": 0,
+    "sampledTasks": 17,
+    "submittedWorkReports": 9
+  },
+  "claimBoundary": "Counts, row existence, file existence, hashes, DB integrity, and executed test output are asserted."
+}

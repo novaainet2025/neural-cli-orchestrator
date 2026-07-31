@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 # /nco-ollama 슬래시 명령 본체 (ARGUMENTS 환경변수 사용)
 
-CTL="/home/nova/projects/neural-cli-orchestrator/cli-installs/ollama-ctl.sh"
-PROXY_CTL="/home/nova/projects/neural-cli-orchestrator/cli-installs/vllm-proxy.sh"
+# 경로는 이 스크립트 위치에서 유도한다.
+# 이전에는 /home/nova/projects/neural-cli-orchestrator/... 를 박아둬서
+# 그 경로가 없는 머신(예: macOS /Users/nova-ai/project/nco)에서는
+# CTL/PROXY_CTL/CONFIG_FILE 전부 존재하지 않는 파일을 가리켰다.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+NCO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+CTL="$SCRIPT_DIR/ollama-ctl.sh"
+# vllm 프록시는 별도 GPU/Linux 호스트 전용이다. 이 호스트에 없으면 proxy 액션에서
+# 조용히 nohup 하지 말고 명확히 알린다(제거하지는 않는다 — fleet 의 다른 머신에서는 쓰인다).
+PROXY_CTL="$SCRIPT_DIR/vllm-proxy.sh"
+require_proxy_ctl() {
+  [ -f "$PROXY_CTL" ] && return 0
+  echo "[오류] vllm 프록시 스크립트가 없습니다: $PROXY_CTL"
+  echo "       이 액션은 vllm 프록시가 설치된 호스트에서만 동작합니다."
+  return 1
+}
 
 PORT="${OLLAMA_PORT:-11434}"
 HOST="${OLLAMA_HOST:-127.0.0.1}"
@@ -10,7 +25,7 @@ OLLAMA_API="http://${HOST}:${PORT}"
 V1_API="${OLLAMA_API}/v1"
 LOG="${OLLAMA_LOG:-/tmp/ollama-nco.log}"
 NCO_API="${NCO_API:-http://localhost:6200}"
-CONFIG_FILE="/home/nova/projects/neural-cli-orchestrator/config/ai-providers.json"
+CONFIG_FILE="$NCO_ROOT/config/ai-providers.json"
 
 ACTION=$(echo "${ARGUMENTS:-}" | cut -d' ' -f1)
 ARG2=$(echo "${ARGUMENTS:-}" | cut -d' ' -f2)
@@ -193,6 +208,7 @@ for p in d.get('providers', []):
         if pgrep -f "vllm-proxy" >/dev/null 2>&1; then
           echo "프록시 이미 실행 중 (PID: $(pgrep -f vllm-proxy | head -1))"
         else
+          require_proxy_ctl || exit 1
           nohup bash "$PROXY_CTL" "$IDLE" >/tmp/vllm-proxy.log 2>&1 &
           echo "프록시 시작 (PID: $!) — 업스트림은 VLLM_BASE_URL=http://127.0.0.1:11434 로 설정하세요."
         fi
@@ -227,6 +243,7 @@ for p in d.get('providers', []):
     if pgrep -f "vllm-proxy" >/dev/null 2>&1; then
       pkill -f "vllm-proxy"
       sleep 1
+      require_proxy_ctl || exit 1
       nohup bash "$PROXY_CTL" "$MINUTES" >/tmp/vllm-proxy.log 2>&1 &
       echo "프록시 재시작: 유휴 ${MINUTES}분"
     else

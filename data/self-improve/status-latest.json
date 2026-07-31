@@ -1,14 +1,14 @@
 {
-  "checked_at": "2026-07-29T16:20:00+0900",
+  "checked_at": "2026-07-31T13:20:00+0900",
   "mode": "propose",
-  "total": 241,
-  "pass": 240,
-  "fail": 0,
+  "total": 254,
+  "pass": 252,
+  "fail": 1,
   "skip": 0,
   "defer": 1,
   "categories": {
     "provider": {
-      "pass": 9,
+      "pass": 7,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -17,7 +17,7 @@
       "meets": true
     },
     "team": {
-      "pass": 87,
+      "pass": 86,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -26,7 +26,7 @@
       "meets": true
     },
     "hook": {
-      "pass": 85,
+      "pass": 84,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -35,13 +35,13 @@
       "meets": true
     },
     "script": {
-      "pass": 22,
-      "fail": 0,
+      "pass": 30,
+      "fail": 1,
       "skip": 0,
       "defer": 0,
-      "pass_rate": 1.0,
+      "pass_rate": 0.9677,
       "threshold": 1.0,
-      "meets": true
+      "meets": false
     },
     "command": {
       "pass": 24,
@@ -53,7 +53,7 @@
       "meets": true
     },
     "skill": {
-      "pass": 7,
+      "pass": 15,
       "fail": 0,
       "skip": 0,
       "defer": 0,
@@ -99,7 +99,16 @@
     }
   },
   "provider_anomaly": null,
-  "failures": [],
+  "failures": [
+    {
+      "id": "script:scripts/run-iq-test-full.sh",
+      "category": "script",
+      "kind": "bash-syntax",
+      "ref": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh",
+      "priority": 3,
+      "detail": "/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: syntax error near unexpected token `else'\n/Users/nova-ai/project/nco/scripts/run-iq-test-full.sh: line 126: `  else'"
+    }
+  ],
   "dispatch": {
     "mode": "propose",
     "dispatched": null,
