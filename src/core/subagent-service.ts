@@ -48,6 +48,7 @@ interface SubagentRunRow {
   source: string;
   evidence_source: string | null;
   metadata_json: string | null;
+  is_effectively_stale?: number;
 }
 
 interface SubagentMetadata {
@@ -67,6 +68,7 @@ function parseMetadata(value: string | null): SubagentMetadata {
 
 function rowToRun(row: SubagentRunRow): SubagentRun {
   const metadata = parseMetadata(row.metadata_json);
+  const isEffectivelyStale = row.is_effectively_stale === 1;
   return {
     id: row.id,
     parentTaskId: row.parent_task_id,
@@ -77,7 +79,7 @@ function rowToRun(row: SubagentRunRow): SubagentRun {
     externalAgentId: metadata.externalAgentId,
     parentExternalAgentId: metadata.parentExternalAgentId,
     name: row.name ?? undefined,
-    status: row.status as SubagentStatus,
+    status: isEffectivelyStale ? 'cancelled' : row.status as SubagentStatus,
     promptSummary: row.prompt_summary ?? undefined,
     startedAt: row.started_at,
     updatedAt: row.updated_at,
@@ -206,29 +208,30 @@ export interface ListSubagentRunsOptions {
   parentTaskId?: string;
 }
 
-function reconcileStaleNativeRuns(): void {
-  const db = getDb();
-  db.prepare(`
-    UPDATE subagent_runs
-       SET status='cancelled', completed_at=datetime('now'), updated_at=datetime('now')
-     WHERE source='native'
-       AND status IN ('starting','working')
-       AND (
-         updated_at < datetime('now', '-10 minutes')
-         OR (
-           updated_at < datetime('now', '-15 seconds')
-           AND NOT EXISTS (
-             SELECT 1 FROM tasks
-              WHERE tasks.id=subagent_runs.parent_task_id
-                AND tasks.status IN ('pending','assigned','running','streaming')
-           )
-         )
-       )
-  `).run();
-}
+// Dashboard reads must remain read-only. The previous implementation ran an UPDATE
+// from every /api/subagents poll, turning a monitoring request into a SQLite writer.
+// When another NCO worker held the write lock this blocked the event loop for the
+// full busy_timeout and made /health look dead. Project stale native rows as
+// cancelled in the SELECT instead; lifecycle writers still persist real terminal
+// transitions through updateSubagentRun().
+const STALE_NATIVE_RUN_PREDICATE = `
+  source='native'
+  AND status IN ('starting','working')
+  AND (
+    updated_at < datetime('now', '-10 minutes')
+    OR (
+      updated_at < datetime('now', '-15 seconds')
+      AND NOT EXISTS (
+        SELECT 1 FROM tasks
+         WHERE tasks.id=subagent_runs.parent_task_id
+           AND tasks.status IN ('pending','assigned','running','streaming')
+      )
+    )
+  )
+`;
 
 function buildActiveOrRecentClause(
-  statusSql: string,
+  activeSql: string,
   options: ListSubagentRunsOptions,
   params: unknown[],
 ): string | null {
@@ -240,9 +243,9 @@ function buildActiveOrRecentClause(
 
   if (activeOnly && recentClause) {
     params.push(recentSeconds);
-    return `(status IN (${statusSql}) OR ${recentClause})`;
+    return `((${activeSql}) OR ${recentClause})`;
   }
-  if (activeOnly) return `status IN (${statusSql})`;
+  if (activeOnly) return `(${activeSql})`;
   if (recentClause) {
     params.push(recentSeconds);
     return recentClause;
@@ -251,11 +254,14 @@ function buildActiveOrRecentClause(
 }
 
 export function listSubagentRuns(options: ListSubagentRunsOptions = {}): SubagentRun[] {
-  reconcileStaleNativeRuns();
   const db = getDb();
   const where: string[] = [];
   const params: unknown[] = [];
-  const activityClause = buildActiveOrRecentClause("'starting','working'", options, params);
+  const activityClause = buildActiveOrRecentClause(
+    `status IN ('starting','working') AND NOT (${STALE_NATIVE_RUN_PREDICATE})`,
+    options,
+    params,
+  );
   if (activityClause) where.push(activityClause);
   if (options.parentTaskId) {
     where.push('(parent_task_id=? OR root_task_id=?)');
@@ -264,7 +270,9 @@ export function listSubagentRuns(options: ListSubagentRunsOptions = {}): Subagen
 
   const limit = clampLimit(options.limit);
   const sql = `
-    SELECT * FROM subagent_runs
+    SELECT subagent_runs.*,
+           CASE WHEN (${STALE_NATIVE_RUN_PREDICATE}) THEN 1 ELSE 0 END AS is_effectively_stale
+      FROM subagent_runs
     ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY updated_at DESC
     LIMIT ?

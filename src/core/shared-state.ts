@@ -109,12 +109,22 @@ export class SharedState {
     const redis = await getRedis();
     const keys = await redis.keys(`${AGENT_PREFIX}*:state`);
     const result: Record<string, AgentState> = { ...this.localStates };
-    for (const key of keys) {
-      const raw = await redis.get(key);
-      if (raw) {
+    if (keys.length === 0) return result;
+
+    // 2026-07-31: 키마다 순차 `await get` 하던 N+1 을 MGET 1회로 합쳤다.
+    // /health 가 이 함수를 호출하므로 왕복 수가 그대로 응답시간이 된다.
+    // Redis 가 흔들릴 때 각 왕복이 retryStrategy(times*200ms, 최대 10s)로 재시도돼
+    // 왕복 수만큼 지연이 곱해졌다 — 실측 /health 7.78초(재시도 8회 누적 7.20초 + 처리)가
+    // 회차마다 ±0.06초로 거의 상수였던 것이 그 지문이다. 왕복을 N+2 → 3 으로 줄인다.
+    const raws = await redis.mget(...keys);
+    for (const raw of raws) {
+      if (!raw) continue;
+      try {
         const state = JSON.parse(raw) as AgentState;
         result[state.id] = state;
         this.localStates[state.id] = state;
+      } catch {
+        // 손상된 항목 하나가 전체 조회를 실패시키지 않게 한다(기존 동작도 개별 파싱이었다).
       }
     }
     return result;

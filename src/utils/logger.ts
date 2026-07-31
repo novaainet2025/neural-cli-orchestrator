@@ -7,21 +7,28 @@ const redactPaths = [
   'req.headers["x-api-key"]',
 ];
 
-export const logger = pino({
+const loggerOptions = {
   level: env.NODE_ENV === 'production' ? 'info' : 'debug',
-  transport: env.NODE_ENV !== 'production' ? {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-      translateTime: 'HH:MM:ss',
-      ignore: 'pid,hostname',
-    },
-  } : undefined,
   redact: {
     paths: redactPaths,
     censor: '[REDACTED]',
   },
-});
+};
+
+export const logger = env.NODE_ENV === 'production'
+  ? pino(loggerOptions, pino.destination(2))
+  : pino({
+      ...loggerOptions,
+      transport: {
+        target: 'pino-pretty',
+        options: {
+          destination: 2,
+          colorize: true,
+          translateTime: 'HH:MM:ss',
+          ignore: 'pid,hostname',
+        },
+      },
+    });
 
 export function createLogger(name: string) {
   return logger.child({ module: name });

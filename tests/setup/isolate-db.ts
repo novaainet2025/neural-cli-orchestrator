@@ -9,10 +9,12 @@
 // nova_audit_log Merkle chain broken by literal 'hash'/'prev' placeholder
 // rows leaking into db/nco.db).
 //
-// Fix: default DATABASE_PATH to a dedicated, migrated, test-only file unless
-// a test explicitly overrides it (those tests keep managing their own
-// isolated path exactly as before).
-import { resolve } from 'path';
+// Fix: force DATABASE_PATH to a dedicated, migrated, per-file test database.
+// Tests that explicitly override it after setup keep managing their own path.
+import { randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { afterAll } from 'vitest';
 
 // Must set the env var — and only then import src/storage/database.js — because
 // that import chain loads src/utils/config.js, which calls dotenv's
@@ -21,9 +23,19 @@ import { resolve } from 'path';
 // (-> ./db/nco.db) if nothing has claimed it yet. A static top-level import
 // here would run before this file's own body, defeating the `if (!...)` guard
 // below — so the database module is imported dynamically, after the guard.
-if (!process.env.DATABASE_PATH) {
-  process.env.DATABASE_PATH = resolve(import.meta.dirname, '../../db/.vitest-shared.db');
-}
+// Always override DATABASE_PATH. `npm run test:run` is wrapped by
+// run-with-work-event.ts, which loads .env before it spawns Vitest and therefore
+// used to leak the production db/nco.db path into every test process.
+//
+// A unique file per setup invocation also prevents concurrently executing test
+// files from contaminating each other's fixed fixture ids and migration state.
+const isolatedDbPath = process.env.NCO_TEST_DATABASE_PATH
+  ? resolve(process.env.NCO_TEST_DATABASE_PATH)
+  : resolve(
+      import.meta.dirname,
+      `../../db/.vitest-${process.pid}-${randomUUID()}.db`,
+    );
+process.env.DATABASE_PATH = isolatedDbPath;
 
 const { runMigrations, closeDb } = await import('../../src/storage/database.js');
 
@@ -33,3 +45,10 @@ const { runMigrations, closeDb } = await import('../../src/storage/database.js')
 // whatever path is current at that point.
 runMigrations();
 closeDb();
+
+afterAll(() => {
+  closeDb();
+  for (const suffix of ['', '-wal', '-shm']) {
+    rmSync(`${isolatedDbPath}${suffix}`, { force: true });
+  }
+});

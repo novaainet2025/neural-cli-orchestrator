@@ -31,6 +31,9 @@ const GLOBAL_DENIED_PATTERNS = [
   /\bpython[23]?\s+-c\s/,         // arbitrary python exec
   /\b(?:node|tsx|deno)\b[^\r\n]*\s(?:-e|--eval|-p|--print)(?:=|\s|$)/, // arbitrary JS/TS exec
   /\b(?:node|tsx|deno)\b[^\r\n]*\s-(?:\s|$)/, // script from stdin
+  // PM2는 조회 전용 서브명령만 허용한다. sendSignal/startOrReload/옵션 삽입 같은
+  // 열거 누락이 곧 NCO 자기 재기동 우회가 되므로 mutation 목록을 유지하지 않는다.
+  /(?:^|[\s;&|])(?:\/[^\s]+\/)?pm2\b(?!\s+(?:list|ls|jlist|prettylist|describe|show|status|ping|report|env|logs|monit)\b)/i,
 ];
 
 const TRUSTED_EXEC_DIRS = [
@@ -72,6 +75,16 @@ export class CommandGate {
       if (commandArgIndex >= 0 && args[commandArgIndex + 1]) {
         commandTexts.push(args[commandArgIndex + 1]);
       }
+    }
+
+    if (['kill', 'pkill', 'killall'].includes(baseCmd)) {
+      return { ok: false, reason: `Command matches dangerous process signal: ${baseCmd}` };
+    }
+    const shellCommandTexts = commandTexts.slice(1);
+    if (shellCommandTexts.some(text => (
+      /(?:^|[;&|]\s*)(?:\/[^\s]+\/)?(?:kill|pkill|killall)\s+/i.test(text)
+    ))) {
+      return { ok: false, reason: 'Command matches dangerous process signal in shell command' };
     }
 
     // Global and custom denials apply even when the allowlist is intentionally empty.

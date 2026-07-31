@@ -304,6 +304,42 @@ function readActiveDiscussionProgress(taskId: string): DiscussionProgressRow | u
   `).get(taskId) as DiscussionProgressRow | undefined;
 }
 
+function readActiveDiscussionProgressBatch(
+  taskIds: readonly string[],
+): Map<string, DiscussionProgressRow> {
+  const progressByTaskId = new Map<string, DiscussionProgressRow>();
+  if (taskIds.length === 0) return progressByTaskId;
+
+  const placeholders = taskIds.map(() => '?').join(', ');
+  const rows = getDb().prepare(`
+    SELECT
+      d.task_id,
+      d.status,
+      d.current_round,
+      d.max_rounds,
+      d.participants_json,
+      d.created_at AS updated_at,
+      MAX(dm.created_at) AS latest_message_at,
+      COALESCE(SUM(
+        CASE
+          WHEN dm.round = MIN(d.max_rounds, d.current_round + 1) THEN 1
+          ELSE 0
+        END
+      ), 0) AS active_round_response_count
+    FROM discussions d
+    LEFT JOIN discussion_messages dm ON dm.discussion_id=d.id
+    WHERE d.task_id IN (${placeholders}) AND d.status='active'
+    GROUP BY d.id
+    ORDER BY d.created_at DESC
+  `).all(...taskIds) as Array<DiscussionProgressRow & { task_id: string }>;
+
+  // created_at DESC이므로 같은 task에 active discussion이 여럿이어도 최신 한 건만 유지한다.
+  for (const row of rows) {
+    if (!progressByTaskId.has(row.task_id)) progressByTaskId.set(row.task_id, row);
+  }
+  return progressByTaskId;
+}
+
 function withTaskRuntime<T extends {
   id: string;
   status?: string | null;
@@ -311,9 +347,19 @@ function withTaskRuntime<T extends {
   last_activity_at?: string | null;
   assigned_to?: string | null;
   heartbeat_seq?: number | null;
-}>(task: T) {
-  const runtime = taskQueue.getTaskSnapshot(task.id);
-  const discussion = readActiveDiscussionProgress(task.id);
+}>(
+  task: T,
+  prefetchedDiscussion?: DiscussionProgressRow | null,
+) {
+  const runtime = taskQueue.getTaskSnapshot(
+    task.id,
+    prefetchedDiscussion === undefined
+      ? undefined
+      : { lastActivityAt: task.last_activity_at ?? null },
+  );
+  const discussion = prefetchedDiscussion === undefined
+    ? readActiveDiscussionProgress(task.id)
+    : prefetchedDiscussion ?? undefined;
   if (discussion) {
     return {
       ...task,
@@ -1584,9 +1630,65 @@ export async function createGateway() {
   });
 
   // ═══ Health ═══════════════════════════════════════
+  //
+  // 2026-07-31: /health 는 "가벼운" 엔드포인트가 아니었다. Redis 왕복을 하는 유일한 라우트라
+  // Redis 가 흔들리면 순수 SQLite 라우트(/api/organizations 0.735s, /api/teams 0.235s)는
+  // 멀쩡한데 /health 만 7.8~25초로 늘어졌다. 이 "역전"을 이벤트루프 블로킹으로 오진했었다.
+  // 실제 기전은 I/O 대기다: redis.ts:18 retryStrategy(times*200ms) 누적이 8회에 7.20초로,
+  // 관측된 7.78초(회차 편차 ±0.06초)와 일치한다 — 디스크 I/O 편차가 아니라 고정 재시도 상수의 지문.
+  //
+  // 헬스체크는 "빠르게 사실을 말하는 것"이 임무다. 느린 의존성 때문에 매달리면 감시자가
+  // 프로세스를 죽었다고 오판해 재시작을 부르고, 그 재시작이 in-flight 를 파괴한다(실제로 반복됐다).
+  // 그래서 데드라인을 두고, 초과하면 degraded 로 **즉시** 답한다.
+  const HEALTH_DEADLINE_MS = Number(process.env.NCO_HEALTH_DEADLINE_MS) || 1_500;
+  const withDeadline = async <T>(work: Promise<T>, fallback: T): Promise<{ value: T; timedOut: boolean }> => {
+    let timer: NodeJS.Timeout | undefined;
+    const guard = new Promise<'__timeout__'>(resolve => {
+      timer = setTimeout(() => resolve('__timeout__'), HEALTH_DEADLINE_MS);
+      timer.unref?.();
+    });
+    try {
+      const outcome = await Promise.race([work, guard]);
+      if (outcome === '__timeout__') return { value: fallback, timedOut: true };
+      return { value: outcome as T, timedOut: false };
+    } catch {
+      return { value: fallback, timedOut: true };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   app.get('/health', async () => {
-    const agents = await sharedState.getAllAgentStates();
-    const redisOk = await redisHealthCheck();
+    // 두 의존성을 직렬로 기다리면 1.5초 데드라인이 합산돼 최악 3초가 된다.
+    // 병렬 시작해 라우트 전체의 의존성 대기를 HEALTH_DEADLINE_MS 한 번으로 제한한다.
+    const [agentsResult, redisResult] = await Promise.all([
+      withDeadline(sharedState.getAllAgentStates(), {} as Record<string, { status: string }>),
+      withDeadline(redisHealthCheck(), false),
+    ]);
+    const agents = agentsResult.value;
+    const redisOk = redisResult.value;
+    const degraded = agentsResult.timedOut || redisResult.timedOut;
+    if (degraded) {
+      return {
+        status: 'degraded',
+        service: 'nco-backend',
+        version: '1.0.0',
+        ports: { api: env.PORT, ws: env.WS_PORT },
+        providerCount: agentManager.listEnabledIds().length,
+        runtime: {
+          redis: redisOk,
+          agentsOnline: Object.values(agents).filter(a => a.status !== 'offline').length,
+          uptime: process.uptime(),
+          // 감시자가 "프로세스가 죽었다"로 오판하지 않도록 무엇이 느린지 명시한다.
+          slow: [
+            agentsResult.timedOut ? 'agent-states(redis)' : null,
+            redisResult.timedOut ? 'redis-ping' : null,
+          ].filter(Boolean),
+          deadlineMs: HEALTH_DEADLINE_MS,
+        },
+        timestamp: new Date().toISOString(),
+      };
+    }
     return {
       status: 'healthy',
       service: 'nco-backend',
@@ -1603,12 +1705,16 @@ export async function createGateway() {
   });
 
   app.get('/api/health', async () => {
-    const redisOk = await redisHealthCheck();
+    const redisResult = await withDeadline(redisHealthCheck(), false);
     return {
       healthy: true,
       api: { port: env.PORT },
       websocket: { port: env.WS_PORT },
-      redis: { connected: redisOk },
+      redis: {
+        connected: redisResult.value,
+        slow: redisResult.timedOut,
+        deadlineMs: HEALTH_DEADLINE_MS,
+      },
       storage: { kind: 'sqlite', path: env.DATABASE_PATH },
       timestamp: new Date().toISOString(),
     };
@@ -2118,8 +2224,17 @@ export async function createGateway() {
     const sql = `SELECT * FROM tasks${whereClause} ORDER BY created_at DESC LIMIT ?`;
     params.push(limit);
 
-    const tasks = (db.prepare(sql).all(...params) as Array<{ id: string; last_activity_at?: string | null }>)
-      .map(task => withTaskRuntime(task));
+    const taskRows = db.prepare(sql).all(...params) as Array<{
+      id: string;
+      last_activity_at?: string | null;
+    }>;
+    // 기존에는 각 row마다 tasks 1회 + discussions 1회를 다시 조회했다.
+    // 대시보드의 limit=50 폴링 한 번이 101개 SQL로 증폭되므로, discussion을 한 번에 읽고
+    // tasks.last_activity_at은 이미 조회된 row를 runtime fallback으로 재사용한다.
+    const discussionByTaskId = readActiveDiscussionProgressBatch(taskRows.map(task => task.id));
+    const tasks = taskRows.map(task =>
+      withTaskRuntime(task, discussionByTaskId.get(task.id) ?? null)
+    );
     return { tasks };
   });
 

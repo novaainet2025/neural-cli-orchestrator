@@ -13,7 +13,7 @@ import type Database from 'better-sqlite3';
 import { spawn, execFileSync, type ChildProcessByStdio, execSync } from 'child_process';
 import type { Readable } from 'stream';
 import { mkdtempSync, existsSync, symlinkSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { tmpdir, availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
 import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
@@ -70,6 +70,25 @@ const verifierCommandGate = new CommandGate({
 });
 
 const log = createLogger('task-queue');
+
+export interface VerifierBuildStats {
+  currentRunning: number;
+  totalRuns: number;
+  waiting: number;
+  maxConcurrent: number;
+}
+
+const verifierBuildStats: VerifierBuildStats = {
+  currentRunning: 0,
+  totalRuns: 0,
+  waiting: 0,
+  maxConcurrent: 0,
+};
+
+export function getVerifierBuildStats(): VerifierBuildStats {
+  return { ...verifierBuildStats };
+}
+
 // hermes는 2026-07-18 codex CLI로 전환 — 로컬 OOM 동시성 하향 대상 아님(정적 동시성 사용).
 const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['ollama']);
 
@@ -290,6 +309,44 @@ function loadTaskMetadata(taskId: string): Record<string, unknown> {
   }
 }
 
+/**
+ * 시도이력(attemptedAgents)은 단조 증가여야 한다 — 축소되면 이미 실패한 프로바이더가
+ * 재선택된다.
+ *
+ * 실측 근거(T1, 2026-07-30 task_ATkeua4HRwS_T-tQ / team_tech-port-02-safety-license):
+ * escalationHistory[0].attemptedAgents=["cursor-agent","codex","claude-code"]였는데
+ * 최종 top-level attemptedAgents=["codex","hermes"]로 3→2 역행. 원인은 두 곳이다.
+ *   (a) persistTaskReassignment이 `...metadataPatch`로 persisted 목록을 통째로 덮어씀
+ *   (b) enqueueWithRetries가 DB가 아닌 BullMQ job data 스냅샷(task.metadata)에서 시딩
+ * 결과: 06:11:39에 이미 queue_wait_timeout으로 실패한 codex가 재선택되어 30분을 더
+ * 소진하고 07:23:59 timeout(idle)로 종료(result_json/evidence_json 모두 NULL, 산출물 0).
+ * 당시 ollama(waiting 0)·opencode(waiting 0)는 미시도 상태로 유휴였다.
+ *
+ * 롤백: NCO_ATTEMPT_HISTORY_MONOTONIC=0 → union을 건너뛰고 정확히 이전(덮어쓰기) 동작.
+ */
+export function attemptHistoryMonotonicEnabled(
+  toggle: string | undefined = process.env.NCO_ATTEMPT_HISTORY_MONOTONIC,
+): boolean {
+  return toggle?.trim() !== '0';
+}
+
+/** persisted 목록 ∪ 새 목록 (순서 보존, 중복 제거). 어느 쪽도 축소하지 않는다. */
+export function mergeAttemptedAgents(
+  persisted: unknown,
+  incoming: readonly string[],
+): string[] {
+  const prior = Array.isArray(persisted)
+    ? persisted.filter((v): v is string => typeof v === 'string' && v.length > 0)
+    : [];
+  const merged = [...prior];
+  for (const agentId of incoming) {
+    if (typeof agentId === 'string' && agentId.length > 0 && !merged.includes(agentId)) {
+      merged.push(agentId);
+    }
+  }
+  return merged;
+}
+
 export function persistTaskReassignment(
   taskId: string,
   previousAgentId: string,
@@ -297,11 +354,18 @@ export function persistTaskReassignment(
   metadataPatch: { attemptedAgents: string[]; escalationHistory?: unknown[] },
 ): Record<string, unknown> {
   const db = getDb();
+  const persistedMetadata = loadTaskMetadata(taskId);
   const metadata = {
-    ...loadTaskMetadata(taskId),
+    ...persistedMetadata,
     ...metadataPatch,
     reassignedFrom: previousAgentId,
   };
+  if (attemptHistoryMonotonicEnabled()) {
+    metadata.attemptedAgents = mergeAttemptedAgents(
+      persistedMetadata.attemptedAgents,
+      metadataPatch.attemptedAgents ?? [],
+    );
+  }
   db.prepare(`
     UPDATE tasks
     SET assigned_to=?, metadata_json=?, updated_at=datetime('now')
@@ -367,6 +431,37 @@ export function allowGenericProviderFailover(metadata: Record<string, unknown> |
   if (metadata?.allowProviderFailover === false) return false;
   if (typeof metadata?.model === 'string' && metadata.model.trim() !== '') return false;
   return true;
+}
+
+const CIRCUIT_COOLDOWN_WAIT_CAP_MS = 30_000;
+const CIRCUIT_COOLDOWN_WAIT_BUFFER_MS = 200;
+const CIRCUIT_COOLDOWN_WAIT_DISABLED = new Set(['0', 'false', 'off']);
+
+/** 기본 on. `NCO_CIRCUIT_COOLDOWN_WAIT=off`이면 즉시 실행(종전 동작)으로 복귀한다. */
+export function isCircuitCooldownWaitEnabled(
+  toggle: string | undefined = process.env.NCO_CIRCUIT_COOLDOWN_WAIT,
+): boolean {
+  return !CIRCUIT_COOLDOWN_WAIT_DISABLED.has(toggle?.trim().toLowerCase() ?? '');
+}
+
+/**
+ * open circuit cooldown이 곧 끝나면 실행 전 bounded wait(ms)를 반환한다.
+ * 즉시 execute하면 provider_unavailable(iterations:0)으로 실패하는 CB 실패를 줄인다.
+ * auth·cooldownUntil 없음·이미 available이면 0.
+ */
+export function computeCircuitCooldownWaitMs(
+  agentId: string,
+  now = Date.now(),
+  capMs = CIRCUIT_COOLDOWN_WAIT_CAP_MS,
+): number {
+  const availability = circuitBreakerRegistry.getAvailability(agentId);
+  if (availability.available) return 0;
+  if (availability.reason === 'auth') return 0;
+  const until = availability.cooldownUntil ? Date.parse(availability.cooldownUntil) : Number.NaN;
+  if (!Number.isFinite(until)) return 0;
+  const remaining = until - now;
+  if (remaining <= 0) return 0;
+  return Math.min(remaining + CIRCUIT_COOLDOWN_WAIT_BUFFER_MS, capMs);
 }
 
 const EVOLUTION_LEARNING_TEAM_SLUG = 'gov-evolution-learning';
@@ -610,6 +705,56 @@ export async function captureVerifierBaseline(
  * from the working project so build tools resolve dependencies.
  */
 export async function captureHeadBaseline(
+  task: QueuedTask,
+  signal: AbortSignal,
+): Promise<VerifierProcessResult | null> {
+  if (task.verifier?.type !== 'run') return null;
+
+  // 호스트 포화 방지 (2026-07-30 T1): 이 함수는 태스크마다 git worktree + `npm run build`
+  // (tsc/esbuild)를 띄운다. 상한이 없어 tsc 10개·esbuild 8개가 동시에 돌아 16코어 머신의
+  // load average 가 64까지 올라갔고, NCO 자신의 이벤트루프가 굶어 전 API 가 000(8~10s
+  // 타임아웃)이 됐다. 그 결과 헬스프로브가 타임아웃 → CB open → F1 CB-cascade 로 번졌다.
+  // 상한은 env 로 조절 가능(0 이하나 비수치는 기본값).
+  const gate = getVerifierBuildSemaphore();
+  const waitStartedAt = gate.isSaturated() ? Date.now() : null;
+  if (waitStartedAt !== null) verifierBuildStats.waiting++;
+  try {
+    await gate.acquire();
+  } finally {
+    if (waitStartedAt !== null) verifierBuildStats.waiting--;
+  }
+
+  verifierBuildStats.currentRunning++;
+  verifierBuildStats.totalRuns++;
+  verifierBuildStats.maxConcurrent = Math.max(
+    verifierBuildStats.maxConcurrent,
+    verifierBuildStats.currentRunning,
+  );
+  if (waitStartedAt !== null) {
+    log.info({
+      taskId: task.taskId,
+      waitMs: Date.now() - waitStartedAt,
+      ...getVerifierBuildStats(),
+    }, 'Verifier build waited for concurrency slot');
+  }
+
+  try {
+    return await captureHeadBaselineInner(task, signal);
+  } finally {
+    verifierBuildStats.currentRunning = Math.max(0, verifierBuildStats.currentRunning - 1);
+    gate.release();
+  }
+}
+
+/** 검증 빌드 동시 실행 상한 — CPU 코어의 1/4, 최소 1·최대 4. `NCO_VERIFIER_BUILD_CONCURRENCY` 로 override. */
+function resolveVerifierBuildConcurrency(): number {
+  const raw = Number(process.env.NCO_VERIFIER_BUILD_CONCURRENCY);
+  if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw);
+  const cores = typeof availableParallelism === 'function' ? availableParallelism() : 4;
+  return Math.min(4, Math.max(1, Math.floor(cores / 4)));
+}
+
+async function captureHeadBaselineInner(
   task: QueuedTask,
   signal: AbortSignal,
 ): Promise<VerifierProcessResult | null> {
@@ -926,6 +1071,10 @@ class Semaphore {
     await new Promise<void>(resolve => this.queue.push(resolve));
   }
 
+  isSaturated(): boolean {
+    return this.inUse >= this.limit;
+  }
+
   release(): void {
     this.inUse = Math.max(0, this.inUse - 1);
     this.drain();
@@ -943,6 +1092,15 @@ class Semaphore {
       next();
     }
   }
+}
+
+// 검증 빌드 게이트 — Semaphore 클래스 선언 이후에 lazy 생성 (TDZ 회피).
+let verifierBuildSemaphore: Semaphore | null = null;
+function getVerifierBuildSemaphore(): Semaphore {
+  if (!verifierBuildSemaphore) {
+    verifierBuildSemaphore = new Semaphore(resolveVerifierBuildConcurrency());
+  }
+  return verifierBuildSemaphore;
 }
 
 // ─── Per-agent queue entry ─────────────────────────────
@@ -1233,6 +1391,15 @@ class TaskQueueManager {
     let lastError = '';
     let currentAgentId = task.agentId;
     let currentMetadata: Record<string, unknown> = { ...(task.metadata ?? {}) };
+    // task.metadata는 BullMQ job data 스냅샷이라 enqueue 시점에 동결된다. 중첩
+    // escalation/failover 스코프에서는 DB가 더 최신이므로 시도이력만 합집합으로 시딩한다
+    // (나머지 필드는 스냅샷 우선 유지 — 기존 동작 보존). 롤백: NCO_ATTEMPT_HISTORY_MONOTONIC=0
+    if (attemptHistoryMonotonicEnabled()) {
+      currentMetadata.attemptedAgents = mergeAttemptedAgents(
+        loadTaskMetadata(task.taskId).attemptedAgents,
+        getAttemptedAgents(currentMetadata, task.agentId),
+      );
+    }
     let attemptedAgents = getAttemptedAgents(currentMetadata, task.agentId);
     let stallRetried = false;
     let teamRetried = false;   // P11: 팀 transient failover는 태스크당 1회만
@@ -1267,6 +1434,17 @@ class TaskQueueManager {
               { attemptedAgents },
             );
           }
+        }
+      }
+
+      if (isCircuitCooldownWaitEnabled()) {
+        const cooldownWaitMs = computeCircuitCooldownWaitMs(currentAgentId);
+        if (cooldownWaitMs > 0) {
+          log.info(
+            { taskId: task.taskId, agentId: currentAgentId, cooldownWaitMs },
+            'Deferring task until provider circuit cooldown elapses',
+          );
+          await new Promise(resolve => setTimeout(resolve, cooldownWaitMs));
         }
       }
 
@@ -1496,7 +1674,11 @@ class TaskQueueManager {
     let leftWaiting = false;
 
     try {
-      await this.waitForJobActive(job, entry.queueEvents!);
+      const requestedQueueWaitMs = Number(task.metadata?.queueWaitMaxMs);
+      const queueWaitMaxMs = Number.isFinite(requestedQueueWaitMs) && requestedQueueWaitMs > 0
+        ? Math.min(requestedQueueWaitMs, this.getQueueWaitMaxMs())
+        : this.getQueueWaitMaxMs();
+      await this.waitForJobActive(job, entry.queueEvents!, queueWaitMaxMs);
       entry.waiting = Math.max(0, entry.waiting - 1);
       leftWaiting = true;
       const result = await job.waitUntilFinished(
@@ -1750,13 +1932,16 @@ class TaskQueueManager {
     return results;
   }
 
-  async close(): Promise<void> {
+  async close(options: { forceWorkers?: boolean } = {}): Promise<void> {
     if (this.monitorTimer) {
       clearInterval(this.monitorTimer);
       this.monitorTimer = null;
     }
     for (const entry of this.agents.values()) {
-      if (entry.worker) await entry.worker.close();
+      // Graceful drain is completed by src/index.ts before this method. BullMQ
+      // worker.close(false) has no timeout and waits for active jobs forever;
+      // force=true skips only that wait and still closes worker resources.
+      if (entry.worker) await entry.worker.close(options.forceWorkers === true);
       if (entry.queue) await entry.queue.close();
       if (entry.queueEvents) await entry.queueEvents.close();
     }
@@ -1788,9 +1973,17 @@ class TaskQueueManager {
     this.recordActivity(taskId);
   }
 
-  getTaskSnapshot(taskId: string): { lastActivityAt: string | null; liveness: LivenessState } {
+  getTaskSnapshot(
+    taskId: string,
+    persisted?: { lastActivityAt?: string | null },
+  ): { lastActivityAt: string | null; liveness: LivenessState } {
     const runtime = this.runtimes.get(taskId);
     if (!runtime) {
+      // 목록 API는 이미 tasks.last_activity_at을 읽었다. 그 값을 넘기면 태스크마다
+      // 같은 행을 다시 SELECT 하는 N+1을 피하면서 단건 API의 기존 DB fallback은 유지한다.
+      if (persisted) {
+        return { lastActivityAt: persisted.lastActivityAt ?? null, liveness: 'dead' };
+      }
       const row = getDb().prepare('SELECT last_activity_at FROM tasks WHERE id=?').get(taskId) as { last_activity_at?: string | null } | undefined;
       return { lastActivityAt: row?.last_activity_at ?? null, liveness: 'dead' };
     }

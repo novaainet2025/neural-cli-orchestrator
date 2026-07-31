@@ -21,7 +21,27 @@ export function getDb(): Database.Database {
     db.pragma('foreign_keys = ON');
     db.pragma('busy_timeout = 5000');
 
-    log.info({ path: env.DATABASE_PATH }, 'SQLite connected (WAL mode)');
+    // 2026-07-31 이벤트루프 굶음 대응 (T1 실측 근거).
+    // better-sqlite3 는 동기 API라 페이지를 디스크에서 읽는 동안 이벤트루프 전체가 멈춘다.
+    // 사고 당시 db/nco.db 는 911MB(work_events 449MB/190k행)인데 SQLite 기본값이
+    //   cache_size=2000 페이지(=4096B×2000 ≈ 8MB) · mmap_size=0
+    // 이라 거의 모든 조회가 동기 pread 시스템콜로 내려갔다. 프로세스 스택 샘플(5초)에서
+    // sqlite3 2158 프레임 / better_sqlite3 1547 / pread 88 프레임, 경로는
+    // Statement::JS_all → sqlite3_step → sqlite3BtreeIndexMoveto → getAndInitPage → readDbPage.
+    // 동일 쿼리 벤치: 8MB/mmap-off 평균 0.008s → 256MB/mmap-1G 평균 0.003s (2.7배).
+    //
+    // cache_size 는 음수를 주면 KiB 단위다(-262144 = 256MiB). mmap 은 읽기 경로의
+    // pread 를 페이지폴트로 대체해 시스템콜 자체를 줄인다. 둘 다 환경변수로 조절 가능.
+    const cacheKib = Number(process.env.NCO_SQLITE_CACHE_KIB) || 262_144;   // 256 MiB
+    const mmapBytes = Number(process.env.NCO_SQLITE_MMAP_BYTES) || 1_073_741_824; // 1 GiB
+    db.pragma(`cache_size = -${Math.max(2_048, Math.floor(cacheKib))}`);
+    db.pragma(`mmap_size = ${Math.max(0, Math.floor(mmapBytes))}`);
+
+    log.info({
+      path: env.DATABASE_PATH,
+      cacheKib,
+      mmapBytes,
+    }, 'SQLite connected (WAL mode, tuned cache/mmap)');
   }
   return db;
 }

@@ -114,4 +114,31 @@ describe('normalizeGracefulShutdownInterruption', () => {
       manager.tryTierEscalation = tryTierEscalation;
     }
   });
+
+  it('force-closes BullMQ workers after the bounded drain', async () => {
+    const manager = taskQueue as any;
+    const originalAgents = manager.agents;
+    const originalMonitorTimer = manager.monitorTimer;
+    const workerClose = vi.fn().mockResolvedValue(undefined);
+    const queueClose = vi.fn().mockResolvedValue(undefined);
+    const queueEventsClose = vi.fn().mockResolvedValue(undefined);
+    manager.monitorTimer = null;
+    manager.agents = new Map([
+      ['opencode', {
+        worker: { close: workerClose },
+        queue: { close: queueClose },
+        queueEvents: { close: queueEventsClose },
+      }],
+    ]);
+
+    try {
+      await manager.close({ forceWorkers: true });
+      expect(workerClose).toHaveBeenCalledWith(true);
+      expect(queueClose).toHaveBeenCalledOnce();
+      expect(queueEventsClose).toHaveBeenCalledOnce();
+    } finally {
+      manager.agents = originalAgents;
+      manager.monitorTimer = originalMonitorTimer;
+    }
+  });
 });

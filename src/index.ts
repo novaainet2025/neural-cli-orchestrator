@@ -30,15 +30,41 @@ import {
   isExternallyInjectedOrphan,
   type RecoverableTaskStatus,
 } from './core/orphan-recovery-policy.js';
+import { runWithConcurrency } from './utils/bounded-concurrency.js';
+import { recordProcessLifecycle } from './utils/process-lifecycle-audit.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
 const SHUTDOWN_POLL_INTERVAL_MS = 1_000;
+const SHUTDOWN_HARD_EXIT_MS = Math.max(
+  SHUTDOWN_DRAIN_TIMEOUT_MS + 5_000,
+  Number(process.env.NCO_SHUTDOWN_HARD_EXIT_MS) || 40_000,
+);
 const IN_FLIGHT_SHUTDOWN_STATUSES = ['assigned', 'in_progress', 'running', 'streaming'] as const;
 const SHUTDOWN_ORPHAN_REASON = 'orphaned: graceful shutdown timeout';
+const ORPHAN_RECOVERY_CONCURRENCY = Math.max(
+  1,
+  Math.floor(Number(process.env.NCO_ORPHAN_RECOVERY_CONCURRENCY) || 2),
+);
 
 let gateway: Awaited<ReturnType<typeof createGateway>> | null = null;
 let shutdownPromise: Promise<void> | null = null;
+let receivedShutdownSignal: string | null = null;
+
+recordProcessLifecycle('startup');
+process.on('uncaughtExceptionMonitor', (error, origin) => {
+  recordProcessLifecycle('uncaught_exception', {
+    origin,
+    errorName: error.name,
+    errorMessage: error.message.slice(0, 2_000),
+  });
+});
+process.on('exit', code => {
+  recordProcessLifecycle('exit', {
+    code,
+    signal: receivedShutdownSignal ?? undefined,
+  });
+});
 let stopWorkReportScheduler: (() => void) | null = null;
 let stopTeamLifecycleEventMonitor: (() => void) | null = null;
 
@@ -225,6 +251,79 @@ function markInFlightTasksAsOrphaned(tasks: Array<{ id: string }>): number {
   return result.changes;
 }
 
+async function dispatchRecoveredTasks(requeued: readonly OrphanRequeue[]): Promise<void> {
+  let reEnqueued = 0;
+  let reRouted = 0;
+  let deferred = 0;
+
+  const processed = await runWithConcurrency(
+    requeued,
+    ORPHAN_RECOVERY_CONCURRENCY,
+    async o => {
+      const target = pickHealthyProvider(o.agentId);
+      if (!target) {
+        deferred += 1;
+        log.warn(
+          { taskId: o.taskId, agent: o.agentId },
+          'orphan re-enqueue보류 — 건강한 프로바이더 없음(다음 부팅 재시도)',
+        );
+        return;
+      }
+      if (target !== o.agentId) {
+        try {
+          getDb().prepare('UPDATE tasks SET assigned_to=? WHERE id=?').run(target, o.taskId);
+        } catch {
+          // best-effort
+        }
+        log.info({ taskId: o.taskId, from: o.agentId, to: target }, 'orphan re-routed to healthy provider');
+        reRouted += 1;
+      }
+
+      try {
+        reEnqueued += 1;
+        const result = await taskQueue.enqueue({
+          taskId: o.taskId,
+          agentId: target,
+          prompt: o.prompt,
+          model: o.model,
+          systemPrompt: o.systemPrompt,
+          verifier: o.verifier,
+        });
+        const moved = persistRecoveredTaskResult(getDb(), o.taskId, result);
+        if (!moved.ok) {
+          log.warn(
+            { taskId: o.taskId, prev: moved.prev, resultStatus: result.status },
+            'Skipped recovered task terminal update',
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        const moved = persistRecoveredTaskResult(getDb(), o.taskId, {
+          success: false,
+          output: '',
+          error: message,
+          status: 'failed',
+        });
+        log.warn(
+          { taskId: o.taskId, err: message, persisted: moved.ok, prev: moved.prev },
+          'Orphan re-enqueue failed',
+        );
+      }
+    },
+    () => shutdownPromise === null,
+  );
+
+  log.info({
+    total: requeued.length,
+    processed,
+    reEnqueued,
+    reRouted,
+    deferred,
+    concurrency: ORPHAN_RECOVERY_CONCURRENCY,
+    interrupted: processed < requeued.length,
+  }, 'Startup orphan recovery dispatcher settled');
+}
+
 async function waitForInFlightDrain(timeoutMs: number): Promise<{ drained: boolean; remaining: Array<{ id: string; status: string; assigned_to: string | null }> }> {
   const deadline = Date.now() + timeoutMs;
 
@@ -297,58 +396,6 @@ async function boot(): Promise<void> {
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
   await taskQueue.init(loadEnabledProviders());
-
-  // 7b-2. orphan 재큐잉: 큐 준비 후 실제 enqueue (A: 재시작 in-flight 태스크를 fail 대신 재실행).
-  //        B: 원래 프로바이더가 죽어있으면 건강한 대체로 재라우팅(죽은 곳 재큐잉 루프 방지).
-  let reEnqueued = 0, reRouted = 0;
-  for (const o of orphanRecovery.requeued) {
-    const target = pickHealthyProvider(o.agentId);
-    if (!target) {
-      log.warn({ taskId: o.taskId, agent: o.agentId }, 'orphan re-enqueue보류 — 건강한 프로바이더 없음(다음 부팅 재시도)');
-      continue;
-    }
-    if (target !== o.agentId) {
-      try { getDb().prepare('UPDATE tasks SET assigned_to=? WHERE id=?').run(target, o.taskId); } catch { /* best-effort */ }
-      log.info({ taskId: o.taskId, from: o.agentId, to: target }, 'orphan re-routed to healthy provider');
-      reRouted++;
-    }
-    try {
-      void taskQueue.enqueue({
-        taskId: o.taskId,
-        agentId: target,
-        prompt: o.prompt,
-        model: o.model,
-        systemPrompt: o.systemPrompt,
-        verifier: o.verifier,
-      }).then(result => {
-        const moved = persistRecoveredTaskResult(getDb(), o.taskId, result);
-        if (!moved.ok) {
-          log.warn(
-            { taskId: o.taskId, prev: moved.prev, resultStatus: result.status },
-            'Skipped recovered task terminal update',
-          );
-        }
-      }).catch(error => {
-        const message = error instanceof Error ? error.message : String(error);
-        const moved = persistRecoveredTaskResult(getDb(), o.taskId, {
-          success: false,
-          output: '',
-          error: message,
-          status: 'failed',
-        });
-        log.warn(
-          { taskId: o.taskId, err: message, persisted: moved.ok, prev: moved.prev },
-          'Orphan re-enqueue failed',
-        );
-      });
-      reEnqueued++;
-    } catch (e) {
-      log.warn({ taskId: o.taskId, err: (e as Error).message }, 'orphan re-enqueue failed');
-    }
-  }
-  if (reEnqueued > 0) {
-    log.info({ reEnqueued, reRouted }, 'Orphaned tasks re-enqueued for retry');
-  }
 
   // 7c. Internal cron jobs
   loadCronJobs();
@@ -436,12 +483,31 @@ async function boot(): Promise<void> {
   log.info({ api: env.PORT, ws: env.WS_PORT }, 'NCO Backend fully operational');
   log.info('Monitor: http://localhost:' + env.PORT + '/monitor');
   if (process.env.NCO_PROBER !== '0') providerProber.start();
+
+  // API/WS가 먼저 살아난 뒤 복구 작업을 제한된 수로 실행한다. 이전 구현은 부팅 중
+  // 185개 enqueue promise를 동시에 시작해 SQLite busy wait로 이벤트 루프와 /health를 굶겼다.
+  if (orphanRecovery.requeued.length > 0) {
+    void dispatchRecoveredTasks(orphanRecovery.requeued).catch(error => {
+      log.error({
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Startup orphan recovery dispatcher failed');
+    });
+  }
 }
 
 // ─── Graceful Shutdown ────────────────────────────────
 async function shutdown(signal: string): Promise<void> {
   if (shutdownPromise) return shutdownPromise;
   shutdownPromise = (async () => {
+    const hardExitTimer = setTimeout(() => {
+      log.error({
+        signal,
+        timeoutMs: SHUTDOWN_HARD_EXIT_MS,
+      }, 'Shutdown hard deadline reached; exiting before process-manager SIGKILL');
+      process.exit(0);
+    }, SHUTDOWN_HARD_EXIT_MS);
+    hardExitTimer.unref();
+
     taskQueue.beginShutdown(signal);
     log.info({ signal }, 'Shutting down...');
     if (gateway) {
@@ -473,18 +539,25 @@ async function shutdown(signal: string): Promise<void> {
     await wsBridge.stop(signal);
     sessionManager.destroy();
     agentManager.destroy();
-    await taskQueue.close();
+    await taskQueue.close({ forceWorkers: true });
     syncEngine.stop();
     eventBus.destroy();
     await closeRedis();
     closeDb();
+    clearTimeout(hardExitTimer);
     process.exit(0);
   })();
   return shutdownPromise;
 }
 
-process.on('SIGINT', () => void shutdown('SIGINT'));
-process.on('SIGTERM', () => void shutdown('SIGTERM'));
+function handleShutdownSignal(signal: 'SIGINT' | 'SIGTERM'): void {
+  receivedShutdownSignal ??= signal;
+  recordProcessLifecycle('signal', { signal });
+  void shutdown(signal);
+}
+
+process.on('SIGINT', () => handleShutdownSignal('SIGINT'));
+process.on('SIGTERM', () => handleShutdownSignal('SIGTERM'));
 
 // ─── Run ──────────────────────────────────────────────
 boot().catch(err => {

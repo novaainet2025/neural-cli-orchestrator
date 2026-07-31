@@ -1,12 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   allowGenericProviderFailover,
+  computeCircuitCooldownWaitMs,
   filterEvolutionSkillsEscalationAgents,
   filterRecoveryCheckpointEscalationAgents,
+  isCircuitCooldownWaitEnabled,
   isEvolutionLearningRecoverableFailure,
   isTransientFailure,
 } from './task-queue.js';
 import { decideFinalEscalation } from './task-escalation.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 // P11: 팀 내부 다른 provider로 회복 가능한 실행 실패만 대상. 정상완료·취소·rate-limit 제외.
 describe('isTransientFailure (P11 진리표)', () => {
@@ -234,5 +237,53 @@ describe('Skill Academy escalation guard (bounded cycle-1 recovery)', () => {
       knownAgents,
       'off',
     )).toEqual(knownAgents);
+  });
+});
+
+describe('computeCircuitCooldownWaitMs', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns 0 when the provider is already available', () => {
+    vi.spyOn(circuitBreakerRegistry, 'getAvailability').mockReturnValue({
+      agentId: 'codex',
+      status: 'available',
+      available: true,
+      reason: null,
+      circuitState: 'closed',
+      cooldownUntil: null,
+    });
+    expect(computeCircuitCooldownWaitMs('codex')).toBe(0);
+  });
+
+  it('returns bounded wait when cooldown is still active', () => {
+    const now = Date.parse('2026-07-30T00:00:00.000Z');
+    vi.spyOn(circuitBreakerRegistry, 'getAvailability').mockReturnValue({
+      agentId: 'claude-code',
+      status: 'gated:generic',
+      available: false,
+      reason: 'generic',
+      circuitState: 'open',
+      cooldownUntil: new Date(now + 5_000).toISOString(),
+    });
+    expect(computeCircuitCooldownWaitMs('claude-code', now, 30_000)).toBe(5_200);
+  });
+
+  it('does not wait for auth-gated providers', () => {
+    vi.spyOn(circuitBreakerRegistry, 'getAvailability').mockReturnValue({
+      agentId: 'opencode',
+      status: 'gated:auth',
+      available: false,
+      reason: 'auth',
+      circuitState: 'open',
+      cooldownUntil: null,
+    });
+    expect(computeCircuitCooldownWaitMs('opencode')).toBe(0);
+  });
+
+  it('respects the circuit cooldown wait kill switch', () => {
+    expect(isCircuitCooldownWaitEnabled('off')).toBe(false);
+    expect(isCircuitCooldownWaitEnabled()).toBe(true);
   });
 });

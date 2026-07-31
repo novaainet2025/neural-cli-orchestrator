@@ -43,7 +43,6 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const NAME_MIN = 1;
 const NAME_MAX = 80;
 const MEMBER_TYPES = new Set<TeamMemberType>(['provider', 'session', 'nco-session']);
-const RUNNING_STATUSES = new Set(['assigned', 'running', 'streaming', 'reviewing']);
 
 function randomSlug(prefix: 'org' | 'team'): string {
   return `${prefix}-${randomBytes(3).toString('hex')}`;
@@ -145,15 +144,6 @@ function mergeWorkflowSummaries(
     }
   }
   return merged;
-}
-
-function findActiveTaskPrompt(tasks: Array<{ prompt?: string | null; status?: string | null }>): string | null {
-  for (const task of tasks) {
-    if (RUNNING_STATUSES.has(String(task.status ?? ''))) {
-      return task.prompt?.slice(0, 60) ?? null;
-    }
-  }
-  return null;
 }
 
 function ensureOrganizationExists(organizationId: string | null): boolean {
@@ -394,27 +384,69 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       FROM team_members
       ORDER BY created_at ASC, id ASC
     `).all() as Array<{ team_id: string; member_type: TeamMemberType; member_ref: string }>;
-    const taskRows = db.prepare(`
-      SELECT team_id, mode, status, prompt, created_at
+    // 전체 task prompt와 workflow stage를 JS로 가져오던 경로는 현재 각각 2,700+
+    // / 12,000+행을 매 폴마다 역직렬화했다. 분류·집계를 SQLite에서 끝내면 팀당
+    // 최대 25행만 반환되고, active prompt만 별도 소량 조회한다.
+    const taskSummaryRows = db.prepare(`
+      SELECT
+        team_id,
+        CASE
+          WHEN LOWER(COALESCE(mode, '')) IN ('discussion','consensus','hive','realtime','parallel')
+            THEN 'discussion'
+          WHEN COALESCE(prompt, '') LIKE '%리뷰%' OR LOWER(COALESCE(prompt, '')) LIKE '%review%'
+            THEN 'review'
+          WHEN COALESCE(prompt, '') LIKE '%검증%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%verify%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%test%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%tsc%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%lint%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%e2e%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%validation%'
+            THEN 'verification'
+          WHEN COALESCE(prompt, '') LIKE '%설계%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%design%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%architecture%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%schema%'
+            OR LOWER(COALESCE(prompt, '')) LIKE '%spec%'
+            THEN 'design'
+          ELSE 'implementation'
+        END AS stage,
+        CASE
+          WHEN status='completed' THEN 'completed'
+          WHEN status='skipped' THEN 'skipped'
+          WHEN status IN ('pending','queued') THEN 'pending'
+          WHEN status IN ('assigned','running','streaming','reviewing') THEN 'running'
+          WHEN status IN ('failed','timed_out','cancelled','lease_expired') THEN 'failed'
+          ELSE 'pending'
+        END AS workflow_state,
+        COUNT(*) AS task_count
       FROM tasks
       WHERE team_id IS NOT NULL AND workflow_run_id IS NULL
-      ORDER BY created_at DESC
+      GROUP BY team_id, stage, workflow_state
     `).all() as Array<{
-      team_id: string | null;
-      mode: string | null;
-      status: string | null;
-      prompt: string | null;
-      created_at: string | null;
+      team_id: string;
+      stage: TeamStage;
+      workflow_state: TeamWorkflowState;
+      task_count: number;
     }>;
+    const activeTaskRows = db.prepare(`
+      SELECT team_id, prompt
+      FROM tasks
+      WHERE team_id IS NOT NULL
+        AND workflow_run_id IS NULL
+        AND status IN ('assigned','running','streaming','reviewing')
+      ORDER BY created_at DESC
+    `).all() as Array<{ team_id: string; prompt: string | null }>;
     const workflowRows = db.prepare(`
-      SELECT team_id, stage, status
+      SELECT team_id, stage, status, COUNT(*) AS stage_count
       FROM workflow_stages
       WHERE team_id IS NOT NULL
-      ORDER BY created_at DESC
+      GROUP BY team_id, stage, status
     `).all() as Array<{
       team_id: string;
       stage: TeamStage;
       status: TeamWorkflowState;
+      stage_count: number;
     }>;
 
     const membersByTeam = new Map<string, Array<{ type: TeamMemberType; ref: string }>>();
@@ -424,25 +456,29 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       membersByTeam.set(row.team_id, list);
     }
 
-    const tasksByTeam = new Map<string, TeamTaskLike[]>();
-    for (const row of taskRows) {
-      if (!row.team_id) continue;
-      const list = tasksByTeam.get(row.team_id) ?? [];
-      list.push(row);
-      tasksByTeam.set(row.team_id, list);
+    const taskWorkflowByTeam = new Map<string, TeamWorkflowSummary>();
+    for (const row of taskSummaryRows) {
+      const summary = taskWorkflowByTeam.get(row.team_id) ?? createEmptyWorkflowSummary();
+      summary[row.stage][row.workflow_state] += row.task_count;
+      taskWorkflowByTeam.set(row.team_id, summary);
+    }
+    const activePromptByTeam = new Map<string, string | null>();
+    for (const row of activeTaskRows) {
+      if (!activePromptByTeam.has(row.team_id)) {
+        activePromptByTeam.set(row.team_id, row.prompt?.slice(0, 60) ?? null);
+      }
     }
     const workflowsByTeam = new Map<string, TeamWorkflowSummary>();
     for (const row of workflowRows) {
       if (!Object.prototype.hasOwnProperty.call(createEmptyWorkflowSummary(), row.stage)) continue;
       const summary = workflowsByTeam.get(row.team_id) ?? createEmptyWorkflowSummary();
-      summary[row.stage][mapWorkflowState(row.status)] += 1;
+      summary[row.stage][mapWorkflowState(row.status)] += row.stage_count;
       workflowsByTeam.set(row.team_id, summary);
     }
 
     return {
       teams: teams.map((team) => {
-        const relatedTasks = tasksByTeam.get(team.id) ?? [];
-        const activeTask = findActiveTaskPrompt(relatedTasks);
+        const activeTask = activePromptByTeam.get(team.id) ?? null;
         return {
           id: team.id,
           organizationId: team.organization_id,
@@ -460,7 +496,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           members: membersByTeam.get(team.id) ?? [],
           workflow: mergeWorkflowSummaries(
             workflowsByTeam.get(team.id) ?? createEmptyWorkflowSummary(),
-            summarizeTeamWorkflow(relatedTasks),
+            taskWorkflowByTeam.get(team.id) ?? createEmptyWorkflowSummary(),
           ),
           activeTask,
           status: activeTask ? 'working' : 'idle',

@@ -49,6 +49,32 @@ describe('team workflow routes', () => {
     expect(summary.implementation.completed).toBe(1);
   });
 
+  it('aggregates legacy task workflow state without loading every task row', async () => {
+    const db = getDb();
+    const insert = db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, status, team_id, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    insert.run('task-team-summary-discussion', 'discussion', '의견 수집', 'cancelled', teamId, '2026-07-31 01:00:00');
+    insert.run('task-team-summary-review', 'task', 'Review the patch', 'completed', teamId, '2026-07-31 01:01:00');
+    insert.run('task-team-summary-verify', 'task', 'run E2E validation', 'failed', teamId, '2026-07-31 01:02:00');
+    insert.run('task-team-summary-design', 'task', 'Architecture 설계', 'queued', teamId, '2026-07-31 01:03:00');
+    insert.run('task-team-summary-implementation', 'task', '기능 구현', 'running', teamId, '2026-07-31 01:04:00');
+
+    const response = await app.inject({ method: 'GET', url: '/api/teams' });
+    expect(response.statusCode).toBe(200);
+    const team = response.json().teams.find((entry: { id: string }) => entry.id === teamId);
+    expect(team.workflow).toMatchObject({
+      discussion: { failed: 1 },
+      review: { completed: 1 },
+      verification: { failed: 1 },
+      design: { pending: 1 },
+      implementation: { running: 1 },
+    });
+    expect(team.activeTask).toBe('기능 구현');
+    expect(team.status).toBe('working');
+  });
+
   it('serves durable workflow stages and their skip reasons', async () => {
     const prompt = '[업무보고 작성] 오늘 결과';
     const metadata = { teamId, workReportId: 'wr-route-test' };
