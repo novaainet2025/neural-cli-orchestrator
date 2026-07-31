@@ -16,6 +16,7 @@ import {
   probeComputerUseRuntime,
 } from '../../core/computer-use-company.js';
 import { resolveInternalProjectDir } from '../../utils/project-dir.js';
+import { ProviderAssignmentStore } from '../../core/provider-assignment-store.js';
 
 type TeamMemberType = 'provider' | 'session' | 'nco-session';
 type TeamStage = 'discussion' | 'design' | 'implementation' | 'review' | 'verification';
@@ -233,6 +234,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/organizations', async () => {
     const db = getDb();
+    const assignmentStore = new ProviderAssignmentStore(db);
     const rows = db.prepare(`
       SELECT o.id, o.name, o.slug, o.manager, o.parent_id as parentId, o.schedule, COUNT(t.id) AS teamCount, o.is_always_on as isAlwaysOn, o.is_active as isActive
       FROM organizations o
@@ -240,7 +242,16 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
       GROUP BY o.id, o.name, o.slug, o.manager, o.parent_id, o.schedule
       ORDER BY o.created_at ASC, o.name ASC
     `).all() as Array<{ id: string; name: string; slug: string; manager: string | null; parentId: string | null; schedule: string | null; teamCount: number; isAlwaysOn: number; isActive: number }>;
-    return { organizations: rows.map(r => ({ ...r, isAlwaysOn: !!r.isAlwaysOn, isActive: !!r.isActive })) };
+    return {
+      organizations: rows.map((row) => ({
+        ...row,
+        isAlwaysOn: !!row.isAlwaysOn,
+        isActive: !!row.isActive,
+        providerPolicy: assignmentStore.getPolicy('organization', row.id)?.policy ?? null,
+        providerAssignment: assignmentStore.getLatestSnapshot('organization', row.id),
+        legacyProviderHints: { manager: row.manager },
+      })),
+    };
   });
 
   // 조직 관리 주체/이름 수정
@@ -364,6 +375,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
 
   app.get('/api/teams', async () => {
     const db = getDb();
+    const assignmentStore = new ProviderAssignmentStore(db);
     const teams = db.prepare(`
       SELECT id, organization_id, name, slug, description, color, lead, charter, schedule, created_at, updated_at, is_always_on, is_active
       FROM teams
@@ -483,6 +495,7 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
     return {
       teams: teams.map((team) => {
         const activeTask = activePromptByTeam.get(team.id) ?? null;
+        const members = membersByTeam.get(team.id) ?? [];
         return {
           id: team.id,
           organizationId: team.organization_id,
@@ -497,7 +510,15 @@ export async function registerTeamsRoutes(app: FastifyInstance): Promise<void> {
           updatedAt: team.updated_at,
           isAlwaysOn: !!team.is_always_on,
           isActive: !!team.is_active,
-          members: membersByTeam.get(team.id) ?? [],
+          members,
+          providerPolicy: assignmentStore.getPolicy('team', team.id)?.policy ?? null,
+          providerAssignment: assignmentStore.getLatestSnapshot('team', team.id),
+          legacyProviderHints: {
+            lead: team.lead,
+            members: members
+              .filter((member) => member.type === 'provider')
+              .map((member) => member.ref),
+          },
           workflow: mergeWorkflowSummaries(
             workflowsByTeam.get(team.id) ?? createEmptyWorkflowSummary(),
             taskWorkflowByTeam.get(team.id) ?? createEmptyWorkflowSummary(),

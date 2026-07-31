@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { createWorkflowRun, evaluateWorkflowPolicy } from '../../core/workflow-gate.js';
 import { getDb } from '../../storage/database.js';
 import { registerTeamsRoutes, summarizeTeamWorkflow } from './teams.js';
+import { ProviderAssignmentStore } from '../../core/provider-assignment-store.js';
 
 describe('team workflow routes', () => {
   let app: FastifyInstance;
@@ -29,6 +30,10 @@ describe('team workflow routes', () => {
 
   afterEach(() => {
     const db = getDb();
+    db.prepare(`DELETE FROM provider_assignment_snapshots WHERE scope_id IN (?, ?)`)
+      .run(teamId, orgId);
+    db.prepare(`DELETE FROM provider_assignment_policies WHERE scope_id IN (?, ?)`)
+      .run(teamId, orgId);
     db.prepare(`DELETE FROM workflow_runs WHERE team_id=?`).run(teamId);
     db.prepare(`DELETE FROM tasks WHERE team_id=?`).run(teamId);
     db.prepare(`DELETE FROM teams WHERE id=?`).run(teamId);
@@ -73,6 +78,37 @@ describe('team workflow routes', () => {
     });
     expect(team.activeTask).toBe('기능 구현');
     expect(team.status).toBe('working');
+  });
+
+  it('adds provider policy, assignment, and legacy hints to team directory rows', async () => {
+    const store = new ProviderAssignmentStore(getDb());
+    store.upsertPolicy('team', teamId, { requiredCapabilities: ['testing'] });
+    store.appendSnapshot({
+      assignmentId: 'assignment-team-route-test',
+      scopeType: 'team',
+      scopeId: teamId,
+      status: 'assigned',
+      primaryProviderId: 'codex',
+      providerIds: ['codex'],
+      policyFingerprint: 'policy',
+      providerConfigFingerprint: 'config',
+      availabilityFingerprint: 'availability',
+      reason: 'selected_1_of_1_eligible',
+      candidates: [],
+      createdAt: '2026-08-01T00:00:00.000Z',
+      validUntil: '2026-08-01T00:05:00.000Z',
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/api/teams' });
+    const result = response.json().teams.find((entry: { id: string }) => entry.id === teamId);
+    expect(result).toMatchObject({
+      providerPolicy: { requiredCapabilities: ['testing'] },
+      providerAssignment: {
+        assignmentId: 'assignment-team-route-test',
+        primaryProviderId: 'codex',
+      },
+      legacyProviderHints: { lead: null, members: [] },
+    });
   });
 
   it('serves durable workflow stages and their skip reasons', async () => {

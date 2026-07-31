@@ -36,6 +36,8 @@ import {
   closeInterruptedCompanyDiscussions,
   closeTerminalCompanyDiscussions,
   allowSingleProposalAfterBoundedFallback,
+  providerAssignmentMode,
+  requiredCapabilitiesForCompanyTask,
   type TeamRow,
   type CompanyRun,
   type RunStage,
@@ -384,6 +386,33 @@ describe('resolveExecutor', () => {
       'ollama',
       available,
     )).toBe('ollama');
+  });
+
+  it('enforce 모드는 legacy lead/member를 무시하고 NCO 배정 snapshot만 사용', () => {
+    const assigned = team({
+      slug: 'portable',
+      name: 'Portable',
+      lead: 'retired-provider',
+      members: ['agy'],
+      assignedProviders: ['codex', 'opencode'],
+      providerAssignmentEnforced: true,
+    });
+    expect(resolveExecutor(assigned, known)).toBe('codex');
+    expect(resolveExecutorChain(assigned, known)).toEqual(['codex', 'opencode']);
+  });
+});
+
+describe('provider assignment mode', () => {
+  it('defaults to enforce and preserves explicit rollback modes', () => {
+    expect(providerAssignmentMode(undefined)).toBe('enforce');
+    expect(providerAssignmentMode('shadow')).toBe('shadow');
+    expect(providerAssignmentMode('legacy')).toBe('legacy');
+  });
+
+  it('maps task intent to portable capability gates', () => {
+    expect(requiredCapabilitiesForCompanyTask('code')).toEqual(['code']);
+    expect(requiredCapabilitiesForCompanyTask('verify')).toEqual(['testing']);
+    expect(requiredCapabilitiesForCompanyTask('general')).toEqual([]);
   });
 });
 
