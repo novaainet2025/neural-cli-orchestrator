@@ -107,6 +107,45 @@ online=$(curl -fsS --max-time 5 http://127.0.0.1:6200/api/agents 2>/dev/null \
   | jq -r '.agents[]? | "\(.id):\(.status)"' 2>/dev/null | tr '\n' ' ')
 [[ -n "$online" ]] && pass "NCO가 인식한 에이전트: $online" || warn "NCO /api/agents 조회 실패"
 
+sec "8. Claude Code 설정 (설정·상태바·훅·커맨드)"
+SET="$HOME/.claude/settings.json"
+if [[ ! -f "$SET" ]]; then
+  warn "~/.claude/settings.json 없음 — Claude 설정 미적용 (install-wsl.sh --claude-config)"
+else
+  if command -v jq >/dev/null 2>&1 && jq empty "$SET" >/dev/null 2>&1; then
+    pass "settings.json 유효한 JSON"
+    sl=$(jq -r '.statusLine.command // empty' "$SET")
+    if [[ -n "$sl" ]]; then
+      # 설정만 있고 스크립트가 없으면 상태바는 빈 줄로 뜬다 → 파일 실재까지 확인
+      slp=$(awk '{for(i=1;i<=NF;i++) if($i ~ /statusline.*\.sh$/) print $i}' <<<"$sl" | head -1)
+      if [[ -n "$slp" && -f "$slp" ]]; then pass "statusLine → $slp (스크립트 실재)"
+      else fail "statusLine 이 없는 스크립트를 가리킴: ${slp:-<파싱실패>}"; fi
+    else
+      warn "statusLine 미설정 — 상태바가 표시되지 않습니다"
+    fi
+    n=$(jq '[.hooks // {} | .[][]? | .hooks[]?] | length' "$SET" 2>/dev/null || echo 0)
+    [[ "$n" -gt 0 ]] && pass "settings.json 등록 훅 ${n}개" || warn "settings.json 에 훅 미등록"
+    # 등록된 훅이 실제 파일로 존재하는지 (경로만 남고 파일이 없는 상태를 잡는다)
+    miss=0
+    while IFS= read -r c; do
+      f=$(awk '{for(i=1;i<=NF;i++) if($i ~ /\.sh$/) print $i}' <<<"$c" | head -1)
+      f="${f/#\~/$HOME}"
+      [[ -n "$f" && ! -f "$f" ]] && miss=$((miss+1))
+    done < <(jq -r '[.hooks // {} | .[][]? | .hooks[]?.command // empty] | .[]' "$SET" 2>/dev/null)
+    [[ "$miss" -eq 0 ]] && pass "등록 훅의 스크립트 파일 전부 실재" || fail "등록됐지만 파일이 없는 훅 ${miss}건"
+  else
+    fail "settings.json 파싱 실패 (jq 없음 또는 JSON 오류)"
+  fi
+fi
+nh=$(find "$HOME/.claude/hooks"    -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
+nc=$(find "$HOME/.claude/commands" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+ns=$(find "$HOME/.claude/skills"   -maxdepth 1 -type d 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+[[ "$nh" -gt 0 ]] && pass "훅 파일 ${nh}개"         || warn "~/.claude/hooks 비어 있음"
+[[ "$nc" -gt 0 ]] && pass "슬래시 커맨드 ${nc}개"   || warn "~/.claude/commands 비어 있음"
+[[ "$ns" -gt 0 ]] && pass "스킬 ${ns}개"            || warn "~/.claude/skills 비어 있음"
+command -v claude >/dev/null 2>&1 && pass "claude CLI 설치됨" \
+  || warn "claude CLI 미설치 — 설정은 깔렸지만 쓸 CLI 가 없습니다"
+
 sec "결과"
 echo "  PASS=$PASS  FAIL=$FAIL  WARN=$WARN"
 if (( FAIL > 0 )); then

@@ -13,11 +13,17 @@
 # ║     bash install-wsl.sh --only=nco             # 특정 프로젝트만          ║
 # ║     bash install-wsl.sh --skip-pm2             # PM2 기동 생략            ║
 # ║                                                                          ║
+# ║   Claude Code 설정 일습(설정·상태바·훅·커스텀 커맨드):                      ║
+# ║     bash install-wsl.sh --claude-config        # 적용                     ║
+# ║     bash install-wsl.sh --no-claude-config     # 적용 안 함               ║
+# ║     (옵션 없이 대화형이면 물어봅니다. --yes 는 적용을 기본값으로 씁니다)     ║
+# ║                                                                          ║
 # ║   환경변수 오버라이드:                                                     ║
 # ║     NOVA_ROOT      설치 루트           (기본 $HOME/nova)                  ║
 # ║     NCO_BRANCH     nco 브랜치          (기본 main)                        ║
 # ║     AX_BRANCH      nova-ax 브랜치      (기본 main)                        ║
 # ║     DASH_BRANCH    dashboard 브랜치    (기본 main)                        ║
+# ║     FLEET_DIR      fleet-config 경로   (기본 $HOME/nova-fleet-config)     ║
 # ║                                                                          ║
 # ║   불변식: .env 절대 덮어쓰지 않음 · 재실행 멱등 · 시크릿 하드코딩 없음      ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
@@ -61,6 +67,13 @@ NCO_REPO="https://github.com/novaainet2025/neural-cli-orchestrator.git"
 AX_REPO="https://github.com/novaainet2025/nova-ax.git"
 DASH_REPO="https://github.com/novaainet2025/NCO-Dashboard.git"
 
+# Claude Code 설정 일습의 정본. 공개 저장소라 인증 없이 clone 된다.
+# 배포는 fleet 자체 배포기(install/apply.sh)가 담당한다 — {{HOME}}/{{USER}}/{{OS}}/
+# {{BASH_PATH}} 토큰을 이 머신 기준으로 치환하므로 macOS 절대경로가 새어 들어가지 않는다.
+FLEET_REPO="https://github.com/novaainet2025/nova-fleet-config.git"
+FLEET_DIR="${FLEET_DIR:-$HOME/nova-fleet-config}"
+FLEET_BRANCH="${FLEET_BRANCH:-main}"
+
 NODE_MAJOR=22
 NVM_VERSION="v0.40.3"
 
@@ -69,6 +82,7 @@ SKIP_PM2=false
 PROVIDER_MODE="ask"        # ask | list | all | none
 PROVIDER_LIST=""
 ONLY=""                    # 빈값=전체, 아니면 nco|nova-ax|nco-dashboard 콤마목록
+CLAUDE_CFG_MODE="ask"      # ask | yes | no
 
 # ── 인수 파싱 ─────────────────────────────────────────────────────────────
 for arg in "$@"; do
@@ -78,8 +92,10 @@ for arg in "$@"; do
     --all-providers)     PROVIDER_MODE="all" ;;
     --no-providers)      PROVIDER_MODE="none" ;;
     --providers=*)       PROVIDER_MODE="list"; PROVIDER_LIST="${arg#*=}" ;;
+    --claude-config)     CLAUDE_CFG_MODE="yes" ;;
+    --no-claude-config)  CLAUDE_CFG_MODE="no" ;;
     --only=*)            ONLY="${arg#*=}" ;;
-    -h|--help)           sed -n '2,25p' "$0"; exit 0 ;;
+    -h|--help)           sed -n '2,29p' "$0"; exit 0 ;;
     *)                   die "알 수 없는 옵션: $arg  (--help 참고)" ;;
   esac
 done
@@ -88,6 +104,8 @@ if [[ "$ASSUME_YES" == "true" && "$PROVIDER_MODE" == "ask" ]]; then
   PROVIDER_MODE="list"
   PROVIDER_LIST="claude-code,opencode,codex,cursor-agent"
 fi
+# --yes 는 Claude 설정도 적용을 기본값으로 삼는다 (NCO 를 쓰려면 사실상 필요한 구성)
+[[ "$ASSUME_YES" == "true" && "$CLAUDE_CFG_MODE" == "ask" ]] && CLAUDE_CFG_MODE="yes"
 # 대화형 메뉴에서 엔터만 쳤을 때 쓰는 기본 세트 (아래 select_… 에서 참조)
 
 want() {  # want <project> → 설치 대상인지
@@ -361,7 +379,69 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# 7. nco 빌드 & 마이그레이션
+# 7. Claude Code 설정 일습 (설정 · 상태바 · 훅 · 커스텀 커맨드)
+# ══════════════════════════════════════════════════════════════════════════
+# 정본은 nova-fleet-config 이고, 배포는 그 저장소의 install/apply.sh 가 한다.
+#   · claude/hooks/*        → ~/.claude/hooks/
+#   · claude/commands/*     → ~/.claude/commands/   (nco-* 슬래시 커맨드 62종 포함)
+#   · claude/skills/*       → ~/.claude/skills/
+#   · scripts/*             → ~/projects/scripts/
+#   · settings.template.json → ~/.claude/settings.json 에 UNION 머지
+#       statusLine 은 canonical 값으로 설정, hooks 는 canonical ∪ 머신전용 합집합
+# {{HOME}}/{{USER}}/{{OS}}/{{BASH_PATH}} 토큰을 이 머신 기준으로 치환하므로
+# 원본 머신(macOS)의 절대경로가 새어 들어가지 않는다. 기존 설정은 .fleet-bak 백업.
+CLAUDE_CFG_APPLIED=false
+
+ask_claude_config() {
+  [[ "$CLAUDE_CFG_MODE" != "ask" ]] && return 0
+  if [[ ! -t 0 ]]; then
+    warn "비대화형 입력 — Claude 설정 적용을 건너뜁니다 (--claude-config 로 명시하세요)"
+    CLAUDE_CFG_MODE="no"; return 0
+  fi
+  echo
+  echo "  ${BLD}Claude Code 설정 일습을 이 머신에 적용할까요?${NC}"
+  echo "    적용 대상: settings.json · 상태바(statusLine) · 훅 · 슬래시 커맨드 · 스킬"
+  echo "    출처: nova-fleet-config (공개 저장소) · 기존 설정은 백업 후 병합"
+  echo
+  local c=""
+  read -rp "  적용? [Y/n]: " c || c=""
+  if [[ -z "${c// /}" || "$c" =~ ^[Yy]$ ]]; then CLAUDE_CFG_MODE="yes"; else CLAUDE_CFG_MODE="no"; fi
+}
+
+hdr "7. Claude Code 설정 (설정 · 상태바 · 훅 · 커맨드)"
+ask_claude_config
+if [[ "$CLAUDE_CFG_MODE" != "yes" ]]; then
+  info "Claude 설정 적용 안 함"
+  info "나중에: git clone $FLEET_REPO \"$FLEET_DIR\" && bash \"$FLEET_DIR/install/apply.sh\" --merge-settings"
+else
+  # apply.sh 가 jq/python3 를 요구한다 (§1 에서 설치했지만 명시 확인)
+  MISSING_TOOL=""
+  for t in jq python3 git; do command -v "$t" >/dev/null 2>&1 || MISSING_TOOL="$MISSING_TOOL $t"; done
+  if [[ -n "$MISSING_TOOL" ]]; then
+    warn "필수 도구 누락:$MISSING_TOOL — Claude 설정 적용을 건너뜁니다"
+  else
+    clone_or_update "$FLEET_DIR" "$FLEET_REPO" "$FLEET_BRANCH"
+    APPLY="$FLEET_DIR/install/apply.sh"
+    if [[ ! -f "$APPLY" ]]; then
+      warn "apply.sh 없음: $APPLY — Claude 설정 적용 실패"
+    else
+      # settings.json 이 깨져 있으면 apply.sh 가 exit 5 로 거부한다. 미리 확인해 원인을 명확히 알린다.
+      if [[ -f "$HOME/.claude/settings.json" ]] && ! jq empty "$HOME/.claude/settings.json" >/dev/null 2>&1; then
+        die "~/.claude/settings.json 이 올바른 JSON 이 아닙니다. 고친 뒤 다시 실행하세요."
+      fi
+      info "fleet apply.sh 실행 (경로 토큰 치환 + settings UNION 머지)"
+      if bash "$APPLY" --merge-settings; then
+        CLAUDE_CFG_APPLIED=true
+        ok "Claude 설정 적용 완료"
+      else
+        warn "apply.sh 가 비정상 종료했습니다 — 아래 검증 결과를 확인하세요"
+      fi
+    fi
+  fi
+fi
+
+# ══════════════════════════════════════════════════════════════════════════
+# 8. nco 빌드 & 마이그레이션
 # ══════════════════════════════════════════════════════════════════════════
 npm_install() {  # npm_install <dir>
   local d="$1"
@@ -374,7 +454,7 @@ npm_install() {  # npm_install <dir>
 }
 
 if want nco && [[ -d "$NOVA_ROOT/nco" ]]; then
-  hdr "7. nco 설치"
+  hdr "8. nco 설치"
   info "의존성 설치 (better-sqlite3 · hnswlib-node 네이티브 빌드 포함, 수 분 소요)"
   npm_install "$NOVA_ROOT/nco"
   ok "npm 의존성 설치 완료"
@@ -397,19 +477,19 @@ if want nco && [[ -d "$NOVA_ROOT/nco" ]]; then
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# 8. nova-ax 설치
+# 9. nova-ax 설치
 # ══════════════════════════════════════════════════════════════════════════
 if want nova-ax && [[ -d "$NOVA_ROOT/nova-ax" ]]; then
-  hdr "8. nova-ax 설치"
+  hdr "9. nova-ax 설치"
   npm_install "$NOVA_ROOT/nova-ax"
   run_step "nova-ax 빌드 완료" in_dir "$NOVA_ROOT/nova-ax" npm run build
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# 9. nco-dashboard 설치
+# 10. nco-dashboard 설치
 # ══════════════════════════════════════════════════════════════════════════
 if want nco-dashboard && [[ -d "$NOVA_ROOT/nco-dashboard" ]]; then
-  hdr "9. nco-dashboard 설치"
+  hdr "10. nco-dashboard 설치"
   npm_install "$NOVA_ROOT/nco-dashboard"
   run_step "dashboard 빌드 완료" in_dir "$NOVA_ROOT/nco-dashboard" npm run build
   # vite.config.ts의 /local/mac-memory 미들웨어는 macOS 전용 명령(sysctl/vm_stat/
@@ -419,10 +499,10 @@ if want nco-dashboard && [[ -d "$NOVA_ROOT/nco-dashboard" ]]; then
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# 10. PM2 기동
+# 11. PM2 기동
 # ══════════════════════════════════════════════════════════════════════════
 if [[ "$SKIP_PM2" == "false" ]] && want nco && [[ -d "$NOVA_ROOT/nco" ]]; then
-  hdr "10. 서비스 기동 (PM2)"
+  hdr "11. 서비스 기동 (PM2)"
   command -v pm2 >/dev/null 2>&1 || { info "PM2 설치 중..."; npm install --global pm2@^6.0.0; }
   run_step "nco 기동" pm2_up nco "$NOVA_ROOT/nco"
   if want nova-ax && [[ -d "$NOVA_ROOT/nova-ax/dist" ]]; then
@@ -432,9 +512,9 @@ if [[ "$SKIP_PM2" == "false" ]] && want nco && [[ -d "$NOVA_ROOT/nco" ]]; then
 fi
 
 # ══════════════════════════════════════════════════════════════════════════
-# 11. 헬스체크 (실패 시 비0 종료)
+# 12. 헬스체크 (실패 시 비0 종료)
 # ══════════════════════════════════════════════════════════════════════════
-hdr "11. 헬스체크"
+hdr "12. 헬스체크"
 FAILED=0
 check_http() {  # check_http <이름> <url> <최대대기초>
   local name="$1" url="$2" max="${3:-60}" i=0
@@ -450,6 +530,30 @@ check_http() {  # check_http <이름> <url> <최대대기초>
 }
 
 redis-cli ping >/dev/null 2>&1 && ok "redis → PONG" || { err "redis 무응답"; FAILED=$((FAILED+1)); }
+
+# Claude 설정을 적용했다면 실제로 반영됐는지 확인한다 (apply.sh 성공 메시지만 믿지 않는다)
+if [[ "$CLAUDE_CFG_APPLIED" == "true" ]]; then
+  SET="$HOME/.claude/settings.json"
+  SL=$(jq -r '.statusLine.command // empty' "$SET" 2>/dev/null || true)
+  if [[ -n "$SL" ]]; then
+    # statusLine 이 가리키는 스크립트가 실제로 존재해야 상태바가 뜬다
+    SL_PATH=$(awk '{for(i=1;i<=NF;i++) if($i ~ /statusline.*\.sh$/) print $i}' <<<"$SL" | head -1)
+    if [[ -n "$SL_PATH" && -f "$SL_PATH" ]]; then
+      ok "statusLine 설정됨 → $SL_PATH"
+    else
+      err "statusLine 이 가리키는 스크립트가 없음: ${SL_PATH:-<파싱실패>}"
+      FAILED=$((FAILED+1))
+    fi
+  else
+    err "settings.json 에 statusLine 이 없음"; FAILED=$((FAILED+1))
+  fi
+  NHOOK=$(find "$HOME/.claude/hooks" -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
+  NCMD=$(find "$HOME/.claude/commands" -maxdepth 1 -name '*.md' 2>/dev/null | wc -l | tr -d ' ')
+  NHOOKREG=$(jq '[.hooks // {} | .[][]? | .hooks[]?] | length' "$SET" 2>/dev/null || echo 0)
+  [[ "$NHOOK" -gt 0 ]] && ok "훅 파일 ${NHOOK}개"        || { err "훅 파일 0개"; FAILED=$((FAILED+1)); }
+  [[ "$NCMD"  -gt 0 ]] && ok "슬래시 커맨드 ${NCMD}개"    || { err "커맨드 0개"; FAILED=$((FAILED+1)); }
+  [[ "$NHOOKREG" -gt 0 ]] && ok "settings.json 등록 훅 ${NHOOKREG}개" || { err "settings.json 에 훅 미등록"; FAILED=$((FAILED+1)); }
+fi
 if [[ "$SKIP_PM2" == "false" ]]; then
   want nco     && check_http "nco"     "http://127.0.0.1:6200/health" 90 || true
   want nova-ax && [[ -d "$NOVA_ROOT/nova-ax/dist" ]] && check_http "nova-ax" "http://127.0.0.1:6300/health" 45 || true
@@ -464,6 +568,12 @@ want nco           && echo "  nco            : $NCO_BRANCH        (API :6200 · 
 want nova-ax       && echo "  nova-ax        : $AX_BRANCH   (:6300)"
 want nco-dashboard && echo "  nco-dashboard  : $DASH_BRANCH (:5173)"
 [[ -n "${PROVIDER_LIST// /}" ]] && echo "  프로바이더 CLI : ${PROVIDER_LIST}"
+if [[ "$CLAUDE_CFG_APPLIED" == "true" ]]; then
+  echo "  Claude 설정    : 적용됨 (설정·상태바·훅·커맨드·스킬) — 출처 $FLEET_DIR"
+  echo "                   → 새 터미널을 열거나 Claude Code 를 재시작해야 반영됩니다"
+else
+  echo "  Claude 설정    : 미적용 (--claude-config 로 적용)"
+fi
 echo
 echo "  대시보드 실행:"
 echo "    cd $NOVA_ROOT/nco-dashboard && npm run dev -- --host"

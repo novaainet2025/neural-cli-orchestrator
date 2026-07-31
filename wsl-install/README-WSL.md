@@ -29,10 +29,12 @@ bash verify-wsl.sh       # 설치 검증
 무인 설치:
 
 ```bash
-bash install-wsl.sh --yes                                     # 기본 프로바이더 4종
+bash install-wsl.sh --yes                                     # 기본 프로바이더 4종 + Claude 설정
 bash install-wsl.sh --providers=codex,opencode,cursor-agent   # 지정 설치
 bash install-wsl.sh --all-providers                           # CLI 전체
 bash install-wsl.sh --no-providers                            # NCO 본체만
+bash install-wsl.sh --claude-config                           # Claude 설정 일습 적용
+bash install-wsl.sh --no-claude-config                        # Claude 설정 적용 안 함
 bash install-wsl.sh --only=nco                                # 특정 프로젝트만
 bash install-wsl.sh --skip-pm2                                # PM2 기동 생략
 ```
@@ -45,6 +47,8 @@ bash install-wsl.sh --skip-pm2                                # PM2 기동 생�
 | `NCO_BRANCH` | `main` | nco 브랜치 |
 | `AX_BRANCH` | `main` | nova-ax 브랜치 |
 | `DASH_BRANCH` | `main` | dashboard 브랜치 |
+| `FLEET_DIR` | `$HOME/nova-fleet-config` | Claude 설정 정본 clone 경로 |
+| `FLEET_BRANCH` | `main` | fleet-config 브랜치 |
 
 ```bash
 NOVA_ROOT=$HOME/apps/nova bash install-wsl.sh --yes
@@ -94,6 +98,63 @@ nco 저장소의 `cli-installs/install-all.sh`를 도구 단위로 호출합니�
 - **활성화**: opencode · codex · cursor-agent · copilot · hermes · claude-code · openrouter · openclaw · agy
 - **ollama**: 기본 **비활성**. `ollama`를 선택했고 `nvidia-smi`가 감지되면 자동으로
   `--gpu` 모드가 적용됩니다. GPU 없이 켜면 추론이 실용 불가 수준으로 느립니다.
+
+---
+
+## Claude Code 설정 일습 (설정 · 상태바 · 훅 · 커스텀 커맨드)
+
+NCO 백엔드만 깔면 Claude Code 쪽은 아무것도 바뀌지 않습니다. 상태바도, `/nco-*`
+슬래시 커맨드도, 훅도 따로 적용해야 합니다. 설치 중에 선택할 수 있습니다.
+
+```
+  Claude Code 설정 일습을 이 머신에 적용할까요?
+    적용 대상: settings.json · 상태바(statusLine) · 훅 · 슬래시 커맨드 · 스킬
+    출처: nova-fleet-config (공개 저장소) · 기존 설정은 백업 후 병합
+
+  적용? [Y/n]:
+```
+
+`--claude-config` / `--no-claude-config` 로 비대화형 지정도 됩니다. `--yes` 는
+적용을 기본값으로 씁니다. 파이프 실행처럼 stdin 이 터미널이 아니면 **건너뜁니다** —
+남의 `~/.claude` 를 말없이 고치지 않기 위해서입니다.
+
+### 무엇이 어디로 가는가
+
+정본은 `nova-fleet-config`(공개 저장소)이고, 배포는 그 저장소의
+`install/apply.sh --merge-settings` 가 합니다.
+
+| 출처 | 대상 |
+|---|---|
+| `claude/hooks/*` | `~/.claude/hooks/` |
+| `claude/commands/*` | `~/.claude/commands/` (`/nco-*` 62종 포함) |
+| `claude/skills/*` | `~/.claude/skills/` |
+| `scripts/*` | `~/projects/scripts/` |
+| `claude/settings.template.json` | `~/.claude/settings.json` 에 **병합** |
+
+`settings.json` 은 덮어쓰지 않고 병합합니다 — `statusLine` 은 canonical 값으로
+설정하고, `hooks` 는 canonical ∪ 기존 머신 설정의 **합집합**(command 기준 dedup)입니다.
+변경 전 원본은 `settings.json.fleet-bak` 으로 백업됩니다.
+
+경로는 `{{HOME}}` · `{{USER}}` · `{{OS}}` · `{{BASH_PATH}}` 토큰으로 저장돼 있어
+설치 시점에 이 머신 기준으로 치환됩니다. 원본 머신(macOS)의 절대경로가 새어 들어가지
+않습니다.
+
+### 주의
+
+- **적용 후 새 터미널을 열거나 Claude Code 를 재시작해야 반영됩니다.**
+- `apply.sh` 는 `jq` · `python3` · `git` 을 요구합니다 (설치 스크립트가 §1에서 깝니다).
+- `~/.claude/settings.json` 이 깨진 JSON 이면 `apply.sh` 가 적용을 거부합니다.
+  설치 스크립트가 미리 검사해 원인을 알려줍니다.
+- 설정 적용이 실패해도 **전체 설치는 중단되지 않습니다.** 경고만 남고 나머지가 진행됩니다.
+- `claude` CLI 자체는 프로바이더 선택에서 `claude-code` 를 골라야 설치됩니다.
+  설정만 깔고 CLI 가 없으면 `verify-wsl.sh` 가 경고합니다.
+
+나중에 수동 적용:
+
+```bash
+git clone https://github.com/novaainet2025/nova-fleet-config.git ~/nova-fleet-config
+bash ~/nova-fleet-config/install/apply.sh --merge-settings
+```
 
 ---
 
@@ -281,6 +342,9 @@ bash verify-wsl.sh
 5. `/health` **응답 본문**
 6. `.env` 필수 키가 플레이스홀더로 남아 있지 않은지
 7. 설치된 프로바이더 CLI + NCO `/api/agents`가 인식한 에이전트 목록
+8. Claude 설정 — `settings.json` JSON 유효성, `statusLine` 이 가리키는 스크립트의
+   **실재 여부**, 등록된 훅이 전부 실제 파일로 존재하는지, 훅·커맨드·스킬 개수,
+   `claude` CLI 설치 여부
 
 종료 코드 `0`이면 전체 통과, `1`이면 실패 항목이 있습니다.
 
