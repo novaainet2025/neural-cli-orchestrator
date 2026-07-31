@@ -283,7 +283,8 @@ want nova-ax && place_env "$NOVA_ROOT/nova-ax" "$TPL_DIR/nova-ax.env.template"
 # nco의 cli-installs/install-all.sh 가 개별 tool 인자를 지원한다:
 #   bash install-all.sh <tool>
 # 아래 목록은 그 스크립트가 실제로 지원하는 이름과 1:1 대응한다.
-PROVIDERS_AVAIL=(claude-code opencode codex cursor-agent copilot gemini-cli aider ollama gemini-api)
+# 2026-07-31: 사용자 지시로 aider 제거 (불필요한데 CLI 로 설치되던 문제).
+PROVIDERS_AVAIL=(claude-code opencode codex cursor-agent copilot gemini-cli ollama gemini-api)
 provider_desc() {
   case "$1" in
     claude-code)  echo "Claude Code CLI      — NCO 기본 두뇌" ;;
@@ -292,7 +293,6 @@ provider_desc() {
     cursor-agent) echo "Cursor Agent         — 코드 리뷰·보안" ;;
     copilot)      echo "GitHub Copilot CLI   — 리서치·문서" ;;
     gemini-cli)   echo "Gemini CLI           — 범용" ;;
-    aider)        echo "Aider                — 페어 프로그래밍" ;;
     ollama)       echo "Ollama               — 로컬 LLM (GPU 없으면 매우 느림)" ;;
     gemini-api)   echo "google-genai SDK     — Python SDK만 (CLI 아님)" ;;
     *)            echo "" ;;

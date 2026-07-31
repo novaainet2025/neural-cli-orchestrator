@@ -3,7 +3,7 @@
 # AI CLI Tools Installer & Updater (no sudo required)
 # All tools installed to ~/.local (user-local)
 #
-# Installs: gemini-cli, codex, cursor-agent, aider, copilot, ollama (CLI check),
+# Installs: gemini-cli, codex, cursor-agent, copilot, ollama (CLI check),
 #           claude-code, opencode, gemini-api (google-genai)
 #
 # Usage:
@@ -152,6 +152,9 @@ install_cursor_agent() {
     log "Cursor Agent installed"
 }
 
+# 2026-07-31: 사용자 지시로 aider 를 설치 항목에서 제거했다.
+# 어느 경로에서도 호출되지 않는다(일괄 install·개별 dispatch·update·status 전부 제외).
+# 되살리려면 main() 의 case 에 aider) 분기와 install 목록을 다시 넣으면 된다.
 install_aider() {
     info "Installing Aider..."
     uv tool install --force aider-chat 2>/dev/null || \
@@ -242,10 +245,8 @@ update_all() {
     # uv/pipx updates
     info "Updating Python tools..."
     if command -v uv &>/dev/null; then
-        uv tool upgrade aider-chat 2>/dev/null || true
         uv tool upgrade google-genai 2>/dev/null || true
     else
-        pipx upgrade aider-chat 2>/dev/null || true
         pipx upgrade google-genai 2>/dev/null || true
     fi
 
@@ -299,8 +300,6 @@ show_status() {
             fi
         fi
     fi
-    check_tool "Aider"          aider
-
     check_tool "Copilot CLI"    github-copilot-cli
 
     check_tool "Ollama"         ollama
@@ -366,7 +365,6 @@ main() {
         gemini-cli)     install_prereqs; install_gemini_cli ;;
         codex)          install_prereqs; install_codex ;;
         cursor-agent)   install_prereqs; install_cursor_agent ;;
-        aider)          install_prereqs; install_aider ;;
         copilot)        install_prereqs; install_copilot ;;
         ollama|vllm)   install_prereqs; install_ollama ;;
         claude-code)    install_prereqs; install_claude_code ;;
@@ -384,7 +382,6 @@ main() {
             install_gemini_cli   || err "Gemini CLI failed"
             install_codex        || err "Codex CLI failed"
             install_cursor_agent || err "Cursor Agent failed"
-            install_aider        || err "Aider failed"
             install_copilot      || err "Copilot CLI failed"
             install_ollama       || err "Ollama check failed"
             install_claude_code  || err "Claude Code failed"
@@ -398,7 +395,7 @@ main() {
         *)
             echo "Usage: $0 {install|update|status|<tool-name>}"
             echo ""
-            echo "Tools: redis, gemini-cli, codex, cursor-agent, aider, copilot,"
+            echo "Tools: redis, gemini-cli, codex, cursor-agent, copilot,"
             echo "       ollama, claude-code, opencode, gemini-api"
             exit 1
             ;;

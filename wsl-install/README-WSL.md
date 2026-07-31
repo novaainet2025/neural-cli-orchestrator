@@ -72,9 +72,8 @@ nco 저장소의 `cli-installs/install-all.sh`를 도구 단위로 호출합니�
      4) cursor-agent   Cursor Agent         — 코드 리뷰·보안
      5) copilot        GitHub Copilot CLI   — 리서치·문서
      6) gemini-cli     Gemini CLI           — 범용
-     7) aider          Aider                — 페어 프로그래밍
-     8) ollama         Ollama               — 로컬 LLM (GPU 없으면 매우 느림)
-     9) gemini-api     google-genai SDK     — Python SDK만 (CLI 아님)
+     7) ollama         Ollama               — 로컬 LLM (GPU 없으면 매우 느림)
+     8) gemini-api     google-genai SDK     — Python SDK만 (CLI 아님)
 
    선택: 1 3 4     ← 번호를 공백/콤마로 · 'a'=전체 · 엔터=기본(1 2 3 4) · 'n'=설치 안 함
 ```

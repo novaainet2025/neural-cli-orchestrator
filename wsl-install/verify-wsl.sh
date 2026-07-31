@@ -97,7 +97,7 @@ check_env "$NOVA_ROOT/nova-ax/.env" AX_PORT AX_API_TOKEN AX_NCO_SECRET
 
 sec "7. 프로바이더 CLI"
 FOUND=(); ABSENT=()
-for c in claude opencode codex cursor-agent copilot gemini aider ollama; do
+for c in claude opencode codex cursor-agent copilot gemini ollama; do
   if command -v "$c" >/dev/null 2>&1; then FOUND+=("$c"); else ABSENT+=("$c"); fi
 done
 [[ ${#FOUND[@]}  -gt 0 ]] && pass "설치됨: ${FOUND[*]}"  || warn "설치된 프로바이더 CLI 없음"
