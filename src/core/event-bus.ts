@@ -58,8 +58,7 @@ export class EventBus {
           const event = JSON.parse(message) as NCOEvent;
           // Skip re-emit if this event was already emitted locally in publish()
           if (this.localEmittedIds.has(event.id)) return;
-          this.local.emit(event.type, event);
-          this.local.emit('*', event);
+          this.emitLocal(event);
         } catch (err) {
           log.error({ err }, 'Failed to parse event');
         }
@@ -163,8 +162,7 @@ export class EventBus {
 
     // 2. Local emit after remote commit / local fallback enqueue
     setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
-    this.local.emit(enriched.type, enriched);
-    this.local.emit('*', enriched);
+    this.emitLocal(enriched);
 
     // 3. SQLite append-only work ledger (all events) + legacy action index.
     // The work ledger is the durable learning source; agent_actions remains a
@@ -204,6 +202,20 @@ export class EventBus {
     });
   }
 
+  /** A faulty local subscriber must not reject publish() or stop Redis consumption. */
+  private emitLocal(event: NCOEvent): void {
+    try {
+      this.local.emit(event.type, event);
+    } catch (error) {
+      log.error({ err: error, type: event.type, eventId: event.id }, 'Local event handler failed');
+    }
+    try {
+      this.local.emit('*', event);
+    } catch (error) {
+      log.error({ err: error, type: event.type, eventId: event.id }, 'Wildcard event handler failed');
+    }
+  }
+
   // ─── Consumer Group (XREADGROUP) ────────────────────
   /**
    * Process pending messages from the Redis consumer group.
@@ -241,8 +253,7 @@ export class EventBus {
                 const event = { ...JSON.parse(payload) as NCOEvent, streamId: msgId };
                 // Emit only if not already emitted locally
                 if (!this.localEmittedIds.has(event.id)) {
-                  this.local.emit(event.type, event);
-                  this.local.emit('*', event);
+                  this.emitLocal(event);
                 }
               }
               // Acknowledge the message regardless

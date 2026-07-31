@@ -1,61 +1,40 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getDb, runMigrations } from '../storage/database.js';
+import { readFileSync } from 'node:fs';
 import { handleTool, listToolsWithAcquisitions } from './server.js';
 
 describe('mcp acquisition overlay', () => {
   beforeEach(() => {
-    runMigrations();
-    const db = getDb();
-    db.prepare(`DELETE FROM dynamic_skills WHERE name LIKE 'acquired_test_tool_%'`).run();
+    vi.unstubAllGlobals();
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    const db = getDb();
-    db.prepare(`DELETE FROM dynamic_skills WHERE name LIKE 'acquired_test_tool_%'`).run();
   });
 
-  it('includes active acquired skills in tools/list output', () => {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO dynamic_skills
-      (id, name, description, trigger_keywords, pipeline, quality_threshold, is_active, auto_generated)
-      VALUES (?, ?, ?, ?, ?, ?, 1, 1)
-    `).run(
-      'skill_mcp_overlay',
-      'acquired_test_tool_overlay',
-      'Overlay test tool',
-      JSON.stringify(['overlay']),
-      JSON.stringify([{ step: 1, agentId: 'codex', promptTemplate: '{{prompt}}', qualityThreshold: 55 }]),
-      60,
-    );
+  it('loads acquired skills over the NCO API for tools/list', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL) => {
+      expect(String(input)).toContain('/api/mcp/dynamic-tools');
+      return new Response(JSON.stringify({
+        tools: [{ name: 'acquired_test_tool_overlay', description: 'Overlay test tool' }],
+      }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    const tools = listToolsWithAcquisitions();
+    const tools = await listToolsWithAcquisitions();
     expect(tools.some(tool => tool.name === 'acquired_test_tool_overlay')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('falls back to acquired registry on tools/call miss', async () => {
-    const db = getDb();
-    db.prepare(`
-      INSERT INTO dynamic_skills
-      (id, name, description, trigger_keywords, pipeline, quality_threshold, is_active, auto_generated)
-      VALUES (?, ?, ?, ?, ?, ?, 1, 1)
-    `).run(
-      'skill_mcp_fallback',
-      'acquired_test_tool_fallback',
-      'Fallback test tool',
-      JSON.stringify(['fallback']),
-      JSON.stringify([{ step: 1, agentId: 'codex', promptTemplate: '{{prompt}}', qualityThreshold: 55 }]),
-      60,
-    );
-
+  it('delegates dynamic tools/call execution to the NCO API', async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith('/api/task') && init?.method === 'POST') {
-        return new Response(JSON.stringify({ taskId: 'task_dynamic_1' }), { status: 200 });
-      }
-      if (url.endsWith('/api/tasks/task_dynamic_1/status')) {
-        return new Response(JSON.stringify({ status: 'completed', result: 'dynamic-complete' }), { status: 200 });
+      if (url.endsWith('/api/mcp/dynamic-tools/execute') && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          tool: 'acquired_test_tool_fallback',
+          output: 'dynamic-complete',
+          quality: 80,
+          steps: 1,
+        }), { status: 200 });
       }
       throw new Error(`unexpected url ${url}`);
     });
@@ -68,6 +47,23 @@ describe('mcp acquisition overlay', () => {
       output: 'dynamic-complete',
       steps: 1,
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps static tools available when NCO is offline', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => {
+      throw new Error('offline');
+    }));
+
+    const tools = await listToolsWithAcquisitions();
+    expect(tools.some(tool => tool.name === 'nco_health')).toBe(true);
+    expect(tools.some(tool => tool.name.startsWith('acquired_'))).toBe(false);
+  });
+
+  it('keeps the stdio MCP process free of direct SQLite-backed imports', () => {
+    const source = readFileSync(new URL('./server.ts', import.meta.url), 'utf8');
+    expect(source).not.toContain("storage/database");
+    expect(source).not.toContain("core/acquisition-registry");
+    expect(source).not.toContain("core/dynamic-skill-engine");
   });
 });

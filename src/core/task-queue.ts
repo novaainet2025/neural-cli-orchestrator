@@ -32,6 +32,7 @@ import { listActivelyRateLimited } from './rate-limit-state.js';
 import { logDecision } from './decision-log.js';
 import { recordLearningEvent } from './failure-learning.js';
 import { transitionTask, TERMINAL_STATES } from './task-state.js';
+import { registerRuntimeProcess, unregisterRuntimeProcess } from './runtime-process-registry.js';
 
 // ─── Rate Limit Detection ─────────────────────────────
 const RATE_LIMIT_PATTERNS = [
@@ -2000,6 +2001,7 @@ class TaskQueueManager {
     if (!runtime || !pid || pid <= 0) return;
     runtime.childPid = pid;
     runtime.processAlive = true;
+    registerRuntimeProcess({ taskId, agentId: runtime.agentId, pid });
     this.recordActivity(taskId);
   }
 
@@ -2121,6 +2123,7 @@ class TaskQueueManager {
     const runtime = this.runtimes.get(taskId);
     if (!runtime) return result;
     this.flushActivityToDb(runtime);
+    unregisterRuntimeProcess(taskId);
     this.runtimes.delete(taskId);
     const output = result.output || runtime.partialOutput;
     const status = result.status ?? (

@@ -32,6 +32,10 @@ import {
 } from './core/orphan-recovery-policy.js';
 import { runWithConcurrency } from './utils/bounded-concurrency.js';
 import { recordProcessLifecycle } from './utils/process-lifecycle-audit.js';
+import {
+  reapLegacyNcoProviderProcesses,
+  reapStaleRuntimeProcesses,
+} from './core/runtime-process-registry.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
@@ -57,6 +61,7 @@ process.on('uncaughtExceptionMonitor', (error, origin) => {
     origin,
     errorName: error.name,
     errorMessage: error.message.slice(0, 2_000),
+    errorStack: error.stack?.slice(0, 8_000),
   });
 });
 process.on('exit', code => {
@@ -351,6 +356,13 @@ async function boot(): Promise<void> {
   log.info('Initializing database...');
   const db = getDb();
   runMigrations();
+  try {
+    const processReap = reapStaleRuntimeProcesses(db);
+    const legacyProcessesReaped = reapLegacyNcoProviderProcesses();
+    log.warn({ ...processReap, legacyProcessesReaped }, 'Startup provider process cleanup completed');
+  } catch (error) {
+    log.warn({ err: error }, 'Startup provider process cleanup failed open');
+  }
   const orphanRecovery = recoverOrphanedTasks();
   log.warn({ requeue: orphanRecovery.requeued.length, deadLetter: orphanRecovery.deadLettered }, 'Startup orphan recovery processed');
 

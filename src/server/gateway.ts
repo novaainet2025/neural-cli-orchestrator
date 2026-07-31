@@ -43,6 +43,7 @@ import { eventBus, type NCOEvent } from '../core/event-bus.js';
 import { discoverAcquisitions } from '../core/acquisition-discovery.js';
 import { installAcquiredPackage } from '../core/acquisition-installer.js';
 import { acquisitionRegistry, type AcquisitionRecord } from '../core/acquisition-registry.js';
+import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
@@ -661,6 +662,10 @@ const AcquisitionDecisionFilterSchema = z.enum([
   'registration_failed',
   'active',
 ]);
+const DynamicMcpToolExecuteSchema = z.object({
+  name: z.string().min(1),
+  prompt: z.string().min(1),
+});
 const DiscussionRouteBodySchema = z.object({
   topic: z.string().min(1),
   participants: z.array(z.string().min(1)).min(1).optional(),
@@ -1025,6 +1030,64 @@ function serializeAcquisitionRecord(record: AcquisitionRecord) {
     discovered_from: safeJsonParse(record.discovered_from_json),
     vet_results: safeJsonParse(record.vet_results_json),
   };
+}
+
+const DYNAMIC_MCP_TASK_POLL_TIMEOUT_MS = 300_000;
+const DYNAMIC_MCP_TASK_POLL_INTERVAL_MS = 250;
+
+async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text.slice(0, 2_000) };
+  }
+}
+
+async function executeDynamicMcpAgentTask(agentId: string, prompt: string): Promise<string> {
+  const baseUrl = `http://127.0.0.1:${env.PORT}`;
+  const createResponse = await fetch(`${baseUrl}/api/task`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ai: agentId,
+      prompt,
+      callerAgentId: 'nco-dynamic-skill',
+      callerSessionId: 'nco-dynamic-skill',
+      metadata: { projectDir: resolveInternalProjectDir() },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const created = await readJsonResponse(createResponse);
+  const taskId = typeof created.taskId === 'string' ? created.taskId : null;
+  if (!createResponse.ok || !taskId) {
+    throw new Error(typeof created.error === 'string'
+      ? created.error
+      : `dynamic skill task creation failed (HTTP ${createResponse.status})`);
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DYNAMIC_MCP_TASK_POLL_TIMEOUT_MS) {
+    const statusResponse = await fetch(`${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/status`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    const statusBody = await readJsonResponse(statusResponse);
+    const status = typeof statusBody.status === 'string' ? statusBody.status : '';
+    if (status === 'completed') {
+      return typeof statusBody.result === 'string'
+        ? statusBody.result
+        : JSON.stringify(statusBody.result ?? '');
+    }
+    if (['failed', 'timed_out', 'cancelled'].includes(status)) {
+      throw new Error(typeof statusBody.error === 'string'
+        ? statusBody.error
+        : `dynamic skill task ${status}`);
+    }
+    await new Promise(resolveWait => setTimeout(resolveWait, DYNAMIC_MCP_TASK_POLL_INTERVAL_MS));
+  }
+
+  throw new Error(`dynamic skill task timeout: ${taskId}`);
 }
 
 function safeJsonParse(raw: string): unknown {
@@ -2900,6 +2963,43 @@ export async function createGateway() {
       .map(serializeAcquisitionRecord);
 
     return { acquisitions: records };
+  });
+
+  // Stdio MCP processes are intentionally API-only clients. Keeping dynamic
+  // skill discovery and execution behind this boundary prevents every Codex /
+  // OpenCode session from opening the production SQLite database directly.
+  app.get('/api/mcp/dynamic-tools', async () => ({
+    tools: acquisitionRegistry.listAcquiredSkillNames().map(skill => ({
+      name: skill.name,
+      description: skill.description,
+    })),
+  }));
+
+  app.post('/api/mcp/dynamic-tools/execute', async (req, reply) => {
+    const parsed = DynamicMcpToolExecuteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(issue => issue.message) };
+    }
+
+    const skill = acquisitionRegistry.listAcquiredSkillNames()
+      .find(entry => entry.name === parsed.data.name);
+    if (!skill) {
+      reply.code(404);
+      return { error: 'Dynamic MCP tool not found' };
+    }
+
+    const result = await dynamicSkillEngine.executeSkill(
+      skill.id,
+      parsed.data.prompt,
+      executeDynamicMcpAgentTask,
+    );
+    return {
+      tool: skill.name,
+      output: result.output,
+      quality: result.quality,
+      steps: result.steps,
+    };
   });
 
   app.post('/api/tasks/:id/cancel', async (req, reply) => {

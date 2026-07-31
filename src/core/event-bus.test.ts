@@ -55,6 +55,21 @@ describe('EventBus stream cursors', () => {
     bus.destroy();
   });
 
+  it('isolates a throwing typed subscriber and still notifies wildcard subscribers', async () => {
+    const bus = new EventBus();
+    const wildcardHandler = vi.fn();
+    bus.on('test:event', () => {
+      throw new Error('subscriber exploded');
+    });
+    bus.on('*', wildcardHandler);
+
+    await expect(bus.publish({ type: 'test:event', value: 1 })).resolves.toMatchObject({
+      type: 'test:event',
+    });
+    expect(wildcardHandler).toHaveBeenCalledTimes(1);
+    bus.destroy();
+  });
+
   it('falls back from an event ID cursor and restores stream IDs during replay', async () => {
     const storedEvent = { id: 'evt_legacy', type: 'test:event', timestamp: 1 };
     redis.xrange.mockResolvedValue([

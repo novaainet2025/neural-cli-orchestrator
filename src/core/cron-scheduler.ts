@@ -276,9 +276,23 @@ function scheduleRetry(job: CronJobRecord, attempt: number): void {
     if (!isJobEnabled(job.id)) {
       return;
     }
-    void executeJob(job, attempt + 1);
+    launchJob(job, attempt + 1);
   }, backoff);
   trackRetryTimer(job.id, handle);
+}
+
+/**
+ * node-cron and timer callbacks do not observe rejected promises. Keep every
+ * detached execution behind one terminal rejection handler so an unexpected
+ * failure in status/event reporting cannot become an unhandled process error.
+ */
+function launchJob(job: CronJobRecord, attempt = 1): void {
+  void executeJob(job, attempt).catch((error: unknown) => {
+    log.error(
+      { jobId: job.id, attempt, err: error instanceof Error ? error.stack ?? error.message : String(error) },
+      'Unhandled cron execution error isolated',
+    );
+  });
 }
 
 async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
@@ -308,7 +322,7 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
             const handle = setTimeout(() => {
               retryTimers.get(job.id)?.delete(handle);
               if (!isJobEnabled(job.id)) return;
-              void executeJob(job);
+              launchJob(job);
             }, 30 * 60 * 1000);
             trackRetryTimer(job.id, handle);
             await eventBus.publish({
@@ -365,7 +379,7 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
             if (!isJobEnabled(job.id)) {
               return;
             }
-            void executeJob(job);
+            launchJob(job);
           }, 60 * 60 * 1000);
           trackRetryTimer(job.id, handle);
           await eventBus.publish({
@@ -422,7 +436,19 @@ async function executeJob(job: CronJobRecord, attempt = 1): Promise<void> {
 
     log.error({ jobId: job.id, err: message }, 'Cron job failed');
     updateJobStatus(job.id, 'failed');
-    await eventBus.publish({ type: 'cron:failed' as any, taskId: job.id, agentId: 'cron-scheduler', output: message });
+    try {
+      await eventBus.publish({ type: 'cron:failed' as any, taskId: job.id, agentId: 'cron-scheduler', output: message });
+    } catch (reportingError) {
+      log.error(
+        {
+          jobId: job.id,
+          err: reportingError instanceof Error
+            ? reportingError.stack ?? reportingError.message
+            : String(reportingError),
+        },
+        'Cron failure reporting error isolated',
+      );
+    }
   }
 }
 
@@ -447,7 +473,7 @@ function startTask(job: CronJobRecord): void {
     // 못 부른 경우(또는 다른 세션이 DB에서 disable한 경우)에도 비활성 크론이 발사되지
     // 않도록 방어한다. (retry/delay 경로는 이미 isJobEnabled를 체크함 — 발사 경로만 누락)
     if (!isJobEnabled(job.id)) return;
-    void executeJob(job);
+    launchJob(job);
   }, {
     timezone: job.timezone || 'UTC',
   });
