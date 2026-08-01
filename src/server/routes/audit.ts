@@ -3,11 +3,12 @@
  * Phase 6: 감사 로그 / 무결성 검증 / 비상 정지 / 블랙리스트
  */
 
-import type { FastifyInstance } from 'fastify';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   appendAudit,
   queryAuditLog,
-  verifyChainIntegrity,
+  verifyAuditIntegrity,
   verifyEntry,
   type AuditAction,
   type AuditSeverity,
@@ -22,6 +23,27 @@ import {
   getEmergencyHistory,
 } from '../../audit/emergencyService.js';
 import type { DID } from '../../identity/keyManager.js';
+
+function fixedDigest(value: string): Buffer {
+  return createHash('sha256').update(value).digest();
+}
+
+function requireAuditWriteToken(req: FastifyRequest, reply: FastifyReply): boolean {
+  const configured = process.env.NCO_AUDIT_WRITE_TOKEN?.trim() ?? '';
+  if (!configured) {
+    void reply.code(503).send({ error: 'Audit write endpoint is disabled' });
+    return false;
+  }
+  const authorization = req.headers.authorization ?? '';
+  const supplied = authorization.startsWith('Bearer ')
+    ? authorization.slice('Bearer '.length).trim()
+    : '';
+  if (!supplied || !timingSafeEqual(fixedDigest(supplied), fixedDigest(configured))) {
+    void reply.code(403).send({ error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
 
 export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
 
@@ -42,18 +64,21 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
       to:       q['to']     ? parseInt(q['to'], 10)     : undefined,
       limit:    q['limit']  ? parseInt(q['limit'], 10)  : 50,
       offset:   q['offset'] ? parseInt(q['offset'], 10) : 0,
+      scope:    q['scope'] === 'current' ? 'current' : 'all',
     });
     return reply.send(result);
   });
 
   /**
    * GET /api/audit/verify
-   * 전체 Merkle 체인 무결성 검증 (최대 limit개)
+   * 전체 Merkle 체인 무결성 검증. scope=current이면 명시적으로 시작된
+   * 현재 epoch만 검증한다. 기본 history scope는 과거 compromise를 계속 노출한다.
    */
   app.get('/api/audit/verify', async (req, reply) => {
     const q = req.query as Record<string, string>;
-    const limit = q['limit'] ? parseInt(q['limit'], 10) : 1000;
-    const result = verifyChainIntegrity(limit);
+    const scope = q['scope'] === 'current' ? 'current' : 'history';
+    const pageSize = q['limit'] ? parseInt(q['limit'], 10) : 1000;
+    const result = verifyAuditIntegrity(scope, pageSize);
     return reply.send(result);
   });
 
@@ -88,6 +113,7 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
    * Body: { triggeredBy: DID, reason: string }
    */
   app.post('/api/admin/emergency-stop', async (req, reply) => {
+    if (!requireAuditWriteToken(req, reply)) return reply;
     const body = req.body as { triggeredBy?: string; reason?: string };
     if (!body.triggeredBy || !body.reason) {
       return reply.code(400).send({ error: 'triggeredBy and reason are required' });
@@ -106,6 +132,7 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
    * Body: { liftedBy: DID }
    */
   app.delete('/api/admin/emergency-stop/:stopId', async (req, reply) => {
+    if (!requireAuditWriteToken(req, reply)) return reply;
     const { stopId } = req.params as { stopId: string };
     const body = req.body as { liftedBy?: string };
     if (!body.liftedBy) {
@@ -145,6 +172,7 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
    * Body: { did, reason, addedBy, expiresAt? }
    */
   app.post('/api/admin/blacklist', async (req, reply) => {
+    if (!requireAuditWriteToken(req, reply)) return reply;
     const body = req.body as {
       did?: string;
       reason?: string;
@@ -170,6 +198,7 @@ export async function registerAuditRoutes(app: FastifyInstance): Promise<void> {
    * Body: AppendAuditInput
    */
   app.post('/api/audit/logs', async (req, reply) => {
+    if (!requireAuditWriteToken(req, reply)) return reply;
     const body = req.body as {
       actor?: string;
       action?: string;
