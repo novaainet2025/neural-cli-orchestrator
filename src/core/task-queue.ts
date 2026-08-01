@@ -10,10 +10,11 @@
 
 import { Queue, Worker, Job, QueueEvents, UnrecoverableError } from 'bullmq';
 import type Database from 'better-sqlite3';
-import { spawn, execFileSync, type ChildProcessByStdio, execSync } from 'child_process';
+import { execFile, spawn, execFileSync, type ChildProcessByStdio, execSync } from 'child_process';
 import { createHash } from 'node:crypto';
 import type { Readable } from 'stream';
-import { mkdtempSync, existsSync, symlinkSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir, availableParallelism } from 'node:os';
 import { join, resolve } from 'node:path';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
@@ -189,6 +190,74 @@ export type TaskExecutionResult = {
   };
 };
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
+
+export const TASK_DEADLINE_EXCEEDED = 'task_deadline_exceeded';
+
+export function getTaskDeadlineMs(task: Pick<QueuedTask, 'metadata'>): number | null {
+  const raw = task.metadata?.deadlineAt;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const parsed = Date.parse(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function getTaskDeadlineRemainingMs(
+  task: Pick<QueuedTask, 'metadata'>,
+  now = Date.now(),
+): number | null {
+  const deadlineMs = getTaskDeadlineMs(task);
+  return deadlineMs === null ? null : Math.max(0, deadlineMs - now);
+}
+
+export function computeTaskQueueWaitBudgetMs(
+  task: Pick<QueuedTask, 'metadata'>,
+  configuredMaxWaitMs: number,
+  now = Date.now(),
+): { maxWaitMs: number; deadlineBound: boolean } {
+  const requested = Number(task.metadata?.queueWaitMaxMs);
+  const queueMax = Number.isFinite(requested) && requested > 0
+    ? Math.min(requested, configuredMaxWaitMs)
+    : configuredMaxWaitMs;
+  const remaining = getTaskDeadlineRemainingMs(task, now);
+  if (remaining === null) return { maxWaitMs: queueMax, deadlineBound: false };
+  return {
+    maxWaitMs: Math.min(queueMax, remaining),
+    deadlineBound: remaining <= queueMax,
+  };
+}
+
+export function computeTaskExecutionBudgetMs(
+  task: Pick<QueuedTask, 'metadata'>,
+  configuredTimeoutMs: number,
+  now = Date.now(),
+): { timeoutMs: number; deadlineBound: boolean } {
+  const remaining = getTaskDeadlineRemainingMs(task, now);
+  if (remaining === null) {
+    return { timeoutMs: configuredTimeoutMs, deadlineBound: false };
+  }
+  return {
+    timeoutMs: Math.max(1, Math.min(configuredTimeoutMs, remaining)),
+    deadlineBound: remaining <= configuredTimeoutMs,
+  };
+}
+
+export function taskDeadlineExceededResult(
+  task: Pick<QueuedTask, 'metadata'>,
+): TaskExecutionResult {
+  const raw = task.metadata?.deadlineAt;
+  const suffix = typeof raw === 'string' && raw.trim() ? `: ${raw}` : '';
+  return {
+    success: false,
+    output: '',
+    error: `${TASK_DEADLINE_EXCEEDED}${suffix}`,
+    status: 'timed_out',
+  };
+}
+
+export function isTaskDeadlineFailure(
+  result: Pick<TaskExecutionResult, 'error'>,
+): boolean {
+  return (result.error ?? '').startsWith(TASK_DEADLINE_EXCEEDED);
+}
 
 export function selectFailoverProvider(
   providers: readonly Pick<ProviderConfig, 'id' | 'cost'>[],
@@ -585,6 +654,7 @@ export function isTransientFailure(result: TaskExecutionResult): boolean {
   if (
     /\b(?:verifier failed|quality_rejected|evidence_gate_blocked|(?:user|operator)[ _-]?cancelled)\b/i.test(err)
     || /\b(?:CLI|subprocess) cancelled\b/i.test(err)
+    || isQueueWaitCancellationUnconfirmed(result)
   ) return false;                                  // 정책/사용자 종결은 provider failover 금지
   if (isRateLimitError(err)) return false;          // 기존 backoff/failover 경로와 중복 금지
   return err.startsWith('silent-failure:')            // classifyResult: 빈출력/무응답/limit메시지
@@ -595,6 +665,12 @@ export function isTransientFailure(result: TaskExecutionResult): boolean {
       || /\b(?:invalid api key|credential preflight failed|unauthorized)\b/i.test(err)
       || /\bprovider failure detected:\s*auth\b/i.test(err)
       || /\b(?:CLI failed exit=|CLI timed out|subprocess exited with code|subprocess timed out)\b/i.test(err);
+}
+
+export function isQueueWaitCancellationUnconfirmed(
+  result: Pick<TaskExecutionResult, 'error'>,
+): boolean {
+  return (result.error ?? '').startsWith('queue_wait_cancellation_unconfirmed:');
 }
 
 // 회사/호출자가 명시적으로 팀 밖 provider failover를 금지한 태스크만 fail-closed.
@@ -832,6 +908,73 @@ async function waitForExitWithTimeout(
   });
 }
 
+export async function runGitWorktreeCommand(
+  args: readonly string[],
+  cwd: string,
+  signal: AbortSignal,
+  timeoutMs: number,
+): Promise<void> {
+  if (signal.aborted) throw signal.reason ?? new Error('git worktree operation aborted');
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    execFile(
+      'git',
+      [...args],
+      {
+        cwd,
+        signal,
+        timeout: Math.max(1, Math.trunc(timeoutMs)),
+        windowsHide: true,
+      },
+      error => error ? rejectPromise(error) : resolvePromise(),
+    );
+  });
+}
+
+async function waitForCleanupUntilAbort(
+  operation: Promise<void>,
+  signal: AbortSignal,
+): Promise<void> {
+  if (signal.aborted) {
+    void operation.catch(() => {});
+    return;
+  }
+  await new Promise<void>(resolvePromise => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', finish);
+      resolvePromise();
+    };
+    signal.addEventListener('abort', finish, { once: true });
+    operation.then(finish, finish);
+  });
+}
+
+async function cleanupHeadBaselineWorktree(
+  projectDir: string,
+  tmpDir: string,
+  taskSignal: AbortSignal,
+): Promise<void> {
+  // Cleanup must continue after a task deadline, but the task response must not
+  // wait beyond that deadline. Run cleanup asynchronously with its own bound and
+  // stop awaiting it as soon as the task signal aborts.
+  const cleanupOperation = (async () => {
+    try {
+      await runGitWorktreeCommand(
+        ['worktree', 'remove', '--force', tmpDir],
+        projectDir,
+        AbortSignal.timeout(15_000),
+        15_000,
+      );
+    } catch { /* cleanup falls through to filesystem removal */ }
+    try {
+      await rm(tmpDir, { recursive: true, force: true });
+    } catch { /* already removed */ }
+  })();
+  await waitForCleanupUntilAbort(cleanupOperation, taskSignal);
+}
+
 /**
  * Capture the verifier result before the agent can mutate the task worktree.
  *
@@ -890,11 +1033,23 @@ export async function captureHeadBaseline(
   const gate = getVerifierBuildSemaphore();
   const waitStartedAt = gate.isSaturated() ? Date.now() : null;
   if (waitStartedAt !== null) verifierBuildStats.waiting++;
+  const deadlineRemaining = getTaskDeadlineRemainingMs(task);
+  const verifierTimeoutMs = task.verifier.timeoutMs ?? 60_000;
+  const slotWaitMs = deadlineRemaining === null
+    ? Math.min(verifierTimeoutMs, task.timeoutMs ?? verifierTimeoutMs)
+    : Math.min(verifierTimeoutMs, deadlineRemaining);
+  let acquired = false;
   try {
-    await gate.acquire();
+    const acquisition = await gate.acquireWithin(
+      `verifier-head:${task.taskId}`,
+      slotWaitMs,
+      signal,
+    );
+    acquired = acquisition === 'acquired';
   } finally {
     if (waitStartedAt !== null) verifierBuildStats.waiting--;
   }
+  if (!acquired || signal.aborted) return null;
 
   verifierBuildStats.currentRunning++;
   verifierBuildStats.totalRuns++;
@@ -914,7 +1069,7 @@ export async function captureHeadBaseline(
     return await captureHeadBaselineInner(task, signal);
   } finally {
     verifierBuildStats.currentRunning = Math.max(0, verifierBuildStats.currentRunning - 1);
-    gate.release();
+    if (acquired) gate.release();
   }
 }
 
@@ -938,19 +1093,25 @@ async function captureHeadBaselineInner(
   if (!verifierCommandGate.validate(binary, args).ok) return null;
 
   const projectDir = resolveVerifierProjectDir(task);
-  const tmpDir = mkdtempSync(join(tmpdir(), 'nco-verify-head-'));
+  const tmpDir = await mkdtemp(join(tmpdir(), 'nco-verify-head-'));
 
   try {
-    execFileSync('git', ['worktree', 'add', '--detach', tmpDir, 'HEAD'], {
-      cwd: projectDir,
-      stdio: 'ignore',
-      timeout: 30_000,
-    });
+    signal.throwIfAborted();
+    const remaining = getTaskDeadlineRemainingMs(task);
+    const addTimeoutMs = remaining === null ? 30_000 : Math.max(1, Math.min(30_000, remaining));
+    await runGitWorktreeCommand(
+      ['worktree', 'add', '--detach', tmpDir, 'HEAD'],
+      projectDir,
+      signal,
+      addTimeoutMs,
+    );
+    signal.throwIfAborted();
 
     const nmSrc = join(projectDir, 'node_modules');
     if (existsSync(nmSrc)) {
-      symlinkSync(nmSrc, join(tmpDir, 'node_modules'));
+      await symlink(nmSrc, join(tmpDir, 'node_modules'));
     }
+    signal.throwIfAborted();
 
     const child = spawn(binary, args, {
       cwd: tmpDir,
@@ -969,14 +1130,7 @@ async function captureHeadBaselineInner(
     }, 'HEAD-clean verifier baseline could not be captured; verifier remains failed');
     return null;
   } finally {
-    try {
-      execFileSync('git', ['worktree', 'remove', '--force', tmpDir], {
-        cwd: projectDir,
-        stdio: 'ignore',
-        timeout: 15_000,
-      });
-    } catch { /* cleanup best-effort */ }
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch { /* already removed */ }
+    await cleanupHeadBaselineWorktree(projectDir, tmpDir, signal);
   }
 }
 
@@ -1246,6 +1400,44 @@ export class Semaphore {
     return await new Promise<boolean>(resolve => this.queue.push({ waiterId, resolve }));
   }
 
+  async acquireWithin(
+    waiterId: string,
+    maxWaitMs: number,
+    signal?: AbortSignal,
+  ): Promise<'acquired' | 'cancelled' | 'timed_out'> {
+    if (signal?.aborted) return 'cancelled';
+    if (!Number.isFinite(maxWaitMs) || maxWaitMs <= 0) return 'timed_out';
+
+    let timer: NodeJS.Timeout | null = null;
+    let abort: (() => void) | null = null;
+    const acquired = this.acquire(waiterId).then(value => value ? 'acquired' as const : 'cancelled' as const);
+    const timedOut = new Promise<'timed_out'>(resolve => {
+      timer = setTimeout(() => {
+        // If the waiter crossed into an acquired slot at the same instant, cancel()
+        // returns false and the acquire promise owns settlement and slot release.
+        if (this.cancel(waiterId)) resolve('timed_out');
+      }, maxWaitMs);
+      timer.unref?.();
+    });
+    const cancelled = new Promise<'cancelled'>(resolve => {
+      if (!signal) return;
+      abort = () => {
+        // The same ownership rule as the timeout path applies at the exact
+        // acquire/abort boundary: only a queued waiter can be cancelled here.
+        if (this.cancel(waiterId)) resolve('cancelled');
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) abort();
+    });
+
+    try {
+      return await Promise.race([acquired, timedOut, cancelled]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (abort) signal?.removeEventListener('abort', abort);
+    }
+  }
+
   cancel(waiterId: string): boolean {
     const index = this.queue.findIndex(waiter => waiter.waiterId === waiterId);
     if (index < 0) return false;
@@ -1336,8 +1528,10 @@ interface TaskRuntimeEntry {
   liveness: LivenessState;
   stalledSince: number | null;
   lastHeartbeatFlushAt: number;
+  hardTimeoutTimer?: NodeJS.Timeout;
+  hardTimeoutReason: 'timeout(hardcap)' | 'timeout(deadline)';
   shutdownSignal?: string;
-  abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
+  abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)' | 'timeout(deadline)';
 }
 
 // ─── TaskQueueManager ─────────────────────────────────
@@ -1400,6 +1594,36 @@ export class TaskQueueManager {
       error: `provider_unavailable: ${agentId} is not registered in the current provider snapshot`,
       status: 'failed',
     };
+  }
+
+  private deadlineExceeded(task: Pick<QueuedTask, 'metadata'>): TaskExecutionResult | null {
+    const remaining = getTaskDeadlineRemainingMs(task);
+    return remaining !== null && remaining <= 0
+      ? taskDeadlineExceededResult(task)
+      : null;
+  }
+
+  private queueWaitTimeout(
+    task: Pick<QueuedTask, 'agentId' | 'metadata'>,
+    maxWaitMs: number,
+  ): TaskExecutionResult {
+    return {
+      success: false,
+      output: '',
+      error: `queue_wait_timeout: provider ${task.agentId} busy for ${maxWaitMs}ms`,
+      status: 'timed_out',
+    };
+  }
+
+  private async waitWithinTaskDeadline(task: QueuedTask, requestedMs: number): Promise<boolean> {
+    const remaining = getTaskDeadlineRemainingMs(task);
+    if (remaining !== null && remaining <= 0) return false;
+    const waitMs = remaining === null ? requestedMs : Math.min(requestedMs, remaining);
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(resolve, waitMs);
+      timer.unref?.();
+    });
+    return this.deadlineExceeded(task) === null;
   }
 
   /**
@@ -1581,10 +1805,24 @@ export class TaskQueueManager {
   private async runJob(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
     if (!this.executor) throw new Error('Executor not set');
 
+    const alreadyExpired = this.deadlineExceeded(task);
+    if (alreadyExpired) return alreadyExpired;
+
     this.refreshEntryConcurrency(task.agentId, entry);
-    const acquired = await entry.semaphore.acquire(task.taskId);
-    if (!acquired) {
+    const queueBudget = computeTaskQueueWaitBudgetMs(task, this.getQueueWaitMaxMs());
+    const acquisition = await entry.semaphore.acquireWithin(task.taskId, queueBudget.maxWaitMs);
+    if (acquisition === 'cancelled') {
       return { success: false, output: '', error: 'cancelled', status: 'cancelled' };
+    }
+    if (acquisition === 'timed_out') {
+      return queueBudget.deadlineBound
+        ? taskDeadlineExceededResult(task)
+        : this.queueWaitTimeout(task, queueBudget.maxWaitMs);
+    }
+    const expiredAfterAcquire = this.deadlineExceeded(task);
+    if (expiredAfterAcquire) {
+      entry.semaphore.release();
+      return expiredAfterAcquire;
     }
     if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
       entry.semaphore.release();
@@ -1611,24 +1849,25 @@ export class TaskQueueManager {
     try {
       const verifierBaseline = await this.getOrCaptureVerifierBaseline(task, controller.signal);
       const result = await this.executor(task, controller.signal);
-      const finalized = this.finalizeRuntime(task.taskId, result);
-      const classified = classifyResult(finalized);
+      const classified = classifyResult(result);
       const gated = await applyVerifierGate(task, classified, controller.signal, verifierBaseline);
-      const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
+      const terminalCandidate = this.applyRuntimeMetadata(task.taskId, gated, result);
       // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
       paLifecycle.markUsed(task.agentId, Date.now());
       if (invocationId) {
-        const summary = (terminal.output || '').slice(0, 2000);
+        const summary = (terminalCandidate.output || '').slice(0, 2000);
         invocationTracker.completeInvocation(
           invocationId,
-          terminal.success ? 'completed' : 'failed',
-          terminal.success ? summary : undefined,
-          terminal.success ? undefined : (terminal.error || terminal.output),
-          terminal.usage,
+          terminalCandidate.success ? 'completed' : 'failed',
+          terminalCandidate.success ? summary : undefined,
+          terminalCandidate.success ? undefined : (terminalCandidate.error || terminalCandidate.output),
+          terminalCandidate.usage,
         );
-        await invocationTracker.notifyCompletion(invocationId);
+        void invocationTracker.notifyCompletion(invocationId).catch(error => {
+          log.warn({ taskId: task.taskId, invocationId, error }, 'Invocation completion notification failed');
+        });
       }
-      return terminal;
+      return this.finalizeRuntime(task.taskId, terminalCandidate);
     } catch (err: any) {
       const finalized = this.finalizeRuntime(task.taskId, {
         success: false,
@@ -1638,7 +1877,9 @@ export class TaskQueueManager {
       });
       if (invocationId) {
         invocationTracker.completeInvocation(invocationId, 'failed', undefined, finalized.error || err?.message);
-        await invocationTracker.notifyCompletion(invocationId);
+        void invocationTracker.notifyCompletion(invocationId).catch(error => {
+          log.warn({ taskId: task.taskId, invocationId, error }, 'Invocation failure notification failed');
+        });
       }
       throw new Error(finalized.error || err?.message || 'unknown: execution failed');
     } finally {
@@ -1687,6 +1928,8 @@ export class TaskQueueManager {
   }
 
   private async enqueueWithRetries(task: QueuedTask): Promise<TaskExecutionResult> {
+    const alreadyExpired = this.deadlineExceeded(task);
+    if (alreadyExpired) return alreadyExpired;
     let lastError = '';
     let currentAgentId = task.agentId;
     let currentMetadata: Record<string, unknown> = { ...(task.metadata ?? {}) };
@@ -1707,6 +1950,9 @@ export class TaskQueueManager {
     const p11FailoverEnabled = process.env.NCO_P11_FAILOVER_ENABLED !== '0';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const expiredBeforeAttempt = this.deadlineExceeded(task);
+      if (expiredBeforeAttempt) return expiredBeforeAttempt;
+
       // 팀 failover/idle retry의 continue도 attempt를 증가시킨다. 직전 실패가 실제
       // rate-limit일 때만 backoff와 제한 마킹을 적용해 새 가용 후보를 오염시키지 않는다.
       if (attempt > 0 && retryAfterRateLimit) {
@@ -1714,7 +1960,9 @@ export class TaskQueueManager {
         const backoffMs = BASE_BACKOFF_MS * Math.pow(2, attempt - 1);
         log.info({ taskId: task.taskId, agentId: currentAgentId, attempt, backoffMs }, 'Rate limit retry');
         this.markRateLimited(currentAgentId);
-        await new Promise(r => setTimeout(r, backoffMs));
+        if (!await this.waitWithinTaskDeadline(task, backoffMs)) {
+          return taskDeadlineExceededResult(task);
+        }
 
         // Try to failover after first retry
         if (attempt >= 2) {
@@ -1743,7 +1991,9 @@ export class TaskQueueManager {
             { taskId: task.taskId, agentId: currentAgentId, cooldownWaitMs },
             'Deferring task until provider circuit cooldown elapses',
           );
-          await new Promise(resolve => setTimeout(resolve, cooldownWaitMs));
+          if (!await this.waitWithinTaskDeadline(task, cooldownWaitMs)) {
+            return taskDeadlineExceededResult(task);
+          }
         }
       }
 
@@ -1756,6 +2006,9 @@ export class TaskQueueManager {
         throw error;
       }
 
+      if (isTaskDeadlineFailure(result) || this.deadlineExceeded(task)) {
+        return taskDeadlineExceededResult(task);
+      }
       if (result.success) return result;
       // BullMQ waitUntilFinished() surfaces an UnrecoverableError as a failed result.
       // Do not turn the blocked duplicate into an enqueue-loop retry or escalation.
@@ -1764,6 +2017,10 @@ export class TaskQueueManager {
       // normalization must not fall through to tier escalation and start a new
       // provider while the process is draining.
       if (result.status === 'cancelled') return result;
+      // Redis could not prove that the original BullMQ job was removed. Starting
+      // any team/tier failover here can run two providers for the same durable
+      // task, so this uncertainty is terminal and deliberately fail-closed.
+      if (isQueueWaitCancellationUnconfirmed(result)) return result;
 
       // ── P11: 팀 위임 transient 실패 → 팀 실행자 체인 다음 후보로 1회 재시도(team-aware) ──
       // company-orchestrator 파이프라인의 stage-failover(P5)를 단일 팀 위임(/api/task 직행)에도 부여.
@@ -1833,6 +2090,7 @@ export class TaskQueueManager {
     context: string,
   ): Promise<TaskExecutionResult | null> {
     if (!allowGenericProviderFailover(currentMetadata)) return null;
+    if (this.deadlineExceeded(task)) return taskDeadlineExceededResult(task);
     try {
       const teamId = loadTaskTeamId(task.taskId) ?? currentMetadata.teamId;
       const knownAgents = filterEvolutionSkillsEscalationAgents(
@@ -1880,6 +2138,7 @@ export class TaskQueueManager {
           to: escalation.nextAgentId,
           reason: escalation.reason,
         }, `Escalating task after ${context}`);
+        if (this.deadlineExceeded(task)) return taskDeadlineExceededResult(task);
         return await this.runEnqueue({
           ...task,
           agentId: escalation.nextAgentId,
@@ -1929,6 +2188,8 @@ export class TaskQueueManager {
    * Internal: actually enqueue to BullMQ or semaphore (no retry logic).
    */
   private async runEnqueue(task: QueuedTask): Promise<TaskExecutionResult> {
+    const expired = this.deadlineExceeded(task);
+    if (expired) return expired;
     const entry = this.agents.get(task.agentId);
     if (!entry || !entry.accepting || !this.providerConfigs.has(task.agentId)) {
       return this.providerUnavailable(task.agentId);
@@ -1944,6 +2205,8 @@ export class TaskQueueManager {
     if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
       return this.providerUnavailable(task.agentId);
     }
+    const alreadyExpired = this.deadlineExceeded(task);
+    if (alreadyExpired) return alreadyExpired;
     const requestedQueuePriority = Number(task.metadata?.queuePriority);
     const queuePriority = Number.isInteger(requestedQueuePriority)
       && requestedQueuePriority >= 0
@@ -1963,16 +2226,32 @@ export class TaskQueueManager {
     let leftWaiting = false;
 
     try {
-      const requestedQueueWaitMs = Number(task.metadata?.queueWaitMaxMs);
-      const queueWaitMaxMs = Number.isFinite(requestedQueueWaitMs) && requestedQueueWaitMs > 0
-        ? Math.min(requestedQueueWaitMs, this.getQueueWaitMaxMs())
-        : this.getQueueWaitMaxMs();
-      await this.waitForJobActive(job, entry.queueEvents!, queueWaitMaxMs);
+      const queueBudget = computeTaskQueueWaitBudgetMs(task, this.getQueueWaitMaxMs());
+      if (queueBudget.maxWaitMs <= 0) {
+        void job.remove().catch(() => {});
+        entry.waiting = Math.max(0, entry.waiting - 1);
+        leftWaiting = true;
+        return taskDeadlineExceededResult(task);
+      }
+      await this.waitForJobActive(
+        job,
+        entry.queueEvents!,
+        queueBudget.maxWaitMs,
+        queueBudget.deadlineBound
+          ? `${TASK_DEADLINE_EXCEEDED}: ${String(task.metadata?.deadlineAt ?? '')}`
+          : undefined,
+      );
       entry.waiting = Math.max(0, entry.waiting - 1);
       leftWaiting = true;
+      const expiredBeforeResult = this.deadlineExceeded(task);
+      if (expiredBeforeResult) return expiredBeforeResult;
+      const remaining = getTaskDeadlineRemainingMs(task);
+      const resultWaitMs = remaining === null
+        ? this.getBullWaitTimeoutMs(task.timeoutMs)
+        : Math.max(1, Math.min(this.getBullWaitTimeoutMs(task.timeoutMs), remaining));
       const result = await job.waitUntilFinished(
         entry.queueEvents!,
-        this.getBullWaitTimeoutMs(task.timeoutMs),
+        resultWaitMs,
       );
       entry.completed++;
       return result as { success: boolean; output: string };
@@ -1984,6 +2263,9 @@ export class TaskQueueManager {
         return { success: false, output: '', error, status: 'cancelled' };
       }
       entry.failed++;
+      if (error.startsWith(TASK_DEADLINE_EXCEEDED) || this.deadlineExceeded(task)) {
+        return taskDeadlineExceededResult(task);
+      }
       return { success: false, output: '', error };
     }
   }
@@ -1992,6 +2274,7 @@ export class TaskQueueManager {
     job: Job<QueuedTask>,
     queueEvents: QueueEvents,
     maxWaitMs = this.getQueueWaitMaxMs(),
+    timeoutMessage?: string,
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const taskId = job.data.taskId;
@@ -2036,9 +2319,28 @@ export class TaskQueueManager {
 
       queueEvents.on('active', onActive);
       timer = setTimeout(() => {
-        const message = `queue_wait_timeout: provider ${job.data.agentId} busy for ${maxWaitMs}ms`;
-        void job.remove().catch(() => {});
-        rejectOnce(new Error(message));
+        void (async () => {
+          const message = timeoutMessage
+            ?? `queue_wait_timeout: provider ${job.data.agentId} busy for ${maxWaitMs}ms`;
+          try {
+            const state = await job.getState();
+            if (state === 'active' || state === 'completed' || state === 'failed') {
+              resolveOnce();
+              return;
+            }
+            await job.remove();
+            rejectOnce(new Error(message));
+          } catch (error) {
+            const finalState = await job.getState().catch(() => 'unknown');
+            if (finalState === 'active' || finalState === 'completed' || finalState === 'failed') {
+              resolveOnce();
+              return;
+            }
+            rejectOnce(new Error(
+              `queue_wait_cancellation_unconfirmed: ${message}; ${error instanceof Error ? error.message : String(error)}`,
+            ));
+          }
+        })();
       }, maxWaitMs);
 
       void job.getState()
@@ -2116,12 +2418,26 @@ export class TaskQueueManager {
   private async enqueueSemaphore(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
     if (!this.executor) return { success: false, output: '', error: 'Executor not set' };
 
+    const alreadyExpired = this.deadlineExceeded(task);
+    if (alreadyExpired) return alreadyExpired;
+
     entry.waiting++;
     this.refreshEntryConcurrency(task.agentId, entry);
-    const acquired = await entry.semaphore.acquire(task.taskId);
+    const queueBudget = computeTaskQueueWaitBudgetMs(task, this.getQueueWaitMaxMs());
+    const acquisition = await entry.semaphore.acquireWithin(task.taskId, queueBudget.maxWaitMs);
     entry.waiting = Math.max(0, entry.waiting - 1);
-    if (!acquired) {
+    if (acquisition === 'cancelled') {
       return { success: false, output: '', error: 'cancelled', status: 'cancelled' };
+    }
+    if (acquisition === 'timed_out') {
+      return queueBudget.deadlineBound
+        ? taskDeadlineExceededResult(task)
+        : this.queueWaitTimeout(task, queueBudget.maxWaitMs);
+    }
+    const expiredAfterAcquire = this.deadlineExceeded(task);
+    if (expiredAfterAcquire) {
+      entry.semaphore.release();
+      return expiredAfterAcquire;
     }
     if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
       entry.semaphore.release();
@@ -2147,12 +2463,12 @@ export class TaskQueueManager {
     try {
       const verifierBaseline = await this.getOrCaptureVerifierBaseline(task, controller.signal);
       const result = await this.executor(task, controller.signal);
-      const finalized = this.finalizeRuntime(task.taskId, result);
-      const classified = classifyResult(finalized);
+      const classified = classifyResult(result);
       const gated = await applyVerifierGate(task, classified, controller.signal, verifierBaseline);
-      const terminal = this.applyRuntimeMetadata(task.taskId, gated, finalized);
+      const terminalCandidate = this.applyRuntimeMetadata(task.taskId, gated, result);
       // P2-10 pa-lifecycle: 에이전트 사용 기록(웜 유지/축출 결정 근거). sticky는 cold-start 절감.
       paLifecycle.markUsed(task.agentId, Date.now());
+      const terminal = this.finalizeRuntime(task.taskId, terminalCandidate);
       if (terminal.success) entry.completed++;
       else entry.failed++;
       if (invocationId) {
@@ -2164,7 +2480,9 @@ export class TaskQueueManager {
           terminal.success ? undefined : (terminal.error || terminal.output),
           terminal.usage,
         );
-        await invocationTracker.notifyCompletion(invocationId);
+        void invocationTracker.notifyCompletion(invocationId).catch(error => {
+          log.warn({ taskId: task.taskId, invocationId, error }, 'Invocation completion notification failed');
+        });
       }
       return terminal;
     } catch (err: any) {
@@ -2177,7 +2495,9 @@ export class TaskQueueManager {
       entry.failed++;
       if (invocationId) {
         invocationTracker.completeInvocation(invocationId, 'failed', undefined, finalized.error || err?.message);
-        await invocationTracker.notifyCompletion(invocationId);
+        void invocationTracker.notifyCompletion(invocationId).catch(error => {
+          log.warn({ taskId: task.taskId, invocationId, error }, 'Invocation failure notification failed');
+        });
       }
       return finalized;
     } finally {
@@ -2412,12 +2732,15 @@ export class TaskQueueManager {
 
   private startRuntime(task: QueuedTask, controller: AbortController): void {
     const now = Date.now();
+    const configuredTimeoutMs = this.getHardTimeoutMs(task.timeoutMs);
+    const executionBudget = computeTaskExecutionBudgetMs(task, configuredTimeoutMs, now);
+    const timeoutMs = executionBudget.timeoutMs;
     const runtime: TaskRuntimeEntry = {
       taskId: task.taskId,
       agentId: task.agentId,
       controller,
       startedAt: now,
-      timeoutMs: this.getHardTimeoutMs(task.timeoutMs),
+      timeoutMs,
       idleTimeoutMs: this.getIdleTimeoutMs(),
       firstActivityTimeoutMs: this.getFirstActivityTimeoutMs(),
       lastActivityAt: now,
@@ -2433,45 +2756,61 @@ export class TaskQueueManager {
       liveness: 'working',
       stalledSince: null,
       lastHeartbeatFlushAt: 0,
+      hardTimeoutReason: executionBudget.deadlineBound ? 'timeout(deadline)' : 'timeout(hardcap)',
     };
     this.runtimes.set(task.taskId, runtime);
-    const started = markTaskExecutionStarted(task.taskId);
-    if (!started.ok && started.prev !== 'running') {
+    try {
+      const started = markTaskExecutionStarted(task.taskId);
+      if (!started.ok && started.prev !== 'running') {
       // P1-1: task-state.transitionTask already rejects queued/assigned→running dupes at
       // the DB layer, but a stale BullMQ job (redispatched/retried against an already
       // terminal or missing task) previously fell through to this warn-and-continue path and
       // executed anyway, producing buried duplicate results or FK registration failures.
       // Abort before provider budget is spent and use UnrecoverableError so BullMQ will not
       // retry a queue item that has no valid durable state transition.
-      const duplicateError = terminalDuplicateExecutionError(task.taskId, started.prev);
-      if (duplicateError) {
-        this.runtimes.delete(task.taskId);
-        recordLearningEvent({
-          agentId: task.agentId,
-          eventType: 'duplicate_execution',
-          pattern: started.prev ?? 'missing_durable_task',
-          context: {
-            taskId: task.taskId,
-            error: duplicateError.message,
-          },
-        });
+        const duplicateError = terminalDuplicateExecutionError(task.taskId, started.prev);
+        if (duplicateError) {
+          this.runtimes.delete(task.taskId);
+          recordLearningEvent({
+            agentId: task.agentId,
+            eventType: 'duplicate_execution',
+            pattern: started.prev ?? 'missing_durable_task',
+            context: {
+              taskId: task.taskId,
+              error: duplicateError.message,
+            },
+          });
+          log.warn(
+            { taskId: task.taskId, prev: started.prev },
+            'Invalid queued execution blocked before provider dispatch',
+          );
+          throw duplicateError;
+        }
         log.warn(
           { taskId: task.taskId, prev: started.prev },
-          'Invalid queued execution blocked before provider dispatch',
+          'Task execution started without a valid running-state transition',
         );
-        throw duplicateError;
       }
-      log.warn(
-        { taskId: task.taskId, prev: started.prev },
-        'Task execution started without a valid running-state transition',
-      );
+      const remainingRuntimeMs = Math.max(1, timeoutMs - (Date.now() - now));
+      runtime.hardTimeoutTimer = setTimeout(() => {
+        if (this.runtimes.get(task.taskId) !== runtime || runtime.abortReason) return;
+        this.setAbortReason(task.taskId, runtime.hardTimeoutReason);
+        controller.abort(new Error(runtime.hardTimeoutReason));
+      }, remainingRuntimeMs);
+      runtime.hardTimeoutTimer.unref?.();
+      this.flushActivityToDb(runtime);
+    } catch (error) {
+      if (runtime.hardTimeoutTimer) clearTimeout(runtime.hardTimeoutTimer);
+      this.runtimes.delete(task.taskId);
+      unregisterRuntimeProcess(task.taskId);
+      throw error;
     }
-    this.flushActivityToDb(runtime);
   }
 
   private finalizeRuntime(taskId: string, result: TaskExecutionResult): TaskExecutionResult {
     const runtime = this.runtimes.get(taskId);
     if (!runtime) return result;
+    if (runtime.hardTimeoutTimer) clearTimeout(runtime.hardTimeoutTimer);
     this.flushActivityToDb(runtime);
     unregisterRuntimeProcess(taskId);
     this.runtimes.delete(taskId);
@@ -2556,8 +2895,8 @@ export class TaskQueueManager {
     if (runtime.abortReason) return;
     const now = Date.now();
     if (now - runtime.startedAt >= runtime.timeoutMs) {
-      this.setAbortReason(runtime.taskId, 'timeout(hardcap)');
-      runtime.controller.abort(new Error('timeout(hardcap)'));
+      this.setAbortReason(runtime.taskId, runtime.hardTimeoutReason);
+      runtime.controller.abort(new Error(runtime.hardTimeoutReason));
       return;
     }
 

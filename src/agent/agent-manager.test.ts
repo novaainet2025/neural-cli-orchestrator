@@ -59,7 +59,7 @@ const {
     mockChatCreate: vi.fn(),
     mockEventPublish: vi.fn(async () => undefined),
     mockExeca: vi.fn(async (cmd: string, args: string[], opts: any) => {
-      if (cmd === 'cursor-agent' && args.includes('Reply exactly: NCO_PROVIDER_PROBE_OK')) {
+      if (args.includes('Reply exactly: NCO_PROVIDER_PROBE_OK')) {
         return { stdout: 'NCO_PROVIDER_PROBE_OK', stderr: '', exitCode: 0 };
       }
       return { stdout: 'mocked output', stderr: '', exitCode: 0 };
@@ -164,9 +164,11 @@ import {
   classifyIncompleteAnswer,
   formatProviderUnavailableError,
   isNonCircuitCancellation,
+  PROVIDER_PROBE_PROMPT,
 } from './agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { normalizeProviderDeclaration } from '../core/provider-catalog.js';
+import { providerAdmissionGate } from '../core/provider-admission-gate.js';
 
 describe('AgentManager', () => {
   beforeEach(async () => {
@@ -230,8 +232,33 @@ describe('AgentManager', () => {
     expect(execution?.[1]).toEqual(expect.arrayContaining(['--model', 'light-x']));
   });
 
+  it('records and invalidates inference evidence on terminal CLI outcomes', async () => {
+    await agentManager.init();
+    const success = await agentManager.executeTask(
+      'cursor-agent',
+      'Return a substantive test response',
+      { projectDir: '/dummy/project' },
+    );
+    expect(success.success).toBe(true);
+    expect(circuitBreakerRegistry.getInferenceEvidence('cursor-agent')).toMatchObject({
+      success: true,
+    });
+
+    mockExeca.mockRejectedValueOnce(new Error('provider process failed'));
+    const failed = await agentManager.executeTask(
+      'cursor-agent',
+      'Run a failing test response',
+      { projectDir: '/dummy/project' },
+    );
+    expect(failed.success).toBe(false);
+    expect(circuitBreakerRegistry.getInferenceEvidence('cursor-agent')).toMatchObject({
+      success: false,
+    });
+  });
+
   afterEach(() => {
     agentManager.destroy();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
@@ -266,6 +293,35 @@ describe('AgentManager', () => {
       ['diff', '--name-only'],
       expect.anything(),
     );
+  });
+
+  it('enforces the total wall clock through post-task memory and releases admission', async () => {
+    await agentManager.init();
+    let markMemoryStarted!: () => void;
+    const memoryStarted = new Promise<void>(resolve => {
+      markMemoryStarted = resolve;
+    });
+    mockVectorMemoryAdd.mockImplementationOnce(() => new Promise<void>(() => {
+      markMemoryStarted();
+    }));
+
+    const execution = agentManager.executeTask(
+      'claude-code',
+      'Return a substantive result before post-processing',
+      { projectDir: '/dummy/project', timeoutMs: 100 },
+    );
+    await memoryStarted;
+    expect(providerAdmissionGate.snapshot().active).toBe(1);
+
+    const result = await execution;
+
+    expect(result).toMatchObject({ success: false, error: expect.stringMatching(/timeout/i) });
+    expect(providerAdmissionGate.snapshot().active).toBe(0);
+    expect(circuitBreakerRegistry.getInferenceEvidence('claude-code')).toMatchObject({ success: true });
+    expect(circuitBreakerRegistry.getSnapshot('claude-code')).toMatchObject({
+      state: 'closed',
+      failureCount: 0,
+    });
   });
 
   it('reports provider unavailability with state and reason', () => {
@@ -403,11 +459,103 @@ describe('AgentManager', () => {
     expect(recovered).toBe(true);
     const [cmd, args, opts] = mockExeca.mock.calls[0];
     expect(cmd).toBe('claude');
-    expect(args).toContain('PING');
+    expect(args).toContain('Reply exactly: NCO_PROVIDER_PROBE_OK');
     expect(opts.cwd).not.toBe(env.PROJECT_DIR);
     expect(opts.timeout).toBe(30_000);
 
     agentManager.destroy();
+  });
+
+  it('holds one provider generation through sentinel evidence and circuit recovery', async () => {
+    await agentManager.init();
+    circuitBreakerRegistry.recordFailure('claude-code', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 60_000,
+    });
+    let markProbeStarted!: () => void;
+    let finishProbe!: () => void;
+    const probeStarted = new Promise<void>(resolve => {
+      markProbeStarted = resolve;
+    });
+    mockExeca.mockImplementationOnce(() => new Promise(resolve => {
+      markProbeStarted();
+      finishProbe = () => resolve({
+        stdout: 'NCO_PROVIDER_PROBE_OK',
+        stderr: '',
+        exitCode: 0,
+      });
+    }));
+
+    const probe = agentManager.probeProvider('claude-code', PROVIDER_PROBE_PROMPT, 1_000);
+    await probeStarted;
+    const reconciliation = providerAdmissionGate.beginReconciliation(1_000);
+    await Promise.resolve();
+    expect(providerAdmissionGate.snapshot()).toMatchObject({ reconciling: true, active: 1 });
+
+    finishProbe();
+    await expect(probe).resolves.toBe(true);
+    const endReconciliation = await reconciliation;
+    expect(circuitBreakerRegistry.getInferenceEvidence('claude-code')).toMatchObject({ success: true });
+    expect(circuitBreakerRegistry.getSnapshot('claude-code')).toMatchObject({
+      state: 'closed',
+      failureCount: 0,
+    });
+    endReconciliation();
+  });
+
+  it('uses substantive API sentinel inference instead of GET health for recovery', async () => {
+    await agentManager.init();
+    circuitBreakerRegistry.recordFailure('api-tools', 'quota exceeded', {
+      failureThreshold: 1,
+      resetTimeoutMs: 60_000,
+    });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      choices: [{ message: { content: 'NCO_PROVIDER_PROBE_OK' } }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(agentManager.probeProvider('api-tools')).resolves.toBe(true);
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('http://127.0.0.1:9999/v1/chat/completions');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      messages: [{ role: 'user', content: PROVIDER_PROBE_PROMPT }],
+    });
+    expect(circuitBreakerRegistry.getInferenceEvidence('api-tools')).toMatchObject({ success: true });
+    expect(circuitBreakerRegistry.getSnapshot('api-tools').state).toBe('closed');
+  });
+
+  it('does not close an API circuit from a transport health GET alone', async () => {
+    await agentManager.init();
+    circuitBreakerRegistry.recordFailure('api-tools', 'transient provider failure', {
+      failureThreshold: 1,
+      resetTimeoutMs: 60_000,
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200 })));
+    const provider = agentManager.getProvider('api-tools')!;
+
+    await expect((agentManager as any).healthCheckApiProvider('api-tools', provider))
+      .resolves.toBe(true);
+
+    expect(circuitBreakerRegistry.getSnapshot('api-tools').state).toBe('open');
+    expect(circuitBreakerRegistry.getInferenceEvidence('api-tools')).toBeNull();
+  });
+
+  it('releases provider admission when a sentinel probe has no endpoint', async () => {
+    const apiProvider = mockProviders.find(provider => provider.id === 'api-tools')!;
+    await agentManager.reloadProviders([{
+      ...apiProvider,
+      id: 'api-without-endpoint',
+      endpoint: undefined,
+      runtime: { executor: 'openai-api', adapter: 'generic' },
+    } as any]);
+
+    await expect(agentManager.probeProvider('api-without-endpoint')).resolves.toBe(false);
+
+    expect(providerAdmissionGate.snapshot().active).toBe(0);
+    expect(circuitBreakerRegistry.getInferenceEvidence('api-without-endpoint'))
+      .toMatchObject({ success: false });
   });
 
   it('accepts an ANSI-wrapped exact Cursor recovery response with non-color env parity', async () => {
@@ -431,6 +579,37 @@ describe('AgentManager', () => {
       NO_COLOR: '1',
       TERM: 'dumb',
     });
+  });
+
+  it('requires the exact recovery sentinel for non-Cursor CLI adapters', async () => {
+    const cursor = mockProviders.find(provider => provider.id === 'cursor-agent')!;
+    const dynamic = {
+      ...cursor,
+      id: 'pc-codex-worker',
+      command: 'codex',
+      runtime: { executor: 'orchestrated-cli', adapter: 'codex' },
+    } as any;
+    await agentManager.reloadProviders([dynamic]);
+    mockExeca
+      .mockResolvedValueOnce({
+        stdout: 'authentication warning but process exited cleanly',
+        stderr: '',
+        exitCode: 0,
+      })
+      .mockResolvedValueOnce({
+        stdout: '\u001b[32mNCO_PROVIDER_PROBE_OK\u001b[0m\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+    await expect(agentManager.probeProvider(
+      'pc-codex-worker',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+    )).resolves.toBe(false);
+    await expect(agentManager.probeProvider(
+      'pc-codex-worker',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+    )).resolves.toBe(true);
   });
 
   it('builds adapter-specific probes for an arbitrary provider id', async () => {
@@ -485,6 +664,9 @@ describe('AgentManager', () => {
       'Reply exactly: NCO_PROVIDER_PROBE_OK',
     ]));
     expect(circuitBreakerRegistry.getSnapshot('cursor-agent').state).toBe('closed');
+    expect(circuitBreakerRegistry.getInferenceEvidence('cursor-agent')).toMatchObject({
+      success: true,
+    });
     expect(mockEventPublish).toHaveBeenCalledWith(expect.objectContaining({
       type: 'provider:recovery-probe',
       agentId: 'cursor-agent',
@@ -550,6 +732,9 @@ describe('AgentManager', () => {
 
     const reopened = circuitBreakerRegistry.getSnapshot('cursor-agent');
     expect(reopened).toMatchObject({ state: 'open', reason: 'quota' });
+    expect(circuitBreakerRegistry.getInferenceEvidence('cursor-agent')).toMatchObject({
+      success: false,
+    });
     expect(reopened.cooldownUntil).toBeGreaterThan(Date.now());
   });
 

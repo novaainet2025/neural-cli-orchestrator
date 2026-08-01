@@ -188,7 +188,7 @@ describe('discussion provider output validation', () => {
       ['opencode', 'claude-code', 'codex'],
       ['codex'],
       ['opencode', 'ollama', 'codex', 'cursor-agent', 'hermes'],
-    )).toEqual(['ollama', 'cursor-agent']);
+    )).toEqual(['ollama', 'hermes']);
   });
 
   it('caps replacement overprovisioning at one provider when two proposals are missing', () => {
@@ -196,7 +196,7 @@ describe('discussion provider output validation', () => {
       ['opencode', 'claude-code', 'codex'],
       [],
       ['opencode', 'ollama', 'codex', 'agy', 'cursor-agent', 'hermes'],
-    )).toEqual(['ollama', 'agy', 'cursor-agent']);
+    )).toEqual(['ollama', 'agy', 'hermes']);
   });
 
   it('does not select replacements after proposal quorum is satisfied', () => {

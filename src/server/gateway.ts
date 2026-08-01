@@ -5,7 +5,7 @@ import Fastify, {
 } from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod/v4';
@@ -54,6 +54,8 @@ import { parseIntent } from '../utils/intent-parser.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { taskQueue } from '../core/task-queue.js';
 import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
+import { evaluateProviderReadiness } from '../core/provider-readiness.js';
+import { toLegacyProviderCatalogProjection } from '../core/provider-registry-snapshot.js';
 import {
   ProviderResolutionError,
   resolveExecutionProvider,
@@ -95,6 +97,32 @@ type TaskFailureContext = {
   mode?: string | null;
   prompt?: string | null;
   team_id?: string | null;
+};
+
+type TaskIdempotencyReservation = {
+  task_id: string;
+  request_fingerprint: string;
+  assigned_to: string | null;
+  status: string;
+};
+
+const canonicalizeForHash = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(canonicalizeForHash);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, canonicalizeForHash(entry)]),
+  );
+};
+
+const createTaskRequestFingerprint = (input: z.infer<typeof CreateTaskInput>): string => {
+  const metadata = { ...(input.metadata ?? {}) };
+  delete metadata.idempotencyKey;
+  return `sha256:${createHash('sha256')
+    .update(JSON.stringify(canonicalizeForHash({ ...input, metadata })))
+    .digest('hex')}`;
 };
 
 export type NcoGateway = FastifyInstance & {
@@ -582,6 +610,13 @@ const GATEWAY_AUTH_EXEMPT_PATHS = new Set([
   '/api/health',
 ]);
 const GATEWAY_AUTH_LOCALHOSTS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const PROVIDER_DISCOVERY_PATHS = new Set([
+  '/api/ai-providers/registry',
+  '/api/ai-providers/readiness',
+  '/api/ai-providers',
+  '/api/ai-providers/enabled',
+  '/api/ai-providers/status',
+]);
 
 const REALTIME_MINIMUMS = {
   parallel: 2,
@@ -905,6 +940,8 @@ export const loadRetryPayload = (
         'queuePriority',
         'queueWaitMaxMs',
         'taskTimeoutMs',
+        'correlationId',
+        'turnId',
         'organizationId',
         'teamId',
         'companyRunId',
@@ -1554,7 +1591,20 @@ export async function createGateway(): Promise<NcoGateway> {
     const configuredToken = process.env.NCO_API_TOKEN?.trim() ?? '';
     const path = request.url.split('?', 1)[0];
 
-    // Auth is opt-in and API-only. Dashboard/static and WS paths remain unchanged.
+    // Provider topology is sensitive on the default 0.0.0.0 bind. Remote
+    // discovery fails closed unless an API token is configured; localhost
+    // remains available for Nova CLI bootstrap and diagnostics.
+    if (
+      !configuredToken
+      && PROVIDER_DISCOVERY_PATHS.has(path)
+      && !GATEWAY_AUTH_LOCALHOSTS.has(request.ip)
+    ) {
+      return reply.code(503).send({
+        error: 'provider_registry_remote_auth_not_configured',
+        statusCode: 503,
+      });
+    }
+    // Other API authentication remains backward-compatible and opt-in.
     if (!configuredToken || !path.startsWith('/api/')) return;
     if (GATEWAY_AUTH_LOCALHOSTS.has(request.ip)) return;
     if (GATEWAY_AUTH_EXEMPT_PATHS.has(path)) return;
@@ -1763,7 +1813,7 @@ export async function createGateway(): Promise<NcoGateway> {
       ? `[Quality-gate reject: ${options.reason}]\n\n${basePrompt}`
       : basePrompt;
     const desiredAi = options?.overrideAi ?? payload.ai;
-    const retryMetadata = {
+    const retryMetadata: Record<string, unknown> = {
       ...(payload.metadata ?? {}),
       projectDir: inheritedMetadata.projectDir ?? resolveInternalProjectDir(),
     };
@@ -1848,14 +1898,6 @@ export async function createGateway(): Promise<NcoGateway> {
       };
     }
 
-    const finalPayload: RetryTaskPayload = {
-      ...payload,
-      ai: desiredAi,
-      // lineage를 생성 시점에 세팅 — 사후 UPDATE 비원자성으로 인한 retry cap 우회 방지
-      parentTaskId: sourceTaskId,
-      prompt: finalPrompt,
-      metadata: retryMetadata,
-    };
     const retryReservation = options?.reservedRetry ?? reserveRetry(db, sourceTaskId);
     if (!retryReservation.allowed) {
       return {
@@ -1869,6 +1911,36 @@ export async function createGateway(): Promise<NcoGateway> {
         },
       };
     }
+
+    // A retry stays in the same user turn/correlation lineage but is a new
+    // execution attempt. The source idempotency key, attempt id, absolute
+    // deadline, and registry revision are scoped to the original intake, so
+    // bind the child to the current registry with a fresh bounded window.
+    const rawQueueBudgetMs = Number(retryMetadata.queueWaitMaxMs);
+    const retryQueueBudgetMs = Number.isFinite(rawQueueBudgetMs) && rawQueueBudgetMs > 0
+      ? Math.trunc(rawQueueBudgetMs)
+      : 30_000;
+    const rawExecutionBudgetMs = Number(payload.timeout);
+    const retryExecutionBudgetMs = Number.isFinite(rawExecutionBudgetMs) && rawExecutionBudgetMs > 0
+      ? Math.trunc(rawExecutionBudgetMs)
+      : 120_000;
+    const activeProviderRevision = providerRuntimeCoordinator.getSnapshot()?.revision;
+    const finalRetryMetadata: Record<string, unknown> = {
+      ...retryMetadata,
+      attemptId: `attempt_${randomBytes(12).toString('hex')}`,
+      deadlineAt: new Date(
+        Date.now() + retryQueueBudgetMs + retryExecutionBudgetMs + 5_000,
+      ).toISOString(),
+      ...(activeProviderRevision ? { providerRevision: activeProviderRevision } : {}),
+    };
+    const finalPayload: RetryTaskPayload = {
+      ...payload,
+      ai: desiredAi,
+      // lineage를 생성 시점에 세팅 — 사후 UPDATE 비원자성으로 인한 retry cap 우회 방지
+      parentTaskId: sourceTaskId,
+      prompt: finalPrompt,
+      metadata: finalRetryMetadata,
+    };
 
     const created = await app.inject({ method: 'POST', url: '/api/task', payload: finalPayload });
     const body = created.json() as { taskId?: string; error?: string; deduplicated?: boolean };
@@ -2758,22 +2830,104 @@ export async function createGateway(): Promise<NcoGateway> {
     return snapshot;
   });
 
+  app.get('/api/ai-providers/readiness', async (_request, reply) => {
+    const snapshot = providerRuntimeCoordinator.getSnapshot();
+    if (!snapshot) {
+      reply.code(503);
+      return { error: 'provider_registry_unavailable' };
+    }
+
+    const [queueResult, heartbeatResult] = await Promise.all([
+      withDeadline(taskQueue.getMetrics(), []),
+      withDeadline(
+        Promise.all(snapshot.providers.map(async provider => [
+          provider.id,
+          await sharedState.isAgentAlive(provider.id),
+        ] as const)).then(entries => Object.fromEntries(entries) as Record<string, boolean>),
+        {} as Record<string, boolean>,
+      ),
+    ]);
+    const queueByProvider = new Map(queueResult.value.map(metric => [metric.agentId, metric]));
+    const generatedAt = new Date();
+    const providers = snapshot.providers.map(provider => {
+      const queue = queueByProvider.get(provider.id);
+      let admission: { available: boolean | null; reason?: string | null };
+      if (!provider.enabled) {
+        admission = { available: false, reason: 'provider-disabled' };
+      } else {
+        try {
+          const availability = circuitBreakerRegistry.getAvailability(provider.id);
+          admission = { available: availability.available, reason: availability.reason };
+        } catch {
+          admission = { available: null, reason: 'availability-check-failed' };
+        }
+      }
+
+      return evaluateProviderReadiness({
+        providerId: provider.id,
+        registration: { registered: true },
+        runtimeLoaded: { loaded: provider.runtime.loaded },
+        heartbeat: {
+          alive: heartbeatResult.timedOut
+            ? null
+            : heartbeatResult.value[provider.id] ?? false,
+        },
+        admission,
+        queueCapacity: queue
+          ? {
+              available: queue.active < queue.concurrency,
+              active: queue.active,
+              concurrency: queue.concurrency,
+            }
+          : { available: null },
+        // This receipt is emitted only after AgentManager validates a real model/CLI
+        // completion. GET health, heartbeat and a completed DB row cannot create it.
+        inferenceEvidence: circuitBreakerRegistry.getInferenceEvidence(provider.id),
+      }, { now: generatedAt });
+    });
+
+    return {
+      revision: snapshot.revision,
+      generatedAt: generatedAt.toISOString(),
+      observations: {
+        queueMetricsTimedOut: queueResult.timedOut,
+        heartbeatTimedOut: heartbeatResult.timedOut,
+        inferenceEvidence: 'process-local-success-receipts',
+        admissionSemantics: 'inference-evidence-is-observational-not-a-bootstrap-blocker',
+      },
+      providers,
+    };
+  });
+
   app.get('/api/ai-providers', async () => {
+    const snapshot = providerRuntimeCoordinator.getSnapshot();
+    if (!snapshot) return { providers: [] };
     const states = await sharedState.getAllAgentStates();
-    const providers = agentManager.listProviders().map(p => ({
-      ...p,
-      status: states[p.id]?.status || 'offline',
-      ai_status: states[p.id]?.status || 'offline',
-      health: states[p.id]?.health || { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
+    const providers = snapshot.providers.filter(manifest => manifest.enabled).map(manifest => ({
+      ...toLegacyProviderCatalogProjection(manifest),
+      status: states[manifest.id]?.status || 'offline',
+      ai_status: states[manifest.id]?.status || 'offline',
+      health: states[manifest.id]?.health || {
+        consecutiveFailures: 0,
+        circuitState: 'closed',
+        lastError: null,
+      },
     }));
     return { providers };
   });
 
   app.get('/api/ai-providers/enabled', async () => {
+    const snapshot = providerRuntimeCoordinator.getSnapshot();
+    if (!snapshot) return { providers: [] };
     const states = await sharedState.getAllAgentStates();
-    const providers = agentManager.listProviders().filter(p => p.enabled).map(p => ({
-      ...p,
-      status: states[p.id]?.status || 'offline',
+    const providers = snapshot.providers.filter(manifest => manifest.enabled).map(manifest => ({
+      ...toLegacyProviderCatalogProjection(manifest),
+      status: states[manifest.id]?.status || 'offline',
+      health: states[manifest.id]?.health || {
+        consecutiveFailures: 0,
+        circuitState: 'closed',
+        lastError: null,
+      },
     }));
     return { providers };
   });
@@ -2838,6 +2992,125 @@ export async function createGateway(): Promise<NcoGateway> {
       return { error: 'Invalid input', details: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
     }
     const input = parsed.data;
+    const requestMetadata = input.metadata ?? {};
+    const idempotencyKey = typeof requestMetadata.idempotencyKey === 'string'
+      ? requestMetadata.idempotencyKey.trim()
+      : '';
+    if (idempotencyKey.length > 256) {
+      reply.code(400);
+      return { error: 'invalid_idempotency_key', detail: 'metadata.idempotencyKey exceeds 256 characters' };
+    }
+    const idempotencyRequestFingerprint = idempotencyKey
+      ? createTaskRequestFingerprint(input)
+      : '';
+    const body = req.body as Record<string, unknown>;
+    let callerSessionId = typeof body.callerSessionId === 'string'
+      ? body.callerSessionId
+      : (req.headers['x-nco-session-id'] as string | undefined) ?? 'unknown';
+    let callerAgentId = typeof body.callerAgentId === 'string' ? body.callerAgentId : 'unknown';
+    const db = getDb();
+    if ((callerAgentId === 'unknown' || callerSessionId === 'unknown') && input.parentTaskId) {
+      const parent = db.prepare('SELECT spawned_by_cli FROM tasks WHERE id=?')
+        .get(input.parentTaskId) as { spawned_by_cli?: string | null } | undefined;
+      const inherited = parent?.spawned_by_cli;
+      if (inherited) {
+        if (callerAgentId === 'unknown') callerAgentId = inherited;
+        if (callerSessionId === 'unknown') callerSessionId = inherited;
+      }
+    }
+    const spawnedByCli = callerAgentId !== 'unknown' ? callerAgentId
+      : callerSessionId !== 'unknown' ? callerSessionId
+      : null;
+
+    // Exact network replays must recover the original task even when the
+    // registry revision advanced or the original absolute deadline elapsed.
+    // Payload mismatch is still rejected before any mutable intake side effect.
+    if (idempotencyKey) {
+      const callerScope = spawnedByCli ?? '';
+      const reservation = db.prepare(`
+        SELECT i.task_id, i.request_fingerprint, t.assigned_to, t.status
+        FROM task_idempotency_keys i
+        JOIN tasks t ON t.id=i.task_id
+        WHERE i.caller_scope=? AND i.idempotency_key=?
+      `).get(callerScope, idempotencyKey) as TaskIdempotencyReservation | undefined;
+      if (reservation) {
+        if (reservation.request_fingerprint !== idempotencyRequestFingerprint) {
+          reply.code(409);
+          return { error: 'idempotency_key_payload_conflict', taskId: reservation.task_id };
+        }
+        reply.code(202);
+        return {
+          taskId: reservation.task_id,
+          agentId: reservation.assigned_to,
+          status: reservation.status,
+          deduplicated: true,
+        };
+      }
+
+      const legacyTask = db.prepare(`
+        SELECT id
+        FROM tasks
+        WHERE json_valid(COALESCE(metadata_json, ''))
+          AND json_extract(metadata_json, '$.idempotencyKey') = ?
+          AND COALESCE(spawned_by_cli, '') = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `).get(idempotencyKey, callerScope) as { id: string } | undefined;
+      if (legacyTask) {
+        reply.code(409);
+        return {
+          error: 'idempotency_key_unverifiable_legacy_payload',
+          taskId: legacyTask.id,
+        };
+      }
+    }
+    const requestedProviderRevision = typeof requestMetadata.providerRevision === 'string'
+      ? requestMetadata.providerRevision.trim()
+      : '';
+    const activeProviderRevision = providerRuntimeCoordinator.getSnapshot()?.revision ?? '';
+    if (
+      requestedProviderRevision
+      && activeProviderRevision
+      && requestedProviderRevision !== activeProviderRevision
+    ) {
+      reply.code(409);
+      return {
+        error: 'provider_registry_revision_conflict',
+        requestedRevision: requestedProviderRevision,
+        activeRevision: activeProviderRevision,
+      };
+    }
+    const rawDeadlineAt = requestMetadata.deadlineAt;
+    if (rawDeadlineAt !== undefined && typeof rawDeadlineAt !== 'string') {
+      reply.code(400);
+      return { error: 'invalid_deadline', detail: 'metadata.deadlineAt must be an ISO-8601 string' };
+    }
+    if (typeof rawDeadlineAt === 'string') {
+      const deadlineMs = Date.parse(rawDeadlineAt);
+      const remainingMs = deadlineMs - Date.now();
+      if (!Number.isFinite(deadlineMs) || remainingMs < 2_000) {
+        reply.code(408);
+        return { error: 'task_deadline_expired', deadlineAt: rawDeadlineAt };
+      }
+      const requestedQueueMs = Number(requestMetadata.queueWaitMaxMs);
+      const queueBudgetMs = Math.min(
+        Number.isFinite(requestedQueueMs) && requestedQueueMs > 0 ? requestedQueueMs : 30_000,
+        Math.max(1_000, remainingMs - 1_000),
+      );
+      const requestedExecutionMs = Number(input.timeout ?? 120_000);
+      const executionBudgetMs = Math.min(
+        Number.isFinite(requestedExecutionMs) && requestedExecutionMs > 0
+          ? requestedExecutionMs
+          : 120_000,
+        Math.max(1_000, remainingMs - queueBudgetMs),
+      );
+      input.metadata = {
+        ...requestMetadata,
+        deadlineAt: new Date(deadlineMs).toISOString(),
+        queueWaitMaxMs: Math.trunc(queueBudgetMs),
+      };
+      input.timeout = Math.trunc(executionBudgetMs);
+    }
     let promptGate: PromptGateInfo | undefined;
     // 협업19 이식(agency-swarm): 위임 payload ai를 동적 등록 에이전트로 접수차단 검증.
     // 정적 enum(CreateTaskInput)은 통과했으나 런타임 미등록인 ai를 intake에서 차단
@@ -2899,31 +3172,7 @@ export async function createGateway(): Promise<NcoGateway> {
       return { error: 'invalid_project_dir', detail: projectDirError };
     }
 
-    // Extract caller context for invocation tracking
-    const body = req.body as any;
-    let callerSessionId = body.callerSessionId
-      || (req.headers['x-nco-session-id'] as string)
-      || 'unknown';
-    let callerAgentId = body.callerAgentId || 'unknown';
-    // 파생 태스크(retry/failover/quality-reject 재디스패치)는 callerAgentId를 전달하지 않아
-    // invocation이 'unknown'으로 귀속되던 문제(2026-07-12 claude-2, 최근 200건 중 112건 unknown T1) 수정 —
-    // parentTaskId가 있으면 부모 태스크의 spawned_by_cli를 caller로 상속해 원 세션 귀속을 보존한다.
-    if ((callerAgentId === 'unknown' || callerSessionId === 'unknown') && input.parentTaskId) {
-      const parent = getDb().prepare('SELECT spawned_by_cli FROM tasks WHERE id=?')
-        .get(input.parentTaskId) as { spawned_by_cli?: string | null } | undefined;
-      const inherited = parent?.spawned_by_cli;
-      if (inherited) {
-        if (callerAgentId === 'unknown') callerAgentId = inherited;
-        if (callerSessionId === 'unknown') callerSessionId = inherited;
-      }
-    }
-    // CLI session that spawned this task — used by topology to draw CLI→Agent edges
-    const spawnedByCli = callerAgentId !== 'unknown' ? callerAgentId
-      : callerSessionId !== 'unknown' ? callerSessionId
-      : null;
-
     // Save to DB
-    const db = getDb();
     const taskTeamId = typeof input.metadata?.teamId === 'string' && input.metadata.teamId.trim()
       ? input.metadata.teamId.trim()
       : null;
@@ -2976,7 +3225,6 @@ export async function createGateway(): Promise<NcoGateway> {
         };
       }
     }
-
     let workflowRunId = typeof input.metadata?.workflowRunId === 'string'
       ? input.metadata.workflowRunId.trim()
       : '';
@@ -2986,19 +3234,10 @@ export async function createGateway(): Promise<NcoGateway> {
         : 'implementation'
     ) as WorkflowStage;
     const workflowDecision = evaluateWorkflowPolicy(input.prompt, input.metadata);
+    const createWorkflowRunAtCommit = workflowDecision.scoped
+      && !workflowRunId
+      && !workflowDecision.required;
     if (workflowDecision.scoped) {
-      if (!workflowRunId && !workflowDecision.required) {
-        workflowRunId = createWorkflowRun({
-          prompt: input.prompt,
-          teamId: taskTeamId,
-          companyRunId: typeof input.metadata?.companyRunId === 'string'
-            ? input.metadata.companyRunId
-            : null,
-          source: 'task-intake',
-          metadata: input.metadata,
-          decision: workflowDecision,
-        }, db);
-      }
       const workflowMetadata = {
         ...(input.metadata ?? {}),
         ...(workflowRunId ? { workflowRunId } : {}),
@@ -3057,21 +3296,50 @@ export async function createGateway(): Promise<NcoGateway> {
     };
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
-      // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
-      // metadata 병합 지속: projectDir 등 실행 옵션이 input.metadata로 유입돼도 유실 방지
-      // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
-      const metadataJson = Object.keys(mergedMetadata).length > 0
-        ? JSON.stringify(mergedMetadata)
-        : null;
       // team_id: metadata.teamId를 태스크 행에 직접 귀속시켜 팀 성과 집계(GROUP BY team_id)에 즉시 반영.
       // (기존엔 INSERT에 team_id가 없어 /api/task 생성 태스크는 team_id=NULL이었고, 스케줄러만 별도 UPDATE로 우회했음.)
-      db.prepare(`
-        INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, team_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
-        VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-      `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, taskTeamId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
-      if (workflowRunId) {
-        attachWorkflowTask(taskId, workflowRunId, workflowStage, taskTeamId, agentId, db);
-      }
+      const insertTask = db.transaction(() => {
+        if (createWorkflowRunAtCommit) {
+          workflowRunId = createWorkflowRun({
+            prompt: input.prompt,
+            teamId: taskTeamId,
+            companyRunId: typeof input.metadata?.companyRunId === 'string'
+              ? input.metadata.companyRunId
+              : null,
+            source: 'task-intake',
+            metadata: input.metadata,
+            decision: workflowDecision,
+          }, db);
+          input.metadata = { ...(input.metadata ?? {}), workflowRunId, workflowStage };
+          mergedMetadata.workflowRunId = workflowRunId;
+          mergedMetadata.workflowStage = workflowStage;
+        }
+        // Task, idempotency reservation, and workflow side effects are one
+        // SQLite transaction. A concurrent replay cannot leave an orphan run.
+        const metadataJson = Object.keys(mergedMetadata).length > 0
+          ? JSON.stringify(mergedMetadata)
+          : null;
+        db.prepare(`
+          INSERT INTO tasks (id, mode, prompt, system_prompt, assigned_to, status, workspace_id, team_id, priority, spawned_by_cli, verifier_json, metadata_json, parent_task_id, last_activity_at)
+          VALUES (?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `).run(taskId, input.mode, input.prompt, input.systemPrompt || null, agentId, input.workspaceId, taskTeamId, input.priority, spawnedByCli, verifierJson, metadataJson, input.parentTaskId ?? null);
+        if (idempotencyKey) {
+          db.prepare(`
+            INSERT INTO task_idempotency_keys (
+              caller_scope, idempotency_key, request_fingerprint, task_id
+            ) VALUES (?, ?, ?, ?)
+          `).run(
+            spawnedByCli ?? '',
+            idempotencyKey,
+            idempotencyRequestFingerprint,
+            taskId,
+          );
+        }
+        if (workflowRunId) {
+          attachWorkflowTask(taskId, workflowRunId, workflowStage, taskTeamId, agentId, db);
+        }
+      });
+      insertTask.immediate();
     } catch (dbErr) {
       if (workReportId) {
         const existingTask = findActiveWorkReportTask(db, workReportId);
@@ -3080,6 +3348,30 @@ export async function createGateway(): Promise<NcoGateway> {
           return {
             taskId: existingTask.id,
             agentId: existingTask.assigned_to,
+            deduplicated: true,
+          };
+        }
+      }
+      if (idempotencyKey) {
+        const reservation = db.prepare(`
+          SELECT i.task_id, i.request_fingerprint, t.assigned_to, t.status
+          FROM task_idempotency_keys i
+          JOIN tasks t ON t.id=i.task_id
+          WHERE i.caller_scope=? AND i.idempotency_key=?
+        `).get(spawnedByCli ?? '', idempotencyKey) as TaskIdempotencyReservation | undefined;
+        if (reservation) {
+          if (reservation.request_fingerprint !== idempotencyRequestFingerprint) {
+            reply.code(409);
+            return {
+              error: 'idempotency_key_payload_conflict',
+              taskId: reservation.task_id,
+            };
+          }
+          reply.code(202);
+          return {
+            taskId: reservation.task_id,
+            agentId: reservation.assigned_to,
+            status: reservation.status,
             deduplicated: true,
           };
         }

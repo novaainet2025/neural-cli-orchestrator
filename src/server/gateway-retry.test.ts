@@ -5,6 +5,7 @@ import { resolve } from 'path';
 import { agentManager } from '../agent/agent-manager.js';
 import { kanbanEngine } from '../core/kanban-engine.js';
 import { discussionEngine } from '../core/discussion-engine.js';
+import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
 import { smartRouter } from '../core/smart-router.js';
 import { taskQueue } from '../core/task-queue.js';
 import { attachWorkflowTask, createWorkflowRun } from '../core/workflow-gate.js';
@@ -100,10 +101,17 @@ describe.sequential('gateway retry contract', () => {
         organizationId: 'org-retry-contract',
         workReportId: 'work-report-retry-contract',
         model: 'retry-model',
+        correlationId: 'correlation-retry-attempt',
+        turnId: 'turn-retry-attempt',
+        attemptId: 'attempt-source',
+        idempotencyKey: 'idempotency-source',
+        providerRevision: 'sha256:source-revision',
+        deadlineAt: '2000-01-01T00:00:00.000Z',
       }),
       'retry-root',
     );
 
+    const retryStartedAt = Date.now();
     const response = await server.inject({
       method: 'POST',
       url: '/api/tasks/retry-attempt/retry',
@@ -135,7 +143,8 @@ describe.sequential('gateway retry contract', () => {
     expect(child.workspace_id).toBe('retry-workspace');
     expect(child.priority).toBe(8);
     expect(JSON.parse(child.verifier_json ?? 'null')).toEqual(verifier);
-    expect(JSON.parse(child.metadata_json ?? '{}')).toMatchObject({
+    const childMetadata = JSON.parse(child.metadata_json ?? '{}') as Record<string, unknown>;
+    expect(childMetadata).toMatchObject({
       projectDir: '/private/tmp',
       allowProviderFailover: true,
       readOnly: true,
@@ -146,7 +155,14 @@ describe.sequential('gateway retry contract', () => {
       organizationId: 'org-retry-contract',
       workReportId: 'work-report-retry-contract',
       model: 'retry-model',
+      correlationId: 'correlation-retry-attempt',
+      turnId: 'turn-retry-attempt',
+      providerRevision: providerRuntimeCoordinator.getSnapshot()?.revision,
     });
+    expect(childMetadata.attemptId).toMatch(/^attempt_[0-9a-f]{24}$/);
+    expect(childMetadata.attemptId).not.toBe('attempt-source');
+    expect(childMetadata).not.toHaveProperty('idempotencyKey');
+    expect(Date.parse(String(childMetadata.deadlineAt))).toBeGreaterThan(retryStartedAt);
   });
 
   it('uses the internal project directory when the source has none', async () => {
@@ -1272,6 +1288,12 @@ describe.sequential('gateway retry contract', () => {
         kanbanTaskId: 'kanban-retry-card',
         kanbanPlanId: 'kanban-retry-plan',
         taskTimeoutMs: 240_000,
+        correlationId: 'correlation-retry-contract',
+        turnId: 'turn-retry-contract',
+        attemptId: 'attempt-old',
+        idempotencyKey: 'idempotency-old',
+        providerRevision: 'sha256:old-provider-revision',
+        deadlineAt: '2000-01-01T00:00:00.000Z',
         qualityRejected: true,
         qualityHeuristics: ['old-result'],
         verificationStatus: 'approved',
@@ -1294,7 +1316,13 @@ describe.sequential('gateway retry contract', () => {
       kanbanTaskId: 'kanban-retry-card',
       kanbanPlanId: 'kanban-retry-plan',
       taskTimeoutMs: 240_000,
+      correlationId: 'correlation-retry-contract',
+      turnId: 'turn-retry-contract',
     });
+    expect(payload?.metadata).not.toHaveProperty('attemptId');
+    expect(payload?.metadata).not.toHaveProperty('idempotencyKey');
+    expect(payload?.metadata).not.toHaveProperty('providerRevision');
+    expect(payload?.metadata).not.toHaveProperty('deadlineAt');
     expect(payload?.metadata).not.toHaveProperty('qualityRejected');
     expect(payload?.metadata).not.toHaveProperty('qualityHeuristics');
     expect(payload?.metadata).not.toHaveProperty('verificationStatus');

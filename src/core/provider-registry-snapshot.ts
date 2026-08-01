@@ -56,6 +56,42 @@ export interface ProviderRegistrySnapshot {
   providers: ProviderRegistryManifest[];
 }
 
+/** Compatibility projection for older Nova clients. It is data-only by design. */
+export interface LegacyProviderCatalogProjection {
+  id: string;
+  ai: string;
+  name: string;
+  enabled: boolean;
+  type: ProviderRegistryManifest['type'];
+  role: string;
+  score: number;
+  model?: string;
+  models: string[];
+  capabilities: string[];
+  runtime: ProviderRegistryManifest['runtime'];
+  routing?: ProviderRegistryManifest['routing'];
+}
+
+/** Never spread internal ProviderConfig into a compatibility HTTP response. */
+export function toLegacyProviderCatalogProjection(
+  manifest: ProviderRegistryManifest,
+): LegacyProviderCatalogProjection {
+  return {
+    id: manifest.id,
+    ai: manifest.id,
+    name: manifest.name,
+    enabled: manifest.enabled,
+    type: manifest.type,
+    role: manifest.role,
+    score: manifest.score,
+    ...(manifest.model ? { model: manifest.model } : {}),
+    models: manifest.models.filter(model => model.enabled).map(model => model.id),
+    capabilities: [...manifest.capabilities],
+    runtime: { ...manifest.runtime },
+    ...(manifest.routing ? { routing: { ...manifest.routing } } : {}),
+  };
+}
+
 export type ProviderRegistryChangeType = 'added' | 'updated' | 'disabled' | 'removed';
 
 export interface ProviderRegistryChange {
@@ -132,8 +168,13 @@ function publicEndpoint(raw: string | undefined): string | undefined {
     const url = new URL(raw);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
     // Userinfo and query parameters are common accidental secret carriers.
-    url.username = '';
-    url.password = '';
+    if (url.username || url.password || url.search || url.hash) {
+      // Do not try to sanitize a credential-bearing execution URL into a
+      // seemingly safe remote contract. Omit it so clients delegate to NCO.
+      return undefined;
+    }
+    const normalizedPath = url.pathname.replace(/\/+$/, '') || '/';
+    if (!['/', '/v1', '/api', '/api/v1'].includes(normalizedPath)) return undefined;
     url.search = '';
     url.hash = '';
     return url.toString();
@@ -259,6 +300,12 @@ function snapshotRevision(providers: readonly ProviderRegistryManifest[]): strin
   return `sha256:${createHash('sha256').update(content).digest('hex')}`;
 }
 
+/** Internal-only execution fingerprint. Never return this hash or its inputs over HTTP. */
+function runtimeFingerprint(providers: readonly ProviderConfig[]): string {
+  const ordered = [...providers].sort((left, right) => left.id.localeCompare(right.id));
+  return createHash('sha256').update(JSON.stringify(ordered)).digest('hex');
+}
+
 function manifestById(
   providers: readonly ProviderRegistryManifest[],
 ): Map<string, ProviderRegistryManifest> {
@@ -307,31 +354,29 @@ export function diffProviderRegistry(
 export class ProviderRegistrySnapshotStore {
   private snapshot: ProviderRegistrySnapshot | null = null;
   private runtimeView: ProviderRegistryRuntimeView | null = null;
+  private committedRuntimeFingerprint: string | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private refreshTail: Promise<void> = Promise.resolve();
+  private refreshInFlight: Promise<ProviderRegistryRefreshResult> | null = null;
+  private refreshRequested = false;
 
   constructor(private readonly options: ProviderRegistrySnapshotOptions) {}
 
   refresh(): Promise<ProviderRegistryRefreshResult> {
-    let resolveResult!: (result: ProviderRegistryRefreshResult) => void;
-    let rejectResult!: (error: unknown) => void;
-    const result = new Promise<ProviderRegistryRefreshResult>((resolve, reject) => {
-      resolveResult = resolve;
-      rejectResult = reject;
+    if (this.refreshInFlight) {
+      this.refreshRequested = true;
+      return this.refreshInFlight;
+    }
+    this.refreshInFlight = (async () => {
+      let result: ProviderRegistryRefreshResult;
+      do {
+        this.refreshRequested = false;
+        result = await this.refreshOnce();
+      } while (this.refreshRequested);
+      return result;
+    })().finally(() => {
+      this.refreshInFlight = null;
     });
-    this.refreshTail = this.refreshTail
-      .then(async () => {
-        try {
-          resolveResult(await this.refreshOnce());
-        } catch (error) {
-          rejectResult(error);
-        }
-      })
-      .catch(() => {
-        // The per-call promise carries the error. Keep the serialization tail
-        // fulfilled so one malformed transient file does not stop recovery.
-      });
-    return result;
+    return this.refreshInFlight;
   }
 
   getSnapshot(): ProviderRegistrySnapshot | null {
@@ -377,8 +422,12 @@ export class ProviderRegistrySnapshotStore {
       .map(provider => toProviderRegistryManifest(provider, desiredRuntimeIds))
       .sort((left, right) => left.id.localeCompare(right.id));
     const revision = snapshotRevision(desiredProviders);
+    const desiredRuntimeFingerprint = runtimeFingerprint(configs);
 
-    if (this.snapshot?.revision === revision) {
+    if (
+      this.snapshot?.revision === revision
+      && this.committedRuntimeFingerprint === desiredRuntimeFingerprint
+    ) {
       return { changed: false, snapshot: this.snapshot, changes: [] };
     }
 
@@ -409,17 +458,20 @@ export class ProviderRegistrySnapshotStore {
       throw new Error('provider runtime view changed while committing registry revision');
     }
     const changes = diffProviderRegistry(previous?.providers ?? [], providers);
-    const snapshot: ProviderRegistrySnapshot = {
-      revision: committedRevision,
-      generatedAt: (this.options.now ?? (() => new Date()))().toISOString(),
-      providers,
-    };
+    const snapshot: ProviderRegistrySnapshot = previous?.revision === committedRevision
+      ? previous
+      : {
+          revision: committedRevision,
+          generatedAt: (this.options.now ?? (() => new Date()))().toISOString(),
+          providers,
+        };
     // These references are swapped synchronously after all runtime consumers
     // accepted the same view. Polling clients can recover an event gap from it.
     this.runtimeView = Object.freeze({
       revision: committedRevision,
       providers: Object.freeze([...configs]),
     });
+    this.committedRuntimeFingerprint = desiredRuntimeFingerprint;
     this.snapshot = snapshot;
     if (previous && changes.length > 0) {
       await this.options.publish({

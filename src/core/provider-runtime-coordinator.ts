@@ -15,6 +15,7 @@ import {
 import { sharedState } from './shared-state.js';
 import { taskQueue } from './task-queue.js';
 import { commitModelRoutingRegistryRevision } from './model-router.js';
+import { providerAdmissionGate } from './provider-admission-gate.js';
 
 const log = createLogger('provider-runtime-coordinator');
 
@@ -82,8 +83,15 @@ export class ProviderRuntimeCoordinator {
 
   private async reconcileRuntime(view: { revision: string; providers: readonly ProviderConfig[] }): Promise<void> {
     const providers = view.providers;
+    const requestedDrainMs = Number(process.env.NCO_PROVIDER_RECONCILE_DRAIN_MS);
+    const drainMs = Number.isFinite(requestedDrainMs)
+      ? Math.min(300_000, Math.max(1_000, Math.trunc(requestedDrainMs)))
+      : 30_000;
+    const endReconciliation = await providerAdmissionGate.beginReconciliation(drainMs);
     const previousView = this.store.getRuntimeView();
     const previous = previousView?.providers ?? agentManager.listProviders();
+    const previousRevision = previousView?.revision ?? null;
+    let admissionBlockReason: string | undefined;
     try {
       await agentManager.reloadProviders(providers, view.revision);
       await taskQueue.reconcileProviders(providers);
@@ -93,7 +101,7 @@ export class ProviderRuntimeCoordinator {
     } catch (error) {
       const rollbackErrors: string[] = [];
       for (const rollback of [
-        () => agentManager.reloadProviders(previous, previousView?.revision ?? null),
+        () => agentManager.reloadProviders(previous, previousRevision),
         () => taskQueue.reconcileProviders(previous),
         () => sharedState.reconcileProviders(previous),
       ]) {
@@ -105,15 +113,30 @@ export class ProviderRuntimeCoordinator {
           );
         }
       }
-      commitRegistryView(previous);
-      commitModelRoutingRegistryRevision(previousView?.revision ?? null);
+      try {
+        commitRegistryView(previous);
+      } catch (rollbackError) {
+        rollbackErrors.push(
+          rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        );
+      }
+      try {
+        commitModelRoutingRegistryRevision(previousRevision);
+      } catch (rollbackError) {
+        rollbackErrors.push(
+          rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        );
+      }
       if (rollbackErrors.length > 0) {
+        admissionBlockReason = 'provider_runtime_inconsistent';
         throw new AggregateError(
           [error, ...rollbackErrors.map(message => new Error(message))],
           'provider registry reconciliation and rollback failed',
         );
       }
       throw error;
+    } finally {
+      endReconciliation(admissionBlockReason);
     }
   }
 }

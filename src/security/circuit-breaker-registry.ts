@@ -56,6 +56,11 @@ export interface ProviderAvailabilitySnapshot {
   cooldownUntil: string | null;
 }
 
+export interface ProviderInferenceEvidence {
+  success: boolean;
+  observedAt: string;
+}
+
 interface CircuitRow {
   agent_id: string;
   state: CircuitState;
@@ -370,6 +375,8 @@ export function classifyProviderErrorEnvelope(
 
 class CircuitBreakerRegistry {
   private states = new Map<string, CircuitSnapshot>();
+  /** Process-local evidence only: a restart intentionally returns to unknown until a real inference succeeds. */
+  private inferenceEvidence = new Map<string, { success: boolean; observedAt: number }>();
   // P0-3: half-open 프로브 슬롯의 in-flight 세마포어 (max halfOpenMaxAttempts, 기본 1).
   // canExecute()가 half-open 분기에서 슬롯을 획득(+1)하면 그 실행을 끝까지 마친 호출자가
   // 반드시 releaseProbeSlot()으로 반납(-1)해야 한다 — 반납 누락 시 유일한 슬롯이 영구
@@ -464,6 +471,29 @@ class CircuitBreakerRegistry {
     }
   }
 
+  /** Record only a validated model/CLI completion, never a GET health check or bare heartbeat. */
+  recordInferenceSuccess(agentId: string, observedAt = Date.now()): void {
+    if (!Number.isFinite(observedAt)) return;
+    this.inferenceEvidence.set(agentId, { success: true, observedAt });
+  }
+
+  /** Record only a terminal model/CLI attempt, not a transport health GET. */
+  recordInferenceFailure(agentId: string, observedAt = Date.now()): void {
+    if (!Number.isFinite(observedAt)) return;
+    this.inferenceEvidence.set(agentId, { success: false, observedAt });
+  }
+
+  getInferenceEvidence(agentId: string): ProviderInferenceEvidence | null {
+    const evidence = this.inferenceEvidence.get(agentId);
+    return evidence === undefined
+      ? null
+      : { success: evidence.success, observedAt: new Date(evidence.observedAt).toISOString() };
+  }
+
+  clearInferenceEvidence(agentId: string): void {
+    this.inferenceEvidence.delete(agentId);
+  }
+
   /**
    * @param providerOutput 실행이 남긴 terminal 출력(= tasks.response로 저장되는 값).
    *   rawError가 분류되지 않을 때만 오류 봉투 분류에 쓰인다(기존 동작 보존).
@@ -555,6 +585,7 @@ class CircuitBreakerRegistry {
   reset(agentId: string): void {
     this.halfOpenAttempts.delete(agentId);
     this.halfOpenProbeSignals.delete(agentId);
+    this.clearInferenceEvidence(agentId);
     const next = defaultSnapshot(agentId);
     this.commit(next, 'Circuit manually reset');
   }

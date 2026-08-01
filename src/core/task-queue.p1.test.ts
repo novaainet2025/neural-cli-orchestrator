@@ -3,13 +3,22 @@ import { UnrecoverableError } from 'bullmq';
 import { resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
+import { getDb } from '../storage/database.js';
 import {
   BULLMQ_JOB_ATTEMPTS,
   BULLMQ_LOCK_DURATION_MS,
   Semaphore,
+  TaskQueueManager,
+  captureHeadBaseline,
   captureVerifierBaseline,
+  computeTaskExecutionBudgetMs,
+  computeTaskQueueWaitBudgetMs,
   duplicateExecutionResultFromError,
+  getVerifierBuildStats,
+  getTaskDeadlineRemainingMs,
   isDuplicateExecutionFailure,
+  isQueueWaitCancellationUnconfirmed,
+  isTransientFailure,
   persistVerifierResultToDb,
   reconcileVerifierBaseline,
   resolveBullMqPrefix,
@@ -116,7 +125,7 @@ describe('task queue P1 reliability guards', () => {
         command: 'false',
         timeoutMs: 5_000,
       },
-      metadata: {},
+      metadata: { projectDir: process.cwd() },
     };
 
     const first = await captureVerifierBaseline(task, new AbortController().signal);
@@ -144,9 +153,13 @@ describe('task queue P1 reliability guards', () => {
         command: 'sleep 5',
         timeoutMs: 10_000,
       },
-      metadata: {},
+      metadata: { projectDir: process.cwd() },
     }, controller.signal);
 
+    // Let the detached verifier child finish spawning before aborting it.
+    // Immediate same-tick abort can signal Vitest's worker process group on
+    // macOS before the child has established its own group.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     controller.abort(new Error('cancelled'));
 
     await expect(baseline).resolves.toBeNull();
@@ -178,10 +191,174 @@ describe('task queue P1 reliability guards', () => {
     }
   });
 
+  it('bounds queue and execution budgets by the same absolute deadline', () => {
+    const now = Date.parse('2026-08-01T12:00:00.000Z');
+    const task = {
+      metadata: {
+        deadlineAt: '2026-08-01T12:00:00.200Z',
+        queueWaitMaxMs: 500,
+      },
+    };
+
+    expect(getTaskDeadlineRemainingMs(task, now)).toBe(200);
+    expect(computeTaskQueueWaitBudgetMs(task, 1_000, now)).toEqual({
+      maxWaitMs: 200,
+      deadlineBound: true,
+    });
+    expect(computeTaskExecutionBudgetMs(task, 2_000, now)).toEqual({
+      timeoutMs: 200,
+      deadlineBound: true,
+    });
+    expect(computeTaskQueueWaitBudgetMs({
+      metadata: {
+        deadlineAt: '2026-08-01T12:00:01.000Z',
+        queueWaitMaxMs: 100,
+      },
+    }, 1_000, now)).toEqual({
+      maxWaitMs: 100,
+      deadlineBound: false,
+    });
+  });
+
+  it('times out a semaphore queue slot without leaking capacity', async () => {
+    const semaphore = new Semaphore(1);
+    expect(await semaphore.acquire('active-deadline-task')).toBe(true);
+
+    await expect(semaphore.acquireWithin('waiting-deadline-task', 10))
+      .resolves.toBe('timed_out');
+
+    semaphore.release();
+    await expect(semaphore.acquireWithin('next-deadline-task', 50))
+      .resolves.toBe('acquired');
+    semaphore.release();
+  });
+
+  it('aborts a semaphore waiter without leaking verifier capacity', async () => {
+    const semaphore = new Semaphore(1);
+    const controller = new AbortController();
+    expect(await semaphore.acquire('active-verifier')).toBe(true);
+
+    const waiting = semaphore.acquireWithin('waiting-verifier', 30_000, controller.signal);
+    controller.abort(new Error('task_deadline_exceeded'));
+    await expect(waiting).resolves.toBe('cancelled');
+
+    semaphore.release();
+    await expect(semaphore.acquireWithin('next-verifier', 50))
+      .resolves.toBe('acquired');
+    semaphore.release();
+  });
+
+  it('cancels a clean-HEAD verifier while it is waiting for the build slot', async () => {
+    const previousConcurrency = process.env.NCO_VERIFIER_BUILD_CONCURRENCY;
+    process.env.NCO_VERIFIER_BUILD_CONCURRENCY = '1';
+    const firstController = new AbortController();
+    const secondController = new AbortController();
+    const verifierTask = (taskId: string) => ({
+      taskId,
+      agentId: 'codex',
+      prompt: 'deadline-safe clean HEAD verifier',
+      timeoutMs: 10_000,
+      verifier: { type: 'run' as const, command: 'sleep 5', timeoutMs: 5_000 },
+      metadata: { projectDir: process.cwd() },
+    });
+
+    try {
+      const first = captureHeadBaseline(verifierTask('head-slot-active'), firstController.signal);
+      await vi.waitFor(() => expect(getVerifierBuildStats().currentRunning).toBe(1));
+
+      const second = captureHeadBaseline(verifierTask('head-slot-waiting'), secondController.signal);
+      await vi.waitFor(() => expect(getVerifierBuildStats().waiting).toBe(1));
+      secondController.abort(new Error('task_deadline_exceeded'));
+
+      await expect(second).resolves.toBeNull();
+      expect(getVerifierBuildStats().waiting).toBe(0);
+      firstController.abort(new Error('test cleanup'));
+      await expect(first).resolves.toBeNull();
+    } finally {
+      firstController.abort(new Error('test cleanup'));
+      secondController.abort(new Error('test cleanup'));
+      if (previousConcurrency === undefined) delete process.env.NCO_VERIFIER_BUILD_CONCURRENCY;
+      else process.env.NCO_VERIFIER_BUILD_CONCURRENCY = previousConcurrency;
+    }
+  });
+
+  it('fails closed when BullMQ queue cancellation cannot be confirmed', async () => {
+    const result = {
+      success: false,
+      output: '',
+      error: 'queue_wait_cancellation_unconfirmed: queue_wait_timeout: provider codex busy for 50ms; redis unavailable',
+    };
+    expect(isQueueWaitCancellationUnconfirmed(result)).toBe(true);
+    expect(isTransientFailure(result)).toBe(false);
+
+    const manager = new TaskQueueManager() as any;
+    manager.runEnqueue = vi.fn().mockResolvedValue(result);
+    await expect(manager.enqueueWithRetries({
+      taskId: 'unconfirmed-bullmq-cancellation',
+      agentId: 'codex',
+      prompt: 'must not fail over',
+      metadata: {},
+    })).resolves.toEqual(result);
+    expect(manager.runEnqueue).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an expired task before queue dispatch or retry/failover', async () => {
+    const manager = new TaskQueueManager() as any;
+    manager.enqueueSemaphore = vi.fn();
+    manager.runEnqueue = vi.fn();
+    const expired = {
+      taskId: 'expired-before-dispatch',
+      agentId: 'codex',
+      prompt: 'must not run',
+      metadata: { deadlineAt: '2000-01-01T00:00:00.000Z' },
+    };
+
+    await expect(manager.enqueueWithRetries(expired)).resolves.toMatchObject({
+      success: false,
+      status: 'timed_out',
+      error: expect.stringContaining('task_deadline_exceeded'),
+    });
+    expect(manager.runEnqueue).not.toHaveBeenCalled();
+    expect(manager.enqueueSemaphore).not.toHaveBeenCalled();
+  });
+
+  it('aborts an active executor signal at the absolute deadline', async () => {
+    const db = getDb();
+    const taskId = 'absolute-deadline-runtime';
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status)
+      VALUES (?, 'task', 'deadline test', 'codex', 'assigned')
+    `).run(taskId);
+    const manager = new TaskQueueManager() as any;
+    const controller = new AbortController();
+
+    try {
+      manager.startRuntime({
+        taskId,
+        agentId: 'codex',
+        prompt: 'deadline test',
+        timeoutMs: 60_000,
+        metadata: { deadlineAt: new Date(Date.now() + 25).toISOString() },
+      }, controller);
+
+      await vi.waitFor(() => expect(controller.signal.aborted).toBe(true), { timeout: 500 });
+      expect(manager.getAbortReason(taskId)).toBe('timeout(deadline)');
+    } finally {
+      manager.finalizeRuntime(taskId, {
+        success: false,
+        output: '',
+        error: 'test cleanup',
+        status: 'cancelled',
+      });
+      db.prepare('DELETE FROM tasks WHERE id=?').run(taskId);
+    }
+  });
+
   it('settles a removed BullMQ waiter immediately as cancelled exactly once', async () => {
     const manager = taskQueue as any;
     const originalAgents = manager.agents;
     const originalAborters = manager.waitingBullMqAborters;
+    const originalProviderConfigs = manager.providerConfigs;
     const queueEvents = new EventEmitter();
     const task = {
       taskId: 'waiting-bull-task',
@@ -212,9 +389,11 @@ describe('task queue P1 reliability guards', () => {
       failed: 0,
       concurrency: 1,
       configuredConcurrency: 1,
+      accepting: true,
     };
     manager.waitingBullMqAborters = new Map();
     manager.agents = new Map([['codex', entry]]);
+    manager.providerConfigs = new Map([['codex', { id: 'codex', enabled: true }]]);
 
     try {
       const pending = manager.enqueueBullMQ(task, entry);
@@ -237,6 +416,7 @@ describe('task queue P1 reliability guards', () => {
     } finally {
       manager.agents = originalAgents;
       manager.waitingBullMqAborters = originalAborters;
+      manager.providerConfigs = originalProviderConfigs;
     }
   });
 

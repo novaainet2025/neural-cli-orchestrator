@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { agentManager } from '../agent/agent-manager.js';
+import { agentManager, PROVIDER_PROBE_PROMPT } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { getRedis, isRedisConnected } from '../storage/redis.js';
 import { createLogger } from '../utils/logger.js';
@@ -75,7 +75,14 @@ export class ProviderProber {
     if (!lock) return;
 
     try {
-      const recovered = await agentManager.probeProvider(agentId, 'PING', PROBE_TIMEOUT_MS);
+      // AgentManager owns the entire probe transaction under one admission lease:
+      // substantive sentinel validation, inference evidence, and circuit outcome.
+      // Do not mutate the circuit here after that lease has been released.
+      const recovered = await agentManager.probeProvider(
+        agentId,
+        PROVIDER_PROBE_PROMPT,
+        PROBE_TIMEOUT_MS,
+      );
 
       if (!recovered) {
         this.recordProbeFailure(agentId);
@@ -83,8 +90,7 @@ export class ProviderProber {
       }
 
       this.probeSchedule.delete(agentId);
-      circuitBreakerRegistry.reset(agentId);
-      log.info({ agentId }, 'Active provider probe succeeded; circuit reset');
+      log.info({ agentId }, 'Active provider probe succeeded; circuit outcome committed');
     } catch (error) {
       this.recordProbeFailure(agentId);
       log.debug({ agentId, error }, 'Active provider probe failed');

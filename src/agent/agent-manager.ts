@@ -27,8 +27,76 @@ import {
   type ModelRoutingInput,
   type ModelRoutingReceipt,
 } from '../core/model-router.js';
+import { providerAdmissionGate } from '../core/provider-admission-gate.js';
 
 const log = createLogger('agent-manager');
+
+export const PROVIDER_PROBE_PROMPT = 'Reply exactly: NCO_PROVIDER_PROBE_OK';
+const PROVIDER_PROBE_SENTINEL = 'NCO_PROVIDER_PROBE_OK';
+
+function abortError(signal: AbortSignal): Error {
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error(typeof signal.reason === 'string' ? signal.reason : 'operation_aborted');
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw abortError(signal);
+}
+
+async function awaitWithinSignal<T>(
+  signal: AbortSignal,
+  operation: () => Promise<T>,
+): Promise<T> {
+  throwIfAborted(signal);
+  const pending = Promise.resolve(operation());
+  return await new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => signal.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(abortError(signal));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void pending.then(
+      value => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(value);
+      },
+      error => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      },
+    );
+  });
+}
+
+async function settleWithinSignal(
+  signal: AbortSignal,
+  operation: () => Promise<unknown>,
+): Promise<void> {
+  let pending: Promise<unknown>;
+  try {
+    pending = Promise.resolve(operation());
+  } catch {
+    return;
+  }
+  try {
+    await awaitWithinSignal(signal, () => pending);
+  } catch {
+    // Cleanup must be initiated even when the task budget is exhausted, but it
+    // must never extend the caller-visible wall clock or create an unhandled
+    // rejection after executeTask has returned.
+    void pending.catch(() => undefined);
+  }
+}
 
 function promptSummary(s: string): boolean {
   return s.trim().length > 10;
@@ -229,6 +297,18 @@ interface TaskResult {
   };
 }
 
+interface ExecuteTaskOptions {
+  taskId?: string;
+  systemPrompt?: string;
+  compact?: boolean;
+  model?: string;
+  signal?: AbortSignal;
+  projectDir?: string;
+  timeoutMs?: number;
+  localNetworkAccess?: boolean;
+  routingMetadata?: Record<string, unknown>;
+}
+
 class AgentManager {
   private static readonly QUOTA_PROBE_INTERVAL_MS = 10 * 60_000;
   private static readonly QUOTA_PROBE_TIMEOUT_MS = 10_000;
@@ -240,6 +320,7 @@ class AgentManager {
   private healthApiKeyCallCounts = new Map<string, number>();
   private lastQuotaProbeAt = new Map<string, number>();
   private cliRecoveryProbes = new Set<string>();
+  private activeProviderProbes = new Set<string>();
   private healthTimer: ReturnType<typeof setInterval> | null = null;
 
   async init(): Promise<void> {
@@ -292,10 +373,12 @@ class AgentManager {
       this.latencyHistory.delete(id);
       this.lastQuotaProbeAt.delete(id);
       this.cliRecoveryProbes.delete(id);
+      circuitBreakerRegistry.clearInferenceEvidence(id);
       for (const key of this.healthApiKeyCallCounts.keys()) {
         if (key.startsWith(`${id}:`)) this.healthApiKeyCallCounts.delete(key);
       }
     }
+    for (const id of updated) circuitBreakerRegistry.clearInferenceEvidence(id);
     log.info({ added, updated, removed, count: nextProviders.size }, 'Agent Manager roster swapped');
     return { added, updated, removed, draining: removed, current: [...nextProviders.keys()] };
   }
@@ -314,17 +397,33 @@ class AgentManager {
     }
   }
 
-  async executeTask(agentId: string, prompt: string, options?: {
-    taskId?: string;
-    systemPrompt?: string;
-    compact?: boolean;
-    model?: string;
-    signal?: AbortSignal;
-    projectDir?: string;
-    timeoutMs?: number;
-    localNetworkAccess?: boolean;
-    routingMetadata?: Record<string, unknown>;
-  }): Promise<TaskResult> {
+  async executeTask(
+    agentId: string,
+    prompt: string,
+    options?: ExecuteTaskOptions,
+  ): Promise<TaskResult> {
+    const totalTimeoutMs = options?.timeoutMs ?? getTaskTimeoutMs();
+    const admissionWallClock = AbortSignal.timeout(totalTimeoutMs);
+    const totalSignal = options?.signal
+      ? AbortSignal.any([options.signal, admissionWallClock])
+      : admissionWallClock;
+    const releaseAdmission = await providerAdmissionGate.acquire(totalSignal);
+    try {
+      return await this.executeTaskWithinAdmission(agentId, prompt, {
+        ...options,
+        signal: totalSignal,
+        timeoutMs: totalTimeoutMs,
+      });
+    } finally {
+      releaseAdmission();
+    }
+  }
+
+  private async executeTaskWithinAdmission(
+    agentId: string,
+    prompt: string,
+    options?: ExecuteTaskOptions,
+  ): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
 
@@ -397,11 +496,12 @@ class AgentManager {
       };
     }
 
+    let inferenceCompleted = false;
     try {
       // Publish task start
-      await eventBus.publish({
+      await awaitWithinSignal(signal, () => eventBus.publish({
         type: 'task:started', taskId, agentId,
-      });
+      }));
 
       const agentType = classifyAgent(provider);
       let output: string;
@@ -415,10 +515,19 @@ class AgentManager {
       // 팽창하므로 생략한다. 일반 작업의 장기기억 경로는 그대로 유지한다.
       if (!options?.compact) {
         try {
-          const { vectorMemory } = await import('../core/vector-memory.js');
-          const personalMemories = await vectorMemory.search(agentId, prompt, 5);
+          const { vectorMemory } = await awaitWithinSignal(
+            signal,
+            () => import('../core/vector-memory.js'),
+          );
+          const personalMemories = await awaitWithinSignal(
+            signal,
+            () => vectorMemory.search(agentId, prompt, 5),
+          );
           const teamMemories = teamMemoryScope
-            ? await vectorMemory.search(teamMemoryScope, prompt, 5)
+            ? await awaitWithinSignal(
+              signal,
+              () => vectorMemory.search(teamMemoryScope, prompt, 5),
+            )
             : [];
           const memories = mergeMemoryContextEntries(
             [personalMemories, teamMemories],
@@ -436,11 +545,12 @@ class AgentManager {
           }
         } catch { /* non-critical */ }
       }
+      throwIfAborted(signal);
 
       switch (agentType) {
         case 'native-cli': {
           // Type A: Claude Code native — delegate to subprocess, monitor only
-          const { execa } = await import('execa');
+          const { execa } = await awaitWithinSignal(signal, () => import('execa'));
           const subprocess = execa(provider.command!, [
             ...(provider.args ?? []),
             ...(effectiveModel ? ['--model', effectiveModel] : []),
@@ -465,7 +575,7 @@ class AgentManager {
           subprocess.stdout?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
           subprocess.stderr?.on('data', chunk => taskQueue.recordActivity(taskId, chunk.toString()));
           signal.addEventListener('abort', () => killProcessGroup(subprocess.pid), { once: true });
-          const result = await subprocess;
+          const result = await awaitWithinSignal(signal, () => subprocess);
           output = result.stdout || result.stderr || taskQueue.getBufferedOutput(taskId);
           if (!isSuccessfulResult(result)) {
             const timedOut = Boolean((result as { timedOut?: boolean }).timedOut);
@@ -483,13 +593,13 @@ class AgentManager {
         case 'orchestrated-cli': {
           // Type B: NCO orchestrated loop
           const loop = new OrchestratedLoop(provider, executionSandbox, signal);
-          const result = await loop.run(taskId, prompt, {
+          const result = await awaitWithinSignal(signal, () => loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             model: effectiveModel ?? undefined,
             projectDir: effectiveProjectDir,
             localNetworkAccess: options?.localNetworkAccess,
-          });
+          }));
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
@@ -504,14 +614,14 @@ class AgentManager {
         case 'openai-api': {
           // Type C: API executor
           const executor = new ApiExecutor(provider, executionSandbox);
-          const result = await executor.run(taskId, prompt, {
+          const result = await awaitWithinSignal(signal, () => executor.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
             model: effectiveModel ?? undefined,
             projectDir: effectiveProjectDir,
             signal,
             timeoutMs,
-          });
+          }));
           output = result.output;
           iterations = result.iterations;
           toolCalls = result.toolCalls;
@@ -524,6 +634,8 @@ class AgentManager {
         }
       }
 
+      throwIfAborted(signal);
+
       const durationMs = Date.now() - startTime;
       this.recordLatency(agentId, durationMs);
 
@@ -532,6 +644,7 @@ class AgentManager {
       // v1.1 diff 본문의 'credential preflight failed' 리터럴에 트립됨)
       const classified = output.trim().length < 300 ? classifyCircuitError(output) : null;
       if (classified) {
+        circuitBreakerRegistry.recordInferenceFailure(agentId);
         circuitBreakerRegistry.recordFailure(agentId, output);
         return {
           taskId,
@@ -552,56 +665,77 @@ class AgentManager {
         throw failure;
       }
 
+      circuitBreakerRegistry.recordInferenceSuccess(agentId);
       circuitBreakerRegistry.recordSuccess(agentId);
+      inferenceCompleted = true;
 
       // compact 토론 제안은 코드 산출 작업이 아니므로 저장소 전체 diff 검증을 붙이지 않는다.
       // 회사의 실제 stage task 및 최종 Nova-AX 감사 게이트에는 영향을 주지 않는다.
       if (!options?.compact) {
         try {
-          const { stdout: diffOutput } = await (await import('execa')).execa(
-            'git', ['diff', '--name-only'], { cwd: env.PROJECT_DIR, reject: false }
+          const { execa } = await awaitWithinSignal(signal, () => import('execa'));
+          const { stdout: diffOutput } = await awaitWithinSignal(
+            signal,
+            () => execa('git', ['diff', '--name-only'], {
+              cwd: env.PROJECT_DIR,
+              reject: false,
+              cancelSignal: signal,
+            }),
           );
           const changedFiles = diffOutput.split('\n').filter(Boolean);
 
           if (changedFiles.length > 0) {
-            const vResult = await verificationGate.verify(taskId, changedFiles);
+            const vResult = await awaitWithinSignal(
+              signal,
+              () => verificationGate.verify(taskId, changedFiles),
+            );
             if (!vResult.passed) {
               log.warn({ taskId, agentId, results: vResult.results }, 'Verification gate failed');
-              await eventBus.publish({
+              await awaitWithinSignal(signal, () => eventBus.publish({
                 type: 'task:verification_failed', taskId, agentId,
                 results: vResult.results, durationMs,
-              });
+              }));
             }
           }
         } catch (verifyErr: any) {
           log.debug({ err: verifyErr.message }, 'Verification gate skipped');
         }
       }
+      throwIfAborted(signal);
 
-      await eventBus.publish({
+      await awaitWithinSignal(signal, () => eventBus.publish({
         type: 'task:completed', taskId, agentId,
         output: output.slice(0, 1000),
         iterations, toolCalls, durationMs,
-      });
+      }));
 
       if (!options?.compact) {
         // Auto-extract knowledge from task result
         try {
-          const { knowledgeBase } = await import('../core/knowledge-base.js');
+          const { knowledgeBase } = await awaitWithinSignal(
+            signal,
+            () => import('../core/knowledge-base.js'),
+          );
           knowledgeBase.extractFromTaskResult(taskId, output, env.PROJECT_DIR);
         } catch { /* non-critical */ }
 
         // ── HNSW Vector Memory: Post-task storage ────────────
         try {
-          const { vectorMemory } = await import('../core/vector-memory.js');
+          const { vectorMemory } = await awaitWithinSignal(
+            signal,
+            () => import('../core/vector-memory.js'),
+          );
           // Store: task prompt (context) + output summary
           const promptSnippet = prompt.slice(0, 200).replace(/\[장기 기억 컨텍스트[\s\S]*?\]/m, '').trim();
           const outputSummary = output.replace(/\s+/g, ' ').trim().slice(0, 400);
           if (promptSummary(promptSnippet)) {
             const memory = `[${taskId}] Q: ${promptSnippet} → A: ${outputSummary}`;
-            await vectorMemory.add(agentId, memory, 1.0);
+            await awaitWithinSignal(signal, () => vectorMemory.add(agentId, memory, 1.0));
             if (teamMemoryScope) {
-              await vectorMemory.add(teamMemoryScope, memory, 1.0);
+              await awaitWithinSignal(
+                signal,
+                () => vectorMemory.add(teamMemoryScope, memory, 1.0),
+              );
             }
           }
         } catch { /* non-critical */ }
@@ -609,10 +743,14 @@ class AgentManager {
 
       // ── AgentEvolver: record success for persona tuning ─
       try {
-        const { agentEvolver } = await import('../core/agent-evolver.js');
+        const { agentEvolver } = await awaitWithinSignal(
+          signal,
+          () => import('../core/agent-evolver.js'),
+        );
         agentEvolver.record(agentId, taskId, true, durationMs, output.length);
       } catch { /* non-critical */ }
 
+      throwIfAborted(signal);
       return {
         taskId, agentId, output, iterations, toolCalls, success: true, durationMs, usage, modelRouting,
       };
@@ -624,13 +762,14 @@ class AgentManager {
       const partialOutput = taskQueue.getBufferedOutput(taskId);
       const errorMessage = abortReason || err?.message || 'unknown: execution failed';
       const terminalOutput = partialOutput || (err as { partialOutput?: string } | undefined)?.partialOutput || '';
-      if (!isNonCircuitCancellation(err, abortReason, shutdownSignal)) {
+      if (!inferenceCompleted && !isNonCircuitCancellation(err, abortReason, shutdownSignal)) {
         // terminalOutput(= tasks.response로 저장되는 값)을 함께 넘긴다. CLI 프로바이더의
         // HTTP 401 신호는 errorMessage(execa shortMessage = 명령 에코)에 없고 stdout 오류
         // 봉투에만 있어, 이 인자가 없으면 인증 실패가 generic 3연속 임계치로 떨어진다.
         // 분류 규칙·근거·롤백(NCO_CB_ERROR_ENVELOPE=off)은 circuit-breaker-registry.ts 참조.
+        circuitBreakerRegistry.recordInferenceFailure(agentId);
         circuitBreakerRegistry.recordFailure(agentId, errorMessage, undefined, terminalOutput);
-      } else {
+      } else if (!inferenceCompleted) {
         log.info(
           { taskId, agentId, error: errorMessage },
           'Skipped circuit failure for cancelled execution',
@@ -638,23 +777,23 @@ class AgentManager {
       }
 
       // 상태 복구 — 실패/타임아웃 시 idle로 복원
-      await sharedState.setAgentState(agentId, {
+      await settleWithinSignal(signal, () => sharedState.setAgentState(agentId, {
         status: 'idle',
         currentTask: null,
         currentFiles: [],
-      });
+      }));
 
-      await eventBus.publish({
+      await settleWithinSignal(signal, () => eventBus.publish({
         type: 'task:failed', taskId, agentId,
         error: errorMessage, durationMs,
-      });
+      }));
       this.recordLatency(agentId, durationMs);
 
       // ── AgentEvolver: record failure ──────────────────────
-      try {
+      await settleWithinSignal(signal, async () => {
         const { agentEvolver } = await import('../core/agent-evolver.js');
         agentEvolver.record(agentId, taskId, false, durationMs, 0);
-      } catch { /* non-critical */ }
+      });
 
       return {
         taskId,
@@ -691,67 +830,175 @@ class AgentManager {
 
   async probeProvider(
     agentId: string,
-    prompt = 'PING',
+    _prompt = PROVIDER_PROBE_PROMPT,
     timeoutMs = 30_000,
     model?: string,
   ): Promise<boolean> {
-    const provider = this.providers.get(agentId);
-    if (!provider) return false;
-
+    if (this.activeProviderProbes.has(agentId)) return false;
+    this.activeProviderProbes.add(agentId);
+    const effectiveTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.max(1, Math.trunc(timeoutMs))
+      : 30_000;
+    const probeSignal = AbortSignal.timeout(effectiveTimeoutMs);
+    let releaseAdmission: (() => void) | undefined;
+    let slotHeld = false;
+    let probeAttempted = false;
+    let outcomeRecorded = false;
+    let recoveryReason: ReturnType<typeof circuitBreakerRegistry.getSnapshot>['reason'] = null;
     try {
-      if (provider.type === 'api') {
-        const url = this.resolveApiHealthCheckUrl(provider);
-        if (!url) return false;
+      releaseAdmission = await providerAdmissionGate.acquire(probeSignal);
+      const provider = this.providers.get(agentId);
+      if (!provider) return false;
 
-        const apiKeyRef = provider.keyRotation?.enabled
-          ? provider.keyRotation.envVar
-          : provider.apiKeyRef;
-        const apiKey = apiKeyRef
-          ? this.getNextHealthApiKey(agentId, apiKeyRef, 'active-probe')
-          : undefined;
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-        return response.ok;
+      const snapshot = circuitBreakerRegistry.getSnapshot(agentId);
+      recoveryReason = snapshot.reason;
+      if (snapshot.state === 'half-open') {
+        const sandbox = this.sandboxes.get(agentId);
+        if (!sandbox || !sandbox.canExecute()) return false;
+        slotHeld = circuitBreakerRegistry.getSnapshot(agentId).state === 'half-open';
+        if (slotHeld && !circuitBreakerRegistry.bindProbeSlot(agentId, probeSignal)) {
+          circuitBreakerRegistry.releaseProbeSlot(agentId, probeSignal);
+          slotHeld = false;
+          return false;
+        }
       }
 
-      if (!provider.command) return false;
-      const { execa } = await import('execa');
-      const result = await execa(provider.command, this.buildProbeArgs(provider, prompt, model), {
-        cwd: (await import('node:os')).tmpdir(),
-        env: {
-          ...buildProviderProcessEnv(
-            provider.id,
-            provider.env,
-            process.env,
-            undefined,
-            resolveProviderRuntime(provider).adapter,
+      const runtime = resolveProviderRuntime(provider);
+      const probeModel = model
+        ?? (runtime.adapter === 'cursor' ? resolveCursorFallbackModel() ?? undefined : undefined);
+      let recovered = false;
+      let failureDetail = 'sentinel response mismatch';
+      probeAttempted = true;
+
+      if (runtime.executor === 'openai-api') {
+        const baseUrl = provider.endpoint || provider.apiConfig?.primary.baseUrl;
+        if (!baseUrl) {
+          failureDetail = 'missing provider endpoint';
+        } else {
+          const apiKeyRef = provider.keyRotation?.enabled
+            ? provider.keyRotation.envVar
+            : provider.apiKeyRef;
+          const apiKey = apiKeyRef
+            ? this.getNextHealthApiKey(agentId, apiKeyRef, 'active-probe')
+            : undefined;
+          const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+            },
+            body: JSON.stringify({
+              model: probeModel || provider.model || provider.apiConfig?.primary.model || 'default',
+              messages: [{ role: 'user', content: PROVIDER_PROBE_PROMPT }],
+              ...(provider.type === 'local' ? { keep_alive: OLLAMA_KEEP_ALIVE } : {}),
+              max_tokens: 16,
+              temperature: 0,
+            }),
+            signal: probeSignal,
+          });
+          if (!response.ok) {
+            const responseBody = await awaitWithinSignal(probeSignal, () => response.text());
+            failureDetail = `HTTP ${response.status}: ${responseBody}`;
+          } else {
+            const payload = await awaitWithinSignal(
+              probeSignal,
+              () => response.json().catch(() => null),
+            ) as {
+              choices?: Array<{ message?: { content?: unknown }; text?: unknown }>;
+            } | null;
+            const completion = payload?.choices?.[0]?.message?.content
+              ?? payload?.choices?.[0]?.text;
+            recovered = typeof completion === 'string'
+              && normalizeCliProbeOutput(completion) === PROVIDER_PROBE_SENTINEL;
+          }
+        }
+      } else if (!provider.command) {
+        failureDetail = 'missing provider command';
+      } else {
+        const { execa } = await awaitWithinSignal(probeSignal, () => import('execa'));
+        const { tmpdir } = await awaitWithinSignal(probeSignal, () => import('node:os'));
+        const result = await awaitWithinSignal(
+          probeSignal,
+          () => execa(
+            provider.command!,
+            this.buildProbeArgs(provider, PROVIDER_PROBE_PROMPT, probeModel),
+            {
+              cwd: tmpdir(),
+              env: {
+                ...buildProviderProcessEnv(
+                  provider.id,
+                  provider.env,
+                  process.env,
+                  undefined,
+                  runtime.adapter,
+                ),
+                NCO_HOOK_DISABLED: '1',
+                NO_COLOR: '1',
+                TERM: 'dumb',
+              },
+              reject: false,
+              stdin: 'ignore',
+              timeout: effectiveTimeoutMs,
+              cancelSignal: probeSignal,
+            },
           ),
-          NCO_HOOK_DISABLED: '1',
-          NO_COLOR: '1',
-          TERM: 'dumb',
-        },
-        reject: false,
-        stdin: 'ignore',
-        timeout: timeoutMs,
-      });
-      const processSucceeded = result.exitCode === 0
-        && !result.failed
-        && !result.timedOut
-        && !result.isCanceled;
-      if (
-        processSucceeded
-        && resolveProviderRuntime(provider).adapter === 'cursor'
-        && prompt === 'Reply exactly: NCO_PROVIDER_PROBE_OK'
-      ) {
-        return normalizeCliProbeOutput(result.stdout) === 'NCO_PROVIDER_PROBE_OK';
+        );
+        const processSucceeded = result.exitCode === 0
+          && !result.failed
+          && !result.timedOut
+          && !result.isCanceled;
+        recovered = processSucceeded
+          && normalizeCliProbeOutput(result.stdout) === PROVIDER_PROBE_SENTINEL;
+        if (!processSucceeded) {
+          failureDetail = result.stderr || result.stdout || `exit=${result.exitCode ?? 'unknown'}`;
+        }
       }
-      return processSucceeded;
-    } catch {
+
+      if (recovered) {
+        if (runtime.adapter === 'cursor' && probeModel) preferCursorFallbackModel(probeModel);
+        circuitBreakerRegistry.recordInferenceSuccess(agentId);
+        circuitBreakerRegistry.recordSuccess(agentId);
+      } else {
+        this.recordProviderProbeFailure(agentId, recoveryReason, failureDetail);
+      }
+      outcomeRecorded = true;
+      await settleWithinSignal(probeSignal, () => eventBus.publish({
+        type: 'provider:recovery-probe',
+        agentId,
+        success: recovered,
+        model: probeModel ?? 'default',
+      }));
+      return recovered;
+    } catch (error) {
+      if (probeAttempted && !outcomeRecorded) {
+        this.recordProviderProbeFailure(
+          agentId,
+          recoveryReason,
+          error instanceof Error ? error.message : String(error),
+        );
+      }
       return false;
+    } finally {
+      if (slotHeld) circuitBreakerRegistry.releaseProbeSlot(agentId, probeSignal);
+      releaseAdmission?.();
+      this.activeProviderProbes.delete(agentId);
     }
+  }
+
+  private recordProviderProbeFailure(
+    agentId: string,
+    recoveryReason: ReturnType<typeof circuitBreakerRegistry.getSnapshot>['reason'],
+    detail: string,
+  ): void {
+    const failureSignal = recoveryReason === 'quota'
+      ? `provider sentinel probe failed: quota (${detail})`
+      : recoveryReason === 'rate-limit'
+        ? `provider sentinel probe failed: rate limit (${detail})`
+        : recoveryReason === 'auth'
+          ? `provider sentinel probe failed: invalid API key (${detail})`
+          : `provider sentinel probe failed: ${detail}`;
+    circuitBreakerRegistry.recordInferenceFailure(agentId);
+    circuitBreakerRegistry.recordFailure(agentId, failureSignal);
   }
 
   private buildProbeArgs(provider: ProviderConfig, prompt: string, model?: string): string[] {
@@ -787,9 +1034,9 @@ class AgentManager {
           continue;
         }
         const availability = circuitBreakerRegistry.getAvailability(id);
-        // quota·rate-limit 게이트 복구는 completions 실증만 신뢰 (헬스 200으로 열지 않음 — 리뷰 LOW)
-        if (availability.status === 'probe'
-          && (availability.reason === 'quota' || availability.reason === 'rate-limit')) {
+        // GET health is transport-only evidence. Every recoverable circuit is
+        // closed only by the substantive sentinel inference below.
+        if (availability.status === 'probe' && availability.reason !== 'auth') {
           await this.probeGatedProvider(id, provider);
         }
         continue;
@@ -839,101 +1086,73 @@ class AgentManager {
 
   private async probeGatedCliProvider(id: string): Promise<void> {
     if (this.cliRecoveryProbes.has(id)) return;
-    const sandbox = this.sandboxes.get(id);
-    if (!sandbox || !sandbox.canExecute()) return;
-
-    const slotHeld = circuitBreakerRegistry.getSnapshot(id).state === 'half-open';
-    if (!slotHeld) return;
-
-    const controller = new AbortController();
-    if (!circuitBreakerRegistry.bindProbeSlot(id, controller.signal)) {
-      circuitBreakerRegistry.releaseProbeSlot(id, controller.signal);
-      return;
-    }
     this.cliRecoveryProbes.add(id);
     try {
-      const recoveryReason = circuitBreakerRegistry.getSnapshot(id).reason;
-      const fallbackModel = resolveProviderRuntime(this.providers.get(id)!).adapter === 'cursor'
-        ? resolveCursorFallbackModel()
-        : null;
-      const recovered = await this.probeProvider(
+      await this.probeProvider(
         id,
-        'Reply exactly: NCO_PROVIDER_PROBE_OK',
+        PROVIDER_PROBE_PROMPT,
         AgentManager.CLI_RECOVERY_PROBE_TIMEOUT_MS,
-        fallbackModel ?? undefined,
       );
-      if (recovered) {
-        if (fallbackModel) preferCursorFallbackModel(fallbackModel);
-        circuitBreakerRegistry.recordSuccess(id);
-      } else {
-        // Preserve the original classified cooldown. Reclassifying an expired
-        // quota/rate-limit probe failure as generic would create a tight retry
-        // loop and spend provider calls every generic cooldown interval.
-        const failureSignal = recoveryReason === 'quota'
-          ? 'CLI recovery probe failed: quota'
-          : recoveryReason === 'rate-limit'
-            ? 'CLI recovery probe failed: rate limit'
-            : 'CLI recovery probe failed';
-        circuitBreakerRegistry.recordFailure(id, failureSignal);
-      }
-      await eventBus.publish({
-        type: 'provider:recovery-probe',
-        agentId: id,
-        success: recovered,
-        model: fallbackModel ?? 'default',
-      });
     } finally {
-      controller.abort();
-      circuitBreakerRegistry.releaseProbeSlot(id, controller.signal);
       this.cliRecoveryProbes.delete(id);
     }
   }
 
   private async healthCheckApiProvider(id: string, provider: ProviderConfig): Promise<boolean> {
-    // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider TypeError crash-loop 방지
-    const url = this.resolveApiHealthCheckUrl(provider);
-    if (!url) {
-      await sharedState.setAgentState(id, { status: 'offline' });
-      return false;
-    }
-    const timeout = typeof provider.healthCheck.timeout === 'number'
+    const requestedTimeout = typeof provider.healthCheck?.timeout === 'number'
       ? provider.healthCheck.timeout
       : 5000;
-    const headers: Record<string, string> = {};
-    const apiKey = provider.apiKeyRef ? this.getNextHealthApiKey(id, provider.apiKeyRef) : undefined;
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
+    const healthSignal = AbortSignal.timeout(requestedTimeout);
+    let releaseAdmission: (() => void) | undefined;
+    try {
+      releaseAdmission = await providerAdmissionGate.acquire(healthSignal);
+    } catch {
+      return false;
     }
     try {
+      const currentProvider = this.providers.get(id);
+      if (!currentProvider) return false;
+      provider = currentProvider;
+      // NCO 긴급가드 (2026-06-30, fleet 2740be4): healthCheck 필드 없는 provider TypeError crash-loop 방지
+      const url = this.resolveApiHealthCheckUrl(provider);
+      if (!url) {
+        await settleWithinSignal(healthSignal, () => sharedState.setAgentState(id, { status: 'offline' }));
+        return false;
+      }
+      const headers: Record<string, string> = {};
+      const apiKey = provider.apiKeyRef ? this.getNextHealthApiKey(id, provider.apiKeyRef) : undefined;
+      if (apiKey) {
+        headers.Authorization = `Bearer ${apiKey}`;
+      }
       const response = await fetch(url, {
         method: 'GET',
         headers,
-        signal: AbortSignal.timeout(timeout),
+        signal: healthSignal,
       });
       if (!response.ok) {
-        const body = await response.text();
+        const body = await awaitWithinSignal(healthSignal, () => response.text());
         circuitBreakerRegistry.recordFailure(id, `HTTP ${response.status}: ${body}`);
-        await sharedState.setAgentState(id, { status: 'offline' });
+        await settleWithinSignal(healthSignal, () => sharedState.setAgentState(id, { status: 'offline' }));
         return false;
       }
-      const availability = circuitBreakerRegistry.getAvailability(id);
-      // 헬스 GET 200은 generic 게이트 복구 증거로만 충분 — quota/rate-limit은
-      // /health 200이어도 completions가 여전히 막혀 있을 수 있어 전용 프로브가 닫는다 (리뷰 LOW)
-      if (availability.status === 'probe'
-        && availability.reason !== 'quota' && availability.reason !== 'rate-limit') {
-        circuitBreakerRegistry.recordSuccess(id);
-      }
-      await sharedState.setAgentState(id, { status: 'idle' });
-      await sharedState.heartbeat(id);
+      // Transport health never closes a circuit or creates inference evidence.
+      // healthCheck() schedules a substantive sentinel inference separately.
+      await awaitWithinSignal(
+        healthSignal,
+        () => sharedState.setAgentState(id, { status: 'idle' }),
+      );
+      await awaitWithinSignal(healthSignal, () => sharedState.heartbeat(id));
       return true;
     } catch (e) {
       circuitBreakerRegistry.recordFailure(id, e instanceof Error ? e.message : String(e));
-      await sharedState.setAgentState(id, { status: 'offline' });
+      await settleWithinSignal(healthSignal, () => sharedState.setAgentState(id, { status: 'offline' }));
       log.debug({
         id,
         error: e instanceof Error ? e.message : String(e),
       }, 'API health probe failed');
       return false;
+    } finally {
+      releaseAdmission?.();
     }
   }
 
@@ -973,53 +1192,14 @@ class AgentManager {
     return key;
   }
 
-  private async probeGatedProvider(id: string, provider: ProviderConfig): Promise<void> {
+  private async probeGatedProvider(id: string, _provider: ProviderConfig): Promise<void> {
     const now = Date.now();
     const lastProbeAt = this.lastQuotaProbeAt.get(id) ?? 0;
     if (now - lastProbeAt < AgentManager.QUOTA_PROBE_INTERVAL_MS) {
       return;
     }
     this.lastQuotaProbeAt.set(id, now);
-
-    const baseUrl = provider.endpoint || provider.apiConfig?.primary.baseUrl;
-    if (!baseUrl) {
-      circuitBreakerRegistry.recordFailure(id, 'quota probe unavailable: missing provider endpoint');
-      return;
-    }
-
-    const probeUrl = `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    const apiKeyRef = provider.keyRotation?.enabled
-      ? provider.keyRotation.envVar
-      : provider.apiKeyRef;
-    const apiKey = apiKeyRef ? this.getNextHealthApiKey(id, apiKeyRef, 'gated-probe') : undefined;
-    if (apiKey) {
-      headers.Authorization = `Bearer ${apiKey}`;
-    }
-
-    try {
-      const response = await fetch(probeUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          model: provider.model || provider.apiConfig?.primary.model || 'default',
-          messages: [{ role: 'user', content: 'ping' }],
-          ...(provider.type === 'local' ? { keep_alive: OLLAMA_KEEP_ALIVE } : {}),
-          max_tokens: 1,
-        }),
-        signal: AbortSignal.timeout(AgentManager.QUOTA_PROBE_TIMEOUT_MS),
-      });
-      if (!response.ok) {
-        const body = await response.text();
-        circuitBreakerRegistry.recordFailure(id, `HTTP ${response.status}: ${body}`);
-        return;
-      }
-      circuitBreakerRegistry.recordSuccess(id);
-    } catch (error) {
-      circuitBreakerRegistry.recordFailure(id, error instanceof Error ? error.message : String(error));
-    }
+    await this.probeProvider(id, PROVIDER_PROBE_PROMPT, AgentManager.QUOTA_PROBE_TIMEOUT_MS);
   }
 
   // ─── Getters ────────────────────────────────────────

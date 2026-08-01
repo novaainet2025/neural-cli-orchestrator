@@ -3,6 +3,7 @@ import type { ProviderConfig } from '../utils/config.js';
 import {
   ProviderRegistrySnapshotStore,
   diffProviderRegistry,
+  toLegacyProviderCatalogProjection,
   toProviderRegistryManifest,
   type ProviderRegistryEvent,
 } from './provider-registry-snapshot.js';
@@ -66,7 +67,7 @@ describe('ProviderRegistrySnapshotStore', () => {
     const manifest = toProviderRegistryManifest(provider('alpha'), new Set(['alpha']));
     const serialized = JSON.stringify(manifest);
 
-    expect(manifest.endpoint).toBe('https://example.test/v1');
+    expect(manifest.endpoint).toBeUndefined();
     expect(manifest.auth).toEqual({ kind: 'environment-reference', ref: 'PROVIDER_API_KEY' });
     expect(manifest.capabilities).toEqual(['code', 'testing']);
     expect(manifest.models[0]?.aliases).toEqual(['a', 'z']);
@@ -87,6 +88,25 @@ describe('ProviderRegistrySnapshotStore', () => {
     expect(serialized).not.toContain('secret internal prompt');
     expect(serialized).not.toContain('command');
     expect(serialized).not.toContain('healthCheck');
+  });
+
+  it('projects a legacy-compatible catalog without internal execution configuration', () => {
+    const manifest = toProviderRegistryManifest(provider('alpha'), new Set(['alpha']));
+    const projected = toLegacyProviderCatalogProjection(manifest);
+    const serialized = JSON.stringify(projected);
+
+    expect(projected).toMatchObject({
+      id: 'alpha',
+      ai: 'alpha',
+      models: ['alpha-model'],
+      runtime: { loaded: true },
+    });
+    expect(serialized).not.toContain('must-not-leak');
+    expect(serialized).not.toContain('command');
+    expect(serialized).not.toContain('args');
+    expect(serialized).not.toContain('persona');
+    expect(serialized).not.toContain('healthCheck');
+    expect(serialized).not.toContain('apiKey');
   });
 
   it('materializes provider.model and de-duplicated freeModels when models is absent', () => {
@@ -175,6 +195,29 @@ describe('ProviderRegistrySnapshotStore', () => {
 
     const independent = store(() => [provider('beta'), provider('alpha')]);
     expect((await independent.registry.refresh()).snapshot.revision).toBe(first.snapshot.revision);
+  });
+
+  it('reconciles execution-only changes without changing the public revision', async () => {
+    let providers = [provider('alpha', { concurrency: 1, env: { TOKEN: 'one' } })];
+    let runtimeIds = ['alpha'];
+    const reconcileRuntime = vi.fn(async (view: { providers: readonly ProviderConfig[] }) => {
+      runtimeIds = view.providers.filter(item => item.enabled).map(item => item.id);
+    });
+    const registry = new ProviderRegistrySnapshotStore({
+      loadProviders: () => providers,
+      listRuntimeProviderIds: () => runtimeIds,
+      reconcileRuntime,
+      publish: vi.fn(async () => {}),
+    });
+    const first = await registry.refresh();
+    providers = [provider('alpha', { concurrency: 4, env: { TOKEN: 'rotated' } })];
+    const second = await registry.refresh();
+
+    expect(second.changed).toBe(true);
+    expect(second.snapshot.revision).toBe(first.snapshot.revision);
+    expect(second.snapshot.generatedAt).toBe(first.snapshot.generatedAt);
+    expect(reconcileRuntime).toHaveBeenCalledTimes(2);
+    expect(registry.getRuntimeView()?.providers[0]?.concurrency).toBe(4);
   });
 
   it('emits exact added, disabled, updated and removed lifecycle diffs', async () => {
