@@ -101,6 +101,18 @@ describe('ProviderCatalog SSOT normalization', () => {
         '.healthCheck must define command or url'],
       [{ id: 'bad-model-shape', command: 'bad', models: [{ id: 'v1', enabled: 'yes' }] },
         '.models[0].enabled must be boolean'],
+      [{ id: 'bad-model-tier', command: 'bad', models: [{ id: 'v1', tier: 'giant' }] },
+        '.models[0].tier is unknown'],
+      [{ id: 'bad-model-reasoning', command: 'bad', models: [{ id: 'v1', reasoningStrength: 6 }] },
+        '.models[0].reasoningStrength must be an integer from 1 to 5'],
+      [{ id: 'bad-model-cost', command: 'bad', models: [{ id: 'v1', costClass: 'cheap' }] },
+        '.models[0].costClass is unknown'],
+      [{ id: 'bad-model-context', command: 'bad', models: [{ id: 'v1', contextWindow: 0 }] },
+        '.models[0].contextWindow must be a positive integer or null'],
+      [{ id: 'bad-model-availability', command: 'bad', models: [{ id: 'v1', availability: 'gone' }] },
+        '.models[0].availability is unknown'],
+      [{ id: 'bad-model-extra', command: 'bad', models: [{ id: 'v1', provider: 'coupled' }] },
+        '.models[0] has unknown field(s): provider'],
       [{ id: 'bad-profile', command: 'bad', runtime: { profile: 'unsafe' } },
         '.runtime.profile is unknown'],
       [{
@@ -163,6 +175,14 @@ describe('ProviderCatalog SSOT normalization', () => {
     });
     expect(provider.model).toBe('large-v2');
     expect(provider.models?.filter(model => model.default)).toHaveLength(1);
+    expect(provider.models?.[0]).toMatchObject({
+      tier: 'balanced',
+      reasoningStrength: 3,
+      costClass: 'standard',
+      latencyClass: 'standard',
+      contextWindow: null,
+      availability: 'available',
+    });
     expect(resolveProviderModel(provider, 'small')).toBe('small-v1');
     expect(() => resolveProviderModel(provider, 'deleted-v0')).toThrow(
       'unknown_model: model-host/deleted-v0',

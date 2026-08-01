@@ -92,4 +92,43 @@ describe('config JSON validation', () => {
       overrides: { missing: { enabled: false } },
     })).toThrow(/unregistered provider/);
   });
+
+  it('uses a PC-local models overlay as the complete dynamic model catalog', () => {
+    const shared = validateProvidersFile({
+      version: 1,
+      updated: '2026-08-01',
+      providers: [{
+        id: 'dynamic-host',
+        type: 'api',
+        endpoint: 'http://127.0.0.1:9999/v1',
+        model: 'shared-model',
+        models: [{ id: 'shared-model', default: true, tier: 'balanced' }],
+      }],
+    }).providers;
+
+    const effective = applyLocalProviderConfig(shared, {
+      overrides: {
+        'dynamic-host': {
+          model: 'pc-model',
+          models: [{
+            id: 'pc-model',
+            default: true,
+            tier: 'light',
+            reasoningStrength: 1,
+            costClass: 'minimal',
+            latencyClass: 'fast',
+            contextWindow: 16_384,
+            availability: 'available',
+          }],
+        },
+      },
+    });
+
+    expect(effective[0]?.models?.map(model => model.id)).toEqual(['pc-model']);
+    expect(effective[0]?.models?.[0]).toMatchObject({
+      tier: 'light',
+      availability: 'available',
+      contextWindow: 16_384,
+    });
+  });
 });

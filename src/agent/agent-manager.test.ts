@@ -166,6 +166,7 @@ import {
   isNonCircuitCancellation,
 } from './agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+import { normalizeProviderDeclaration } from '../core/provider-catalog.js';
 
 describe('AgentManager', () => {
   beforeEach(async () => {
@@ -187,6 +188,46 @@ describe('AgentManager', () => {
 
     expect(classifyAgent(provider('added-after-deploy', 'orchestrated-cli'))).toBe('orchestrated-cli');
     expect(classifyAgent(provider('pc-local-api', 'openai-api'))).toBe('openai-api');
+  });
+
+  it('forwards the dynamically selected model to an arbitrary native executor', async () => {
+    const dynamic = normalizeProviderDeclaration({
+      id: 'unbranded-native',
+      command: 'model-cli',
+      runtime: { executor: 'native-cli', adapter: 'claude' },
+      capabilities: ['analysis', 'architecture'],
+      model: 'frontier-z',
+      models: [
+        {
+          id: 'light-x', tier: 'light', reasoningStrength: 1,
+          costClass: 'minimal', latencyClass: 'fast', contextWindow: 16_000,
+        },
+        {
+          id: 'frontier-z', default: true, tier: 'frontier', reasoningStrength: 5,
+          costClass: 'unbounded', latencyClass: 'slow', contextWindow: 128_000,
+        },
+      ],
+    });
+    circuitBreakerRegistry.reset(dynamic.id);
+    await agentManager.reloadProviders([dynamic], 'registry-executor-e2e');
+
+    const result = await agentManager.executeTask(
+      dynamic.id,
+      'Summarize this sentence in one line.',
+      { projectDir: '/dummy/project', compact: true },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.modelRouting).toMatchObject({
+      providerId: dynamic.id,
+      registryRevision: 'registry-executor-e2e',
+      requestedTier: 'light',
+      selectedModelId: 'light-x',
+      selectedTier: 'light',
+    });
+    const execution = mockExeca.mock.calls.find(([command]) => command === 'model-cli');
+    expect(execution).toBeDefined();
+    expect(execution?.[1]).toEqual(expect.arrayContaining(['--model', 'light-x']));
   });
 
   afterEach(() => {

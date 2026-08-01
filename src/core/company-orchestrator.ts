@@ -27,6 +27,7 @@ import { hasResponseContract } from './response-contract.js';
 import { listActivelyRateLimited } from './rate-limit-state.js';
 import { ProviderAssignmentRuntime } from './provider-assignment-runtime.js';
 import type { ProviderAssignmentSnapshot } from './provider-assignment.js';
+import type { ModelRoutingReceipt } from './model-router.js';
 import {
   buildProtocolSafeHandoff,
   parseCollaborationProtocol,
@@ -111,6 +112,7 @@ export interface RunStage {
   policyFingerprint?: string;
   providerConfigFingerprint?: string;
   availabilityFingerprint?: string;
+  modelRoutingReceipt?: ModelRoutingReceipt;
 }
 
 export interface CompanyRun {
@@ -130,6 +132,7 @@ export interface CompanyRun {
   updatedAt: string;
   decomposer: string | null;   // 분해 담당 LLM(실제 사용된 agent)
   decomposeSource: 'llm' | 'template' | null;
+  decompositionModelRoutingReceipt?: ModelRoutingReceipt;
   workflowRunId?: string | null;
   stages: RunStage[];
   summary?: {
@@ -1218,6 +1221,7 @@ async function reconcilePersistedStages(app: FastifyInstance, run: CompanyRun): 
     const stage = run.stages[index];
     if (!stage.taskId || !['running', 'pending'].includes(stage.status)) continue;
     const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS, run);
+    if (result.modelRoutingReceipt) stage.modelRoutingReceipt = result.modelRoutingReceipt;
     if (result.status === 'timed_out') {
       await abortTimedOutCompanyTask(app, run.id, stage.taskId);
     }
@@ -1567,6 +1571,13 @@ async function completeCompanyWorkflowQuality(
         agentManager.executeTask(provider, prompt, {
           projectDir,
           timeoutMs: DECOMPOSE_TIMEOUT_MS,
+          routingMetadata: {
+            complexity: 8,
+            depth: 8,
+            modelCapabilities: stage === 'review' ? ['review'] : ['testing'],
+            verificationRequired: true,
+            riskLevel: stage === 'review' ? 'high' : 'medium',
+          },
         }),
         DECOMPOSE_TIMEOUT_MS + 5000,
       );
@@ -1580,6 +1591,7 @@ async function completeCompanyWorkflowQuality(
         evidence: {
           provider,
           output: result.output.slice(0, 20_000),
+          modelRouting: result.modelRouting,
         },
       });
     } catch (error) {
@@ -1632,9 +1644,22 @@ async function driveRunBody(
       try {
         run.decomposer = cand; touch(run);
         const res = await withHardTimeout(
-          agentManager.executeTask(cand, prompt, { projectDir, timeoutMs: DECOMPOSE_TIMEOUT_MS }),
+          agentManager.executeTask(cand, prompt, {
+            projectDir,
+            timeoutMs: DECOMPOSE_TIMEOUT_MS,
+            routingMetadata: {
+              complexity: 8,
+              depth: 9,
+              modelCapabilities: ['architecture'],
+              riskLevel: 'high',
+            },
+          }),
           DECOMPOSE_TIMEOUT_MS + 5000,
         );
+        if (res.modelRouting) {
+          run.decompositionModelRoutingReceipt = res.modelRouting;
+          touch(run);
+        }
         if (res && res.success && res.output) {
           const parsed = parseDecomposition(res.output, teams);
           if (parsed) { decomposition = parsed; run.decomposer = cand; break; }
@@ -1657,6 +1682,7 @@ async function driveRunBody(
         source: run.decomposeSource,
         decomposer: run.decomposer,
         decomposition: Object.fromEntries(run.stages.map(stage => [stage.teamSlug, stage.subtask])),
+        modelRouting: run.decompositionModelRoutingReceipt,
       },
     });
     touch(run);
@@ -2071,6 +2097,7 @@ async function runStageWithFailover(
     }
     stage.status = 'running'; touch(run);
     const result = await waitForTask(stage.taskId, PIPELINE_STAGE_TIMEOUT_MS, run);
+    if (result.modelRoutingReceipt) stage.modelRoutingReceipt = result.modelRoutingReceipt;
     if (result.status === 'timed_out') {
       await abortTimedOutCompanyTask(app, run.id, stage.taskId);
     }
@@ -2137,6 +2164,8 @@ export async function dispatchStage(
   if (isCompanyRunCancelled(run) || isCompanyRunBlocked(run)) return false;
   try {
     const workflowStage = classifyCompanyWorkflowStage(stage);
+    const taskType = smartRouter.inferTaskType(stage.subtask ?? run.goal);
+    const complexity = smartRouter.analyzeComplexity(stage.subtask ?? run.goal);
     const prompt = [
       stage.subtask ?? '',
       '',
@@ -2183,6 +2212,12 @@ export async function dispatchStage(
           workflowStage,
           workflowRequired: true,
           qualityRetryOwner: 'company-orchestrator',
+          complexity,
+          depth: workflowStage === 'design' || workflowStage === 'review' ? 8 : 4,
+          modelCapabilities: requiredCapabilitiesForCompanyTask(taskType),
+          requiresTools: ['code', 'verify', 'research'].includes(taskType),
+          verificationRequired: workflowStage === 'review' || workflowStage === 'verification',
+          ...(workflowStage === 'review' ? { riskLevel: 'high' } : {}),
         },
       },
     });
@@ -2270,6 +2305,7 @@ async function waitForTask(taskId: string, timeoutMs: number, run?: CompanyRun):
   status: string;
   response: string | null;
   requireProtocolPrefix: boolean;
+  modelRoutingReceipt?: ModelRoutingReceipt;
 }> {
   const db = getDb();
   const deadline = Date.now() + timeoutMs;
@@ -2277,15 +2313,27 @@ async function waitForTask(taskId: string, timeoutMs: number, run?: CompanyRun):
     if (run && isCompanyRunCancelled(run)) {
       return { status: 'cancelled', response: null, requireProtocolPrefix: false };
     }
-    const row = db.prepare(`SELECT status, response, prompt FROM tasks WHERE id=?`).get(taskId) as
-      { status: string | null; response: string | null; prompt: string | null } | undefined;
+    const row = db.prepare(`SELECT status, response, prompt, metadata_json FROM tasks WHERE id=?`).get(taskId) as
+      { status: string | null; response: string | null; prompt: string | null; metadata_json: string | null } | undefined;
     const status = row?.status ?? 'failed';
     if (!row) return { status: 'failed', response: null, requireProtocolPrefix: false };
     if (TERMINAL.has(status)) {
+      let modelRoutingReceipt: ModelRoutingReceipt | undefined;
+      try {
+        const metadata = row.metadata_json ? JSON.parse(row.metadata_json) as Record<string, unknown> : {};
+        const receipt = metadata.modelRouting as Partial<ModelRoutingReceipt> | undefined;
+        if (
+          receipt
+          && typeof receipt.registryRevision === 'string'
+          && typeof receipt.providerId === 'string'
+          && typeof receipt.decisionFingerprint === 'string'
+        ) modelRoutingReceipt = receipt as ModelRoutingReceipt;
+      } catch { /* malformed legacy metadata has no model receipt */ }
       return {
         status,
         response: row.response ?? null,
         requireProtocolPrefix: hasResponseContract(row.prompt),
+        ...(modelRoutingReceipt ? { modelRoutingReceipt } : {}),
       };
     }
     if (Date.now() >= deadline) {
@@ -2336,6 +2384,7 @@ async function collectStage(app: FastifyInstance, stage: RunStage, run: CompanyR
   if (isCompanyRunBlocked(run)) return;
   stage.status = 'running'; touch(run);
   const result = await waitForTask(stage.taskId, PARALLEL_STAGE_TIMEOUT_MS, run);
+  if (result.modelRoutingReceipt) stage.modelRoutingReceipt = result.modelRoutingReceipt;
   if (result.status === 'timed_out') {
     await abortTimedOutCompanyTask(app, run.id, stage.taskId);
   }

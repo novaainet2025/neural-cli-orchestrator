@@ -23,6 +23,12 @@ export interface ProviderRegistryManifest {
     default: boolean;
     aliases: string[];
     capabilities: string[];
+    tier: string;
+    reasoningStrength: number;
+    costClass: string;
+    latencyClass: string;
+    contextWindow: number | null;
+    availability: string;
   }>;
   endpoint?: string;
   auth?: { kind: 'environment-reference'; ref: string };
@@ -148,6 +154,12 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
       default: model.default === true,
       aliases: sortedUnique(model.aliases),
       capabilities: sortedUnique(model.capabilities),
+      tier: model.tier ?? 'balanced',
+      reasoningStrength: model.reasoningStrength ?? 3,
+      costClass: model.costClass ?? 'standard',
+      latencyClass: model.latencyClass ?? 'standard',
+      contextWindow: model.contextWindow ?? null,
+      availability: model.enabled === false ? 'unavailable' : model.availability ?? 'available',
     });
   }
 
@@ -161,7 +173,13 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
       enabled: true,
       default: true,
       aliases: [],
-      capabilities: [],
+      capabilities: sortedUnique(provider.capabilities),
+      tier: 'balanced',
+      reasoningStrength: 3,
+      costClass: 'standard',
+      latencyClass: 'standard',
+      contextWindow: null,
+      availability: 'available',
     });
   }
 
@@ -176,7 +194,13 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
       enabled: true,
       default: false,
       aliases: [],
-      capabilities: [],
+      capabilities: sortedUnique(provider.capabilities),
+      tier: 'balanced',
+      reasoningStrength: 3,
+      costClass: provider.cost === 'free' ? 'minimal' : 'standard',
+      latencyClass: 'standard',
+      contextWindow: null,
+      availability: 'available',
     });
   }
 

@@ -32,6 +32,15 @@ export type ProviderAdapter = typeof PROVIDER_ADAPTERS[number];
 export type ProviderPromptTransport = 'argv' | 'stdin';
 export type ProviderTier = 'brain' | 'worker';
 export type ProviderDepartment = 'management' | 'information' | 'execution' | 'quality';
+export const MODEL_TIERS = ['light', 'balanced', 'heavy', 'frontier'] as const;
+export const MODEL_COST_CLASSES = ['minimal', 'standard', 'premium', 'unbounded'] as const;
+export const MODEL_LATENCY_CLASSES = ['instant', 'fast', 'standard', 'slow'] as const;
+export const MODEL_AVAILABILITY = ['available', 'degraded', 'unavailable'] as const;
+
+export type ModelTier = typeof MODEL_TIERS[number];
+export type ModelCostClass = typeof MODEL_COST_CLASSES[number];
+export type ModelLatencyClass = typeof MODEL_LATENCY_CLASSES[number];
+export type ModelAvailability = typeof MODEL_AVAILABILITY[number];
 export type CatalogTaskType =
   | 'design' | 'code' | 'review' | 'verify' | 'research' | 'ui' | 'media' | 'general';
 
@@ -41,6 +50,16 @@ export interface ProviderModelConfig {
   default?: boolean;
   aliases?: string[];
   capabilities?: string[];
+  /** Task-complexity tier. Missing values infer to balanced without inspecting model names. */
+  tier?: ModelTier;
+  /** Provider-neutral reasoning scale (1=lightweight, 5=frontier). */
+  reasoningStrength?: number;
+  costClass?: ModelCostClass;
+  latencyClass?: ModelLatencyClass;
+  /** Maximum supported context tokens; null means the provider did not declare it. */
+  contextWindow?: number | null;
+  /** Runtime catalog availability, independently overridable per PC. */
+  availability?: ModelAvailability;
 }
 
 export interface ProviderRuntimeConfig {
@@ -117,6 +136,21 @@ const DEPARTMENT_SET = new Set<string>(['management', 'information', 'execution'
 const TASK_TYPE_SET = new Set<string>([
   'design', 'code', 'review', 'verify', 'research', 'ui', 'media', 'general',
 ]);
+const MODEL_TIER_SET = new Set<string>(MODEL_TIERS);
+const MODEL_COST_CLASS_SET = new Set<string>(MODEL_COST_CLASSES);
+const MODEL_LATENCY_CLASS_SET = new Set<string>(MODEL_LATENCY_CLASSES);
+const MODEL_AVAILABILITY_SET = new Set<string>(MODEL_AVAILABILITY);
+
+const MODEL_TIER_DEFAULTS: Record<ModelTier, {
+  reasoningStrength: number;
+  costClass: ModelCostClass;
+  latencyClass: ModelLatencyClass;
+}> = {
+  light: { reasoningStrength: 1, costClass: 'minimal', latencyClass: 'fast' },
+  balanced: { reasoningStrength: 3, costClass: 'standard', latencyClass: 'standard' },
+  heavy: { reasoningStrength: 4, costClass: 'premium', latencyClass: 'slow' },
+  frontier: { reasoningStrength: 5, costClass: 'unbounded', latencyClass: 'slow' },
+};
 
 const ROLE_CAPABILITIES: Record<string, string[]> = {
   commander: ['decision', 'delegation', 'architecture', 'review', 'security', 'code'],
@@ -378,6 +412,16 @@ function validateDeclarationShape(raw: Record<string, unknown>): void {
     }
     for (const [index, model] of raw.models.entries()) {
       assertRecord(model, `${label}.models[${index}]`);
+      const allowedFields = new Set([
+        'id', 'enabled', 'default', 'aliases', 'capabilities', 'tier', 'reasoningStrength',
+        'costClass', 'latencyClass', 'contextWindow', 'availability',
+      ]);
+      const unknownFields = Object.keys(model).filter(field => !allowedFields.has(field));
+      if (unknownFields.length > 0) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}] has unknown field(s): ${unknownFields.join(', ')}`,
+        );
+      }
       if (typeof model.id !== 'string' || !model.id.trim()) {
         throw new Error(`[provider-catalog] ${label}.models[${index}].id is required`);
       }
@@ -390,6 +434,52 @@ function validateDeclarationShape(raw: Record<string, unknown>): void {
         if (model[field] !== undefined) {
           assertStringArray(model[field], `${label}.models[${index}].${field}`);
         }
+      }
+      if (model.tier !== undefined && (
+        typeof model.tier !== 'string' || !MODEL_TIER_SET.has(model.tier)
+      )) {
+        throw new Error(`[provider-catalog] ${label}.models[${index}].tier is unknown: ${String(model.tier)}`);
+      }
+      if (model.reasoningStrength !== undefined && (
+        typeof model.reasoningStrength !== 'number'
+        || !Number.isInteger(model.reasoningStrength)
+        || model.reasoningStrength < 1
+        || model.reasoningStrength > 5
+      )) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}].reasoningStrength must be an integer from 1 to 5`,
+        );
+      }
+      if (model.costClass !== undefined && (
+        typeof model.costClass !== 'string' || !MODEL_COST_CLASS_SET.has(model.costClass)
+      )) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}].costClass is unknown: ${String(model.costClass)}`,
+        );
+      }
+      if (model.latencyClass !== undefined && (
+        typeof model.latencyClass !== 'string' || !MODEL_LATENCY_CLASS_SET.has(model.latencyClass)
+      )) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}].latencyClass is unknown: ${String(model.latencyClass)}`,
+        );
+      }
+      if (model.contextWindow !== undefined && model.contextWindow !== null && (
+        typeof model.contextWindow !== 'number'
+        || !Number.isSafeInteger(model.contextWindow)
+        || model.contextWindow < 1
+      )) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}].contextWindow must be a positive integer or null`,
+        );
+      }
+      if (model.availability !== undefined && (
+        typeof model.availability !== 'string'
+        || !MODEL_AVAILABILITY_SET.has(model.availability)
+      )) {
+        throw new Error(
+          `[provider-catalog] ${label}.models[${index}].availability is unknown: ${String(model.availability)}`,
+        );
       }
     }
   }
@@ -495,7 +585,10 @@ function inferDepartments(role: string, capabilities: readonly string[]): Provid
   return departments.length > 0 ? departments : ['execution'];
 }
 
-function normalizeModels(provider: ProviderDeclaration): ProviderModelConfig[] | undefined {
+function normalizeModels(
+  provider: ProviderDeclaration,
+  providerCapabilities: readonly string[],
+): ProviderModelConfig[] | undefined {
   if (provider.models === undefined) return undefined;
   const seenTokens = new Set<string>();
   let defaults = 0;
@@ -515,15 +608,27 @@ function normalizeModels(provider: ProviderDeclaration): ProviderModelConfig[] |
     if (model.default && model.enabled === false) {
       throw new Error(`[provider-catalog] ${provider.id}.${id} default model must be enabled`);
     }
+    if (model.default && model.availability === 'unavailable') {
+      throw new Error(`[provider-catalog] ${provider.id}.${id} default model must be available`);
+    }
     if (model.default) defaults += 1;
+    const tier = model.tier ?? 'balanced';
+    const tierDefaults = MODEL_TIER_DEFAULTS[tier];
+    const enabled = model.enabled !== false;
     return {
       id,
-      enabled: model.enabled !== false,
+      enabled,
       default: model.default === true,
       aliases,
       capabilities: model.capabilities
         ? uniqueStrings(model.capabilities, `${provider.id}.${id}.capability`)
-        : undefined,
+        : [...providerCapabilities],
+      tier,
+      reasoningStrength: model.reasoningStrength ?? tierDefaults.reasoningStrength,
+      costClass: model.costClass ?? tierDefaults.costClass,
+      latencyClass: model.latencyClass ?? tierDefaults.latencyClass,
+      contextWindow: model.contextWindow ?? null,
+      availability: enabled ? model.availability ?? 'available' : 'unavailable',
     };
   });
   if (defaults > 1) {
@@ -531,9 +636,10 @@ function normalizeModels(provider: ProviderDeclaration): ProviderModelConfig[] |
   }
   if (defaults === 0) {
     const requested = provider.model?.trim().toLowerCase();
-    const fallback = normalized.find(model => model.enabled !== false && requested
+    const fallback = normalized.find(model => model.enabled !== false
+      && model.availability !== 'unavailable' && requested
       && (model.id.toLowerCase() === requested || model.aliases?.includes(requested)))
-      ?? normalized.find(model => model.enabled !== false);
+      ?? normalized.find(model => model.enabled !== false && model.availability !== 'unavailable');
     if (fallback) fallback.default = true;
   }
   return normalized;
@@ -545,7 +651,9 @@ function resolveDefaultModel(
 ): string | null {
   const requested = provider.model?.trim() || null;
   if (models === undefined) return requested;
-  const enabled = models.filter(model => model.enabled !== false);
+  const enabled = models.filter(
+    model => model.enabled !== false && model.availability !== 'unavailable',
+  );
   if (enabled.length === 0 && provider.enabled !== false) {
     throw new Error(`[provider-catalog] ${provider.id} is enabled but has no enabled model`);
   }
@@ -660,7 +768,7 @@ export function normalizeProviderDeclaration(provider: ProviderDeclaration): Pro
   if (cost !== 'free' && cost !== 'paid') {
     throw new Error(`[provider-catalog] ${id}.cost is unknown: ${String(cost)}`);
   }
-  const models = normalizeModels(provider);
+  const models = normalizeModels(provider, capabilities);
   const model = resolveDefaultModel(provider, models);
   const roleKey = normalizedRole(role);
   const score = provider.score ?? ROLE_SCORES[roleKey] ?? ROLE_SCORES.generalist;
@@ -743,6 +851,7 @@ export function resolveProviderModel(
   const normalized = requested.toLowerCase();
   const match = provider.models.find(model =>
     model.enabled !== false
+    && model.availability !== 'unavailable'
     && (model.id.toLowerCase() === normalized || model.aliases?.includes(normalized)));
   if (!match) {
     throw new Error(`unknown_model: ${provider.id}/${requested}`);
