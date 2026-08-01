@@ -5,7 +5,8 @@
     "providers에는 이 PC에만 설치된 provider를 추가할 수 있습니다.",
     "overrides.<provider-id>에 부분 객체를 넣으면 해당 필드만 덮어씁니다.",
     "models 배열은 이 PC에서 실제 사용 가능한 모델의 전체 목록입니다. 추가·삭제·availability 변경 시 Registry revision과 자동 모델 라우팅에 즉시 반영됩니다.",
-    "allowedProviderIds/deniedProviderIds는 이 PC의 최종 실행 허용 집합을 제한합니다."
+    "allowedProviderIds/deniedProviderIds는 이 PC의 최종 실행 허용 집합을 제한합니다.",
+    "PM2 전환 전 activation 디렉터리에서 node dist/cli/provider-preflight.js를 실행해 이 로컬 오버레이를 부팅과 같은 규칙으로 검증하세요."
   ],
   "providers": [
     {
