@@ -5,6 +5,7 @@
 
 import type { FastifyInstance } from 'fastify';
 import { randomUUID } from 'node:crypto';
+import { appendAudit } from '../../audit/merkleLog.js';
 import { getDb } from '../../storage/database.js';
 
 export async function registerDiplomacyRoutes(app: FastifyInstance): Promise<void> {
@@ -24,8 +25,15 @@ export async function registerDiplomacyRoutes(app: FastifyInstance): Promise<voi
     }
     const now = Math.floor(Date.now() / 1000);
     try {
-      db.prepare(`INSERT INTO nova_diplomatic_nations (nation_id, name, did_endpoint, recognized_at, recognition_vote_id, citizen_count, trade_fee_pct, treaty_active, last_rate_adjust) VALUES (?, ?, ?, ?, ?, 0, 0.025, 0, ?)`).run(body.nationId, body.name, body.didEndpoint, now, body.recognitionVoteId ?? null, now);
-      db.prepare(`INSERT INTO nova_audit_log (entry_id, action, actor_did, target_id, details, created_at) VALUES (?, 'diplomacy_nation_register', 'system', ?, ?, ?)`).run(randomUUID(), body.nationId, JSON.stringify({ name: body.name }), now);
+      db.transaction(() => {
+        db.prepare(`INSERT INTO nova_diplomatic_nations (nation_id, name, did_endpoint, recognized_at, recognition_vote_id, citizen_count, trade_fee_pct, treaty_active, last_rate_adjust) VALUES (?, ?, ?, ?, ?, 0, 0.025, 0, ?)`).run(body.nationId, body.name, body.didEndpoint, now, body.recognitionVoteId ?? null, now);
+        appendAudit({
+          actor: 'SYSTEM',
+          action: 'diplomacy_nation_register',
+          target: body.nationId,
+          metadata: { name: body.name },
+        });
+      })();
       const nation = db.prepare('SELECT * FROM nova_diplomatic_nations WHERE nation_id = ?').get(body.nationId);
       return reply.code(201).send(nation);
     } catch (err) {
@@ -52,11 +60,18 @@ export async function registerDiplomacyRoutes(app: FastifyInstance): Promise<voi
     const now = Math.floor(Date.now() / 1000);
     const treatyId = randomUUID();
     try {
-      db.prepare(`INSERT INTO nova_diplomatic_treaties (treaty_id, nation_id, treaty_type, terms, signed_at, expires_at, signature_a, signature_b) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(treatyId, body.nationId, body.treatyType, body.terms ?? '{}', now, body.expiresAt ?? null, body.signatureA, body.signatureB);
-      if (body.treatyType === 'trade' || body.treatyType === 'comprehensive') {
-        db.prepare(`UPDATE nova_diplomatic_nations SET trade_fee_pct = 0, treaty_active = 1 WHERE nation_id = ?`).run(body.nationId);
-      }
-      db.prepare(`INSERT INTO nova_audit_log (entry_id, action, actor_did, target_id, details, created_at) VALUES (?, 'diplomacy_treaty_signed', 'system', ?, ?, ?)`).run(randomUUID(), treatyId, JSON.stringify({ nationId: body.nationId, type: body.treatyType }), now);
+      db.transaction(() => {
+        db.prepare(`INSERT INTO nova_diplomatic_treaties (treaty_id, nation_id, treaty_type, terms, signed_at, expires_at, signature_a, signature_b) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(treatyId, body.nationId, body.treatyType, body.terms ?? '{}', now, body.expiresAt ?? null, body.signatureA, body.signatureB);
+        if (body.treatyType === 'trade' || body.treatyType === 'comprehensive') {
+          db.prepare(`UPDATE nova_diplomatic_nations SET trade_fee_pct = 0, treaty_active = 1 WHERE nation_id = ?`).run(body.nationId);
+        }
+        appendAudit({
+          actor: 'SYSTEM',
+          action: 'diplomacy_treaty_signed',
+          target: treatyId,
+          metadata: { nationId: body.nationId, type: body.treatyType },
+        });
+      })();
       return reply.code(201).send({ treatyId, nationId: body.nationId, treatyType: body.treatyType });
     } catch (err) { return reply.code(400).send({ error: (err as Error).message }); }
   });
@@ -67,12 +82,20 @@ export async function registerDiplomacyRoutes(app: FastifyInstance): Promise<voi
     if (!body?.fromDid || !body?.toDid || !body?.msgType || !body?.content || !body?.signature) {
       return reply.code(400).send({ error: 'Required: fromDid, toDid, msgType, content, signature' });
     }
+    const { fromDid, toDid, msgType, content, signature } = body;
     const now = Math.floor(Date.now() / 1000);
     const msgId = randomUUID();
     try {
-      db.prepare(`INSERT INTO nova_diplomatic_messages (msg_id, from_did, to_did, msg_type, content, signature, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(msgId, body.fromDid, body.toDid, body.msgType, body.content, body.signature, now);
-      db.prepare(`INSERT INTO nova_audit_log (entry_id, action, actor_did, target_id, details, created_at) VALUES (?, 'diplomacy_message_sent', ?, ?, ?, ?)`).run(randomUUID(), body.fromDid, msgId, JSON.stringify({ toDid: body.toDid, msgType: body.msgType }), now);
-      return reply.code(201).send({ msgId, fromDid: body.fromDid, toDid: body.toDid, sentAt: now });
+      db.transaction(() => {
+        db.prepare(`INSERT INTO nova_diplomatic_messages (msg_id, from_did, to_did, msg_type, content, signature, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(msgId, fromDid, toDid, msgType, content, signature, now);
+        appendAudit({
+          actor: fromDid,
+          action: 'diplomacy_message_sent',
+          target: msgId,
+          metadata: { toDid, msgType },
+        });
+      })();
+      return reply.code(201).send({ msgId, fromDid, toDid, sentAt: now });
     } catch (err) { return reply.code(400).send({ error: (err as Error).message }); }
   });
 

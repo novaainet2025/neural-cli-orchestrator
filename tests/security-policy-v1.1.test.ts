@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sendNVC } from '../src/economy/transactionService.js';
 import { createWallet, getTotalSupply } from '../src/economy/walletService.js';
-import { getDb } from '../src/storage/database.js';
+import { closeDb, getDb, runMigrations } from '../src/storage/database.js';
+import { appendAudit, verifyChainIntegrity } from '../src/audit/merkleLog.js';
 import { 
   getThreatRestriction, 
   evaluateThreatLevel, 
@@ -10,22 +11,27 @@ import {
   liftEmergencyStop,
   ThreatLevel
 } from '../src/audit/emergencyService.js';
-import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 
 describe('Security Policy v1.1 Implementation', () => {
   const alice = 'did:nova:11111111111111111111111111111111' as any;
   const bob = 'did:nova:22222222222222222222222222222222' as any;
   const govt = 'did:nova:0000000000000000government00000000' as any;
+  let originalDatabasePath: string | undefined;
+  let testDirectory: string;
+  let testDatabasePath: string;
 
   beforeAll(() => {
+    closeDb();
+    originalDatabasePath = process.env.DATABASE_PATH;
+    testDirectory = mkdtempSync(join(tmpdir(), 'nco-security-policy-'));
+    testDatabasePath = join(testDirectory, 'security-policy.db');
+    process.env.DATABASE_PATH = testDatabasePath;
+    runMigrations();
+
     const db = getDb();
-    db.prepare('DELETE FROM nova_transactions').run();
-    db.prepare('DELETE FROM nova_wallets').run();
-    db.prepare('DELETE FROM nova_blacklist').run();
-    db.prepare('DELETE FROM nova_emergency_stops').run();
-    db.prepare('DELETE FROM nova_threat_restrictions').run();
-    db.prepare('DELETE FROM nova_audit_log').run();
-    db.prepare('DELETE FROM nova_citizens').run();
 
     // Setup citizens
     db.prepare("INSERT INTO nova_citizens (did, public_key, status) VALUES (?, 'pk1', 'active')").run(alice);
@@ -34,6 +40,18 @@ describe('Security Policy v1.1 Implementation', () => {
 
     createWallet(alice);
     createWallet(bob);
+  });
+
+  afterAll(() => {
+    closeDb();
+    if (originalDatabasePath === undefined) delete process.env.DATABASE_PATH;
+    else process.env.DATABASE_PATH = originalDatabasePath;
+    rmSync(testDirectory, { recursive: true, force: true });
+  });
+
+  it('0. Uses a dedicated temporary SQLite database', () => {
+    expect(resolve(getDb().name)).toBe(resolve(testDatabasePath));
+    expect(resolve(testDatabasePath).startsWith(resolve(tmpdir()))).toBe(true);
   });
 
   it('1. Double Spending Detection - Nonce Reuse', () => {
@@ -96,11 +114,14 @@ describe('Security Policy v1.1 Implementation', () => {
     // Simulate 2 warnings (Severity warn)
     const now = Math.floor(Date.now() / 1000);
     for (let i = 0; i < 2; i++) {
-      db.prepare(`
-        INSERT INTO nova_audit_log (id, timestamp, actor, action, severity, hash, prev_hash)
-        VALUES (?, ?, ?, ?, 'warn', 'hash', 'prev')
-      `).run(randomUUID(), now, charlie, 'policy_violation');
+      appendAudit({
+        actor: charlie,
+        action: 'policy_violation',
+        metadata: { fixture: true, sequence: i, timestamp: now },
+        severity: 'warn',
+      });
     }
+    expect(verifyChainIntegrity().valid).toBe(true);
 
     // Evaluate should escalate to Level 2
     const level = evaluateThreatLevel(charlie, 'minor_event');
@@ -114,11 +135,14 @@ describe('Security Policy v1.1 Implementation', () => {
 
     // Simulate 3 more warnings (Total 5)
     for (let i = 0; i < 3; i++) {
-      db.prepare(`
-        INSERT INTO nova_audit_log (id, timestamp, actor, action, severity, hash, prev_hash)
-        VALUES (?, ?, ?, ?, 'warn', 'hash', 'prev')
-      `).run(randomUUID(), now, charlie, 'policy_violation');
+      appendAudit({
+        actor: charlie,
+        action: 'policy_violation',
+        metadata: { fixture: true, sequence: i + 2, timestamp: now },
+        severity: 'warn',
+      });
     }
+    expect(verifyChainIntegrity().valid).toBe(true);
 
     // Evaluate should escalate to Level 3
     const finalLevel = evaluateThreatLevel(charlie, 'minor_event');

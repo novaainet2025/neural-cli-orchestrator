@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { readFileSync, readdirSync, existsSync, mkdirSync } from 'fs';
 import { resolve, dirname } from 'path';
-import { env } from '../utils/config.js';
+import { env, topology } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('database');
@@ -10,12 +10,26 @@ const WORKFLOW_SCHEMA_REPAIR_MIGRATION = '096_repair_explicit_workflow_schema.sq
 
 let db: Database.Database | null = null;
 
+function assertTestDatabaseIsolation(databasePath: string): void {
+  if (process.env.VITEST !== 'true') return;
+
+  const productionPath = resolve(env.ROOT, topology.paths.database);
+  if (resolve(databasePath) === productionPath) {
+    throw new Error(
+      `[database] Refusing to open the production database during Vitest: ${productionPath}`,
+    );
+  }
+}
+
 export function getDb(): Database.Database {
   if (!db) {
-    const dbDir = dirname(env.DATABASE_PATH);
+    const databasePath = env.DATABASE_PATH;
+    assertTestDatabaseIsolation(databasePath);
+
+    const dbDir = dirname(databasePath);
     if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
 
-    db = new Database(env.DATABASE_PATH);
+    db = new Database(databasePath);
     db.pragma('journal_mode = WAL');
     db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
@@ -38,7 +52,7 @@ export function getDb(): Database.Database {
     db.pragma(`mmap_size = ${Math.max(0, Math.floor(mmapBytes))}`);
 
     log.info({
-      path: env.DATABASE_PATH,
+      path: databasePath,
       cacheKib,
       mmapBytes,
     }, 'SQLite connected (WAL mode, tuned cache/mmap)');
