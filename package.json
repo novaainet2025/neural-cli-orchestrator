@@ -20,6 +20,7 @@
     "provider:list": "tsx scripts/provider.ts list",
     "provider:add": "tsx scripts/provider.ts add",
     "provider:remove": "tsx scripts/provider.ts remove",
+    "audit:begin-epoch": "tsx src/cli/audit-epoch.ts",
     "journal:sync": "tsx scripts/run-with-work-event.ts --event-type journal:sync -- tsx scripts/nco-work-journal.ts",
     "journal:record": "tsx scripts/record-work-event.ts",
     "pm2:start": "pm2 start ecosystem.config.cjs",
