@@ -50,6 +50,10 @@ describe('ProviderAssignmentRuntime', () => {
       resolve(process.cwd(), 'db/migrations/112_provider_assignment_policies.sql'),
       'utf8',
     ));
+    database.exec(readFileSync(
+      resolve(process.cwd(), 'db/migrations/124_provider_assignment_registry_revision.sql'),
+      'utf8',
+    ));
     sequence = 0;
   });
 
@@ -58,8 +62,13 @@ describe('ProviderAssignmentRuntime', () => {
   function runtime(providers: ProviderConfig[], enabledIds: string[]): ProviderAssignmentRuntime {
     return new ProviderAssignmentRuntime({
       database,
-      providers: () => providers,
-      enabledProviderIds: () => enabledIds,
+      registryView: () => ({
+        revision: `registry-${enabledIds.join('-')}`,
+        providers: providers.map((provider) => ({
+          ...provider,
+          enabled: enabledIds.includes(provider.id),
+        })),
+      }),
       circuitAvailability: () => ({ available: true, circuitState: 'closed' }),
       now: () => new Date('2026-08-01T00:00:00.000Z'),
       createAssignmentId: () => `assignment-${++sequence}`,
@@ -129,5 +138,95 @@ describe('ProviderAssignmentRuntime', () => {
 
     expect(result.status).toBe('unassigned');
     expect(result.candidates[0]?.reasons).toContain('capacity_full');
+  });
+
+  it('does not count a plain pending backlog item as leased capacity', () => {
+    const provider = { ...config('codex', 'testing'), concurrency: 1 };
+    database.prepare(`
+      INSERT INTO tasks(id, assigned_to, status) VALUES ('task-pending', 'codex', 'pending')
+    `).run();
+    const service = runtime([provider], ['codex']);
+
+    const result = service.resolveAssignment({
+      scopeType: 'team',
+      scopeId: 'team-1',
+      refresh: true,
+      taskRequiredCapabilities: ['testing'],
+    });
+
+    expect(result.status).toBe('assigned');
+    expect(result.candidates[0]?.scoreComponents.capacityRatio).toBe(1);
+    expect(result.candidates[0]?.reasons).not.toContain('capacity_full');
+  });
+
+  it('keeps organization decomposer capabilities out of team execution gates', () => {
+    const service = runtime([config('validator', 'testing')], ['validator']);
+    service.upsertPolicy('organization', 'org-1', {
+      requiredCapabilities: ['architecture'],
+      preferLocal: true,
+    });
+    service.upsertPolicy('team', 'team-1', { requiredCapabilities: ['testing'] });
+
+    const result = service.resolveAssignment({
+      scopeType: 'team',
+      scopeId: 'team-1',
+      refresh: true,
+      taskRequiredCapabilities: ['testing'],
+    });
+
+    expect(result.status).toBe('assigned');
+    expect(result.providerIds).toEqual(['validator']);
+    expect(result.candidates[0]?.reasons).not.toContain('missing_capabilities:architecture');
+    expect(service.getEffectivePolicy('team', 'team-1').preferLocal).toBe(true);
+  });
+
+  it('reads one injected registry view and persists its revision receipt', () => {
+    let reads = 0;
+    const service = new ProviderAssignmentRuntime({
+      database,
+      registryView: () => {
+        reads += 1;
+        return { revision: 'registry-42', providers: [config('codex', 'code')] };
+      },
+      circuitAvailability: () => ({ available: true, circuitState: 'closed' }),
+      now: () => new Date('2026-08-01T00:00:00.000Z'),
+      createAssignmentId: () => 'assignment-registry-42',
+    });
+
+    const result = service.resolveAssignment({
+      scopeType: 'organization',
+      scopeId: 'org-1',
+      refresh: true,
+      taskRequiredCapabilities: ['code'],
+    });
+
+    expect(reads).toBe(1);
+    expect(result.registryRevision).toBe('registry-42');
+    expect(service.getSnapshot(result.assignmentId)?.registryRevision).toBe('registry-42');
+    expect(service.listEvents(result.assignmentId)[0]?.evidence.registryRevision)
+      .toBe('registry-42');
+  });
+
+  it('previews without appending a snapshot or event', () => {
+    const service = runtime([config('codex', 'code')], ['codex']);
+    const request = {
+      scopeType: 'team' as const,
+      scopeId: 'team-1',
+      refresh: true,
+      taskRequiredCapabilities: ['code'],
+    };
+
+    const preview = service.previewAssignment(request);
+    const snapshotCount = database.prepare(
+      'SELECT COUNT(*) AS count FROM provider_assignment_snapshots',
+    ).get() as { count: number };
+    const eventCount = database.prepare(
+      'SELECT COUNT(*) AS count FROM provider_assignment_events',
+    ).get() as { count: number };
+
+    expect(preview.status).toBe('assigned');
+    expect(snapshotCount.count).toBe(0);
+    expect(eventCount.count).toBe(0);
+    expect(service.getSnapshot(preview.assignmentId)).toBeNull();
   });
 });

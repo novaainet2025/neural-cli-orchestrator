@@ -6,6 +6,8 @@ import {
   type ProviderAssignmentCandidateInput,
 } from './provider-assignment.js';
 
+const REGISTRY_REVISION = 'registry-2026-08-01.1';
+
 function provider(
   id: string,
   overrides: Partial<ProviderAssignmentCandidateInput> = {},
@@ -51,6 +53,7 @@ describe('resolveProviderAssignment', () => {
     const snapshot = resolveProviderAssignment({
       scopeType: 'team',
       scopeId: 'qa',
+      registryRevision: REGISTRY_REVISION,
       providers: [
         provider('missing-local-provider', { enabled: false, score: 100 }),
         provider('open-provider', {
@@ -80,6 +83,7 @@ describe('resolveProviderAssignment', () => {
     const input = {
       scopeType: 'organization' as const,
       scopeId: 'acme',
+      registryRevision: REGISTRY_REVISION,
       providers: [provider('zeta'), provider('alpha')],
       systemPolicy: { assignmentSize: 2 },
       now: new Date('2026-08-01T00:00:00.000Z'),
@@ -97,6 +101,7 @@ describe('resolveProviderAssignment', () => {
     const snapshot = resolveProviderAssignment({
       scopeType: 'team',
       scopeId: 'browser-qa',
+      registryRevision: REGISTRY_REVISION,
       providers: [provider('codex', { capabilities: ['code'] })],
       companyPolicy: { minimumCandidates: 1 },
       taskRequiredCapabilities: ['browser'],
@@ -112,6 +117,7 @@ describe('resolveProviderAssignment', () => {
     const base = {
       scopeType: 'organization' as const,
       scopeId: 'acme',
+      registryRevision: REGISTRY_REVISION,
       providers: [provider('codex')],
       now: new Date('2026-08-01T00:00:00.000Z'),
     };
@@ -131,5 +137,30 @@ describe('resolveProviderAssignment', () => {
 
     expect(assignmentSnapshotIsReusable(previous, changed, new Date('2026-08-01T00:01:00.000Z')))
       .toBe(false);
+  });
+
+  it('pins fingerprints and reuse to the registry revision', () => {
+    const base = {
+      scopeType: 'team' as const,
+      scopeId: 'build',
+      providers: [provider('codex')],
+      now: new Date('2026-08-01T00:00:00.000Z'),
+    };
+    const previous = resolveProviderAssignment({ ...base, registryRevision: 'registry-1' });
+    const changed = resolveProviderAssignment({ ...base, registryRevision: 'registry-2' });
+
+    expect(changed.registryRevision).toBe('registry-2');
+    expect(changed.providerConfigFingerprint).not.toBe(previous.providerConfigFingerprint);
+    expect(assignmentSnapshotIsReusable(previous, changed, new Date('2026-08-01T00:01:00.000Z')))
+      .toBe(false);
+  });
+
+  it('rejects an unversioned registry view', () => {
+    expect(() => resolveProviderAssignment({
+      scopeType: 'team',
+      scopeId: 'build',
+      registryRevision: '  ',
+      providers: [provider('codex')],
+    })).toThrow('provider registry revision is required');
   });
 });

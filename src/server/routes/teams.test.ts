@@ -87,6 +87,7 @@ describe('team workflow routes', () => {
       assignmentId: 'assignment-team-route-test',
       scopeType: 'team',
       scopeId: teamId,
+      registryRevision: 'registry-team-route-test',
       status: 'assigned',
       primaryProviderId: 'codex',
       providerIds: ['codex'],

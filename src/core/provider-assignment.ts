@@ -58,6 +58,7 @@ export interface ProviderAssignmentSnapshot {
   assignmentId: string;
   scopeType: ProviderAssignmentScope;
   scopeId: string;
+  registryRevision: string;
   status: 'assigned' | 'unassigned';
   primaryProviderId: string | null;
   providerIds: string[];
@@ -73,6 +74,7 @@ export interface ProviderAssignmentSnapshot {
 export interface ResolveProviderAssignmentInput {
   scopeType: ProviderAssignmentScope;
   scopeId: string;
+  registryRevision: string;
   providers: ProviderAssignmentCandidateInput[];
   systemPolicy?: ProviderAssignmentPolicyOverride;
   companyPolicy?: ProviderAssignmentPolicyOverride | null;
@@ -304,6 +306,10 @@ function availabilityView(provider: ProviderAssignmentCandidateInput): unknown {
 export function resolveProviderAssignment(
   input: ResolveProviderAssignmentInput,
 ): ProviderAssignmentSnapshot {
+  const registryRevision = input.registryRevision.trim();
+  if (!registryRevision) {
+    throw new Error('provider registry revision is required');
+  }
   const policy = mergeProviderAssignmentPolicy(
     input.systemPolicy,
     input.companyPolicy,
@@ -320,11 +326,15 @@ export function resolveProviderAssignment(
   const createdAt = now.toISOString();
   const validUntil = new Date(now.getTime() + policy.ttlSeconds * 1_000).toISOString();
   const policyFingerprint = fingerprint(policy);
-  const providerConfigFingerprint = fingerprint(sortedProviders.map(providerConfigView));
+  const providerConfigFingerprint = fingerprint({
+    registryRevision,
+    providers: sortedProviders.map(providerConfigView),
+  });
   const availabilityFingerprint = fingerprint(sortedProviders.map(availabilityView));
   const assignmentId = input.assignmentId ?? `pas_${fingerprint({
     scopeType: input.scopeType,
     scopeId: input.scopeId,
+    registryRevision,
     policyFingerprint,
     providerConfigFingerprint,
     availabilityFingerprint,
@@ -335,6 +345,7 @@ export function resolveProviderAssignment(
     assignmentId,
     scopeType: input.scopeType,
     scopeId: input.scopeId,
+    registryRevision,
     status: assigned ? 'assigned' : 'unassigned',
     primaryProviderId: selected[0]?.id ?? null,
     providerIds: selected.map((candidate) => candidate.id),
@@ -353,11 +364,12 @@ export function resolveProviderAssignment(
 export function assignmentSnapshotIsReusable(
   snapshot: ProviderAssignmentSnapshot,
   expected: Pick<ProviderAssignmentSnapshot,
-    'policyFingerprint' | 'providerConfigFingerprint' | 'availabilityFingerprint'>,
+    'registryRevision' | 'policyFingerprint' | 'providerConfigFingerprint' | 'availabilityFingerprint'>,
   now = new Date(),
 ): boolean {
   return snapshot.status === 'assigned'
     && Date.parse(snapshot.validUntil) > now.getTime()
+    && snapshot.registryRevision === expected.registryRevision
     && snapshot.policyFingerprint === expected.policyFingerprint
     && snapshot.providerConfigFingerprint === expected.providerConfigFingerprint
     && snapshot.availabilityFingerprint === expected.availabilityFingerprint;

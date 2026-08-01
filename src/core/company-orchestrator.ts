@@ -107,6 +107,7 @@ export interface RunStage {
   blockerEvidence?: string;
   blockerEvidenceTier?: 1;
   providerAssignmentId?: string;
+  registryRevision?: string;
   policyFingerprint?: string;
   providerConfigFingerprint?: string;
   availabilityFingerprint?: string;
@@ -182,6 +183,7 @@ export function requiredCapabilitiesForCompanyTask(taskType: TaskType): string[]
 
 function applyAssignmentReceipt(stage: RunStage, snapshot: ProviderAssignmentSnapshot): void {
   stage.providerAssignmentId = snapshot.assignmentId;
+  stage.registryRevision = snapshot.registryRevision;
   stage.policyFingerprint = snapshot.policyFingerprint;
   stage.providerConfigFingerprint = snapshot.providerConfigFingerprint;
   stage.availabilityFingerprint = snapshot.availabilityFingerprint;
@@ -2171,6 +2173,7 @@ export async function dispatchStage(
           ...(stage.providerAssignmentId
             ? {
                 providerAssignmentId: stage.providerAssignmentId,
+                providerRegistryRevision: stage.registryRevision,
                 providerAssignmentPolicyFingerprint: stage.policyFingerprint,
                 providerConfigFingerprint: stage.providerConfigFingerprint,
                 providerAvailabilityFingerprint: stage.availabilityFingerprint,

@@ -24,6 +24,10 @@ describe('ProviderAssignmentStore', () => {
       resolve(process.cwd(), 'db/migrations/112_provider_assignment_policies.sql'),
       'utf8',
     ));
+    database.exec(readFileSync(
+      resolve(process.cwd(), 'db/migrations/124_provider_assignment_registry_revision.sql'),
+      'utf8',
+    ));
     database.exec(`
       INSERT INTO organizations(id) VALUES ('org-1');
       INSERT INTO teams(id, organization_id) VALUES ('team-1', 'org-1');
@@ -34,7 +38,7 @@ describe('ProviderAssignmentStore', () => {
 
   afterEach(() => database.close());
 
-  it('increments policy versions and resolves organization inheritance', () => {
+  it('increments policy versions without forcing decomposer capabilities onto teams', () => {
     const first = store.upsertPolicy('organization', 'org-1', {
       requiredCapabilities: ['code'],
       preferredRoles: ['Engineer'],
@@ -47,8 +51,10 @@ describe('ProviderAssignmentStore', () => {
 
     expect(first.version).toBe(1);
     expect(second.version).toBe(2);
-    expect(store.getEffectivePolicy('team', 'team-1').requiredCapabilities)
-      .toEqual(['code', 'testing']);
+    expect(store.getEffectivePolicy('organization', 'org-1').requiredCapabilities)
+      .toEqual(['code']);
+    expect(store.getEffectivePolicy('team', 'team-1', {}, ['browser']).requiredCapabilities)
+      .toEqual(['testing', 'browser']);
     expect(store.getEffectivePolicy('team', 'team-1').preferredRoles)
       .toEqual(['Reviewer']);
   });
@@ -57,6 +63,7 @@ describe('ProviderAssignmentStore', () => {
     const snapshot = resolveProviderAssignment({
       scopeType: 'team',
       scopeId: 'team-1',
+      registryRevision: 'registry-1',
       assignmentId: 'assignment-1',
       providers: [{
         id: 'codex',

@@ -1,5 +1,4 @@
 import type Database from 'better-sqlite3';
-import { agentManager } from '../agent/agent-manager.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { getDb } from '../storage/database.js';
 import { loadEnabledProviders, type ProviderConfig } from '../utils/config.js';
@@ -7,6 +6,7 @@ import { createId } from '../utils/id.js';
 import { listActivelyRateLimited } from './rate-limit-state.js';
 import {
   assignmentSnapshotIsReusable,
+  fingerprint,
   resolveProviderAssignment,
   type ProviderAssignmentCandidateInput,
   type ProviderAssignmentPolicy,
@@ -22,17 +22,21 @@ import {
 import type { ResolveAssignmentRequest } from '../server/routes/provider-assignments.js';
 
 const ACTIVE_TASK_STATUSES = [
-  'pending',
   'assigned',
   'running',
   'streaming',
   'reviewing',
 ] as const;
 
+/** Atomic, PC-effective provider registry view used for one assignment decision. */
+export interface ProviderAssignmentRegistryView {
+  revision: string;
+  providers: readonly ProviderConfig[];
+}
+
 export interface ProviderAssignmentRuntimeDependencies {
   database?: Database.Database;
-  providers?: () => ProviderConfig[];
-  enabledProviderIds?: () => string[];
+  registryView?: () => ProviderAssignmentRegistryView;
   circuitAvailability?: (providerId: string) => {
     available: boolean;
     circuitState: 'closed' | 'open' | 'half-open';
@@ -44,8 +48,7 @@ export interface ProviderAssignmentRuntimeDependencies {
 export class ProviderAssignmentRuntime {
   private readonly database: Database.Database;
   private readonly store: ProviderAssignmentStore;
-  private readonly providers: () => ProviderConfig[];
-  private readonly enabledProviderIds: () => string[];
+  private readonly registryView: () => ProviderAssignmentRegistryView;
   private readonly circuitAvailability: NonNullable<
     ProviderAssignmentRuntimeDependencies['circuitAvailability']
   >;
@@ -55,9 +58,7 @@ export class ProviderAssignmentRuntime {
   constructor(dependencies: ProviderAssignmentRuntimeDependencies = {}) {
     this.database = dependencies.database ?? getDb();
     this.store = new ProviderAssignmentStore(this.database);
-    this.providers = dependencies.providers ?? loadEnabledProviders;
-    this.enabledProviderIds = dependencies.enabledProviderIds
-      ?? (() => agentManager.listEnabledIds());
+    this.registryView = dependencies.registryView ?? legacyProviderAssignmentRegistryView;
     this.circuitAvailability = dependencies.circuitAvailability
       ?? ((providerId) => circuitBreakerRegistry.getAvailability(providerId));
     this.now = dependencies.now ?? (() => new Date());
@@ -118,8 +119,9 @@ export class ProviderAssignmentRuntime {
     }
   }
 
-  buildCandidates(): ProviderAssignmentCandidateInput[] {
-    const enabledIds = new Set(this.enabledProviderIds());
+  buildCandidates(
+    registryView: ProviderAssignmentRegistryView = this.readRegistryView(),
+  ): ProviderAssignmentCandidateInput[] {
     let rateLimitReadable = true;
     let limited = new Set<string>();
     try {
@@ -129,7 +131,7 @@ export class ProviderAssignmentRuntime {
     }
     const active = this.activeTaskCounts();
 
-    return this.providers()
+    return registryView.providers
       .map((provider): ProviderAssignmentCandidateInput => {
         let circuitReadable = true;
         let circuitState: ProviderAssignmentCandidateInput['availability']['circuitState'] = 'unknown';
@@ -142,7 +144,7 @@ export class ProviderAssignmentRuntime {
         const capacityUsed = active.readable
           ? active.counts.get(provider.id) ?? 0
           : capacityTotal;
-        const enabled = provider.enabled && enabledIds.has(provider.id);
+        const enabled = provider.enabled;
         return {
           id: provider.id,
           enabled,
@@ -165,9 +167,24 @@ export class ProviderAssignmentRuntime {
       .sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  resolveAssignment(request: ResolveAssignmentRequest): ProviderAssignmentSnapshot {
+  private readRegistryView(): ProviderAssignmentRegistryView {
+    const view = this.registryView();
+    if (!view.revision?.trim()) {
+      throw new Error('provider registry view is missing a revision');
+    }
+    return view;
+  }
+
+  private proposeAssignment(request: ResolveAssignmentRequest): {
+    now: Date;
+    proposed: ProviderAssignmentSnapshot;
+    previous: ProviderAssignmentSnapshot | null;
+  } {
     const now = this.now();
-    const providers = this.buildCandidates();
+    // Read exactly one registry view so provider membership and revision cannot
+    // drift within a decision while a hot reload swaps the live snapshot.
+    const registryView = this.readRegistryView();
+    const providers = this.buildCandidates(registryView);
     const effectivePolicy = this.getEffectivePolicy(
       request.scopeType,
       request.scopeId,
@@ -176,12 +193,26 @@ export class ProviderAssignmentRuntime {
     const proposed = resolveProviderAssignment({
       scopeType: request.scopeType,
       scopeId: request.scopeId,
+      registryRevision: registryView.revision,
       providers,
       systemPolicy: effectivePolicy,
       assignmentId: this.createAssignmentId(),
       now,
     });
     const previous = this.store.getLatestSnapshot(request.scopeType, request.scopeId);
+    return { now, proposed, previous };
+  }
+
+  previewAssignment(request: ResolveAssignmentRequest): ProviderAssignmentSnapshot {
+    const { now, proposed, previous } = this.proposeAssignment(request);
+    if (!request.refresh && previous && assignmentSnapshotIsReusable(previous, proposed, now)) {
+      return previous;
+    }
+    return proposed;
+  }
+
+  resolveAssignment(request: ResolveAssignmentRequest): ProviderAssignmentSnapshot {
+    const { now, proposed, previous } = this.proposeAssignment(request);
     if (!request.refresh && previous && assignmentSnapshotIsReusable(previous, proposed, now)) {
       return previous;
     }
@@ -195,6 +226,7 @@ export class ProviderAssignmentRuntime {
       reason: proposed.reason,
       evidence: {
         previousAssignmentId: previous?.assignmentId ?? null,
+        registryRevision: proposed.registryRevision,
         policyFingerprint: proposed.policyFingerprint,
         providerConfigFingerprint: proposed.providerConfigFingerprint,
         availabilityFingerprint: proposed.availabilityFingerprint,
@@ -204,4 +236,26 @@ export class ProviderAssignmentRuntime {
     });
     return proposed;
   }
+}
+
+/**
+ * Compatibility adapter until the revisioned hot-reload registry is wired at
+ * bootstrap. It still returns one coherent view and never consults AgentManager.
+ */
+export function legacyProviderAssignmentRegistryView(): ProviderAssignmentRegistryView {
+  const providers = loadEnabledProviders();
+  const publicAssignmentConfig = providers.map((provider) => ({
+    id: provider.id,
+    enabled: provider.enabled,
+    type: provider.type,
+    role: provider.role,
+    score: provider.score,
+    concurrency: provider.concurrency,
+    cost: provider.cost,
+    capabilities: [...provider.capabilities].sort(),
+  }));
+  return {
+    revision: `legacy-${fingerprint(publicAssignmentConfig)}`,
+    providers,
+  };
 }
