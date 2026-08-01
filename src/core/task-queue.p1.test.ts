@@ -17,6 +17,7 @@ import {
   getVerifierBuildStats,
   getTaskDeadlineRemainingMs,
   isDuplicateExecutionFailure,
+  isProviderRegistryRevisionConflict,
   isQueueWaitCancellationUnconfirmed,
   isTransientFailure,
   persistVerifierResultToDb,
@@ -300,6 +301,30 @@ describe('task queue P1 reliability guards', () => {
       metadata: {},
     })).resolves.toEqual(result);
     expect(manager.runEnqueue).toHaveBeenCalledOnce();
+  });
+
+  it('does not retry or fail over a provider registry revision conflict', async () => {
+    const result = {
+      success: false,
+      output: '',
+      error: 'provider_registry_revision_conflict: requested=registry-before active=registry-after',
+      status: 'failed' as const,
+    };
+    expect(isProviderRegistryRevisionConflict(result)).toBe(true);
+    expect(isTransientFailure(result)).toBe(false);
+
+    const manager = new TaskQueueManager() as any;
+    manager.runEnqueue = vi.fn().mockResolvedValue(result);
+    manager.tryTierEscalation = vi.fn();
+
+    await expect(manager.enqueueWithRetries({
+      taskId: 'registry-conflict-task',
+      agentId: 'codex',
+      prompt: 'must remain pinned to its intake generation',
+      metadata: { providerRevision: 'registry-before' },
+    })).resolves.toEqual(result);
+    expect(manager.runEnqueue).toHaveBeenCalledOnce();
+    expect(manager.tryTierEscalation).not.toHaveBeenCalled();
   });
 
   it('rejects an expired task before queue dispatch or retry/failover', async () => {

@@ -3,6 +3,9 @@ import type { FastifyInstance } from 'fastify';
 import { createGateway } from './gateway.js';
 import { taskQueue } from '../core/task-queue.js';
 import { getDb } from '../storage/database.js';
+import { sharedState } from '../core/shared-state.js';
+import { agentManager } from '../agent/agent-manager.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 describe('Provider Registry v2 HTTP contract', () => {
   let app: FastifyInstance;
@@ -13,6 +16,18 @@ describe('Provider Registry v2 HTTP contract', () => {
       output: 'provider registry route test completed',
       status: 'completed',
     });
+    vi.spyOn(taskQueue, 'getMetrics').mockImplementation(async () => (
+      agentManager.listEnabledIds().map(agentId => ({
+        agentId,
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        concurrency: 1,
+        mode: 'semaphore' as const,
+      }))
+    ));
+    vi.spyOn(sharedState, 'isAgentAlive').mockResolvedValue(true);
     app = await createGateway();
     await app.ready();
   });
@@ -97,6 +112,93 @@ describe('Provider Registry v2 HTTP contract', () => {
     expect(response.body).not.toContain('persona');
   });
 
+  it('uses the same readiness assessment for task admission and opt-in cross-role failover', async () => {
+    const registryResponse = await app.inject({ method: 'GET', url: '/api/ai-providers/registry' });
+    const manifests = registryResponse.json().providers as Array<{
+      id: string;
+      enabled: boolean;
+      role: string;
+    }>;
+    const enabled = manifests.filter(provider => provider.enabled);
+    const requested = enabled.find(provider => (
+      enabled.filter(candidate => candidate.role === provider.role).length === 1
+    ));
+    expect(requested).toBeDefined();
+    const requestedProvider = requested!.id;
+    const taskPayload = {
+      ai: requestedProvider,
+      prompt: 'readiness admission contract test',
+      metadata: { projectDir: process.cwd() },
+    };
+
+    try {
+      circuitBreakerRegistry.recordInferenceFailure(requestedProvider);
+      const failedReadiness = await app.inject({
+        method: 'GET',
+        url: '/api/ai-providers/readiness',
+      });
+      const failedAssessment = failedReadiness.json().providers.find(
+        (provider: { providerId: string }) => provider.providerId === requestedProvider,
+      );
+      expect(failedAssessment).toMatchObject({
+        readyForNewWork: false,
+        blockers: ['inferenceEvidence'],
+        dimensions: {
+          inferenceEvidence: { reason: 'last-inference-failed' },
+        },
+      });
+
+      const blockedFailed = await app.inject({
+        method: 'POST',
+        url: '/api/task',
+        payload: taskPayload,
+      });
+      expect(blockedFailed.statusCode).toBe(409);
+      expect(blockedFailed.json()).toMatchObject({
+        error: 'provider_not_ready',
+        requestedProvider,
+        blockers: failedAssessment.blockers,
+        dimensions: failedAssessment.dimensions,
+        canFailover: false,
+        requiresCrossRoleOptIn: true,
+        suggestedProvider: expect.any(String),
+      });
+
+      circuitBreakerRegistry.recordInferenceSuccess(requestedProvider, Date.now() - 10 * 60_000);
+      const staleReadiness = await app.inject({
+        method: 'GET',
+        url: '/api/ai-providers/readiness',
+      });
+      const staleAssessment = staleReadiness.json().providers.find(
+        (provider: { providerId: string }) => provider.providerId === requestedProvider,
+      );
+      expect(staleAssessment).toMatchObject({
+        readyForNewWork: false,
+        blockers: ['inferenceEvidence'],
+        dimensions: {
+          inferenceEvidence: { reason: 'inference-evidence-stale' },
+        },
+      });
+
+      const optedIn = await app.inject({
+        method: 'POST',
+        url: '/api/task',
+        payload: {
+          ...taskPayload,
+          metadata: {
+            ...taskPayload.metadata,
+            allowProviderFailover: true,
+          },
+        },
+      });
+      expect(optedIn.statusCode).toBe(202);
+      expect(optedIn.json()).toMatchObject({ agentId: expect.any(String) });
+      expect(optedIn.json().agentId).not.toBe(requestedProvider);
+    } finally {
+      circuitBreakerRegistry.clearInferenceEvidence(requestedProvider);
+    }
+  });
+
   it('enforces registry lineage and absolute deadlines at task intake', async () => {
     const conflict = await app.inject({
       method: 'POST',
@@ -111,6 +213,19 @@ describe('Provider Registry v2 HTTP contract', () => {
     });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json()).toMatchObject({ error: 'provider_registry_revision_conflict' });
+
+    for (const providerRevision of ['', '   ', 42]) {
+      const invalid = await app.inject({
+        method: 'POST',
+        url: '/api/task',
+        payload: {
+          prompt: 'Return OK',
+          metadata: { projectDir: process.cwd(), providerRevision },
+        },
+      });
+      expect(invalid.statusCode).toBe(400);
+      expect(invalid.json()).toMatchObject({ error: 'invalid_provider_revision' });
+    }
 
     const expired = await app.inject({
       method: 'POST',

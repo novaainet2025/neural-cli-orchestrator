@@ -9,7 +9,7 @@ import { verificationGate } from '../security/verification-gate.js';
 import { circuitBreakerRegistry, classifyCircuitError } from '../security/circuit-breaker-registry.js';
 import { eventBus } from '../core/event-bus.js';
 import { sharedState } from '../core/shared-state.js';
-import { taskQueue } from '../core/task-queue.js';
+import { PROVIDER_REGISTRY_REVISION_CONFLICT, taskQueue } from '../core/task-queue.js';
 import { getDb } from '../storage/database.js';
 import { getApiKeys, loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
@@ -409,8 +409,31 @@ class AgentManager {
       : admissionWallClock;
     const releaseAdmission = await providerAdmissionGate.acquire(totalSignal);
     try {
+      const taskId = options?.taskId || createTaskId();
+      const requestedRevisionValue = options?.routingMetadata?.providerRevision;
+      const requestedRevision = typeof requestedRevisionValue === 'string'
+        ? requestedRevisionValue.trim()
+        : '';
+      const activeRevision = this.providerRegistryRevision?.trim() ?? '';
+      const invalidRequestedRevision = requestedRevisionValue !== undefined
+        && (typeof requestedRevisionValue !== 'string' || requestedRevision.length === 0);
+      if (invalidRequestedRevision || (requestedRevision && requestedRevision !== activeRevision)) {
+        return {
+          taskId,
+          agentId,
+          output: '',
+          iterations: 0,
+          toolCalls: 0,
+          success: false,
+          error: `${PROVIDER_REGISTRY_REVISION_CONFLICT}: requested=${
+            invalidRequestedRevision ? 'invalid' : requestedRevision
+          } active=${activeRevision || 'unavailable'}`,
+          durationMs: 0,
+        };
+      }
       return await this.executeTaskWithinAdmission(agentId, prompt, {
         ...options,
+        taskId,
         signal: totalSignal,
         timeoutMs: totalTimeoutMs,
       });

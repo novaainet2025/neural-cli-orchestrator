@@ -54,8 +54,14 @@ import { parseIntent } from '../utils/intent-parser.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { taskQueue } from '../core/task-queue.js';
 import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
-import { evaluateProviderReadiness } from '../core/provider-readiness.js';
-import { toLegacyProviderCatalogProjection } from '../core/provider-registry-snapshot.js';
+import {
+  evaluateProviderReadiness,
+  type ProviderReadinessResult,
+} from '../core/provider-readiness.js';
+import {
+  toLegacyProviderCatalogProjection,
+  type ProviderRegistrySnapshot,
+} from '../core/provider-registry-snapshot.js';
 import {
   ProviderResolutionError,
   resolveExecutionProvider,
@@ -75,10 +81,7 @@ import {
   type WorkflowPolicyDecision,
   type WorkflowStage,
 } from '../core/workflow-gate.js';
-import {
-  circuitBreakerRegistry,
-  type ProviderAvailabilitySnapshot,
-} from '../security/circuit-breaker-registry.js';
+import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { summarizeProviderAvailability } from './provider-health.js';
 import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
@@ -471,60 +474,91 @@ function getProviderSuccessRates(): Map<string, number> {
   return map;
 }
 
-function listAvailableProviders(exclude: string[] = []): string[] {
-  const excluded = new Set(exclude);
-  const avail = sortProvidersByCostOrder(agentManager.listEnabledIds())
-    .filter(agentId => !excluded.has(agentId))
-    .filter(agentId => circuitBreakerRegistry.getAvailability(agentId).status === 'available');
+function rankProviderIds(providerIds: readonly string[]): string[] {
+  const ranked = sortProvidersByCostOrder([...providerIds]);
   // R1: 성공률 내림차순 정렬. 동률·데이터없음(0.5)은 원래 cost-order 유지(stable).
   const sr = getProviderSuccessRates();
-  return avail
+  return ranked
     .map((id, i) => ({ id, i, q: sr.get(id) ?? 0.5 }))
     .sort((a, b) => (b.q - a.q) || (a.i - b.i))
     .map(x => x.id);
 }
 
-function toGateResponse(availability: ProviderAvailabilitySnapshot) {
+function listAvailableProviders(exclude: string[] = []): string[] {
+  const excluded = new Set(exclude);
+  return rankProviderIds(
+    agentManager.listEnabledIds()
+      .filter(agentId => !excluded.has(agentId))
+      .filter(agentId => circuitBreakerRegistry.getAvailability(agentId).status === 'available'),
+  );
+}
+
+function missingProviderReadiness(providerId: string): ProviderReadinessResult {
+  return evaluateProviderReadiness({
+    providerId,
+    registration: { registered: false },
+    runtimeLoaded: { loaded: false },
+    heartbeat: { alive: null },
+    admission: { available: null, reason: 'provider-admission-unknown' },
+    queueCapacity: { available: null },
+    inferenceEvidence: null,
+  });
+}
+
+function buildProviderNotReadyBody(
+  requested: ProviderReadinessResult,
+  readyProviders: readonly string[],
+  permittedProviders: readonly string[],
+) {
   return {
-    status: availability.status,
-    reason: availability.reason,
-    circuitState: availability.circuitState,
-    cooldownUntil: availability.cooldownUntil,
+    error: 'provider_not_ready',
+    requestedProvider: requested.providerId,
+    readyForNewWork: requested.readyForNewWork,
+    inferenceVerified: requested.inferenceVerified,
+    blockers: requested.blockers,
+    verificationBlockers: requested.verificationBlockers,
+    dimensions: requested.dimensions,
+    availableProviders: permittedProviders,
+    // Advisory only. Cross-role execution still requires explicit opt-in.
+    suggestedProvider: readyProviders[0] ?? null,
+    canFailover: permittedProviders.length > 0,
+    requiresCrossRoleOptIn:
+      permittedProviders.length === 0 && readyProviders.length > 0,
   };
 }
 
-function buildProviderGatedBody(requestedProvider: string) {
-  const availability = circuitBreakerRegistry.getAvailability(requestedProvider);
-  const availableProviders = listAvailableProviders([requestedProvider]);
-  return {
-    error: 'provider_gated',
-    requestedProvider,
-    gate: toGateResponse(availability),
-    availableProviders,
-    suggestedProvider: availableProviders[0] ?? null,
-    canFailover: availableProviders.length > 0,
-  };
-}
-
-function selectTaskProvider(requestedProvider: string, allowProviderFailover: boolean) {
-  const availability = circuitBreakerRegistry.getAvailability(requestedProvider);
-  // P0-5: 'probe'(half-open)를 available과 동일 취급하면 인테이크가 유일한 프로브 슬롯을
-  // 실제 실행과 무관하게 소모해버려(hermes 등 450건 실측) same-role 폴백/409 경로를 우회한다.
-  // 프로브 여부 판단은 canExecute()/executeTask 내부에서만 하도록 여기서는 순수 available만 통과.
-  if (availability.status === 'available') {
+function selectTaskProvider(
+  requestedProvider: string,
+  allowProviderFailover: boolean,
+  readinessByProvider: ReadonlyMap<string, ProviderReadinessResult>,
+  roleByProvider: ReadonlyMap<string, string>,
+) {
+  const requestedReadiness = readinessByProvider.get(requestedProvider)
+    ?? missingProviderReadiness(requestedProvider);
+  if (requestedReadiness.readyForNewWork) {
     return { agentId: requestedProvider };
   }
 
-  // B2: 요청 프로바이더가 gated(리밋/다운/circuit open)면 — allowProviderFailover 여부와 무관하게 —
-  //     건강한 '같은 role' 프로바이더로 자동 failover한다. 같은 role 건강한 곳이 없으면 409로 명확히 거부
+  // B2: 요청 프로바이더가 not-ready면 — allowProviderFailover 여부와 무관하게 —
+  //     readiness-ready인 '같은 role' 프로바이더로 자동 failover한다. 같은 role 준비된 곳이 없으면 409로 명확히 거부
   //     (엉뚱한 role로 크로스 라우팅해 '가짜 성공' 내는 것 방지). "리밋 걸린 곳엔 위임 안 한다"의 인테이크 구현.
-  const availableProviders = listAvailableProviders([requestedProvider]);
-  const requestedRole = agentManager.getProvider(requestedProvider)?.role;
-  const sameRoleHealthy = availableProviders.filter(id => agentManager.getProvider(id)?.role === requestedRole);
-  const failoverTarget = sameRoleHealthy[0]
-    ?? (allowProviderFailover ? availableProviders[0] : undefined); // 명시적 opt-in 시에만 크로스role 허용
+  const readyProviders = rankProviderIds(
+    [...readinessByProvider.values()]
+      .filter(readiness => readiness.providerId !== requestedProvider && readiness.readyForNewWork)
+      .map(readiness => readiness.providerId),
+  );
+  const requestedRole = roleByProvider.get(requestedProvider);
+  const sameRoleReady = readyProviders.filter(id => roleByProvider.get(id) === requestedRole);
+  const permittedProviders = allowProviderFailover ? readyProviders : sameRoleReady;
+  const failoverTarget = permittedProviders[0];
   if (!failoverTarget) {
-    return { error: buildProviderGatedBody(requestedProvider) };
+    return {
+      error: buildProviderNotReadyBody(
+        requestedReadiness,
+        readyProviders,
+        permittedProviders,
+      ),
+    };
   }
 
   return {
@@ -532,7 +566,7 @@ function selectTaskProvider(requestedProvider: string, allowProviderFailover: bo
     failover: {
       applied: true,
       originalProvider: requestedProvider,
-      originalGate: availability.status,
+      originalGate: requestedReadiness.blockers.join(',') || 'provider-not-ready',
     },
   };
 }
@@ -2626,6 +2660,91 @@ export async function createGateway(): Promise<NcoGateway> {
     }
   };
 
+  type ProviderReadinessAssessment = {
+    response: {
+      revision: string;
+      generatedAt: string;
+      observations: {
+        queueMetricsTimedOut: boolean;
+        heartbeatTimedOut: boolean;
+        inferenceEvidence: string;
+        admissionSemantics: string;
+      };
+      providers: ProviderReadinessResult[];
+    };
+    byProvider: Map<string, ProviderReadinessResult>;
+    roleByProvider: Map<string, string>;
+  };
+
+  /** One data-only assessment shared by provider discovery and task admission. */
+  const assessProviderReadiness = async (
+    snapshot: ProviderRegistrySnapshot,
+  ): Promise<ProviderReadinessAssessment> => {
+    const [queueResult, heartbeatResult] = await Promise.all([
+      withDeadline(taskQueue.getMetrics(), []),
+      withDeadline(
+        Promise.all(snapshot.providers.map(async provider => [
+          provider.id,
+          await sharedState.isAgentAlive(provider.id),
+        ] as const)).then(entries => Object.fromEntries(entries) as Record<string, boolean>),
+        {} as Record<string, boolean>,
+      ),
+    ]);
+    const queueByProvider = new Map(queueResult.value.map(metric => [metric.agentId, metric]));
+    const generatedAt = new Date();
+    const providers = snapshot.providers.map(provider => {
+      const queue = queueByProvider.get(provider.id);
+      let admission: { available: boolean | null; reason?: string | null };
+      if (!provider.enabled) {
+        admission = { available: false, reason: 'provider-disabled' };
+      } else {
+        try {
+          const availability = circuitBreakerRegistry.getAvailability(provider.id);
+          admission = { available: availability.available, reason: availability.reason };
+        } catch {
+          admission = { available: null, reason: 'availability-check-failed' };
+        }
+      }
+
+      return evaluateProviderReadiness({
+        providerId: provider.id,
+        registration: { registered: true },
+        runtimeLoaded: { loaded: provider.runtime.loaded },
+        heartbeat: {
+          alive: heartbeatResult.timedOut
+            ? null
+            : heartbeatResult.value[provider.id] ?? false,
+        },
+        admission,
+        queueCapacity: queue
+          ? {
+              available: queue.active < queue.concurrency,
+              active: queue.active,
+              concurrency: queue.concurrency,
+            }
+          : { available: null },
+        // Emitted only after AgentManager validates a real model/CLI completion.
+        inferenceEvidence: circuitBreakerRegistry.getInferenceEvidence(provider.id),
+      }, { now: generatedAt });
+    });
+
+    return {
+      response: {
+        revision: snapshot.revision,
+        generatedAt: generatedAt.toISOString(),
+        observations: {
+          queueMetricsTimedOut: queueResult.timedOut,
+          heartbeatTimedOut: heartbeatResult.timedOut,
+          inferenceEvidence: 'process-local-success-receipts',
+          admissionSemantics: 'only-missing-inference-evidence-is-a-bootstrap-exception',
+        },
+        providers,
+      },
+      byProvider: new Map(providers.map(provider => [provider.providerId, provider])),
+      roleByProvider: new Map(snapshot.providers.map(provider => [provider.id, provider.role])),
+    };
+  };
+
   // providerCount는 agentManager의 부팅 시점 스냅샷이라, config를 고치고 아직
   // 재기동하지 않았거나 반대로 감시자 쪽 스냅샷이 오래된 경우 "프로바이더가
   // 사라졌다"는 오탐을 만든다(2026-07-30~31 registry-anomaly 16회 연속 오탐).
@@ -2836,67 +2955,7 @@ export async function createGateway(): Promise<NcoGateway> {
       reply.code(503);
       return { error: 'provider_registry_unavailable' };
     }
-
-    const [queueResult, heartbeatResult] = await Promise.all([
-      withDeadline(taskQueue.getMetrics(), []),
-      withDeadline(
-        Promise.all(snapshot.providers.map(async provider => [
-          provider.id,
-          await sharedState.isAgentAlive(provider.id),
-        ] as const)).then(entries => Object.fromEntries(entries) as Record<string, boolean>),
-        {} as Record<string, boolean>,
-      ),
-    ]);
-    const queueByProvider = new Map(queueResult.value.map(metric => [metric.agentId, metric]));
-    const generatedAt = new Date();
-    const providers = snapshot.providers.map(provider => {
-      const queue = queueByProvider.get(provider.id);
-      let admission: { available: boolean | null; reason?: string | null };
-      if (!provider.enabled) {
-        admission = { available: false, reason: 'provider-disabled' };
-      } else {
-        try {
-          const availability = circuitBreakerRegistry.getAvailability(provider.id);
-          admission = { available: availability.available, reason: availability.reason };
-        } catch {
-          admission = { available: null, reason: 'availability-check-failed' };
-        }
-      }
-
-      return evaluateProviderReadiness({
-        providerId: provider.id,
-        registration: { registered: true },
-        runtimeLoaded: { loaded: provider.runtime.loaded },
-        heartbeat: {
-          alive: heartbeatResult.timedOut
-            ? null
-            : heartbeatResult.value[provider.id] ?? false,
-        },
-        admission,
-        queueCapacity: queue
-          ? {
-              available: queue.active < queue.concurrency,
-              active: queue.active,
-              concurrency: queue.concurrency,
-            }
-          : { available: null },
-        // This receipt is emitted only after AgentManager validates a real model/CLI
-        // completion. GET health, heartbeat and a completed DB row cannot create it.
-        inferenceEvidence: circuitBreakerRegistry.getInferenceEvidence(provider.id),
-      }, { now: generatedAt });
-    });
-
-    return {
-      revision: snapshot.revision,
-      generatedAt: generatedAt.toISOString(),
-      observations: {
-        queueMetricsTimedOut: queueResult.timedOut,
-        heartbeatTimedOut: heartbeatResult.timedOut,
-        inferenceEvidence: 'process-local-success-receipts',
-        admissionSemantics: 'inference-evidence-is-observational-not-a-bootstrap-blocker',
-      },
-      providers,
-    };
+    return (await assessProviderReadiness(snapshot)).response;
   });
 
   app.get('/api/ai-providers', async () => {
@@ -3064,8 +3123,22 @@ export async function createGateway(): Promise<NcoGateway> {
         };
       }
     }
-    const requestedProviderRevision = typeof requestMetadata.providerRevision === 'string'
-      ? requestMetadata.providerRevision.trim()
+    const rawProviderRevision = requestMetadata.providerRevision;
+    if (
+      rawProviderRevision !== undefined
+      && (
+        typeof rawProviderRevision !== 'string'
+        || rawProviderRevision.trim().length === 0
+      )
+    ) {
+      reply.code(400);
+      return {
+        error: 'invalid_provider_revision',
+        detail: 'metadata.providerRevision must be a non-empty registry revision string',
+      };
+    }
+    const requestedProviderRevision = typeof rawProviderRevision === 'string'
+      ? rawProviderRevision.trim()
       : '';
     const activeProviderRevision = providerRuntimeCoordinator.getSnapshot()?.revision ?? '';
     if (
@@ -3264,7 +3337,18 @@ export async function createGateway(): Promise<NcoGateway> {
     }
 
     const taskId = createTaskId();
-    const providerSelection = selectTaskProvider(requestedProvider, allowProviderFailover);
+    const readinessSnapshot = providerRuntimeCoordinator.getSnapshot();
+    if (!readinessSnapshot) {
+      reply.code(503);
+      return { error: 'provider_registry_unavailable' };
+    }
+    const readinessAssessment = await assessProviderReadiness(readinessSnapshot);
+    const providerSelection = selectTaskProvider(
+      requestedProvider,
+      allowProviderFailover,
+      readinessAssessment.byProvider,
+      readinessAssessment.roleByProvider,
+    );
     if ('error' in providerSelection) {
       reply.code(409);
       return providerSelection.error;

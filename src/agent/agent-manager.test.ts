@@ -232,6 +232,100 @@ describe('AgentManager', () => {
     expect(execution?.[1]).toEqual(expect.arrayContaining(['--model', 'light-x']));
   });
 
+  it('rejects a queued task after reconciliation advances its provider revision', async () => {
+    const dynamic = normalizeProviderDeclaration({
+      id: 'generation-pinned-cli',
+      command: 'generation-cli',
+      runtime: { executor: 'native-cli', adapter: 'claude' },
+      model: 'stable-model',
+    });
+    circuitBreakerRegistry.reset(dynamic.id);
+    await agentManager.reloadProviders([dynamic], 'registry-before');
+    const endReconciliation = await providerAdmissionGate.beginReconciliation();
+
+    try {
+      const execution = agentManager.executeTask(
+        dynamic.id,
+        'must not execute against another provider generation',
+        {
+          taskId: 'queued-before-reconciliation',
+          projectDir: '/dummy/project',
+          routingMetadata: { providerRevision: 'registry-before' },
+        },
+      );
+      await Promise.resolve();
+      expect(mockExeca).not.toHaveBeenCalled();
+
+      await agentManager.reloadProviders([dynamic], 'registry-after');
+      endReconciliation();
+
+      await expect(execution).resolves.toMatchObject({
+        taskId: 'queued-before-reconciliation',
+        agentId: dynamic.id,
+        success: false,
+        iterations: 0,
+        toolCalls: 0,
+        error: 'provider_registry_revision_conflict: requested=registry-before active=registry-after',
+      });
+      expect(mockExeca).not.toHaveBeenCalled();
+      expect(providerAdmissionGate.snapshot().active).toBe(0);
+    } finally {
+      endReconciliation();
+    }
+  });
+
+  it('keeps unversioned legacy internal execution compatible', async () => {
+    const dynamic = normalizeProviderDeclaration({
+      id: 'legacy-internal-cli',
+      command: 'legacy-cli',
+      runtime: { executor: 'native-cli', adapter: 'claude' },
+      model: 'stable-model',
+    });
+    circuitBreakerRegistry.reset(dynamic.id);
+    await agentManager.reloadProviders([dynamic], 'registry-current');
+
+    const result = await agentManager.executeTask(
+      dynamic.id,
+      'legacy internal execution without revision metadata',
+      { projectDir: '/dummy/project' },
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockExeca).toHaveBeenCalledWith(
+      'legacy-cli',
+      expect.any(Array),
+      expect.any(Object),
+    );
+  });
+
+  it.each(['', '   '])('rejects an explicitly blank provider revision: %j', async providerRevision => {
+    const dynamic = normalizeProviderDeclaration({
+      id: 'invalid-revision-cli',
+      command: 'invalid-revision-cli',
+      runtime: { executor: 'native-cli', adapter: 'claude' },
+      model: 'stable-model',
+    });
+    circuitBreakerRegistry.reset(dynamic.id);
+    await agentManager.reloadProviders([dynamic], 'registry-current');
+
+    const result = await agentManager.executeTask(
+      dynamic.id,
+      'must not execute with an explicitly blank provider revision',
+      {
+        projectDir: '/dummy/project',
+        routingMetadata: { providerRevision },
+      },
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      iterations: 0,
+      toolCalls: 0,
+      error: 'provider_registry_revision_conflict: requested=invalid active=registry-current',
+    });
+    expect(mockExeca).not.toHaveBeenCalled();
+  });
+
   it('records and invalidates inference evidence on terminal CLI outcomes', async () => {
     await agentManager.init();
     const success = await agentManager.executeTask(

@@ -6,6 +6,7 @@ import { agentManager } from '../agent/agent-manager.js';
 import { kanbanEngine } from '../core/kanban-engine.js';
 import { discussionEngine } from '../core/discussion-engine.js';
 import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
+import { sharedState } from '../core/shared-state.js';
 import { smartRouter } from '../core/smart-router.js';
 import { taskQueue } from '../core/task-queue.js';
 import { attachWorkflowTask, createWorkflowRun } from '../core/workflow-gate.js';
@@ -33,6 +34,10 @@ describe.sequential('gateway retry contract', () => {
       output: `done: ${'retry contract verified '.repeat(40)}`,
       status: 'completed',
     });
+    // Retry tests isolate persistence/replay semantics. Provider readiness has
+    // its own route contract tests, so keep the independent heartbeat
+    // dimension explicitly healthy here instead of depending on a 30s timer.
+    vi.spyOn(sharedState, 'isAgentAlive').mockResolvedValue(true);
     server = await createGateway();
     expect(kanbanEngine.createTaskRef).toBeTypeOf('function');
     expect(kanbanEngine.createRetryTaskRef).toBeTypeOf('function');

@@ -56,6 +56,7 @@ function isRateLimitError(message: string): boolean {
 // ─── Retry Config ─────────────────────────────────────
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 5_000; // 5s, then 10s, then 20s
+export const PROVIDER_REGISTRY_REVISION_CONFLICT = 'provider_registry_revision_conflict';
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
 // 기본 hard timeout(20분)보다 2분 길게 유지해 실행 중 BullMQ lock 실종을 막는다.
 export const BULLMQ_LOCK_DURATION_MS = 22 * 60_000;
@@ -257,6 +258,12 @@ export function isTaskDeadlineFailure(
   result: Pick<TaskExecutionResult, 'error'>,
 ): boolean {
   return (result.error ?? '').startsWith(TASK_DEADLINE_EXCEEDED);
+}
+
+export function isProviderRegistryRevisionConflict(
+  result: Pick<TaskExecutionResult, 'error'>,
+): boolean {
+  return (result.error ?? '').startsWith(PROVIDER_REGISTRY_REVISION_CONFLICT);
 }
 
 export function selectFailoverProvider(
@@ -2013,6 +2020,10 @@ export class TaskQueueManager {
       // BullMQ waitUntilFinished() surfaces an UnrecoverableError as a failed result.
       // Do not turn the blocked duplicate into an enqueue-loop retry or escalation.
       if (isDuplicateExecutionFailure(result)) return result;
+      // A queued task is pinned to the registry generation accepted at intake.
+      // Retrying or failing over after reconciliation would silently execute it
+      // against a different provider/model/tool contract.
+      if (isProviderRegistryRevisionConflict(result)) return result;
       // A cancellation is terminal. In particular, graceful-shutdown SIGINT
       // normalization must not fall through to tier escalation and start a new
       // provider while the process is draining.

@@ -295,15 +295,49 @@ export function toProviderRegistryManifest(
   };
 }
 
-function snapshotRevision(providers: readonly ProviderRegistryManifest[]): string {
-  const content = JSON.stringify(providers);
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, canonical(nested)]),
+    );
+  }
+  return value;
+}
+
+function canonicalFingerprint(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+}
+
+function snapshotRevision(
+  providers: readonly ProviderRegistryManifest[],
+  internalRuntimeFingerprint: string,
+): string {
+  // The final public revision commits to both safe discovery data and the
+  // complete execution generation. Only this domain-separated outer hash is
+  // exposed; neither canonical ProviderConfig data nor its intermediate hash
+  // is copied into snapshots or events.
+  const content = JSON.stringify({
+    domain: 'nco.provider-registry.revision.v2',
+    providers,
+    internalRuntimeFingerprint,
+  });
   return `sha256:${createHash('sha256').update(content).digest('hex')}`;
 }
 
 /** Internal-only execution fingerprint. Never return this hash or its inputs over HTTP. */
 function runtimeFingerprint(providers: readonly ProviderConfig[]): string {
   const ordered = [...providers].sort((left, right) => left.id.localeCompare(right.id));
-  return createHash('sha256').update(JSON.stringify(ordered)).digest('hex');
+  return canonicalFingerprint(ordered);
+}
+
+/** Per-provider hashes exist only to produce safe lifecycle diffs. */
+function runtimeFingerprintsByProvider(
+  providers: readonly ProviderConfig[],
+): Map<string, string> {
+  return new Map(providers.map(provider => [provider.id, canonicalFingerprint(provider)]));
 }
 
 function manifestById(
@@ -346,6 +380,30 @@ export function diffProviderRegistry(
   });
 }
 
+function mergeRuntimeConfigChanges(
+  publicChanges: readonly ProviderRegistryChange[],
+  nextManifests: readonly ProviderRegistryManifest[],
+  previousFingerprints: ReadonlyMap<string, string> | null,
+  nextFingerprints: ReadonlyMap<string, string>,
+): ProviderRegistryChange[] {
+  if (!previousFingerprints) return [...publicChanges];
+  const changes = new Map(publicChanges.map(change => [change.providerId, change]));
+  const manifests = manifestById(nextManifests);
+
+  for (const [providerId, fingerprint] of nextFingerprints) {
+    const previous = previousFingerprints.get(providerId);
+    const manifest = manifests.get(providerId);
+    if (previous !== undefined && previous !== fingerprint && manifest && !changes.has(providerId)) {
+      // The public projection is intentionally unchanged, but consumers still
+      // need a lifecycle signal that this provider now belongs to a new
+      // execution generation. Reusing the safe manifest avoids secret leaks.
+      changes.set(providerId, { type: 'updated', providerId, manifest });
+    }
+  }
+
+  return [...changes.values()].sort((left, right) => left.providerId.localeCompare(right.providerId));
+}
+
 /**
  * Last-known-good registry with revisioned polling and replay-safe snapshots.
  * Event loss is recoverable by fetching the complete snapshot and comparing
@@ -355,6 +413,7 @@ export class ProviderRegistrySnapshotStore {
   private snapshot: ProviderRegistrySnapshot | null = null;
   private runtimeView: ProviderRegistryRuntimeView | null = null;
   private committedRuntimeFingerprint: string | null = null;
+  private committedProviderFingerprints: ReadonlyMap<string, string> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private refreshInFlight: Promise<ProviderRegistryRefreshResult> | null = null;
   private refreshRequested = false;
@@ -421,8 +480,8 @@ export class ProviderRegistrySnapshotStore {
     const desiredProviders = configs
       .map(provider => toProviderRegistryManifest(provider, desiredRuntimeIds))
       .sort((left, right) => left.id.localeCompare(right.id));
-    const revision = snapshotRevision(desiredProviders);
     const desiredRuntimeFingerprint = runtimeFingerprint(configs);
+    const revision = snapshotRevision(desiredProviders, desiredRuntimeFingerprint);
 
     if (
       this.snapshot?.revision === revision
@@ -452,12 +511,22 @@ export class ProviderRegistrySnapshotStore {
     const providers = configs
       .map(provider => toProviderRegistryManifest(provider, runtimeProviderIds))
       .sort((left, right) => left.id.localeCompare(right.id));
-    const committedRevision = snapshotRevision(providers);
-    if (committedRevision !== revision) {
+    const committedRuntimeFingerprint = runtimeFingerprint(configs);
+    const committedRevision = snapshotRevision(providers, committedRuntimeFingerprint);
+    if (
+      committedRevision !== revision
+      || committedRuntimeFingerprint !== desiredRuntimeFingerprint
+    ) {
       await this.publishReloadFailure('runtime_reconcile_failed');
       throw new Error('provider runtime view changed while committing registry revision');
     }
-    const changes = diffProviderRegistry(previous?.providers ?? [], providers);
+    const committedProviderFingerprints = runtimeFingerprintsByProvider(configs);
+    const changes = mergeRuntimeConfigChanges(
+      diffProviderRegistry(previous?.providers ?? [], providers),
+      providers,
+      this.committedProviderFingerprints,
+      committedProviderFingerprints,
+    );
     const snapshot: ProviderRegistrySnapshot = previous?.revision === committedRevision
       ? previous
       : {
@@ -471,9 +540,10 @@ export class ProviderRegistrySnapshotStore {
       revision: committedRevision,
       providers: Object.freeze([...configs]),
     });
-    this.committedRuntimeFingerprint = desiredRuntimeFingerprint;
+    this.committedRuntimeFingerprint = committedRuntimeFingerprint;
+    this.committedProviderFingerprints = committedProviderFingerprints;
     this.snapshot = snapshot;
-    if (previous && changes.length > 0) {
+    if (previous && previous.revision !== committedRevision) {
       await this.options.publish({
         type: 'provider.registry.committed',
         payload: { revision: committedRevision, changes },
