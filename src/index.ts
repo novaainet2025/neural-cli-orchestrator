@@ -14,7 +14,6 @@ import { transitionTask } from './core/task-state.js';
 import { loadCronJobs } from './core/cron-scheduler.js';
 import { startWorkReportScheduler } from './core/work-report-scheduler.js';
 import { discussionEngine } from './core/discussion-engine.js';
-import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
@@ -454,10 +453,13 @@ async function boot(): Promise<void> {
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,
       localNetworkAccess: task.metadata?.localNetworkAccess === true,
+      routingMetadata: task.metadata,
     });
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
-  await taskQueue.init(loadEnabledProviders());
+  // Start queue infrastructure with admission closed. Registry v2 then commits
+  // provider roster + exact revision before any persisted job can execute.
+  await taskQueue.init([]);
 
   // 7b-1. Commit the PC-effective NCO provider registry across execution,
   // queue admission, shared state, routing and company/team assignment.

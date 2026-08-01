@@ -18,10 +18,15 @@ import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { buildProviderProcessEnv } from './provider-process-env.js';
 import { mergeMemoryContextEntries, resolveTeamMemoryScope } from '../core/task-memory-scope.js';
 import {
-  resolveProviderModel,
   resolveProviderRuntime,
   type ProviderExecutor,
 } from '../core/provider-catalog.js';
+import {
+  persistModelRoutingReceipt,
+  resolveModelRoutingDecision,
+  type ModelRoutingInput,
+  type ModelRoutingReceipt,
+} from '../core/model-router.js';
 
 const log = createLogger('agent-manager');
 
@@ -53,6 +58,62 @@ function resolveTaskTeamMemoryScope(taskId: string): string | null {
     return resolveTeamMemoryScope(row?.team_id);
   } catch {
     return null;
+  }
+}
+
+type ModelRoutingSignals = Pick<ModelRoutingInput,
+  'requestedTier' | 'requiredCapabilities' | 'maxCostClass' | 'contextTokens'
+  | 'requiresTools' | 'verificationRequired' | 'riskLevel' | 'depth' | 'complexity'>;
+
+/** Convert optional task metadata into validated, provider-neutral routing signals. */
+export function modelRoutingSignalsFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Partial<ModelRoutingSignals> {
+  if (!metadata) return {};
+  const result: Partial<ModelRoutingSignals> = {};
+  if (['light', 'balanced', 'heavy', 'frontier'].includes(String(metadata.modelTier))) {
+    result.requestedTier = metadata.modelTier as ModelRoutingSignals['requestedTier'];
+  }
+  if (['minimal', 'standard', 'premium', 'unbounded'].includes(String(metadata.modelCostBudget))) {
+    result.maxCostClass = metadata.modelCostBudget as ModelRoutingSignals['maxCostClass'];
+  }
+  const capabilities = metadata.modelCapabilities ?? metadata.requiredModelCapabilities;
+  if (Array.isArray(capabilities)) {
+    result.requiredCapabilities = capabilities
+      .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()));
+  }
+  const contextTokens = Number(metadata.contextTokens ?? metadata.estimatedContextTokens);
+  if (Number.isSafeInteger(contextTokens) && contextTokens >= 0) result.contextTokens = contextTokens;
+  if (metadata.requiresTools === true || metadata.toolUse === true) result.requiresTools = true;
+  if (
+    metadata.verificationRequired === true
+    || (Array.isArray(metadata.requiredEvidence) && metadata.requiredEvidence.length > 0)
+  ) result.verificationRequired = true;
+  const declaredRisk = String(metadata.riskLevel ?? '').toLowerCase();
+  if (['low', 'medium', 'high', 'critical'].includes(declaredRisk)) {
+    result.riskLevel = declaredRisk as ModelRoutingSignals['riskLevel'];
+  } else if (
+    metadata.highRisk === true
+    || metadata.organizationAuditRequired === true
+    || metadata.auditControlPlane === true
+  ) {
+    result.riskLevel = 'high';
+  }
+  const depth = Number(metadata.depth);
+  if (Number.isFinite(depth)) result.depth = depth;
+  const complexity = Number(metadata.complexity);
+  if (Number.isFinite(complexity)) result.complexity = complexity;
+  return result;
+}
+
+function persistTaskModelRoutingReceipt(taskId: string, receipt: ModelRoutingReceipt): void {
+  try {
+    persistModelRoutingReceipt(getDb(), taskId, receipt);
+  } catch (error) {
+    log.warn({
+      taskId,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'Failed to persist model routing receipt');
   }
 }
 
@@ -160,6 +221,7 @@ interface TaskResult {
   success: boolean;
   error?: string;
   durationMs: number;
+  modelRouting?: ModelRoutingReceipt;
   usage?: {
     promptTokens: number;
     completionTokens: number;
@@ -174,6 +236,7 @@ class AgentManager {
   private sandboxes = new Map<string, SandboxManager>();
   private latencyHistory = new Map<string, number[]>();
   private providers = new Map<string, ProviderConfig>();
+  private providerRegistryRevision: string | null = null;
   private healthApiKeyCallCounts = new Map<string, number>();
   private lastQuotaProbeAt = new Map<string, number>();
   private cliRecoveryProbes = new Set<string>();
@@ -192,7 +255,10 @@ class AgentManager {
    * Existing executions already captured their provider and sandbox references,
    * so removal blocks only new admission while in-flight work drains naturally.
    */
-  async reloadProviders(next: readonly ProviderConfig[] = loadEnabledProviders()): Promise<{
+  async reloadProviders(
+    next: readonly ProviderConfig[] = loadEnabledProviders(),
+    registryRevision: string | null = null,
+  ): Promise<{
     added: string[];
     updated: string[];
     removed: string[];
@@ -221,6 +287,7 @@ class AgentManager {
 
     this.providers = nextProviders;
     this.sandboxes = nextSandboxes;
+    this.providerRegistryRevision = registryRevision?.trim() || null;
     for (const id of removed) {
       this.latencyHistory.delete(id);
       this.lastQuotaProbeAt.delete(id);
@@ -256,12 +323,21 @@ class AgentManager {
     projectDir?: string;
     timeoutMs?: number;
     localNetworkAccess?: boolean;
+    routingMetadata?: Record<string, unknown>;
   }): Promise<TaskResult> {
     const provider = this.providers.get(agentId);
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
 
     const taskId = options?.taskId || createTaskId();
-    const effectiveModel = resolveProviderModel(provider, options?.model);
+    const modelRouting = resolveModelRoutingDecision({
+      provider,
+      prompt,
+      registryRevision: this.providerRegistryRevision,
+      manualModel: options?.model,
+      ...modelRoutingSignalsFromMetadata(options?.routingMetadata),
+    });
+    const effectiveModel = modelRouting.selectedModelId;
+    persistTaskModelRoutingReceipt(taskId, modelRouting);
     const originalPrompt = prompt;
     const teamMemoryScope = resolveTaskTeamMemoryScope(taskId);
     const startTime = Date.now();
@@ -290,6 +366,7 @@ class AgentManager {
         success: false,
         error: formatProviderUnavailableError(agentId, snapshot),
         durationMs: 0,
+        modelRouting,
       };
     }
 
@@ -316,6 +393,7 @@ class AgentManager {
         success: false,
         error: formatProviderUnavailableError(agentId, snapshot),
         durationMs: Date.now() - startTime,
+        modelRouting,
       };
     }
 
@@ -464,6 +542,7 @@ class AgentManager {
           success: false,
           error: `Provider failure detected: ${classified.reason}`,
           durationMs,
+          modelRouting,
         };
       }
       const incompleteAnswer = classifyIncompleteAnswer(originalPrompt, output);
@@ -534,7 +613,9 @@ class AgentManager {
         agentEvolver.record(agentId, taskId, true, durationMs, output.length);
       } catch { /* non-critical */ }
 
-      return { taskId, agentId, output, iterations, toolCalls, success: true, durationMs, usage };
+      return {
+        taskId, agentId, output, iterations, toolCalls, success: true, durationMs, usage, modelRouting,
+      };
 
     } catch (err: any) {
       const durationMs = Date.now() - startTime;
@@ -584,6 +665,7 @@ class AgentManager {
         success: false,
         error: errorMessage,
         durationMs,
+        modelRouting,
       };
     } finally {
       // P0-3: 실제로 획득한 half-open 프로브 슬롯만 반납(slotHeld 가드) — 성공/실패/throw

@@ -14,6 +14,7 @@ import {
 } from './provider-registry-snapshot.js';
 import { sharedState } from './shared-state.js';
 import { taskQueue } from './task-queue.js';
+import { commitModelRoutingRegistryRevision } from './model-router.js';
 
 const log = createLogger('provider-runtime-coordinator');
 
@@ -27,7 +28,7 @@ export class ProviderRuntimeCoordinator {
   private readonly store = new ProviderRegistrySnapshotStore({
     loadProviders,
     listRuntimeProviderIds: () => agentManager.listEnabledIds(),
-    reconcileRuntime: view => this.reconcileRuntime(view.providers),
+    reconcileRuntime: view => this.reconcileRuntime(view),
     publish: event => eventBus.publish(event),
     onPollError: error => {
       log.error({
@@ -79,17 +80,20 @@ export class ProviderRuntimeCoordinator {
     return view;
   }
 
-  private async reconcileRuntime(providers: readonly ProviderConfig[]): Promise<void> {
-    const previous = this.store.getRuntimeView()?.providers ?? agentManager.listProviders();
+  private async reconcileRuntime(view: { revision: string; providers: readonly ProviderConfig[] }): Promise<void> {
+    const providers = view.providers;
+    const previousView = this.store.getRuntimeView();
+    const previous = previousView?.providers ?? agentManager.listProviders();
     try {
-      await agentManager.reloadProviders(providers);
+      await agentManager.reloadProviders(providers, view.revision);
       await taskQueue.reconcileProviders(providers);
       await sharedState.reconcileProviders(providers);
       commitRegistryView(providers);
+      commitModelRoutingRegistryRevision(view.revision);
     } catch (error) {
       const rollbackErrors: string[] = [];
       for (const rollback of [
-        () => agentManager.reloadProviders(previous),
+        () => agentManager.reloadProviders(previous, previousView?.revision ?? null),
         () => taskQueue.reconcileProviders(previous),
         () => sharedState.reconcileProviders(previous),
       ]) {
@@ -102,6 +106,7 @@ export class ProviderRuntimeCoordinator {
         }
       }
       commitRegistryView(previous);
+      commitModelRoutingRegistryRevision(previousView?.revision ?? null);
       if (rollbackErrors.length > 0) {
         throw new AggregateError(
           [error, ...rollbackErrors.map(message => new Error(message))],

@@ -1,6 +1,6 @@
 {
-  "version": 9,
-  "updated": "2026-07-30",
+  "version": 10,
+  "updated": "2026-08-01",
   "providers": [
     {
       "id": "claude-code",
@@ -12,6 +12,47 @@
       "role": "Commander",
       "score": 95,
       "model": "claude-opus-4-6",
+      "models": [
+        {
+          "id": "haiku",
+          "tier": "light",
+          "reasoningStrength": 1,
+          "costClass": "minimal",
+          "latencyClass": "fast",
+          "contextWindow": 200000,
+          "availability": "available"
+        },
+        {
+          "id": "sonnet",
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "standard",
+          "contextWindow": 200000,
+          "availability": "available"
+        },
+        {
+          "id": "claude-fable-5",
+          "aliases": ["fable"],
+          "tier": "heavy",
+          "reasoningStrength": 4,
+          "costClass": "premium",
+          "latencyClass": "standard",
+          "contextWindow": 200000,
+          "availability": "available"
+        },
+        {
+          "id": "claude-opus-4-6",
+          "aliases": ["opus"],
+          "default": true,
+          "tier": "frontier",
+          "reasoningStrength": 5,
+          "costClass": "unbounded",
+          "latencyClass": "slow",
+          "contextWindow": 200000,
+          "availability": "available"
+        }
+      ],
       "command": "claude",
       "args": [
         "--dangerously-skip-permissions"
@@ -57,6 +98,18 @@
       "role": "Architect",
       "score": 90,
       "model": "multi-llm",
+      "models": [
+        {
+          "id": "multi-llm",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "standard",
+          "contextWindow": null,
+          "availability": "available"
+        }
+      ],
       "command": "opencode",
       "args": [
         "run"
@@ -101,6 +154,18 @@
       "role": "Engineer",
       "score": 83,
       "model": "codex",
+      "models": [
+        {
+          "id": "codex",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "standard",
+          "contextWindow": null,
+          "availability": "available"
+        }
+      ],
       "command": "codex",
       "args": [],
       "env": {},
@@ -142,6 +207,18 @@
       "role": "Reviewer",
       "score": 78,
       "model": "cursor",
+      "models": [
+        {
+          "id": "cursor",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "standard",
+          "contextWindow": null,
+          "availability": "available"
+        }
+      ],
       "command": "cursor-agent",
       "args": [],
       "env": {},
@@ -184,6 +261,18 @@
       "role": "Coder",
       "score": 88,
       "model": "qwen3:30b-a3b",
+      "models": [
+        {
+          "id": "qwen3:30b-a3b",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "minimal",
+          "latencyClass": "standard",
+          "contextWindow": 32768,
+          "availability": "available"
+        }
+      ],
       "command": null,
       "args": [],
       "endpoint": "http://localhost:11434/v1",
@@ -242,6 +331,18 @@
       "role": "Designer",
       "score": 85,
       "model": "agy-internal",
+      "models": [
+        {
+          "id": "agy-internal",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "standard",
+          "contextWindow": null,
+          "availability": "available"
+        }
+      ],
       "command": "agy",
       "args": [],
       "env": {},
@@ -289,6 +390,18 @@
       "role": "ToolUser",
       "score": 86,
       "model": "gpt-5.6-terra",
+      "models": [
+        {
+          "id": "gpt-5.6-terra",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "standard",
+          "latencyClass": "fast",
+          "contextWindow": null,
+          "availability": "available"
+        }
+      ],
       "command": "codex",
       "args": [],
       "endpoint": null,

@@ -70,6 +70,14 @@ describe('ProviderRegistrySnapshotStore', () => {
     expect(manifest.auth).toEqual({ kind: 'environment-reference', ref: 'PROVIDER_API_KEY' });
     expect(manifest.capabilities).toEqual(['code', 'testing']);
     expect(manifest.models[0]?.aliases).toEqual(['a', 'z']);
+    expect(manifest.models[0]).toMatchObject({
+      tier: 'balanced',
+      reasoningStrength: 3,
+      costClass: 'standard',
+      latencyClass: 'standard',
+      contextWindow: null,
+      availability: 'available',
+    });
     expect(manifest.runtime.loaded).toBe(true);
     expect(manifest.routing).toMatchObject({
       discussionEligible: true,
@@ -93,21 +101,39 @@ describe('ProviderRegistrySnapshotStore', () => {
         enabled: true,
         default: true,
         aliases: [],
-        capabilities: [],
+        capabilities: ['code', 'testing'],
+        tier: 'balanced',
+        reasoningStrength: 3,
+        costClass: 'standard',
+        latencyClass: 'standard',
+        contextWindow: null,
+        availability: 'available',
       },
       {
         id: 'free-a',
         enabled: true,
         default: false,
         aliases: [],
-        capabilities: [],
+        capabilities: ['code', 'testing'],
+        tier: 'balanced',
+        reasoningStrength: 3,
+        costClass: 'minimal',
+        latencyClass: 'standard',
+        contextWindow: null,
+        availability: 'available',
       },
       {
         id: 'free-b',
         enabled: true,
         default: false,
         aliases: [],
-        capabilities: [],
+        capabilities: ['code', 'testing'],
+        tier: 'balanced',
+        reasoningStrength: 3,
+        costClass: 'minimal',
+        latencyClass: 'standard',
+        contextWindow: null,
+        availability: 'available',
       },
     ]);
   });

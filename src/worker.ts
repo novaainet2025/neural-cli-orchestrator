@@ -1,5 +1,4 @@
 import { createLogger } from './utils/logger.js';
-import { loadEnabledProviders } from './utils/config.js';
 import { getDb, runMigrations, closeDb } from './storage/database.js';
 import { getRedis, closeRedis, redisHealthCheck } from './storage/redis.js';
 import { eventBus } from './core/event-bus.js';
@@ -7,6 +6,7 @@ import { sharedState } from './core/shared-state.js';
 import { syncEngine } from './core/sync-engine.js';
 import { agentManager } from './agent/agent-manager.js';
 import { taskQueue } from './core/task-queue.js';
+import { providerRuntimeCoordinator } from './core/provider-runtime-coordinator.js';
 
 const log = createLogger('worker');
 
@@ -40,10 +40,13 @@ async function boot(): Promise<void> {
       timeoutMs: task.timeoutMs,
       projectDir: task.metadata?.projectDir as string | undefined,
       localNetworkAccess: task.metadata?.localNetworkAccess === true,
+      routingMetadata: task.metadata,
     });
     return { success: result.success, output: result.output, error: result.error, usage: result.usage };
   });
-  await taskQueue.init(loadEnabledProviders());
+  // Match the API process: no queue admission before Registry v2 commits.
+  await taskQueue.init([]);
+  await providerRuntimeCoordinator.init();
 
   log.info('NCO worker ready');
 }
@@ -51,6 +54,7 @@ async function boot(): Promise<void> {
 async function shutdown(signal: string): Promise<void> {
   taskQueue.beginShutdown(signal);
   log.info({ signal }, 'Shutting down worker');
+  providerRuntimeCoordinator.stop();
   await taskQueue.close();
   syncEngine.stop();
   eventBus.destroy();

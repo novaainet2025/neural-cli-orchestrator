@@ -4,6 +4,7 @@
     "공유 ai-providers.json은 코드·중립 기본값(SSOT)이며 머신별 값을 커밋하지 않습니다.",
     "providers에는 이 PC에만 설치된 provider를 추가할 수 있습니다.",
     "overrides.<provider-id>에 부분 객체를 넣으면 해당 필드만 덮어씁니다.",
+    "models 배열은 이 PC에서 실제 사용 가능한 모델의 전체 목록입니다. 추가·삭제·availability 변경 시 Registry revision과 자동 모델 라우팅에 즉시 반영됩니다.",
     "allowedProviderIds/deniedProviderIds는 이 PC의 최종 실행 허용 집합을 제한합니다."
   ],
   "providers": [
@@ -20,7 +21,29 @@
   ],
   "overrides": {
     "ollama": {
-      "enabled": false
+      "enabled": false,
+      "model": "pc-balanced-model",
+      "models": [
+        {
+          "id": "pc-light-model",
+          "tier": "light",
+          "reasoningStrength": 1,
+          "costClass": "minimal",
+          "latencyClass": "fast",
+          "contextWindow": 32768,
+          "availability": "available"
+        },
+        {
+          "id": "pc-balanced-model",
+          "default": true,
+          "tier": "balanced",
+          "reasoningStrength": 3,
+          "costClass": "minimal",
+          "latencyClass": "standard",
+          "contextWindow": 65536,
+          "availability": "available"
+        }
+      ]
     }
   },
   "allowedProviderIds": ["claude-code", "codex", "pc-local-provider"],

@@ -1040,4 +1040,51 @@ describe('structured company stage BLOCKED outcome', () => {
     await expect(dispatchStage(app, run, stage, '/tmp')).resolves.toBe(false);
     expect(inject).toHaveBeenCalledTimes(0);
   });
+
+  it('회사·팀 stage의 난이도와 assignment revision을 중앙 모델 라우터 metadata로 전달한다', async () => {
+    const stage = makeStage({
+      teamSlug: 'assurance-audit',
+      teamName: 'Assurance Audit',
+      status: 'pending',
+      executor: 'arbitrary-provider',
+      subtask: 'Review production security architecture and verify regression evidence.',
+      providerAssignmentId: 'pas_dynamic_1',
+      registryRevision: 'registry-company-1',
+      policyFingerprint: 'policy-1',
+      providerConfigFingerprint: 'providers-1',
+      availabilityFingerprint: 'availability-1',
+    });
+    const run = makeTestRun({
+      id: `run_model_routing_${Date.now()}`,
+      status: 'running',
+      goal: 'Production security audit',
+      providerAssignmentMode: 'enforce',
+      workflowRunId: 'workflow-model-routing',
+      stages: [stage],
+    });
+    const inject = vi.fn().mockResolvedValue({
+      statusCode: 202,
+      json: () => ({ taskId: 'task-model-routing', agentId: 'arbitrary-provider' }),
+    });
+    const app = { inject } as unknown as import('fastify').FastifyInstance;
+
+    await dispatchStage(app, run, stage, '/tmp');
+
+    expect(inject).toHaveBeenCalledWith(expect.objectContaining({
+      method: 'POST',
+      url: '/api/task',
+      payload: expect.objectContaining({
+        ai: 'arbitrary-provider',
+        metadata: expect.objectContaining({
+          providerAssignmentId: 'pas_dynamic_1',
+          providerRegistryRevision: 'registry-company-1',
+          modelCapabilities: ['testing'],
+          complexity: expect.any(Number),
+          depth: 8,
+          riskLevel: 'high',
+          verificationRequired: true,
+        }),
+      }),
+    }));
+  });
 });
