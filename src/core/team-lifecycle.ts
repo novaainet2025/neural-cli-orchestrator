@@ -19,6 +19,7 @@ export const TEAM_LIFECYCLE_SCHEDULE = '*/10 * * * *';
 export const TEAM_LIFECYCLE_MAX_IMPROVEMENTS = 3;
 export const TEAM_LIFECYCLE_MAX_PER_REVIEW = 5;
 export const TEAM_LIFECYCLE_COOLDOWN_MS = 10 * 60 * 1000;
+export const TEAM_LIFECYCLE_SCORE_EVENT_DEDUPE_MINUTES = 60;
 export const TEAM_LIFECYCLE_IMMEDIATE_MIN_SAMPLE = 10;
 export const TEAM_LIFECYCLE_IMMEDIATE_MAX_COMPLETION = 20;
 export const TEAM_LIFECYCLE_IMMEDIATE_MIN_FAILURES = 5;
@@ -258,47 +259,98 @@ function ensureProfile(database: Database.Database, teamId: string): void {
   }
 }
 
-function recordLifecycleEvent(
+interface LifecycleEventInput {
+  teamId: string;
+  teamSlug: string;
+  eventType:
+    | 'score_checked'
+    | 'score_recovered'
+    | 'hr_directive'
+    | 'improvement_started'
+    | 'improvement_completed'
+    | 'improvement_failed'
+    | 'improvement_trigger_failed'
+    | 'probation_started'
+    | 'retired'
+    | 'restored';
+  score?: number;
+  improvementCount?: number;
+  reason?: string;
+  companyRunId?: string;
+  source: TeamLifecycleSource;
+  metadata?: Record<string, unknown>;
+}
+
+function recordLifecycleEvents(
   database: Database.Database,
-  input: {
-    teamId: string;
-    teamSlug: string;
-    eventType:
-      | 'score_checked'
-      | 'score_recovered'
-      | 'hr_directive'
-      | 'improvement_started'
-      | 'improvement_completed'
-      | 'improvement_failed'
-      | 'improvement_trigger_failed'
-      | 'probation_started'
-      | 'retired'
-      | 'restored';
-    score?: number;
-    improvementCount?: number;
-    reason?: string;
-    companyRunId?: string;
-    source: TeamLifecycleSource;
-    metadata?: Record<string, unknown>;
-  },
+  inputs: LifecycleEventInput[],
 ): void {
-  database.prepare(`
+  if (inputs.length === 0) return;
+  const insert = database.prepare(`
     INSERT INTO team_lifecycle_events (
       id, team_id, team_slug, event_type, score, improvement_count,
       reason, company_run_id, source, metadata_json
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    createId('tle'),
-    input.teamId,
-    input.teamSlug,
-    input.eventType,
-    input.score ?? null,
-    input.improvementCount ?? 0,
-    input.reason ?? '',
-    input.companyRunId ?? null,
-    input.source,
-    JSON.stringify(input.metadata ?? {}),
-  );
+  `);
+  const insertScheduledScoreUnlessDuplicate = database.prepare(`
+    INSERT INTO team_lifecycle_events (
+      id, team_id, team_slug, event_type, score, improvement_count,
+      reason, company_run_id, source, metadata_json
+    )
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM team_lifecycle_events
+      WHERE team_id = ?
+        AND event_type = 'score_checked'
+        AND score IS ?
+        AND improvement_count = ?
+        AND reason = ?
+        AND source = 'scheduled'
+        AND created_at >= datetime('now', ?)
+    )
+  `);
+  const write = database.transaction(() => {
+    for (const input of inputs) {
+      const score = input.score ?? null;
+      const improvementCount = input.improvementCount ?? 0;
+      const reason = input.reason ?? '';
+      const companyRunId = input.companyRunId ?? null;
+      const metadataJson = JSON.stringify(input.metadata ?? {});
+      const values = [
+        createId('tle'),
+        input.teamId,
+        input.teamSlug,
+        input.eventType,
+        score,
+        improvementCount,
+        reason,
+        companyRunId,
+        input.source,
+        metadataJson,
+      ] as const;
+      if (input.eventType === 'score_checked' && input.source === 'scheduled') {
+        insertScheduledScoreUnlessDuplicate.run(
+          ...values,
+          input.teamId,
+          score,
+          improvementCount,
+          reason,
+          `-${TEAM_LIFECYCLE_SCORE_EVENT_DEDUPE_MINUTES} minutes`,
+        );
+      } else {
+        insert.run(...values);
+      }
+    }
+  });
+  write();
+}
+
+function recordLifecycleEvent(
+  database: Database.Database,
+  input: LifecycleEventInput,
+): void {
+  recordLifecycleEvents(database, [input]);
 }
 
 function sampleTimePredicate(sample: TeamScore['sample'], alias: string): string {
@@ -589,6 +641,14 @@ async function executeTeamLifecycleReview(
     : allScores)
     .sort((left, right) => left.score - right.score || left.teamId.localeCompare(right.teamId));
   const result = initialReviewResult();
+  const routineScoreEvents: LifecycleEventInput[] = [];
+  const recordScoreEvent = (input: LifecycleEventInput): void => {
+    if (input.eventType === 'score_checked' && source === 'scheduled') {
+      routineScoreEvents.push(input);
+      return;
+    }
+    recordLifecycleEvent(database, input);
+  };
   let activeImprovementRuns = (database.prepare(`
     SELECT COUNT(*) AS count
     FROM team_lifecycle_profiles
@@ -615,7 +675,7 @@ async function executeTeamLifecycleReview(
         SET last_score = ?, last_sample_size = 0, last_checked_at = ?, updated_at = datetime('now')
         WHERE team_id = ?
       `).run(team.score, now.toISOString(), team.teamId);
-      recordLifecycleEvent(database, {
+      recordScoreEvent({
         teamId: team.teamId,
         teamSlug: team.slug,
         eventType: 'score_checked',
@@ -635,7 +695,7 @@ async function executeTeamLifecycleReview(
         SET last_score = ?, last_sample_size = ?, last_checked_at = ?, updated_at = datetime('now')
         WHERE team_id = ?
       `).run(team.score, team.n, now.toISOString(), team.teamId);
-      recordLifecycleEvent(database, {
+      recordScoreEvent({
         teamId: team.teamId,
         teamSlug: team.slug,
         eventType: 'score_checked',
@@ -668,7 +728,7 @@ async function executeTeamLifecycleReview(
           updated_at = datetime('now')
         WHERE team_id = ?
       `).run(team.score, team.n, now.toISOString(), team.teamId);
-      recordLifecycleEvent(database, {
+      recordScoreEvent({
         teamId: team.teamId,
         teamSlug: team.slug,
         eventType: recovered ? 'score_recovered' : 'score_checked',
@@ -700,7 +760,7 @@ async function executeTeamLifecycleReview(
     `).run(now.toISOString(), team.score, team.n, now.toISOString(), team.teamId);
     profile = readProfile(database, team.teamId);
 
-    recordLifecycleEvent(database, {
+    recordScoreEvent({
       teamId: team.teamId,
       teamSlug: team.slug,
       eventType: 'score_checked',
@@ -840,6 +900,7 @@ async function executeTeamLifecycleReview(
     });
   }
 
+  recordLifecycleEvents(database, routineScoreEvents);
   return result;
 }
 

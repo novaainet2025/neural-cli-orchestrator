@@ -115,6 +115,57 @@ describe('normalizeGracefulShutdownInterruption', () => {
     }
   });
 
+  it('rejects new queue submissions after shutdown begins', async () => {
+    const manager = taskQueue as any;
+    const originalSignal = manager.shutdownSignal;
+    manager.shutdownSignal = 'SIGTERM';
+
+    try {
+      await expect(manager.enqueue({
+        taskId: 'late-scheduler-task',
+        agentId: 'codex',
+        prompt: 'must not start',
+      })).resolves.toEqual({
+        success: false,
+        output: '',
+        error: `${GRACEFUL_SHUTDOWN_INTERRUPTION} (SIGTERM)`,
+        status: 'cancelled',
+      });
+    } finally {
+      manager.shutdownSignal = originalSignal;
+    }
+  });
+
+  it('interrupts only active tasks selected after the shutdown drain timeout', () => {
+    const manager = taskQueue as any;
+    const originalAgents = manager.agents;
+    const originalRuntimes = manager.runtimes;
+    const selected = new AbortController();
+    const unrelated = new AbortController();
+    manager.runtimes = new Map([
+      ['selected', { abortReason: undefined }],
+      ['unrelated', { abortReason: undefined }],
+    ]);
+    manager.agents = new Map([
+      ['codex', {
+        activeControllers: new Map([
+          ['selected', selected],
+          ['unrelated', unrelated],
+        ]),
+      }],
+    ]);
+
+    try {
+      expect(manager.interruptActiveTasks(['selected'])).toBe(1);
+      expect(selected.signal.aborted).toBe(true);
+      expect(unrelated.signal.aborted).toBe(false);
+      expect(manager.runtimes.get('selected').abortReason).toBe('cancelled');
+    } finally {
+      manager.agents = originalAgents;
+      manager.runtimes = originalRuntimes;
+    }
+  });
+
   it('force-closes BullMQ workers after the bounded drain', async () => {
     const manager = taskQueue as any;
     const originalAgents = manager.agents;

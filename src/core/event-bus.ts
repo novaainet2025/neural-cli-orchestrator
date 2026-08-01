@@ -1,4 +1,5 @@
 import { EventEmitter } from 'eventemitter3';
+import type { Redis } from 'ioredis';
 import { getRedis, getSubscriber, isRedisConnected } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
@@ -43,32 +44,24 @@ export class EventBus {
   private local = new EventEmitter();
   private ready = false;
   private sequence = 0;
+  private drainTimer: NodeJS.Timeout | null = null;
+  private redisSubscriber: Redis | null = null;
+  private redisMessageHandler: ((_channel: string, message: string) => void) | null = null;
+  private redisReadyHandler: (() => void) | null = null;
+  private subscriptionInFlight: Promise<void> | null = null;
   // Track locally-emitted event IDs to prevent Redis echo causing double-emit
   private localEmittedIds = new Set<string>();
 
   async init(): Promise<void> {
     if (this.ready) return;
+    this.ready = true;
+    this.ensureEventQueue();
+    this.startEventQueueDrain();
 
     try {
       const sub = await getSubscriber();
+      this.bindRedisSubscriber(sub);
       await sub.subscribe(CHANNEL);
-
-      sub.on('message', (_channel: string, message: string) => {
-        try {
-          const event = JSON.parse(message) as NCOEvent;
-          // Skip re-emit if this event was already emitted locally in publish()
-          if (this.localEmittedIds.has(event.id)) return;
-          this.local.emit(event.type, event);
-          this.local.emit('*', event);
-        } catch (err) {
-          log.error({ err }, 'Failed to parse event');
-        }
-      });
-
-      try {
-        const db = getDb();
-        db.prepare(`CREATE TABLE IF NOT EXISTS event_queue (id TEXT PRIMARY KEY, channel TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()))`).run();
-      } catch { }
 
       // Consumer Group for multi-instance support
       try {
@@ -79,43 +72,109 @@ export class EventBus {
         if (!msg.includes('BUSYGROUP')) log.warn({ err: msg }, 'Consumer group setup skipped');
       }
 
-      this.ready = true;
       log.info('Event Bus initialized (Redis Pub/Sub + Streams)');
-
-      setInterval(async () => {
-        if (!isRedisConnected()) return;
-        try {
-          const db = getDb();
-          const pending = db.prepare(`SELECT * FROM event_queue ORDER BY created_at LIMIT 50`).all() as any[];
-          if (pending.length === 0) return;
-          const redis = await getRedis();
-          await redis.ping();
-          for (const row of pending) {
-            const event = JSON.parse(row.payload) as NCOEvent;
-            const streamId = await redis.xadd(
-              STREAM,
-              'MAXLEN', '~', String(MAX_STREAM_LEN),
-              '*',
-              'type', event.type,
-              'data', row.payload,
-              'retry_count', '0',
-            );
-            const broadcastPayload = typeof streamId === 'string'
-              ? JSON.stringify({ ...event, streamId })
-              : row.payload;
-            try {
-              await redis.publish(row.channel, broadcastPayload);
-            } finally {
-              // XADD succeeded, so the consumer group/replay path can deliver it even if publish fails.
-              db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
-            }
-          }
-        } catch { }
-      }, 5000);
     } catch (err) {
+      // getSubscriber() retains the reconnecting singleton after its initial
+      // connect rejection. Bind its future ready event so Pub/Sub recovers
+      // without restarting NCO.
+      try {
+        this.bindRedisSubscriber(await getSubscriber());
+      } catch { }
       log.warn({ err }, 'Redis unavailable, Event Bus in local-only mode');
-      this.ready = true; // local-only fallback
     }
+  }
+
+  private ensureEventQueue(): void {
+    try {
+      const db = getDb();
+      db.prepare(`CREATE TABLE IF NOT EXISTS event_queue (id TEXT PRIMARY KEY, channel TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL DEFAULT (unixepoch()))`).run();
+    } catch { }
+  }
+
+  private enqueueEventForReplay(event: NCOEvent, payload: string): void {
+    try {
+      const db = getDb();
+      db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(
+        event.id,
+        CHANNEL,
+        payload,
+      );
+    } catch (err) {
+      log.error({ err, type: event.type, eventId: event.id }, 'Failed to enqueue event for Redis replay');
+    }
+  }
+
+  private bindRedisSubscriber(sub: Redis): void {
+    if (this.redisSubscriber === sub) return;
+    if (this.redisSubscriber && this.redisMessageHandler && this.redisReadyHandler) {
+      this.redisSubscriber.off('message', this.redisMessageHandler);
+      this.redisSubscriber.off('ready', this.redisReadyHandler);
+    }
+    this.redisSubscriber = sub;
+    this.redisMessageHandler = (_channel: string, message: string) => {
+      try {
+        const event = JSON.parse(message) as NCOEvent;
+        if (this.localEmittedIds.has(event.id)) return;
+        this.emitLocal(event);
+      } catch (err) {
+        log.error({ err }, 'Failed to parse event');
+      }
+    };
+    // Subscribe only after ioredis finishes AUTH/SELECT/ready-check. Subscribing
+    // on the earlier TCP `connect` event puts the socket in subscriber mode
+    // while ioredis still needs to send INFO and creates a reconnect storm.
+    this.redisReadyHandler = () => {
+      if (!this.ready || this.subscriptionInFlight) return;
+      this.subscriptionInFlight = sub.subscribe(CHANNEL)
+        .then(() => {
+          log.info('Event Bus Redis subscription recovered');
+        })
+        .catch((err: unknown) => {
+          log.warn({ err }, 'Event Bus Redis resubscribe failed');
+        })
+        .finally(() => {
+          this.subscriptionInFlight = null;
+        });
+    };
+    sub.on('message', this.redisMessageHandler);
+    sub.on('ready', this.redisReadyHandler);
+  }
+
+  private startEventQueueDrain(): void {
+    if (this.drainTimer) return;
+    this.drainTimer = setInterval(async () => {
+      if (!isRedisConnected()) return;
+      try {
+        const db = getDb();
+        const pending = db.prepare(`SELECT * FROM event_queue ORDER BY created_at LIMIT 50`).all() as any[];
+        if (pending.length === 0) return;
+        const redis = await getRedis();
+        await redis.ping();
+        for (const row of pending) {
+          const event = JSON.parse(row.payload) as NCOEvent;
+          const streamId = await redis.xadd(
+            STREAM,
+            'MAXLEN', '~', String(MAX_STREAM_LEN),
+            '*',
+            'type', event.type,
+            'data', row.payload,
+            'retry_count', '0',
+          );
+          const broadcastPayload = typeof streamId === 'string'
+            ? JSON.stringify({ ...event, streamId })
+            : row.payload;
+          try {
+            await redis.publish(row.channel, broadcastPayload);
+          } finally {
+            // XADD succeeded, so the replay path can deliver it even if publish fails.
+            db.prepare(`DELETE FROM event_queue WHERE id=?`).run(row.id);
+          }
+        }
+      } catch (err) {
+        log.warn({ err }, 'Event replay queue drain failed');
+      }
+    }, 5000);
+    this.drainTimer.unref?.();
   }
 
   // ─── Publish ────────────────────────────────────────
@@ -153,18 +212,16 @@ export class EventBus {
       } catch (err) {
         log.error({ err, type: enriched.type }, 'Redis publish failed');
         if (!streamPersisted) {
-          try {
-            const db = getDb();
-            db.prepare(`INSERT OR IGNORE INTO event_queue (id, channel, payload) VALUES (?, ?, ?)`).run(enriched.id, CHANNEL, payload);
-          } catch { }
+          this.enqueueEventForReplay(enriched, payload);
         }
       }
+    } else {
+      this.enqueueEventForReplay(enriched, payload);
     }
 
     // 2. Local emit after remote commit / local fallback enqueue
     setTimeout(() => this.localEmittedIds.delete(enriched.id), 30000);
-    this.local.emit(enriched.type, enriched);
-    this.local.emit('*', enriched);
+    this.emitLocal(enriched);
 
     // 3. SQLite append-only work ledger (all events) + legacy action index.
     // The work ledger is the durable learning source; agent_actions remains a
@@ -204,6 +261,20 @@ export class EventBus {
     });
   }
 
+  /** A faulty local subscriber must not reject publish() or stop Redis consumption. */
+  private emitLocal(event: NCOEvent): void {
+    try {
+      this.local.emit(event.type, event);
+    } catch (error) {
+      log.error({ err: error, type: event.type, eventId: event.id }, 'Local event handler failed');
+    }
+    try {
+      this.local.emit('*', event);
+    } catch (error) {
+      log.error({ err: error, type: event.type, eventId: event.id }, 'Wildcard event handler failed');
+    }
+  }
+
   // ─── Consumer Group (XREADGROUP) ────────────────────
   /**
    * Process pending messages from the Redis consumer group.
@@ -241,8 +312,7 @@ export class EventBus {
                 const event = { ...JSON.parse(payload) as NCOEvent, streamId: msgId };
                 // Emit only if not already emitted locally
                 if (!this.localEmittedIds.has(event.id)) {
-                  this.local.emit(event.type, event);
-                  this.local.emit('*', event);
+                  this.emitLocal(event);
                 }
               }
               // Acknowledge the message regardless
@@ -350,6 +420,18 @@ export class EventBus {
 
   // ─── Cleanup ────────────────────────────────────────
   destroy(): void {
+    if (this.drainTimer) {
+      clearInterval(this.drainTimer);
+      this.drainTimer = null;
+    }
+    if (this.redisSubscriber && this.redisMessageHandler && this.redisReadyHandler) {
+      this.redisSubscriber.off('message', this.redisMessageHandler);
+      this.redisSubscriber.off('ready', this.redisReadyHandler);
+    }
+    this.redisSubscriber = null;
+    this.redisMessageHandler = null;
+    this.redisReadyHandler = null;
+    this.subscriptionInFlight = null;
     this.local.removeAllListeners();
     this.ready = false;
   }

@@ -1,8 +1,57 @@
+import { CreateTaskInput } from '../utils/validation.js';
+
 export type RecoverableTaskStatus = 'queued' | 'assigned' | 'in_progress' | 'running' | 'streaming';
 
 export type OrphanRecoveryDecision =
-  | { action: 'dead_letter'; reason: 'no_agent' | 'poison' | 'external_injection' }
+  | { action: 'dead_letter'; reason: 'no_agent' | 'poison' | 'external_injection' | 'orchestration_restart' }
   | { action: 'requeue'; incrementRecoveryCount: boolean };
+
+export function restoreOrphanExecutionContract(input: {
+  metadataJson: string | null;
+  verifierJson: string | null;
+  priority: number | null;
+}): {
+  metadata?: Record<string, unknown>;
+  model?: string;
+  timeoutMs?: number;
+  verifier?: { type: 'run'; command: string; timeoutMs?: number };
+  priority?: number;
+} {
+  let metadata: Record<string, unknown> | undefined;
+  if (input.metadataJson) {
+    try {
+      const parsed = JSON.parse(input.metadataJson) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        metadata = parsed as Record<string, unknown>;
+      }
+    } catch {
+      metadata = undefined;
+    }
+  }
+
+  const parsedTimeout = CreateTaskInput.shape.timeout.safeParse(metadata?.taskTimeoutMs);
+  const parsedPriority = CreateTaskInput.shape.priority.safeParse(input.priority);
+  const parsedVerifier = (() => {
+    if (!input.verifierJson) return undefined;
+    try {
+      const result = CreateTaskInput.shape.verifier.safeParse(JSON.parse(input.verifierJson));
+      return result.success ? result.data : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
+  const model = typeof metadata?.model === 'string' && metadata.model.trim()
+    ? metadata.model
+    : undefined;
+
+  return {
+    ...(metadata ? { metadata } : {}),
+    ...(model ? { model } : {}),
+    ...(parsedTimeout.success ? { timeoutMs: parsedTimeout.data } : {}),
+    ...(parsedVerifier ? { verifier: parsedVerifier } : {}),
+    ...(parsedPriority.success ? { priority: parsedPriority.data } : {}),
+  };
+}
 
 /**
  * queued는 아직 실행을 시작하지 않았으므로 재시작 실패 횟수로 계산하지 않는다.
@@ -18,7 +67,15 @@ export function decideOrphanRecovery(input: {
   recoveryCount: number;
   maxRecoveryCount: number;
   externallyInjected?: boolean;
+  /** 죽은 프로세스가 소유하던 active discussion/hive/consensus 루트 태스크. */
+  orchestrationOwned?: boolean;
 }): OrphanRecoveryDecision {
+  // 멀티-agent orchestration을 assigned_to 한 명의 일반 BullMQ 작업으로 재실행하면
+  // 협업이 단일 응답으로 조용히 강등된다. 현 엔진에는 durable round resume이 없으므로
+  // 중단을 정직하게 종결하고 사용자가 conductor 전체를 재시도하게 한다.
+  if (input.orchestrationOwned) {
+    return { action: 'dead_letter', reason: 'orchestration_restart' };
+  }
   if (input.externallyInjected) return { action: 'dead_letter', reason: 'external_injection' };
   if (!input.assignedTo) return { action: 'dead_letter', reason: 'no_agent' };
   if (input.status !== 'queued' && input.recoveryCount >= input.maxRecoveryCount) {

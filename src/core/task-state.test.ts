@@ -62,6 +62,42 @@ describe('transitionTask', () => {
       .toEqual({ error: 'provider connection refused' });
   });
 
+  it('allows an unclaimed pending task to be failed for safe replacement', () => {
+    const database = createTask('pending');
+
+    expect(transitionTask(database, 'task-1', 'failed', {
+      error: 'replaced before assignment',
+      completedAt: true,
+    })).toEqual({ ok: true });
+    expect(database.prepare('SELECT status, error FROM tasks WHERE id=?').get('task-1'))
+      .toEqual({ status: 'failed', error: 'replaced before assignment' });
+  });
+
+  it.each(['assigned', 'running', 'streaming'])(
+    'allows an execution lease to expire from %s',
+    (status) => {
+      const database = createTask(status);
+
+      expect(transitionTask(database, 'task-1', 'lease_expired', {
+        error: 'lease_expired',
+        completedAt: true,
+      })).toEqual({ ok: true });
+      expect(database.prepare('SELECT status, error FROM tasks WHERE id=?').get('task-1'))
+        .toEqual({ status: 'lease_expired', error: 'lease_expired' });
+    },
+  );
+
+  it('keeps reviewing outside the execution-lease terminal transition', () => {
+    const database = createTask('reviewing');
+
+    expect(transitionTask(database, 'task-1', 'lease_expired', {
+      error: 'lease_expired',
+      completedAt: true,
+    })).toEqual({ ok: false, prev: 'reviewing' });
+    expect(database.prepare('SELECT status FROM tasks WHERE id=?').get('task-1'))
+      .toEqual({ status: 'reviewing' });
+  });
+
   it('stores task evidence as structured JSON when the ledger is available', () => {
     const database = createTask();
     database.exec(readFileSync(resolve('db/migrations/092_work_event_ledger.sql'), 'utf8'));

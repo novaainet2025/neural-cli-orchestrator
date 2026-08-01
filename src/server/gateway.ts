@@ -1,11 +1,15 @@
-import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { createHmac, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { z } from 'zod/v4';
-import { env } from '../utils/config.js';
+import { env, loadEnabledProviders } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
 import { getRedis, isRedisConnected, redisHealthCheck } from '../storage/redis.js';
 import { getDb } from '../storage/database.js';
@@ -43,6 +47,7 @@ import { eventBus, type NCOEvent } from '../core/event-bus.js';
 import { discoverAcquisitions } from '../core/acquisition-discovery.js';
 import { installAcquiredPackage } from '../core/acquisition-installer.js';
 import { acquisitionRegistry, type AcquisitionRecord } from '../core/acquisition-registry.js';
+import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
 import { createTaskId, createSessionId } from '../utils/id.js';
 import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
@@ -72,12 +77,13 @@ import {
   circuitBreakerRegistry,
   type ProviderAvailabilitySnapshot,
 } from '../security/circuit-breaker-registry.js';
+import { summarizeProviderAvailability } from './provider-health.js';
 import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
 import { refreshWorkReportPromptSnapshot } from '../core/work-report-scheduler.js';
 import { registerTriadRoutes } from './routes/triad.js';
 import { markTaskQualityRejected } from './task-quality-state.js';
-import { reserveRetry, rollbackRetryReservation } from './retry-budget.js';
+import { readRetryCount, reserveRetry, rollbackRetryReservation } from './retry-budget.js';
 import { buildConductorDiscussionOptions } from './conductor-dispatch.js';
 import {
   projectDiscussionTaskProgress,
@@ -89,6 +95,15 @@ type TaskFailureContext = {
   mode?: string | null;
   prompt?: string | null;
   team_id?: string | null;
+};
+
+export type NcoGateway = FastifyInstance & {
+  /**
+   * Run the same durable workflow, response-quality, and organization-audit
+   * side effects for a task terminalized outside the HTTP intake promise.
+   * Startup orphan recovery is the primary caller.
+   */
+  settlePersistedTaskTerminal(taskId: string): Promise<void>;
 };
 
 type FailedCompletionOptions = {
@@ -363,9 +378,13 @@ function withTaskRuntime<T extends {
       ? undefined
       : { lastActivityAt: task.last_activity_at ?? null },
   );
-  const discussion = prefetchedDiscussion === undefined
-    ? readActiveDiscussionProgress(task.id)
-    : prefetchedDiscussion ?? undefined;
+  // tasks가 terminal이면 그 행이 SSOT다. 취소/실패 직후 늦게 남은 active discussion이
+  // API 응답을 다시 running으로 덮어쓰면 취소 성공 응답과 조회 결과가 모순된다.
+  const discussion = task.status && TERMINAL_STATES.has(task.status)
+    ? undefined
+    : prefetchedDiscussion === undefined
+      ? readActiveDiscussionProgress(task.id)
+      : prefetchedDiscussion ?? undefined;
   if (discussion) {
     return {
       ...task,
@@ -530,6 +549,7 @@ import { ProviderAssignmentRuntime } from '../core/provider-assignment-runtime.j
 import { registerCliQaRoutes } from './routes/cli-qa.js';
 import { registerGoalsRoutes } from './routes/goals.js';
 import { registerPerformanceRoutes } from './routes/performance.js';
+import { isAutomaticProviderFailoverAllowed } from './task-failover-policy.js';
 import { registerPerformanceFlowRoutes } from './routes/performance-flow.js';
 import { registerWorkReportRoutes } from './routes/work-reports.js';
 import { registerWorkEventRoutes } from './routes/work-events.js';
@@ -542,6 +562,7 @@ import { delegationManager } from '../core/delegation-manager.js';
 import { collaborationEngine } from '../core/collaboration-engine.js';
 import { ProviderSelectionError, sortProvidersByCostOrder } from '../core/smart-router.js';
 import {
+  failoverPreferTeamMembersEnabled,
   isRetryableFailoverFailure,
   loadFailoverChainsConfig,
   selectFailoverCandidate,
@@ -550,6 +571,7 @@ import {
   acknowledgeTaskLease,
   recordTaskHeartbeat,
   startLeaseSweeper,
+  type LeaseSweepReason,
 } from '../core/lease-sweeper.js';
 
 const log = createLogger('gateway');
@@ -607,21 +629,39 @@ type RetryTaskPayload = {
   mode?: z.infer<typeof CreateTaskInput.shape.mode>;
   workspaceId?: string;
   priority?: number;
+  timeout?: number;
   systemPrompt?: string;
   verifier?: z.infer<NonNullable<typeof CreateTaskInput.shape.verifier>>;
 };
 type RetryTaskResult =
-  | { ok: true; newTaskId: string; sourceTaskId: string; retryCount: number }
+  | {
+      ok: true;
+      newTaskId: string;
+      sourceTaskId: string;
+      retryCount: number;
+      deduplicated?: boolean;
+      replacedActive?: boolean;
+    }
   | { ok: false; statusCode: number; body: Record<string, unknown> };
 type RetryPayloadOptions = {
   allowCompletedSource?: boolean;
+  allowActiveSource?: boolean;
+};
+
+type ReservedRetry = Extract<ReturnType<typeof reserveRetry>, { allowed: true }> & {
+  sourceTaskId: string;
 };
 
 type RetryTaskOptions = {
   overrideAi?: string;
+  overridePrompt?: string;
   allowCompletedSource?: boolean;
   reason?: string;
+  reservedRetry?: ReservedRetry;
 };
+
+/** 아주 빠른 retry 완료 직후 도착한 동일 네트워크 재전송만 completed dedup으로 본다. */
+const COMPLETED_RETRY_DEDUP_WINDOW_SECONDS = 30;
 
 interface CommGraphEdge {
   from: string;
@@ -646,6 +686,8 @@ const CommGraphConfigSchema = z.object({
 });
 const RetryTaskBodySchema = z.object({
   ai: CreateTaskInput.shape.ai.optional(),
+  prompt: CreateTaskInput.shape.prompt.optional(),
+  replaceActive: z.boolean().optional().default(false),
 });
 const AcquisitionDiscoverBodySchema = z.object({
   packageName: z.string().min(1).optional(),
@@ -668,6 +710,10 @@ const AcquisitionDecisionFilterSchema = z.enum([
   'registration_failed',
   'active',
 ]);
+const DynamicMcpToolExecuteSchema = z.object({
+  name: z.string().min(1),
+  prompt: z.string().min(1),
+});
 const DiscussionRouteBodySchema = z.object({
   topic: z.string().min(1),
   participants: z.array(z.string().min(1)).min(1).optional(),
@@ -738,14 +784,55 @@ async function listActiveLocks(): Promise<ActiveLock[]> {
 let cachedCommGraph: CommGraphConfig | null = null;
 let cachedCommGraphWarning: string | null = null;
 
-const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
-  const taskLineage = db.prepare(`
-    SELECT parent_task_id
-    FROM tasks
-    WHERE id=?
-  `).get(taskId) as { parent_task_id: string | null } | undefined;
-  return taskLineage?.parent_task_id ?? taskId;
-};
+  const resolveRetrySourceTaskId = (db: ReturnType<typeof getDb>, taskId: string) => {
+  // 이전 nova-use 일반 위임 경로는 재실행할 때마다 직전 태스크를 parent로 삼아
+  // root → child → grandchild 체인을 만들었다. 한 단계만 읽으면 legacy chain이 retry cap을
+  // 세대별로 우회하므로, 존재하는 최상위 조상까지 따라간다. path/depth guard는 손상된
+  // 순환 계보에서도 조회가 끝나게 한다.
+  const root = db.prepare(`
+    WITH RECURSIVE lineage(id, parent_task_id, depth, path) AS (
+      SELECT id, parent_task_id, 0, ',' || id || ','
+      FROM tasks
+      WHERE id = ?
+      UNION ALL
+      SELECT parent.id, parent.parent_task_id, lineage.depth + 1,
+             lineage.path || parent.id || ','
+      FROM tasks AS parent
+      JOIN lineage ON parent.id = lineage.parent_task_id
+      WHERE lineage.depth < 63
+        AND instr(lineage.path, ',' || parent.id || ',') = 0
+    )
+    SELECT id
+    FROM lineage
+    ORDER BY depth DESC
+    LIMIT 1
+  `).get(taskId) as { id: string } | undefined;
+    return root?.id ?? taskId;
+  };
+
+  const loadRetryLineageAssignedAgents = (
+    db: ReturnType<typeof getDb>,
+    sourceTaskId: string,
+  ): string[] => (db.prepare(`
+    WITH RECURSIVE lineage(id, assigned_to, created_at, depth, path) AS (
+      SELECT id, assigned_to, created_at, 0, ',' || id || ','
+      FROM tasks
+      WHERE id = ?
+      UNION ALL
+      SELECT child.id, child.assigned_to, child.created_at, lineage.depth + 1,
+             lineage.path || child.id || ','
+      FROM tasks AS child
+      JOIN lineage ON child.parent_task_id = lineage.id
+      WHERE lineage.depth < 63
+        AND instr(lineage.path, ',' || child.id || ',') = 0
+    )
+    SELECT assigned_to
+    FROM lineage
+    WHERE assigned_to IS NOT NULL
+    ORDER BY created_at ASC, id ASC
+  `).all(sourceTaskId) as Array<{ assigned_to: string | null }>)
+    .map(row => row.assigned_to)
+    .filter((value): value is string => Boolean(value));
 
 const parseRetryTaskAi = (value: string | null | undefined): string | undefined => {
   if (!value) return undefined;
@@ -774,9 +861,11 @@ export const loadRetryPayload = (
     verifier_result_json: string | null;
     metadata_json: string | null;
   } | undefined;
-  const sourceStatusFilter = opts?.allowCompletedSource
-    ? "status IN ('failed', 'timed_out', 'completed')"
-    : "status IN ('failed', 'timed_out')";
+  const sourceStatusFilter = opts?.allowActiveSource
+    ? "status IN ('pending', 'queued', 'assigned', 'running', 'streaming', 'reviewing')"
+    : opts?.allowCompletedSource
+      ? "status IN ('failed', 'timed_out', 'lease_expired', 'completed')"
+      : "status IN ('failed', 'timed_out', 'lease_expired')";
   const sourceTask = deadLetter ? undefined : db.prepare(`
     SELECT assigned_to, prompt, mode, workspace_id, priority, system_prompt, metadata_json
     FROM tasks
@@ -800,7 +889,9 @@ export const loadRetryPayload = (
     }
   })();
   // 재시도는 원 태스크의 팀·회사 계보를 유지해야 score/업무보고 피드백에 귀속된다.
-  // quality 판정 자체는 자식의 새 실행 결과이므로 source의 진단 플래그는 승계하지 않는다.
+  // 실행 권한·workflow·evidence 계약도 동일해야 한다. 반대로 qualityRejected,
+  // verificationStatus, attemptedAgents 같은 실행 결과/진단 플래그는 새 시도의 결과이므로
+  // 승계하지 않는다. 전체 metadata spread 대신 명시적 allowlist를 유지하는 이유다.
   const retryMetadata = (() => {
     if (!verifierRow?.metadata_json) return undefined;
     try {
@@ -809,10 +900,26 @@ export const loadRetryPayload = (
       for (const key of [
         'projectDir',
         'allowProviderFailover',
+        'readOnly',
+        'localNetworkAccess',
+        'queuePriority',
+        'queueWaitMaxMs',
+        'taskTimeoutMs',
         'organizationId',
         'teamId',
         'companyRunId',
         'workReportId',
+        'workflowRunId',
+        'workflowStage',
+        'workflowRequired',
+        'qualityRetryOwner',
+        'requiredEvidence',
+        'auditControlPlane',
+        'verificationDirectiveId',
+        'subjectId',
+        'subjectKind',
+        'kanbanTaskId',
+        'kanbanPlanId',
       ]) {
         if (source[key] !== undefined) inherited[key] = source[key];
       }
@@ -828,11 +935,16 @@ export const loadRetryPayload = (
       return undefined;
     }
   })();
+  const retryTimeout = (() => {
+    const parsed = CreateTaskInput.shape.timeout.safeParse(retryMetadata?.taskTimeoutMs);
+    return parsed.success ? parsed.data : undefined;
+  })();
 
   const payload = deadLetter
     ? {
         ai: parseRetryTaskAi(deadLetter.ai),
         prompt: deadLetter.prompt ?? '',
+        timeout: retryTimeout,
         verifier: parsedVerifier,
         metadata: retryMetadata,
       }
@@ -852,6 +964,7 @@ export const loadRetryPayload = (
           mode: sourceTask.mode ?? undefined,
           workspaceId: sourceTask.workspace_id ?? undefined,
           priority: sourceTask.priority ?? undefined,
+          timeout: retryTimeout,
           systemPrompt: sourceTask.system_prompt ?? undefined,
           verifier: parsedVerifier,
           metadata: retryMetadata,
@@ -1041,6 +1154,64 @@ function serializeAcquisitionRecord(record: AcquisitionRecord) {
   };
 }
 
+const DYNAMIC_MCP_TASK_POLL_TIMEOUT_MS = 300_000;
+const DYNAMIC_MCP_TASK_POLL_INTERVAL_MS = 250;
+
+async function readJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text.slice(0, 2_000) };
+  }
+}
+
+async function executeDynamicMcpAgentTask(agentId: string, prompt: string): Promise<string> {
+  const baseUrl = `http://127.0.0.1:${env.PORT}`;
+  const createResponse = await fetch(`${baseUrl}/api/task`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      ai: agentId,
+      prompt,
+      callerAgentId: 'nco-dynamic-skill',
+      callerSessionId: 'nco-dynamic-skill',
+      metadata: { projectDir: resolveInternalProjectDir() },
+    }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  const created = await readJsonResponse(createResponse);
+  const taskId = typeof created.taskId === 'string' ? created.taskId : null;
+  if (!createResponse.ok || !taskId) {
+    throw new Error(typeof created.error === 'string'
+      ? created.error
+      : `dynamic skill task creation failed (HTTP ${createResponse.status})`);
+  }
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < DYNAMIC_MCP_TASK_POLL_TIMEOUT_MS) {
+    const statusResponse = await fetch(`${baseUrl}/api/tasks/${encodeURIComponent(taskId)}/status`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    const statusBody = await readJsonResponse(statusResponse);
+    const status = typeof statusBody.status === 'string' ? statusBody.status : '';
+    if (status === 'completed') {
+      return typeof statusBody.result === 'string'
+        ? statusBody.result
+        : JSON.stringify(statusBody.result ?? '');
+    }
+    if (['failed', 'timed_out', 'cancelled'].includes(status)) {
+      throw new Error(typeof statusBody.error === 'string'
+        ? statusBody.error
+        : `dynamic skill task ${status}`);
+    }
+    await new Promise(resolveWait => setTimeout(resolveWait, DYNAMIC_MCP_TASK_POLL_INTERVAL_MS));
+  }
+
+  throw new Error(`dynamic skill task timeout: ${taskId}`);
+}
+
 function safeJsonParse(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -1078,8 +1249,7 @@ function requiresNovaAxAudit(
   teamId: string | null,
   metadata: Record<string, unknown>,
 ): boolean {
-  // UI 독립 감사 승인팀은 영수증 소비자이지 자기 charter의 감사 대상이 아니다.
-  if (teamId === 'team_ui-audit-approval') return false;
+  // UI 검사 근거 생산팀도 Nova-AX 6기관 최종감사의 대상이다.
   return Boolean(teamId) && !isAuditControlPlane(metadata);
 }
 
@@ -1348,8 +1518,8 @@ async function getSessionManager() {
   return _sessionManagerMod.sessionManager;
 }
 
-export async function createGateway() {
-  const app = Fastify({ logger: false });
+export async function createGateway(): Promise<NcoGateway> {
+  const app = Fastify({ logger: false }) as unknown as NcoGateway;
   if (!providerRuntimeCoordinator.getSnapshot()) {
     await providerRuntimeCoordinator.init();
   }
@@ -1433,6 +1603,25 @@ export async function createGateway() {
     return row.count;
   };
 
+  // 한 프로세스 안에서 같은 retry root에 대한 HTTP 요청을 직렬화한다. UI 더블클릭이나
+  // 네트워크 재전송이 동시에 들어와 둘 다 "활성 자식 없음"을 본 뒤 복제본을 두 개 만드는
+  // 경쟁을 막는다. 실제 중복 판정은 아래 active child 조회가 담당하고 이 맵은 TOCTOU 창만 닫는다.
+  const retryLocks = new Map<string, Promise<void>>();
+  const withRetryLock = async <T>(sourceTaskId: string, operation: () => Promise<T>): Promise<T> => {
+    const previous = retryLocks.get(sourceTaskId) ?? Promise.resolve();
+    let releaseCurrent!: () => void;
+    const current = new Promise<void>((resolveCurrent) => { releaseCurrent = resolveCurrent; });
+    const tail = previous.catch(() => undefined).then(() => current);
+    retryLocks.set(sourceTaskId, tail);
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      releaseCurrent();
+      if (retryLocks.get(sourceTaskId) === tail) retryLocks.delete(sourceTaskId);
+    }
+  };
+
   const cancelTaskById = async (taskId: string, reply?: { code: (statusCode: number) => unknown }) => {
     const db = getDb();
     const task = db.prepare('SELECT id, status FROM tasks WHERE id=?').get(taskId) as { id: string; status: string } | undefined;
@@ -1442,22 +1631,48 @@ export async function createGateway() {
     }
 
     if (TERMINAL_STATES.has(task.status)) {
+      // 이미 끝난 태스크라도 이전 프로세스가 side effect 직전에 죽었을 수 있다.
+      // 취소의 멱등 응답을 돌려주기 전에 동일한 quality/workflow/Kanban 정산을 복구한다.
+      try {
+        await app.settlePersistedTaskTerminal(taskId);
+      } catch (error) {
+        log.warn({
+          taskId,
+          status: task.status,
+          err: error instanceof Error ? error.message : String(error),
+        }, 'Terminal cancellation lookup could not repair task side effects');
+      }
       return { ok: true, killed: false, alreadyTerminal: true, status: task.status };
     }
 
-    const killed = await taskQueue.abort(taskId);
     const moved = transitionTask(db, taskId, 'cancelled');
 
     if (!moved.ok) {
       if (moved.prev && TERMINAL_STATES.has(moved.prev)) {
-        return { ok: true, killed, alreadyTerminal: true, status: moved.prev };
+        return { ok: true, killed: false, alreadyTerminal: true, status: moved.prev };
       }
       log.info({ taskId, prev: moved.prev }, 'Cancel skipped because task transition was rejected');
-      return { ok: false, killed, status: moved.prev };
+      return { ok: false, killed: false, status: moved.prev };
     }
 
+    // DB terminal 상태를 먼저 확정한 뒤 실행기에 취소를 전파한다. 늦은 provider 완료
+    // 콜백은 transition/조건부 UPDATE 가드에서 거부되므로 cancelled가 다시 열리지 않는다.
+    const queueKilled = await taskQueue.abort(taskId);
+    let cancelledDiscussions = 0;
+    try {
+      cancelledDiscussions = discussionEngine.cancelTaskDiscussions(taskId);
+      syncWorkflowTask(taskId, 'cancelled', {}, db);
+    } catch (error) {
+      log.warn({
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Task was cancelled but linked orchestration cleanup was partial');
+    }
+    const killed = queueKilled || cancelledDiscussions > 0;
+
+    projectKanbanTaskStatus(taskId, 'cancelled');
     await eventBus.publish({ type: 'task:cancelled', taskId });
-    return { ok: true, killed, status: 'cancelled' };
+    return { ok: true, killed, cancelledDiscussions, status: 'cancelled' };
   };
 
   const validateRetryOverrideAgent = (ai: string | undefined): { ok: true } | { ok: false; body: Record<string, unknown> } => {
@@ -1468,12 +1683,61 @@ export async function createGateway() {
     return { ok: true };
   };
 
+  /**
+   * 태스크가 속한 팀의 선언 로스터(lead 우선, 그다음 provider 멤버를 등록순)를 돌려준다.
+   * failover 후보를 팀 안에서 먼저 고르기 위한 preference 목록일 뿐이라 팀이 없거나
+   * 멤버가 없으면 빈 배열 → 호출측은 기존 provider chain을 그대로 쓴다.
+   * 근거·롤백: task-failover.ts의 failoverPreferTeamMembersEnabled 주석 참조.
+   */
+  const loadTeamRosterForTask = (db: ReturnType<typeof getDb>, taskId: string): string[] => {
+    if (!failoverPreferTeamMembersEnabled()) return [];
+    try {
+      const row = db.prepare(`
+        SELECT t.id AS team_id, t.lead
+        FROM tasks k
+        JOIN teams t ON t.id = k.team_id
+        WHERE k.id = ? AND t.is_active = 1
+      `).get(taskId) as { team_id: string; lead: string | null } | undefined;
+      if (!row) return [];
+      const members = (db.prepare(`
+        SELECT member_ref
+        FROM team_members
+        WHERE team_id = ? AND member_type = 'provider'
+        ORDER BY created_at ASC, id ASC
+      `).all(row.team_id) as Array<{ member_ref: string | null }>)
+        .map(member => member.member_ref?.trim())
+        .filter((ref): ref is string => Boolean(ref));
+      const roster = [row.lead?.trim(), ...members].filter((ref): ref is string => Boolean(ref));
+      return [...new Set(roster)];
+    } catch (error) {
+      log.warn({
+        taskId,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Failed to load team roster for failover preference');
+      return [];
+    }
+  };
+
+  let bindKanbanRetryTaskRef: ((sourceTaskId: string, newTaskId: string) => boolean) | null = null;
+  const bindKanbanRetryTask = (sourceTaskId: string, newTaskId: string): void => {
+    try {
+      bindKanbanRetryTaskRef?.(sourceTaskId, newTaskId);
+    } catch (error) {
+      log.warn({
+        sourceTaskId,
+        newTaskId,
+        err: error instanceof Error ? error.message : String(error),
+      }, 'Canonical retry could not be rebound to Kanban');
+    }
+  };
+
   const createRetryTask = async (
     taskId: string,
     options?: RetryTaskOptions,
   ): Promise<RetryTaskResult> => {
     const db = getDb();
-    const sourceTaskId = resolveRetrySourceTaskId(db, taskId);
+    const sourceTaskId = options?.reservedRetry?.sourceTaskId
+      ?? resolveRetrySourceTaskId(db, taskId);
     const payload = loadRetryPayload(db, taskId, { allowCompletedSource: options?.allowCompletedSource });
     if (!payload) {
       return { ok: false, statusCode: 404, body: { error: 'Retry source not found' } };
@@ -1491,24 +1755,108 @@ export async function createGateway() {
     const retryTeamId = typeof inheritedMetadata.teamId === 'string' ? inheritedMetadata.teamId : null;
     const isWorkReportRetry = typeof inheritedMetadata.workReportId === 'string'
       && inheritedMetadata.workReportId.length > 0;
+    const selectedPrompt = options?.overridePrompt ?? payload.prompt;
     const basePrompt = isWorkReportRetry && retryTeamId
-      ? refreshWorkReportPromptSnapshot(payload.prompt, retryTeamId)
-      : payload.prompt;
+      ? refreshWorkReportPromptSnapshot(selectedPrompt, retryTeamId)
+      : selectedPrompt;
+    const finalPrompt = options?.reason
+      ? `[Quality-gate reject: ${options.reason}]\n\n${basePrompt}`
+      : basePrompt;
+    const desiredAi = options?.overrideAi ?? payload.ai;
+    const retryMetadata = {
+      ...(payload.metadata ?? {}),
+      projectDir: inheritedMetadata.projectDir ?? resolveInternalProjectDir(),
+    };
+    // /api/task는 저장 전에 prompt gate 보강과 초대형 prompt 압축을 적용한다.
+    // completed child의 저장값과 호출 원문을 직접 비교하면 같은 빠른 재전송도 서로
+    // 다른 prompt로 오인하므로, intake와 동일한 표준형을 fingerprint에 사용한다.
+    const gatedRetryPrompt = shouldApplyPromptGateForProvider(desiredAi)
+      ? applyPromptGate(finalPrompt, retryMetadata).prompt
+      : finalPrompt;
+    const expectedStoredPrompt = gatedRetryPrompt.length > MAX_PLAN_CHARS
+      ? compressPlan(gatedRetryPrompt)
+      : gatedRetryPrompt;
+
+    // 활성 child는 같은 요청일 때만 재사용해 병렬 fan-out을 막는다. 다른 prompt/provider
+    // 요청에 기존 ID를 성공처럼 돌려주면 사용자는 수정본이 실행됐다고 오인하므로 충돌로
+    // 명확히 거부한다. completed child는 아주 빠르게 끝난 직후 들어온 더블클릭/네트워크
+    // 재전송일 수 있으므로 짧은 창에서 같은 fingerprint만 dedup한다.
+    const existingRetry = db.prepare(`
+      WITH RECURSIVE retry_lineage(
+        id, status, prompt, assigned_to, metadata_json, created_at, depth, path
+      ) AS (
+        SELECT id, status, prompt, assigned_to, metadata_json, created_at, 0,
+               ',' || id || ','
+        FROM tasks
+        WHERE id = ?
+        UNION ALL
+        SELECT child.id, child.status, child.prompt, child.assigned_to,
+               child.metadata_json, child.created_at, retry_lineage.depth + 1,
+               retry_lineage.path || child.id || ','
+        FROM tasks AS child
+        JOIN retry_lineage ON child.parent_task_id = retry_lineage.id
+        WHERE retry_lineage.depth < 63
+          AND instr(retry_lineage.path, ',' || child.id || ',') = 0
+      )
+      SELECT id, status, prompt, assigned_to,
+             CASE WHEN json_valid(metadata_json)
+               THEN json_extract(metadata_json, '$.requestedProvider')
+               ELSE NULL
+             END AS requested_provider
+      FROM retry_lineage
+      WHERE id <> ?
+        AND (
+          status IN ('pending', 'queued', 'assigned', 'running', 'streaming', 'reviewing')
+          OR (status='completed' AND created_at >= datetime('now', '-${COMPLETED_RETRY_DEDUP_WINDOW_SECONDS} seconds'))
+        )
+      ORDER BY CASE WHEN status='completed' THEN 1 ELSE 0 END, created_at DESC, id DESC
+      LIMIT 1
+    `).get(sourceTaskId, sourceTaskId) as {
+      id: string;
+      status: string;
+      prompt: string;
+      assigned_to: string | null;
+      requested_provider: string | null;
+    } | undefined;
+    const existingRequestedAi = existingRetry?.requested_provider ?? existingRetry?.assigned_to;
+    const sameRetryFingerprint = existingRetry
+      && existingRetry.prompt === expectedStoredPrompt
+      && existingRequestedAi === desiredAi;
+    if (existingRetry && sameRetryFingerprint) {
+      if (options?.reservedRetry) rollbackRetryReservation(db, sourceTaskId);
+      const count = readRetryCount(db, sourceTaskId)?.count ?? 0;
+      bindKanbanRetryTask(taskId, existingRetry.id);
+      return {
+        ok: true,
+        newTaskId: existingRetry.id,
+        sourceTaskId,
+        retryCount: count,
+        deduplicated: true,
+      };
+    }
+    if (existingRetry && existingRetry.status !== 'completed') {
+      if (options?.reservedRetry) rollbackRetryReservation(db, sourceTaskId);
+      return {
+        ok: false,
+        statusCode: 409,
+        body: {
+          error: 'retry_in_progress_conflict',
+          detail: 'A retry is already active with a different prompt or provider.',
+          activeRetryTaskId: existingRetry.id,
+          activeRetryStatus: existingRetry.status,
+        },
+      };
+    }
 
     const finalPayload: RetryTaskPayload = {
       ...payload,
-      ai: options?.overrideAi ?? payload.ai,
+      ai: desiredAi,
       // lineage를 생성 시점에 세팅 — 사후 UPDATE 비원자성으로 인한 retry cap 우회 방지
       parentTaskId: sourceTaskId,
-      prompt: options?.reason
-        ? `[Quality-gate reject: ${options.reason}]\n\n${basePrompt}`
-        : basePrompt,
-      metadata: {
-        ...(payload.metadata ?? {}),
-        projectDir: resolveInternalProjectDir(),
-      },
+      prompt: finalPrompt,
+      metadata: retryMetadata,
     };
-    const retryReservation = reserveRetry(db, sourceTaskId);
+    const retryReservation = options?.reservedRetry ?? reserveRetry(db, sourceTaskId);
     if (!retryReservation.allowed) {
       return {
         ok: false,
@@ -1523,21 +1871,190 @@ export async function createGateway() {
     }
 
     const created = await app.inject({ method: 'POST', url: '/api/task', payload: finalPayload });
-    const body = created.json() as { taskId?: string; error?: string };
+    const body = created.json() as { taskId?: string; error?: string; deduplicated?: boolean };
     if (created.statusCode >= 400 || !body.taskId) {
       rollbackRetryReservation(db, sourceTaskId);
       return { ok: false, statusCode: created.statusCode, body: body as Record<string, unknown> };
     }
 
+    // workReportId idempotency가 이미 실행 중인 형제를 돌려준 경우 실제 새 시도는 없었다.
+    // 이 응답을 성공으로 추적하되 retry budget을 소비하거나 "새 태스크"라고 기록하지 않는다.
+    if (body.deduplicated === true) {
+      rollbackRetryReservation(db, sourceTaskId);
+      bindKanbanRetryTask(taskId, body.taskId);
+      return {
+        ok: true,
+        newTaskId: body.taskId,
+        sourceTaskId,
+        retryCount: Math.max(0, retryReservation.count - 1),
+        deduplicated: true,
+      };
+    }
+
     // parent_task_id는 finalPayload.parentTaskId로 생성 시점에 세팅됨 (원자성 — 사후 UPDATE 제거)
+    bindKanbanRetryTask(taskId, body.taskId);
     return { ok: true, newTaskId: body.taskId, sourceTaskId, retryCount: retryReservation.count };
   };
 
-  import('../core/kanban-engine.js').then(({ kanbanEngine }) => {
+  /**
+   * 좌초된 활성 태스크를 retry 계약으로 교체한다.
+   *
+   * 일반 cancel 경로는 workflow stage까지 cancelled로 닫기 때문에 교체 실행에 쓸 수 없다.
+   * 여기서는 retry 입력/프로바이더/예산을 먼저 검증·예약하고 원본을 failed로 종결한 뒤
+   * 워커를 중단한다. 새 태스크 생성이 실패해도 원본은 canonical retry가 가능한 failed로
+   * 남고 createRetryTask가 예약을 되돌리므로, "원본은 취소됐고 교체본도 없음" 상태가 없다.
+   * workflow stage는 새 태스크 생성의 attachWorkflowTask가 동일 stage의 task_id를 넘겨받는다.
+   */
+  const replaceActiveTask = async (
+    taskId: string,
+    options: Pick<RetryTaskOptions, 'overrideAi' | 'overridePrompt'>,
+  ): Promise<RetryTaskResult> => {
+    const db = getDb();
+    const row = db.prepare('SELECT status FROM tasks WHERE id=?').get(taskId) as
+      | { status: string }
+      | undefined;
+    if (!row) {
+      return { ok: false, statusCode: 404, body: { error: 'Retry source not found' } };
+    }
+    if (row.status === 'failed' || row.status === 'timed_out' || row.status === 'lease_expired') {
+      // 조회와 요청 사이에 자연 종료된 경우에는 일반 terminal retry로 안전하게 수렴한다.
+      const created = await createRetryTask(taskId, options);
+      return created.ok ? { ...created, replacedActive: true } : created;
+    }
+    const replaceableStatuses = new Set(['pending', 'queued', 'assigned', 'running', 'streaming', 'reviewing']);
+    if (!replaceableStatuses.has(row.status)) {
+      return {
+        ok: false,
+        statusCode: 409,
+        body: { error: 'active retry source is not replaceable', status: row.status },
+      };
+    }
+
+    // 상태를 바꾸기 전에 payload와 provider를 검증한다. 이 단계의 실패는 원본에 무해하다.
+    if (!loadRetryPayload(db, taskId, { allowActiveSource: true })) {
+      return { ok: false, statusCode: 404, body: { error: 'Retry source not found' } };
+    }
+    const overrideValidation = validateRetryOverrideAgent(options.overrideAi);
+    if (!overrideValidation.ok) {
+      return { ok: false, statusCode: 400, body: overrideValidation.body };
+    }
+
+    const sourceTaskId = resolveRetrySourceTaskId(db, taskId);
+    const reservation = reserveRetry(db, sourceTaskId);
+    if (!reservation.allowed) {
+      return {
+        ok: false,
+        statusCode: 429,
+        body: {
+          error: 'retry limit exceeded',
+          reason: reservation.reason,
+          count: reservation.count,
+          totalCount: reservation.totalCount,
+        },
+      };
+    }
+    const reservedRetry: ReservedRetry = { ...reservation, sourceTaskId };
+
+    const moved = transitionTask(db, taskId, 'failed', {
+      error: 'replaced by explicit active-task recovery retry',
+      completedAt: true,
+    });
+    if (!moved.ok) {
+      rollbackRetryReservation(db, sourceTaskId);
+      return {
+        ok: false,
+        statusCode: 409,
+        body: { error: 'active retry source changed status', status: moved.prev },
+      };
+    }
+
+    try {
+      // false는 이미 로컬 실행기가 사라진 좌초 작업이라는 뜻이라 교체를 계속해도 안전하다.
+      await taskQueue.abort(taskId);
+    } catch (error) {
+      rollbackRetryReservation(db, sourceTaskId);
+      void app.settlePersistedTaskTerminal(taskId).catch(settleError => log.warn({
+        taskId,
+        err: settleError instanceof Error ? settleError.message : String(settleError),
+      }, 'Failed to settle active retry source after worker abort failure'));
+      return {
+        ok: false,
+        statusCode: 503,
+        body: {
+          error: 'active retry could not stop the source worker',
+          detail: error instanceof Error ? error.message : String(error),
+          sourceStatus: 'failed',
+          retryable: true,
+        },
+      };
+    }
+
+    const created = await createRetryTask(taskId, { ...options, reservedRetry });
+    if (!created.ok) {
+      void app.settlePersistedTaskTerminal(taskId).catch(error => log.warn({
+        taskId,
+        err: error instanceof Error ? error.message : String(error),
+      }, 'Failed to settle active retry source after replacement dispatch failure'));
+    }
+    return created.ok ? { ...created, replacedActive: true } : created;
+  };
+
+  let projectKanbanTaskStatusRef: ((taskId: string, status?: string) => boolean) | null = null;
+  const projectKanbanTaskStatus = (taskId: string, status?: string): void => {
+    try {
+      projectKanbanTaskStatusRef?.(taskId, status);
+    } catch (error) {
+      log.warn({
+        taskId,
+        status,
+        err: error instanceof Error ? error.message : String(error),
+      }, 'Canonical task could not be projected to Kanban');
+    }
+  };
+
+  try {
+    const { kanbanEngine } = await import('../core/kanban-engine.js');
+    kanbanEngine.createTaskRef = async (input) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/task',
+        payload: {
+          ai: input.agentId,
+          prompt: input.prompt,
+          model: input.model,
+          systemPrompt: input.systemPrompt,
+          timeout: input.timeoutMs,
+          priority: input.priority,
+          verifier: input.verifier,
+          requiredEvidence: input.requiredEvidence,
+          metadata: {
+            ...(input.metadata ?? {}),
+            kanbanTaskId: input.kanbanTaskId,
+            kanbanPlanId: input.planId,
+            allowProviderFailover: true,
+          },
+        },
+      });
+      const body = response.json() as Record<string, unknown>;
+      if (response.statusCode === 202 && typeof body.taskId === 'string') {
+        return { ok: true, newTaskId: body.taskId };
+      }
+      return {
+        ok: false,
+        statusCode: response.statusCode,
+        body,
+      };
+    };
     kanbanEngine.createRetryTaskRef = createRetryTask;
-  }).catch(err => {
-    log.error({ err }, 'Failed to bind createRetryTaskRef to kanbanEngine');
-  });
+    kanbanEngine.replaceActiveTaskRef = (taskId: string) => {
+      const sourceTaskId = resolveRetrySourceTaskId(getDb(), taskId);
+      return withRetryLock(sourceTaskId, () => replaceActiveTask(taskId, {}));
+    };
+    projectKanbanTaskStatusRef = (taskId, status) => kanbanEngine.projectTaskStatus(taskId, status);
+    bindKanbanRetryTaskRef = (sourceTaskId, newTaskId) => kanbanEngine.bindRetryTask(sourceTaskId, newTaskId);
+  } catch (err) {
+    log.error({ err }, 'Failed to bind retry task refs to kanbanEngine');
+  }
 
   const scheduleTaskFailover = async (
     taskId: string,
@@ -1596,7 +2113,7 @@ export async function createGateway() {
 
     const db = getDb();
     const taskRow = db.prepare(`
-      SELECT id, status, parent_task_id, assigned_to
+      SELECT id, status, parent_task_id, assigned_to, metadata_json
       FROM tasks
       WHERE id=?
     `).get(taskId) as {
@@ -1604,6 +2121,7 @@ export async function createGateway() {
       status: string;
       parent_task_id: string | null;
       assigned_to: string | null;
+      metadata_json: string | null;
     } | undefined;
     if (!taskRow) {
       recordSkip('source_task_missing', true);
@@ -1611,6 +2129,10 @@ export async function createGateway() {
     }
     if (!taskRow.assigned_to) {
       recordSkip('source_agent_missing', true);
+      return;
+    }
+    if (!isAutomaticProviderFailoverAllowed(taskRow.metadata_json)) {
+      recordSkip('provider_failover_opted_out');
       return;
     }
     if (taskRow.status === 'cancelled') {
@@ -1625,17 +2147,11 @@ export async function createGateway() {
       return;
     }
 
-    const sourceTaskId = taskRow.parent_task_id ?? taskRow.id;
-    const attemptedAgents = (db.prepare(`
-      SELECT assigned_to
-      FROM tasks
-      WHERE id=? OR parent_task_id=?
-      ORDER BY created_at ASC
-    `).all(sourceTaskId, sourceTaskId) as Array<{ assigned_to: string | null }>)
-      .map(row => row.assigned_to)
-      .filter((value): value is string => Boolean(value));
+    const sourceTaskId = resolveRetrySourceTaskId(db, taskRow.id);
+    const attemptedAgents = loadRetryLineageAssignedAgents(db, sourceTaskId);
     const toAgent = selectFailoverCandidate({
       chain: chains[taskRow.assigned_to] ?? chains.default,
+      preferred: loadTeamRosterForTask(db, taskId),
       attemptedAgents,
       isAvailable: (candidate) => {
         if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
@@ -1647,7 +2163,12 @@ export async function createGateway() {
       return;
     }
 
-    const created = await createRetryTask(taskId, { overrideAi: toAgent });
+    // provider 종료 콜백과 lease sweeper가 같은 순간 failover를 요청할 수 있다.
+    // HTTP 수동 retry와 같은 root lock을 공유해 둘 다 활성 자식 없음으로 판단하는 TOCTOU를 닫는다.
+    const created = await withRetryLock(
+      sourceTaskId,
+      () => createRetryTask(taskId, { overrideAi: toAgent }),
+    );
     if (!created.ok) {
       const failureReason = typeof created.body.reason === 'string'
         ? created.body.reason
@@ -1658,6 +2179,10 @@ export async function createGateway() {
         `failover_dispatch_rejected:${failureReason}`,
         true,
       );
+      return;
+    }
+    if (created.deduplicated) {
+      recordSkip('failover_deduplicated_existing_retry');
       return;
     }
 
@@ -1685,10 +2210,45 @@ export async function createGateway() {
   };
 
   const stopLeaseSweeper = startLeaseSweeper({
-    onLeaseExpired: async (taskId: string) => {
+    onLeaseExpired: async (taskId: string, reason: LeaseSweepReason) => {
+      // DB terminal 상태가 먼저 확정된 뒤 queue/controller를 해제한다. 늦게 끝난 provider
+      // 콜백은 task-state 가드에서 거부되며, failover는 아래 root lock에서 단일화된다.
+      try {
+        const released = await taskQueue.abort(taskId);
+        if (released) {
+          log.info({ taskId, reason }, 'Released expired task execution before failover');
+        }
+      } catch (error) {
+        // 실행기 정리가 부분 실패해도 다른 provider로의 bounded failover까지 막지는 않는다.
+        log.warn({
+          taskId,
+          reason,
+          err: error instanceof Error ? error.message : String(error),
+        }, 'Expired task execution release failed; continuing failover');
+      }
+      // lease transition은 provider 완료 콜백 바깥에서 일어나므로 일반 terminal sync를
+      // 거치지 않는다. 먼저 source workflow를 실패로 닫고, 아래 retry 생성이 성공하면
+      // attachWorkflowTask가 같은 stage를 새 task_id로 깨끗하게 다시 연다.
+      try {
+        syncWorkflowTask(taskId, 'failed', { error: reason }, getDb());
+      } catch (error) {
+        log.warn({
+          taskId,
+          reason,
+          err: error instanceof Error ? error.message : String(error),
+        }, 'Failed to sync expired task with workflow');
+      }
+      projectKanbanTaskStatus(taskId, 'lease_expired');
+      if (reason === 'lease_expired_twice' || reason === 'claim_timeout_twice') {
+        // 계보당 자동 대체는 한 번으로 제한하지만, 두 번째 만료의 원본 프로세스/큐는
+        // 반드시 위에서 해제한다. 이 지점에서 다시 scheduleTaskFailover를 호출하면
+        // lease cap을 우회하므로 workflow만 최종 실패로 동기화한다.
+        log.warn({ taskId, reason }, 'Expired task retry lineage exhausted; execution released');
+        return;
+      }
       await scheduleTaskFailover(taskId, {
         status: 'lease_expired',
-        error: 'lease_expired',
+        error: reason,
         response: null,
       });
     },
@@ -1766,6 +2326,30 @@ export async function createGateway() {
       );
     }
 
+    // `allowProviderFailover:false` is an explicit caller contract, not merely
+    // a hint for execution failures. The quality-gate path also selects another
+    // provider below, so it must honor the same opt-out before creating a child.
+    if (!isAutomaticProviderFailoverAllowed(taskRow.metadata_json)) {
+      logDecision({
+        taskId,
+        phase: 'quality-gate',
+        decision: 'skip',
+        reason: 'provider_failover_opted_out',
+        evidenceTier: 'T1',
+      });
+      recordLearningEvent({
+        agentId: taskRow.assigned_to ?? 'system',
+        eventType: 'failover_skip',
+        pattern: 'provider_failover_opted_out',
+        context: { taskId, qualityHeuristics: quality.heuristics },
+      });
+      log.warn(
+        { taskId, heuristics: quality.heuristics },
+        'Quality retry skipped because provider failover was explicitly disabled',
+      );
+      return;
+    }
+
     // 같은 프로바이더 재시도는 quota/고장 상태에서 cap 3을 전소시킴 (E2E 실측 2026-07-03:
     // codex quota 중 ERROR_MARKER reject가 codex로 3연속 재배정) — 실패 failover와 동일한
     // 체인 선택기를 재사용해 미시도·가용 에이전트로 라우팅. 후보 없으면 기존대로 같은 ai 재시도.
@@ -1773,17 +2357,11 @@ export async function createGateway() {
     if (taskRow.assigned_to) {
       const chains = loadFailoverChainsConfig();
       if (chains) {
-        const sourceTaskId = taskRow.parent_task_id ?? taskId;
-        const attemptedAgents = (db.prepare(`
-          SELECT assigned_to
-          FROM tasks
-          WHERE id=? OR parent_task_id=?
-          ORDER BY created_at ASC
-        `).all(sourceTaskId, sourceTaskId) as Array<{ assigned_to: string | null }>)
-          .map(row => row.assigned_to)
-          .filter((value): value is string => Boolean(value));
+        const sourceTaskId = resolveRetrySourceTaskId(db, taskId);
+        const attemptedAgents = loadRetryLineageAssignedAgents(db, sourceTaskId);
         toAgent = selectFailoverCandidate({
           chain: chains[taskRow.assigned_to] ?? chains.default,
+          preferred: loadTeamRosterForTask(db, taskId),
           attemptedAgents,
           isAvailable: (candidate) => {
             if (!agentManager.getProvider(candidate) || !agentManager.listEnabledIds().includes(candidate)) return false;
@@ -1813,6 +2391,70 @@ export async function createGateway() {
       reason: 'quality_rejected',
       retryCount: created.retryCount,
     });
+  };
+
+  app.settlePersistedTaskTerminal = async (taskId: string): Promise<void> => {
+    const db = getDb();
+    const row = db.prepare(`
+      SELECT k.status, k.response, k.error, k.evidence_json, k.team_id,
+        k.assigned_to, k.prompt, k.metadata_json, t.organization_id
+      FROM tasks k
+      LEFT JOIN teams t ON t.id=k.team_id
+      WHERE k.id=?
+    `).get(taskId) as {
+      status: string;
+      response: string | null;
+      error: string | null;
+      evidence_json: string | null;
+      team_id: string | null;
+      assigned_to: string | null;
+      prompt: string;
+      metadata_json: string | null;
+      organization_id: string | null;
+    } | undefined;
+    if (!row) return;
+
+    if (row.status !== 'reviewing') {
+      syncWorkflowTask(taskId, row.status, {
+        error: row.error,
+        evidence: row.status === 'completed'
+          ? safeJsonParse(row.evidence_json ?? '{}')
+          : undefined,
+      }, db);
+    }
+
+    if (row.status !== 'completed' && row.status !== 'reviewing') {
+      projectKanbanTaskStatus(taskId, row.status);
+      return;
+    }
+
+    // Quality is authoritative and must finish before an organization audit is
+    // requested. Otherwise a rejected response can race into the audit queue.
+    await handleCompletedTaskQualityGate(taskId, row.response ?? '');
+
+    const current = db.prepare(`
+      SELECT status, metadata_json
+      FROM tasks
+      WHERE id=?
+    `).get(taskId) as {
+      status: string;
+      metadata_json: string | null;
+    } | undefined;
+    if (current) {
+      projectKanbanTaskStatus(taskId, current.status);
+    }
+    if (current?.status !== 'reviewing' || !row.team_id || !row.organization_id) return;
+
+    const metadata = parseTaskMetadata(current.metadata_json);
+    if (metadata.verificationStatus === 'approved') return;
+    await notifyNovaAxAuditRequired({
+      taskId,
+      companyId: row.organization_id,
+      teamId: row.team_id,
+      actorId: row.assigned_to || 'nco',
+      prompt: row.prompt,
+    });
+    markTaskAuditQueued(taskId);
   };
 
   await app.register(cors, {
@@ -1912,6 +2554,32 @@ export async function createGateway() {
     }
   };
 
+  // providerCount는 agentManager의 부팅 시점 스냅샷이라, config를 고치고 아직
+  // 재기동하지 않았거나 반대로 감시자 쪽 스냅샷이 오래된 경우 "프로바이더가
+  // 사라졌다"는 오탐을 만든다(2026-07-30~31 registry-anomaly 16회 연속 오탐).
+  // 개수 대신 id 차집합을 함께 노출해 감시자가 무엇이 빠졌는지 바로 알게 한다.
+  // loadEnabledProviders()는 동기 파일 I/O이므로 TTL 캐시로 /health 핫패스를 지킨다.
+  const PROVIDER_DRIFT_TTL_MS = 30_000;
+  let providerDriftCache: { at: number; enabledInConfig: string[]; missing: string[] } | null = null;
+
+  const providerRegistryDrift = (): { enabledInConfig: string[]; missing: string[] } => {
+    const cached = providerDriftCache;
+    if (cached && Date.now() - cached.at < PROVIDER_DRIFT_TTL_MS) {
+      return { enabledInConfig: cached.enabledInConfig, missing: cached.missing };
+    }
+    const registered = new Set(agentManager.listEnabledIds());
+    let enabledInConfig: string[];
+    try {
+      enabledInConfig = loadEnabledProviders().map(p => p.id);
+    } catch {
+      // 설정이 일시적으로 깨져도 /health는 살아 있어야 한다 — 마지막 값/등록분으로 폴백
+      enabledInConfig = cached?.enabledInConfig ?? [...registered];
+    }
+    const missing = enabledInConfig.filter(id => !registered.has(id));
+    providerDriftCache = { at: Date.now(), enabledInConfig, missing };
+    return { enabledInConfig, missing };
+  };
+
   app.get('/health', async () => {
     // 두 의존성을 직렬로 기다리면 1.5초 데드라인이 합산돼 최악 3초가 된다.
     // 병렬 시작해 라우트 전체의 의존성 대기를 HEALTH_DEADLINE_MS 한 번으로 제한한다.
@@ -1922,6 +2590,11 @@ export async function createGateway() {
     const agents = agentsResult.value;
     const redisOk = redisResult.value;
     const degraded = agentsResult.timedOut || redisResult.timedOut;
+    const drift = providerRegistryDrift();
+    const providerAvailability = summarizeProviderAvailability(
+      agentManager.listEnabledIds(),
+      id => circuitBreakerRegistry.getAvailability(id),
+    );
     if (degraded) {
       return {
         status: 'degraded',
@@ -1929,6 +2602,9 @@ export async function createGateway() {
         version: '1.0.0',
         ports: { api: env.PORT, ws: env.WS_PORT },
         providerCount: agentManager.listEnabledIds().length,
+        providersEnabledInConfig: drift.enabledInConfig.length,
+        providersMissing: drift.missing,
+        providerAvailability,
         runtime: {
           redis: redisOk,
           agentsOnline: Object.values(agents).filter(a => a.status !== 'offline').length,
@@ -1949,6 +2625,9 @@ export async function createGateway() {
       version: '1.0.0',
       ports: { api: env.PORT, ws: env.WS_PORT },
       providerCount: agentManager.listEnabledIds().length,
+      providersEnabledInConfig: drift.enabledInConfig.length,
+      providersMissing: drift.missing,
+      providerAvailability,
       runtime: {
         redis: redisOk,
         agentsOnline: Object.values(agents).filter(a => a.status !== 'offline').length,
@@ -2353,31 +3032,34 @@ export async function createGateway() {
     }
     const agentId = providerSelection.agentId;
     if (providerSelection.failover) logDecision({ taskId, phase: 'routing', decision: `route:${requestedProvider}->${agentId}`, reason: providerSelection.failover.originalGate });
+    // DB와 실제 queue가 동일한 실행 계약을 공유해야 재시작 복구·retry가 projectDir,
+    // 권한, timeout, priority를 잃지 않는다. invocationId는 생성 직후 아래에서 추가한다.
+    const mergedMetadata: Record<string, unknown> = {
+      ...(input.metadata ?? {}),
+      ...(taskTeamId && requiresNovaAxAudit(taskTeamId, input.metadata ?? {})
+        ? {
+            // GATE-STRATEGIC-R1: verificationStatus는 reviewing 진입 시
+            // markTaskAuditQueued가 설정한다. enqueue 시 'pending' 주입은
+            // 스케줄러 우회 completed 행이 게이트에 걸려 completion=0%를 만든다.
+            organizationAuditRequired: true,
+            companyId: taskOrganizationId,
+            teamId: taskTeamId,
+            auditPriority: 10,
+          }
+        : {}),
+      requestedProvider: input.metadata?.requestedProvider ?? requestedProvider,
+      ...(input.model ? { model: input.model } : {}),
+      ...(input.timeout ? { taskTimeoutMs: input.timeout } : {}),
+      ...(promptGate ? { promptGate } : {}),
+      ...(input.requiredEvidence && input.requiredEvidence.length > 0
+        ? { requiredEvidence: input.requiredEvidence }
+        : {}),
+    };
     try {
       const verifierJson = input.verifier ? JSON.stringify(input.verifier) : null;
       // P1-6 evidence-gate opt-in: requiredEvidence를 metadata_json에 지속(기존 verifier 흐름 무영향)
       // metadata 병합 지속: projectDir 등 실행 옵션이 input.metadata로 유입돼도 유실 방지
       // (2026-07-08 claude-1: enqueue에서 input.metadata 미전달 → projectDir 유실 T1 확인)
-      const mergedMetadata = {
-        ...(input.metadata ?? {}),
-        ...(taskTeamId && requiresNovaAxAudit(taskTeamId, input.metadata ?? {})
-          ? {
-              // GATE-STRATEGIC-R1: verificationStatus는 reviewing 진입 시
-              // markTaskAuditQueued가 설정한다. enqueue 시 'pending' 주입은
-              // 스케줄러 우회 completed 행이 게이트에 걸려 completion=0%를 만든다.
-              organizationAuditRequired: true,
-              companyId: taskOrganizationId,
-              teamId: taskTeamId,
-              auditPriority: 10,
-            }
-          : {}),
-        requestedProvider: input.metadata?.requestedProvider ?? requestedProvider,
-        ...(input.model ? { model: input.model } : {}),
-        ...(promptGate ? { promptGate } : {}),
-        ...(input.requiredEvidence && input.requiredEvidence.length > 0
-          ? { requiredEvidence: input.requiredEvidence }
-          : {}),
-      };
       const metadataJson = Object.keys(mergedMetadata).length > 0
         ? JSON.stringify(mergedMetadata)
         : null;
@@ -2417,6 +3099,20 @@ export async function createGateway() {
       input.mode || 'task',
       taskId,
     );
+    mergedMetadata.invocationId = invocationId;
+    try {
+      db.prepare(`
+        UPDATE tasks
+        SET metadata_json=?, updated_at=datetime('now')
+        WHERE id=?
+      `).run(JSON.stringify(mergedMetadata), taskId);
+    } catch (error) {
+      log.warn({
+        taskId,
+        invocationId,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'Failed to persist task invocation recovery metadata');
+    }
 
     // Inject workspace conversation history into systemPrompt so the agent
     // has context from previous turns in the same workspace session.
@@ -2438,7 +3134,17 @@ export async function createGateway() {
     };
 
     // Enqueue via TaskQueueManager (BullMQ or semaphore) — respects per-agent concurrency
-    taskQueue.enqueue({ taskId, agentId, prompt: input.prompt, model: input.model, systemPrompt: systemPromptWithContext, timeoutMs: input.timeout, verifier: input.verifier, metadata: { ...(input.metadata ?? {}), ...(input.model ? { model: input.model } : {}), invocationId } })
+    taskQueue.enqueue({
+      taskId,
+      agentId,
+      prompt: input.prompt,
+      model: input.model,
+      systemPrompt: systemPromptWithContext,
+      timeoutMs: input.timeout,
+      verifier: input.verifier,
+      priority: input.priority,
+      metadata: mergedMetadata,
+    })
       .then(result => {
         const response = (result.output != null && result.output !== '') ? result.output : '';
         const { status: nextStatus, error } = resolveTaskTerminalOutcome(
@@ -2462,32 +3168,13 @@ export async function createGateway() {
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: persistedStatus }, 'Skipped terminal completion update');
           } else {
-            if (persistedStatus !== 'reviewing') {
-              syncWorkflowTask(taskId, persistedStatus, {
-                error: error ?? null,
-                evidence: persistedStatus === 'completed' ? result.evidenceJson : undefined,
-              }, db);
-            }
-            if (persistedStatus === 'completed' || persistedStatus === 'reviewing') {
-              void handleCompletedTaskQualityGate(taskId, response)
-                .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed task quality gate failed'));
-            }
-            if (persistedStatus === 'reviewing' && taskTeamId && taskOrganizationId) {
-              void notifyNovaAxAuditRequired({
+            void app.settlePersistedTaskTerminal(taskId)
+              .catch(err => log.warn({
+                err: err instanceof Error ? err.message : String(err),
                 taskId,
                 companyId: taskOrganizationId,
                 teamId: taskTeamId,
-                actorId: agentId,
-                prompt: input.prompt,
-              })
-                .then(() => markTaskAuditQueued(taskId))
-                .catch(err => log.warn({
-                  err: err instanceof Error ? err.message : String(err),
-                  taskId,
-                  companyId: taskOrganizationId,
-                  teamId: taskTeamId,
-                }, 'Nova-AX priority audit queue notification failed'));
-            }
+              }, 'Task terminal side effects failed'));
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task completion failed'); }
         if (nextStatus !== 'completed' && nextStatus !== 'cancelled') {
@@ -2502,7 +3189,11 @@ export async function createGateway() {
           if (!moved.ok) {
             log.info({ taskId, prev: moved.prev, next: 'failed' }, 'Skipped terminal failure update');
           } else {
-            syncWorkflowTask(taskId, 'failed', { error: failureError }, db);
+            void app.settlePersistedTaskTerminal(taskId)
+              .catch(settleError => log.warn({
+                err: settleError instanceof Error ? settleError.message : String(settleError),
+                taskId,
+              }, 'Task failure side effects failed'));
           }
         } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update after task failure failed'); }
         void scheduleTaskFailover(taskId, { status: 'failed', error: failureError, response: null })
@@ -2534,10 +3225,39 @@ export async function createGateway() {
     return res.json();
   });
 
-  app.get('/api/tasks', async (req) => {
+  app.get('/api/tasks', async (req, reply) => {
     const query = req.query as any;
-    const rawLimit = Number(query.limit || 100);
-    const limit = Math.min(Number.isFinite(rawLimit) ? rawLimit : 100, 500);
+
+    const rawLimit = Number(query.limit);
+    const limit = query.limit !== undefined && Number.isSafeInteger(rawLimit)
+      ? Math.min(500, Math.max(1, rawLimit))
+      : 100;
+
+    const rawOffset = Number(query.offset);
+    const offset = query.offset !== undefined && Number.isSafeInteger(rawOffset)
+      ? Math.max(0, rawOffset)
+      : 0;
+
+    let statuses: string[] | undefined;
+    if (query.status !== undefined) {
+      const statusStr = String(query.status);
+      const parts = statusStr.split(',').map(s => s.trim());
+
+      if (parts.length === 0 || parts.some(s => s === '')) {
+        reply.code(400);
+        return { error: 'Malformed status filter' };
+      }
+      if (parts.length > 20) {
+        reply.code(400);
+        return { error: 'Too many status values' };
+      }
+      if (parts.some(s => s.length > 50)) {
+        reply.code(400);
+        return { error: 'Status value too long' };
+      }
+      statuses = Array.from(new Set(parts));
+    }
+
     const db = getDb();
     const where: string[] = [];
     const params: any[] = [];
@@ -2552,22 +3272,74 @@ export async function createGateway() {
       params.push(query.provider);
     }
 
-    const whereClause = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
-    const sql = `SELECT * FROM tasks${whereClause} ORDER BY created_at DESC LIMIT ?`;
-    params.push(limit);
+    if (statuses) {
+      const placeholders = statuses.map(() => '?').join(', ');
+      where.push(`status IN (${placeholders})`);
+      params.push(...statuses);
+    }
 
-    const taskRows = db.prepare(sql).all(...params) as Array<{
+    const whereClause = where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '';
+
+    const statusRows = db.prepare(`
+      SELECT
+        assigned_to as provider,
+        status,
+        COUNT(*) as count,
+        SUM(CASE
+          WHEN status IN ('pending', 'queued', 'assigned', 'running', 'streaming', 'reviewing')
+            AND MAX(
+              COALESCE(julianday(last_activity_at), 0),
+              COALESCE(julianday(last_heartbeat_at), 0),
+              COALESCE(julianday(updated_at), 0),
+              COALESCE(julianday(acked_at), 0),
+              COALESCE(julianday(created_at), 0)
+            ) < julianday('now', '-3 minutes')
+          THEN 1 ELSE 0
+        END) as stale_count
+      FROM tasks${whereClause}
+      GROUP BY assigned_to, status
+      ORDER BY assigned_to, status
+    `).all(...params) as Array<{ provider: string | null, status: string, count: number, stale_count: number }>;
+    const statusCounts: Record<string, number> = {};
+    const providerStatusCounts: Array<{ provider: string | null, status: string, count: number, staleCount: number }> = [];
+    let total = 0;
+    let staleCount = 0;
+    for (const row of statusRows) {
+      statusCounts[row.status] = (statusCounts[row.status] ?? 0) + row.count;
+      providerStatusCounts.push({ provider: row.provider, status: row.status, count: row.count, staleCount: row.stale_count });
+      total += row.count;
+      staleCount += row.stale_count;
+    }
+
+    const sql = `SELECT * FROM tasks${whereClause} ORDER BY created_at DESC, rowid DESC LIMIT ? OFFSET ?`;
+    const taskRows = db.prepare(sql).all(...params, limit, offset) as Array<{
       id: string;
       last_activity_at?: string | null;
     }>;
-    // 기존에는 각 row마다 tasks 1회 + discussions 1회를 다시 조회했다.
+
+    const returned = taskRows.length;
+    const hasMore = offset + returned < total;
+
     // 대시보드의 limit=50 폴링 한 번이 101개 SQL로 증폭되므로, discussion을 한 번에 읽고
     // tasks.last_activity_at은 이미 조회된 row를 runtime fallback으로 재사용한다.
     const discussionByTaskId = readActiveDiscussionProgressBatch(taskRows.map(task => task.id));
     const tasks = taskRows.map(task =>
       withTaskRuntime(task, discussionByTaskId.get(task.id) ?? null)
     );
-    return { tasks };
+
+    return {
+      tasks,
+      meta: {
+        limit,
+        offset,
+        returned,
+        total,
+        hasMore,
+        staleCount,
+        statusCounts,
+        providerStatusCounts
+      }
+    };
   });
 
   app.get('/api/decisions', async (req, reply) => {
@@ -2878,6 +3650,7 @@ export async function createGateway() {
         uiInspectionReceiptId: parsed.data.uiInspectionReceiptId,
       },
     }, db);
+    projectKanbanTaskStatus(id, 'completed');
     await eventBus.publish({
       type: 'task:completed',
       taskId: id,
@@ -3004,6 +3777,43 @@ export async function createGateway() {
     return { acquisitions: records };
   });
 
+  // Stdio MCP processes are intentionally API-only clients. Keeping dynamic
+  // skill discovery and execution behind this boundary prevents every Codex /
+  // OpenCode session from opening the production SQLite database directly.
+  app.get('/api/mcp/dynamic-tools', async () => ({
+    tools: acquisitionRegistry.listAcquiredSkillNames().map(skill => ({
+      name: skill.name,
+      description: skill.description,
+    })),
+  }));
+
+  app.post('/api/mcp/dynamic-tools/execute', async (req, reply) => {
+    const parsed = DynamicMcpToolExecuteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: 'Invalid input', details: parsed.error.issues.map(issue => issue.message) };
+    }
+
+    const skill = acquisitionRegistry.listAcquiredSkillNames()
+      .find(entry => entry.name === parsed.data.name);
+    if (!skill) {
+      reply.code(404);
+      return { error: 'Dynamic MCP tool not found' };
+    }
+
+    const result = await dynamicSkillEngine.executeSkill(
+      skill.id,
+      parsed.data.prompt,
+      executeDynamicMcpAgentTask,
+    );
+    return {
+      tool: skill.name,
+      output: result.output,
+      quality: result.quality,
+      steps: result.steps,
+    };
+  });
+
   app.post('/api/tasks/:id/cancel', async (req, reply) => {
     const { id } = req.params as any;
     return cancelTaskById(id, reply);
@@ -3021,13 +3831,27 @@ export async function createGateway() {
       reply.code(400);
       return { error: 'Invalid input', details: parsedBody.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
     }
-    const created = await createRetryTask(id, { overrideAi: parsedBody.data.ai });
+    const retryOptions = {
+      overrideAi: parsedBody.data.ai,
+      overridePrompt: parsedBody.data.prompt,
+    };
+    const sourceTaskId = resolveRetrySourceTaskId(getDb(), id);
+    const created = await withRetryLock(sourceTaskId, () => (
+      parsedBody.data.replaceActive
+        ? replaceActiveTask(id, retryOptions)
+        : createRetryTask(id, retryOptions)
+    ));
     if (!created.ok) {
       reply.code(created.statusCode);
       return created.body;
     }
     reply.code(202);
-    return { newTaskId: created.newTaskId, retryOf: id };
+    return {
+      newTaskId: created.newTaskId,
+      retryOf: id,
+      ...(created.deduplicated ? { deduplicated: true } : {}),
+      ...(created.replacedActive ? { replacedActive: true } : {}),
+    };
   });
 
   app.get('/api/admin/drain', async () => {
@@ -3311,6 +4135,7 @@ export async function createGateway() {
       topic: input.prompt,
       mode: 'consensus',
       providers: gated.providers,
+      maxRounds: input.maxRounds,
       consensusThreshold: input.consensusThreshold,
       sessionId,
     })
@@ -3653,11 +4478,12 @@ export async function createGateway() {
         }
       }
     }
-    const delivered = await cliMesh.sendMessage(
+    const delivery = await cliMesh.sendMessageWithReceipt(
       fromSessionId, fromAgent || 'unknown', destination, content, type,
     );
-    // cli-mesh.sendMessage already publishes mesh:message event
-    return { delivered };
+    // Backward-compatible numeric field plus evidence that distinguishes queueing
+    // from receiver acknowledgement. The mesh layer already publishes the event.
+    return { delivered: delivery.queuedRecipients, delivery };
   });
 
   app.get('/api/mesh/messages/:sessionId', async (req) => {
@@ -3739,11 +4565,11 @@ export async function createGateway() {
         }
       }
     }
-    const delivered = await cliMesh.sendMessage(
+    const delivery = await cliMesh.sendMessageWithReceipt(
       fromSessionId, fromAgent || 'unknown', '*', content, type,
     );
-    // cli-mesh.sendMessage already publishes mesh:message event
-    return { delivered };
+    // Keep `delivered` for existing clients while exposing the honest receipt.
+    return { delivered: delivery.queuedRecipients, delivery };
   });
 
   // ═══ Mesh Delegations ═════════════════════════════════
@@ -4368,14 +5194,32 @@ export async function createGateway() {
 
   // ═══ Plan + Kanban ════════════════════════════════
   app.post('/api/plan/create', async (req, reply) => {
-    const { planManager } = await import('../core/plan-manager.js');
-    const { title, tasks, sourceDiscussionId } = req.body as any;
-    if (!title) {
+    const { planManager, PlanTaskValidationError } = await import('../core/plan-manager.js');
+    const parsed = z.object({
+      title: z.string().trim().min(1).max(200),
+      tasks: z.array(z.string().trim().min(1).max(1_000)).max(500).optional(),
+      sourceDiscussionId: z.string().trim().min(1).max(200).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) {
       reply.code(400);
-      return { error: 'title is required' };
+      return {
+        error: 'invalid_plan',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
     }
-    const plan = await planManager.createPlan(title, tasks, sourceDiscussionId);
-    return plan;
+    try {
+      return await planManager.createPlan(
+        parsed.data.title,
+        parsed.data.tasks,
+        parsed.data.sourceDiscussionId,
+      );
+    } catch (error) {
+      if (error instanceof PlanTaskValidationError) {
+        reply.code(400);
+        return { error: error.code, issues: error.issues };
+      }
+      throw error;
+    }
   });
 
   app.get('/api/plan/:id', async (req, reply) => {
@@ -4389,12 +5233,47 @@ export async function createGateway() {
     return plan;
   });
 
-  app.post('/api/plan/:id/sync', async (req) => {
-    const { planManager } = await import('../core/plan-manager.js');
+  app.post('/api/plan/:id/sync', async (req, reply) => {
+    const {
+      planManager,
+      PlanMarkdownNotFoundError,
+      PlanNotFoundError,
+      PlanSyncCompletionError,
+      PlanSyncConflictError,
+      PlanTaskValidationError,
+    } = await import('../core/plan-manager.js');
     const { id } = req.params as any;
-    const synced = await planManager.syncFromMarkdown(id);
-    await planManager.syncToMarkdown(id);
-    return { synced };
+    try {
+      const synced = await planManager.syncFromMarkdown(id);
+      await planManager.syncToMarkdown(id);
+      return { synced };
+    } catch (error) {
+      if (error instanceof PlanNotFoundError) {
+        reply.code(404);
+        return { error: error.code, planId: error.planId };
+      }
+      if (error instanceof PlanMarkdownNotFoundError) {
+        reply.code(404);
+        return {
+          error: error.code,
+          planId: error.planId,
+          markdownPath: error.markdownPath,
+        };
+      }
+      if (error instanceof PlanSyncConflictError) {
+        reply.code(409);
+        return { error: error.code, conflicts: error.conflicts };
+      }
+      if (error instanceof PlanSyncCompletionError) {
+        reply.code(409);
+        return { error: error.code, conflicts: error.conflicts };
+      }
+      if (error instanceof PlanTaskValidationError) {
+        reply.code(400);
+        return { error: error.code, issues: error.issues };
+      }
+      throw error;
+    }
   });
 
   app.get('/api/kanban', async (req) => {
@@ -4403,22 +5282,74 @@ export async function createGateway() {
     return kanbanEngine.getBoard(planId);
   });
 
-  app.post('/api/kanban/move', async (req) => {
+  app.post('/api/kanban/move', async (req, reply) => {
     const { kanbanEngine } = await import('../core/kanban-engine.js');
-    const { taskId, to } = req.body as any;
-    if (!taskId || !to) return { error: 'taskId and to are required' };
-    const moved = kanbanEngine.moveTask(taskId, to);
-    return { moved };
+    const parsed = z.object({
+      taskId: z.string().min(1),
+      to: z.enum(['todo', 'in_progress', 'review', 'done']).optional(),
+      toColumn: z.enum(['todo', 'in_progress', 'review', 'done']).optional(),
+    }).superRefine((value, context) => {
+      if (!value.to && !value.toColumn) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'to or toColumn is required',
+        });
+      }
+      if (value.to && value.toColumn && value.to !== value.toColumn) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'to and toColumn must match when both are provided',
+        });
+      }
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: 'invalid_kanban_move',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
+    }
+    const to = parsed.data.to ?? parsed.data.toColumn!;
+    const move = kanbanEngine.moveTaskDetailed(parsed.data.taskId, to);
+    if (!move.moved && move.error === 'canonical_task_not_completed') {
+      reply.code(409);
+      return {
+        error: move.error,
+        taskId: parsed.data.taskId,
+        canonicalTaskId: move.canonicalTaskId,
+        canonicalStatus: move.canonicalStatus,
+      };
+    }
+    if (!move.moved) {
+      reply.code(404);
+      return { error: 'kanban_task_not_found', taskId: parsed.data.taskId };
+    }
+    return { moved: true };
   });
 
   app.post('/api/plan/execute', async (req, reply) => {
     const { kanbanEngine } = await import('../core/kanban-engine.js');
-    const { planId, strategy } = req.body as any;
-    if (!planId) {
+    const parsed = z.object({
+      planId: z.string().min(1),
+      strategy: z.enum(['sequential', 'parallel', 'auto']).optional(),
+    }).safeParse(req.body);
+    if (!parsed.success) {
       reply.code(400);
-      return { error: 'planId is required' };
+      return {
+        error: 'invalid_plan_execution',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
     }
-    const result = await kanbanEngine.executePlan(planId, strategy || 'auto');
+    const planExists = getDb().prepare('SELECT id FROM plans WHERE id=?')
+      .get(parsed.data.planId) as { id: string } | undefined;
+    if (!planExists) {
+      reply.code(404);
+      return { error: 'plan_not_found', planId: parsed.data.planId };
+    }
+    const result = await kanbanEngine.executePlan(
+      parsed.data.planId,
+      parsed.data.strategy ?? 'auto',
+    );
     return result;
   });
 
@@ -4498,7 +5429,10 @@ export async function createGateway() {
     const effectiveMode = decision.mode === 'task' && requiresPlanning
       ? 'discussion'
       : decision.mode;
-    const workflowStage: WorkflowStage = requiresPlanning ? 'discussion' : 'implementation';
+    // DiscussionEngine owns the discussion stage itself. The canonical task is
+    // the synthesized design artifact, so its quality/audit outcome must gate
+    // the design stage rather than completing discussion twice.
+    const workflowStage: WorkflowStage = requiresPlanning ? 'design' : 'implementation';
     const taskMetadata = {
       ...metadata,
       ...(callerAgentId ? { callerAgentId } : {}),
@@ -4551,7 +5485,7 @@ export async function createGateway() {
       })
         .then(result => {
           try {
-            const cResp = result.output || result.error;
+            const cResp = result.output || result.error || '';
             const terminalOutcome = resolveTaskTerminalOutcome({
               ...result,
               output: cResp,
@@ -4560,43 +5494,51 @@ export async function createGateway() {
             let cError = terminalOutcome.error ?? null;
             // P1-6 evidence-gate opt-in 하드차단: requiredEvidence 선언 태스크는 증거 충족 시에만 완료.
             if (cStatus === 'completed') {
-              try {
-                const metaRow = db.prepare('SELECT metadata_json FROM tasks WHERE id=?').get(taskId) as { metadata_json: string | null } | undefined;
-                const requiredKinds = metaRow?.metadata_json ? (JSON.parse(metaRow.metadata_json)?.requiredEvidence ?? []) : [];
-                if (Array.isArray(requiredKinds) && requiredKinds.length > 0) {
-                  const gate = requireEvidence(result.evidenceJson ?? {}, requiredKinds);
-                  if (!gate.allowed) {
-                    cStatus = 'failed';
-                    cError = `evidence_gate_blocked: missing ${gate.missing.join(', ')}`;
-                  }
+              const requiredKinds = metadata.requiredEvidence;
+              if (Array.isArray(requiredKinds) && requiredKinds.length > 0) {
+                const gate = requireEvidence(result.evidenceJson ?? {}, requiredKinds);
+                if (!gate.allowed) {
+                  cStatus = 'failed';
+                  cError = `evidence_gate_blocked: missing ${gate.missing.join(', ')}`;
                 }
-              } catch (gateErr) { log.warn({ err: (gateErr as Error).message, taskId }, 'evidence gate check failed (non-fatal)'); }
+              }
             }
-            db.prepare(`
-              UPDATE tasks
-              SET status=?,
-                  response=?,
-                  error=COALESCE(?, error),
-                  completed_at=datetime('now'),
-                  updated_at=datetime('now'),
-                  evidence_json=COALESCE(?, evidence_json)
-              WHERE id=?
-            `).run(cStatus, cResp, cError, cStatus === 'completed' ? (result.evidenceJson ?? null) : null, taskId);
-            syncWorkflowTask(taskId, cStatus, {
-              error: cError,
-              evidence: cStatus === 'completed' ? result.evidenceJson : undefined,
-            }, db);
-            if (cStatus === 'completed') {
-              void handleCompletedTaskQualityGate(taskId, cResp ?? '')
-                .catch(err => log.warn({ err: err instanceof Error ? err.message : String(err), taskId }, 'Completed conductor task quality gate failed'));
+            const auditRequired = cStatus === 'completed'
+              && requiresNovaAxAudit(teamId, taskMetadata);
+            const persistedStatus = auditRequired ? 'reviewing' : cStatus;
+            const moved = transitionTask(db, taskId, persistedStatus, {
+              response: cResp || undefined,
+              error: cError ?? undefined,
+              completedAt: persistedStatus !== 'cancelled' && persistedStatus !== 'reviewing',
+              evidenceJson:
+                persistedStatus === 'completed' || persistedStatus === 'reviewing'
+                  ? result.evidenceJson
+                  : undefined,
+            });
+            if (!moved.ok) {
+              log.info({ taskId, prev: moved.prev, next: persistedStatus }, 'Skipped late conductor terminal update');
+              return;
             }
+            void app.settlePersistedTaskTerminal(taskId)
+              .catch(err => log.warn({
+                err: err instanceof Error ? err.message : String(err),
+                taskId,
+              }, 'Conductor task terminal side effects failed'));
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
           try {
-            db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-              .run(err.message, taskId);
-            syncWorkflowTask(taskId, 'failed', { error: err.message }, db);
+            const moved = transitionTask(db, taskId, 'failed', {
+              error: err.message,
+              completedAt: true,
+            });
+            if (moved.ok) {
+              void app.settlePersistedTaskTerminal(taskId)
+                .catch(settleError => log.warn({
+                  err: settleError instanceof Error ? settleError.message : String(settleError),
+                  taskId,
+                }, 'Conductor failure side effects failed'));
+            }
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     } else {
@@ -4618,32 +5560,70 @@ export async function createGateway() {
       )
         .then(report => {
           try {
-            db.prepare(`UPDATE tasks SET status='completed', response=?, completed_at=datetime('now'), updated_at=datetime('now') WHERE id=?`)
-              .run(report.adoptedProposal, taskId);
-            // The final synthesis is the durable design artifact produced after
-            // independent proposals and cross-evaluation.
-            markWorkflowStage(workflowRunId, 'design', 'completed', {
-              teamId,
-              taskId,
-              executor: 'discussion-synthesis',
-              evidence: {
-                discussionId: report.sessionId,
+            const discussionEvidence = {
+              discussion: {
+                sessionId: report.sessionId,
                 consensusRate: report.finalConsensusRate,
-                adoptedProposal: report.adoptedProposal,
+                participants: report.participants,
+                rounds: report.rounds.length,
+                proposalQuorum: report.proposalQuorum,
               },
-            }, db);
+              design: {
+                synthesisLength: report.adoptedProposal.length,
+                rationale: report.rationale,
+              },
+            };
+            let terminalStatus: 'completed' | 'failed' = 'completed';
+            let terminalError: string | undefined;
+            const requiredKinds = metadata.requiredEvidence;
+            if (Array.isArray(requiredKinds) && requiredKinds.length > 0) {
+              const gate = requireEvidence(discussionEvidence, requiredKinds);
+              if (!gate.allowed) {
+                terminalStatus = 'failed';
+                terminalError = `evidence_gate_blocked: missing ${gate.missing.join(', ')}`;
+              }
+            }
+            const auditRequired = terminalStatus === 'completed'
+              && requiresNovaAxAudit(teamId, taskMetadata);
+            const persistedStatus = auditRequired ? 'reviewing' : terminalStatus;
+            const moved = transitionTask(db, taskId, persistedStatus, {
+              response: report.adoptedProposal,
+              error: terminalError,
+              completedAt: persistedStatus !== 'reviewing',
+              evidenceJson: terminalStatus === 'completed'
+                ? JSON.stringify(discussionEvidence)
+                : undefined,
+            });
+            if (!moved.ok) {
+              log.info({ taskId, prev: moved.prev, next: persistedStatus }, 'Skipped late discussion completion after terminal task state');
+              return;
+            }
+            void app.settlePersistedTaskTerminal(taskId)
+              .catch(err => log.warn({
+                err: err instanceof Error ? err.message : String(err),
+                taskId,
+              }, 'Conductor discussion terminal side effects failed'));
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         })
         .catch(err => {
           try {
-            db.prepare(`UPDATE tasks SET status='failed', error=?, updated_at=datetime('now') WHERE id=?`)
-              .run(err.message, taskId);
-            markWorkflowStage(workflowRunId, 'discussion', 'failed', {
-              teamId,
-              taskId,
-              discussionId: sessionId,
+            const moved = transitionTask(db, taskId, 'failed', {
               error: err.message,
-            }, db);
+              completedAt: true,
+            });
+            if (moved.ok) {
+              markWorkflowStage(workflowRunId, 'discussion', 'failed', {
+                teamId,
+                taskId,
+                discussionId: sessionId,
+                error: err.message,
+              }, db);
+              void app.settlePersistedTaskTerminal(taskId)
+                .catch(settleError => log.warn({
+                  err: settleError instanceof Error ? settleError.message : String(settleError),
+                  taskId,
+                }, 'Conductor discussion failure side effects failed'));
+            }
           } catch (dbErr) { log.error({ err: (dbErr as Error).message, taskId }, 'DB update failed'); }
         });
     }

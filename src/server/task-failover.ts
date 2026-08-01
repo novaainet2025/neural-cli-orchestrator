@@ -116,17 +116,35 @@ export function isRetryableFailoverFailure(input: {
   return failureClass !== null && failureClass !== 'policy';
 }
 
+const PREFER_TEAM_MEMBERS_DISABLED = new Set(['0', 'false', 'off']);
+
+/**
+ * Prefer an untried, available member of the task's declared team before the
+ * provider-global fallback chain. An absent/exhausted roster falls through to
+ * the existing chain, so this cannot reduce the available candidate set.
+ * Runtime rollback: NCO_FAILOVER_PREFER_TEAM_MEMBERS=off.
+ */
+export function failoverPreferTeamMembersEnabled(
+  toggle: string | undefined = process.env.NCO_FAILOVER_PREFER_TEAM_MEMBERS,
+): boolean {
+  return !PREFER_TEAM_MEMBERS_DISABLED.has(toggle?.trim().toLowerCase() ?? '');
+}
+
 export function selectFailoverCandidate(options: {
   chain?: string[];
+  preferred?: readonly string[];
   attemptedAgents: Iterable<string>;
   isAvailable: (agentId: string) => boolean;
 }): string | null {
-  if (!options.chain || options.chain.length === 0) return null;
   const attempted = new Set(options.attemptedAgents);
-  for (const candidate of options.chain) {
-    if (attempted.has(candidate)) continue;
-    if (!options.isAvailable(candidate)) continue;
-    return candidate;
-  }
-  return null;
+  const pick = (candidates: readonly string[] | undefined): string | null => {
+    if (!candidates || candidates.length === 0) return null;
+    for (const candidate of candidates) {
+      if (attempted.has(candidate)) continue;
+      if (!options.isAvailable(candidate)) continue;
+      return candidate;
+    }
+    return null;
+  };
+  return pick(options.preferred) ?? pick(options.chain);
 }

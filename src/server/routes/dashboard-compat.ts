@@ -27,6 +27,8 @@ import { stripEchoLines } from '../../utils/echo-filter.js';
 import { isProviderUnavailableFailureText } from '../task-failover.js';
 import { listAllSubagents } from '../../core/subagent-service.js';
 import { createLogger } from '../../utils/logger.js';
+import { resolveInternalProjectDir } from '../../utils/project-dir.js';
+import { z } from 'zod/v4';
 
 const log = createLogger('dashboard-compat');
 const execFileAsync = promisify(execFile);
@@ -379,28 +381,200 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return { tasks: db.prepare('SELECT * FROM tasks ORDER BY priority DESC, created_at DESC LIMIT 200').all() };
   });
 
-  app.post('/api/kanban/tasks', async (req) => {
-    const body = req.body as any;
-    const id = createTaskId();
+  app.post('/api/kanban/tasks', async (req, reply) => {
+    const parsed = z.object({
+      title: z.string().min(1).optional(),
+      prompt: z.string().min(1).optional(),
+      assignedTo: z.string().min(1).optional(),
+      ai: z.string().min(1).optional(),
+      workspace: z.string().optional(),
+      workspaceId: z.string().optional(),
+      priority: z.number().int().min(0).max(10).optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }).superRefine((value, context) => {
+      if (!value.title && !value.prompt) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'title or prompt is required',
+        });
+      }
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: 'invalid_kanban_task',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
+    }
+
+    const metadata = parsed.data.metadata ?? {};
+    const canonical = await app.inject({
+      method: 'POST',
+      url: '/api/task',
+      payload: {
+        prompt: parsed.data.prompt ?? parsed.data.title!,
+        ai: parsed.data.ai ?? parsed.data.assignedTo,
+        workspaceId: parsed.data.workspaceId ?? parsed.data.workspace,
+        priority: parsed.data.priority,
+        metadata: metadata.projectDir === undefined
+          ? { ...metadata, projectDir: resolveInternalProjectDir() }
+          : metadata,
+      },
+    });
+    const body = canonical.json() as Record<string, unknown>;
+    if (canonical.statusCode !== 202 || typeof body.taskId !== 'string') {
+      reply.code(canonical.statusCode);
+      return body;
+    }
+    reply.code(201);
+    return {
+      task: getDb().prepare('SELECT * FROM tasks WHERE id=?').get(body.taskId),
+    };
+  });
+
+  app.patch('/api/kanban/tasks/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = z.object({
+      status: z.literal('cancelled').optional(),
+      assigned_to: z.string().min(1).optional(),
+    }).superRefine((value, context) => {
+      if (!value.status && !value.assigned_to) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'cancelled status or assigned_to is required',
+        });
+      }
+      if (value.status && value.assigned_to) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'cancel and reassignment must be separate requests',
+        });
+      }
+    }).safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: 'invalid_kanban_task_patch',
+        details: parsed.error.issues.map(issue => issue.message),
+      };
+    }
     const db = getDb();
-    db.prepare(`INSERT INTO tasks (id, mode, prompt, status, workspace_id, priority) VALUES (?, 'task', ?, 'pending', ?, ?)`)
-      .run(id, body.title || body.prompt || '', body.workspace || 'default', body.priority || 0);
+    const task = db.prepare('SELECT id, status FROM tasks WHERE id=?').get(id) as
+      | { id: string; status: string }
+      | undefined;
+    if (!task) {
+      reply.code(404);
+      return { error: 'task_not_found' };
+    }
+    if (parsed.data.status === 'cancelled') {
+      const cancellation = await app.inject({
+        method: 'DELETE',
+        url: `/api/tasks/${encodeURIComponent(id)}`,
+      });
+      const result = cancellation.json() as Record<string, unknown>;
+      if (cancellation.statusCode >= 400 || result.ok === false) {
+        reply.code(cancellation.statusCode >= 400 ? cancellation.statusCode : 409);
+        return result;
+      }
+    } else if (parsed.data.assigned_to) {
+      if (!agentManager.listEnabledIds().includes(parsed.data.assigned_to)) {
+        reply.code(400);
+        return { error: 'invalid_provider', provider: parsed.data.assigned_to };
+      }
+      const updated = db.prepare(`
+        UPDATE tasks
+        SET assigned_to=?, updated_at=datetime('now')
+        WHERE id=? AND status IN ('pending', 'queued', 'assigned')
+      `).run(parsed.data.assigned_to, id);
+      if (updated.changes === 0) {
+        reply.code(409);
+        return { error: 'active_task_reassignment_requires_retry', status: task.status };
+      }
+    }
     return { task: db.prepare('SELECT * FROM tasks WHERE id=?').get(id) };
   });
 
-  app.patch('/api/kanban/tasks/:id', async (req) => {
-    const { id } = req.params as any;
-    const body = req.body as any;
+  app.delete('/api/kanban/tasks/:id', async (req, reply) => {
+    const { id } = req.params as { id: string };
     const db = getDb();
-    if (body.status) db.prepare("UPDATE tasks SET status=?, updated_at=datetime('now') WHERE id=?").run(body.status, id);
-    if (body.assigned_to) db.prepare("UPDATE tasks SET assigned_to=?, updated_at=datetime('now') WHERE id=?").run(body.assigned_to, id);
-    return { task: db.prepare('SELECT * FROM tasks WHERE id=?').get(id) };
-  });
+    const task = db.prepare('SELECT id, status FROM tasks WHERE id=?').get(id) as
+      | { id: string; status: string }
+      | undefined;
+    if (!task) {
+      reply.code(404);
+      return { ok: false, error: 'task_not_found' };
+    }
+    if (!['cancelled', 'failed', 'timed_out', 'lease_expired'].includes(task.status)) {
+      reply.code(409);
+      return {
+        ok: false,
+        error: 'task_must_be_cancelled_or_failed_before_purge',
+        status: task.status,
+      };
+    }
+    const linkedCards = db.prepare(`
+      SELECT id, plan_id
+      FROM kanban_tasks
+      WHERE task_id=?
+    `).all(id) as Array<{ id: string; plan_id: string }>;
+    try {
+      const deleted = db.transaction(() => {
+        const result = db.prepare(`
+          DELETE FROM tasks
+          WHERE id=? AND status IN ('cancelled', 'failed', 'timed_out', 'lease_expired')
+        `).run(id);
+        if (result.changes === 0) return result;
 
-  app.delete('/api/kanban/tasks/:id', async (req) => {
-    const { id } = req.params as any;
-    getDb().prepare('DELETE FROM tasks WHERE id=?').run(id);
-    return { ok: true };
+        // task_id에는 FK가 없으므로 task만 지우면 plan card가 영구 orphan이 된다.
+        // 원래 계획 항목은 보존하되 새 canonical attempt를 받을 수 있는 todo로 되돌린다.
+        db.prepare(`
+          UPDATE kanban_tasks
+          SET task_id=NULL, column_status='todo', updated_at=datetime('now')
+          WHERE task_id=?
+        `).run(id);
+        for (const planId of new Set(linkedCards.map(card => card.plan_id))) {
+          db.prepare(`
+            UPDATE plans
+            SET status='active', updated_at=datetime('now')
+            WHERE id=? AND status='completed'
+          `).run(planId);
+        }
+        return result;
+      })();
+      if (deleted.changes === 0) {
+        reply.code(409);
+        return { ok: false, error: 'task_status_changed_before_purge' };
+      }
+    } catch (error) {
+      reply.code(409);
+      return {
+        ok: false,
+        error: 'task_has_retained_evidence',
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+    for (const card of linkedCards) {
+      try {
+        await eventBus.publish({
+          type: 'kanban:task_moved',
+          taskId: card.id,
+          previousCanonicalTaskId: id,
+          toColumn: 'todo',
+        });
+      } catch (error) {
+        log.warn({
+          taskId: card.id,
+          previousCanonicalTaskId: id,
+          err: error instanceof Error ? error.message : String(error),
+        }, 'Purged task detached from Kanban but move event publication failed');
+      }
+    }
+    return {
+      ok: true,
+      taskId: id,
+      purgedStatus: task.status,
+      detachedKanbanCards: linkedCards.length,
+    };
   });
 
   // ═══ Collaboration ══════════════════════════════════

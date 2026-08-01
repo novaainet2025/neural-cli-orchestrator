@@ -205,6 +205,36 @@ describe('HR team lifecycle policy', () => {
     ]);
   });
 
+  it('batches and deduplicates unchanged scheduled score events', async () => {
+    const unchangedScore = score({
+      teamId: 'team_low',
+      slug: 'low',
+      name: 'Low',
+      score: 90,
+      grade: 'A',
+      completion: 100,
+    });
+
+    await runTeamLifecycleReview({
+      database: db,
+      source: 'scheduled',
+      scores: [{ ...unchangedScore, n: unchangedScore.n + 1 }],
+      triggerImprovement: vi.fn(),
+    });
+    await runTeamLifecycleReview({
+      database: db,
+      source: 'scheduled',
+      scores: [unchangedScore],
+      triggerImprovement: vi.fn(),
+    });
+
+    expect(db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM team_lifecycle_events
+      WHERE team_id = 'team_low' AND event_type = 'score_checked'
+    `).get()).toEqual({ count: 1 });
+  });
+
   it('defers lifecycle action when only one terminal task is available', async () => {
     const triggerImprovement = vi.fn();
     const result = await runTeamLifecycleReview({
