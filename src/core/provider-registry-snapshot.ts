@@ -39,6 +39,8 @@ export interface ProviderRegistryManifest {
     departments: string[];
     taskTypes: string[];
     priority: number;
+    discussionEligible: boolean;
+    discussionPriority: number;
   };
 }
 
@@ -218,6 +220,8 @@ export function toProviderRegistryManifest(
         departments: sortedUnique(routing.departments),
         taskTypes: sortedUnique(routing.taskTypes),
         priority: routing.priority,
+        discussionEligible: routing.discussionEligible,
+        discussionPriority: routing.discussionPriority,
       },
     } : {}),
   };
