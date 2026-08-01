@@ -1,17 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { redis } = vi.hoisted(() => ({
+const { redis, redisState } = vi.hoisted(() => ({
   redis: {
     xadd: vi.fn(),
     publish: vi.fn(),
     xrange: vi.fn(),
+    xgroup: vi.fn(),
+    ping: vi.fn(),
   },
+  redisState: { connected: true },
 }));
 
 vi.mock('../storage/redis.js', () => ({
   getRedis: vi.fn(async () => redis),
   getSubscriber: vi.fn(),
-  isRedisConnected: vi.fn(() => true),
+  isRedisConnected: vi.fn(() => redisState.connected),
 }));
 
 vi.mock('../storage/database.js', () => ({
@@ -26,12 +29,15 @@ vi.mock('../utils/logger.js', () => ({
   }),
 }));
 
+import { getSubscriber } from '../storage/redis.js';
+import { getDb } from '../storage/database.js';
 import { EventBus } from './event-bus.js';
 
 describe('EventBus stream cursors', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    redisState.connected = true;
     redis.xadd.mockResolvedValue('1784716000000-0');
     redis.publish.mockResolvedValue(1);
   });
@@ -52,6 +58,21 @@ describe('EventBus stream cursors', () => {
     expect(event.streamId).toBe('1784716000000-0');
     expect(broadcast.streamId).toBe('1784716000000-0');
     expect(localHandler).toHaveBeenCalledWith(expect.objectContaining({ streamId: '1784716000000-0' }));
+    bus.destroy();
+  });
+
+  it('isolates a throwing typed subscriber and still notifies wildcard subscribers', async () => {
+    const bus = new EventBus();
+    const wildcardHandler = vi.fn();
+    bus.on('test:event', () => {
+      throw new Error('subscriber exploded');
+    });
+    bus.on('*', wildcardHandler);
+
+    await expect(bus.publish({ type: 'test:event', value: 1 })).resolves.toMatchObject({
+      type: 'test:event',
+    });
+    expect(wildcardHandler).toHaveBeenCalledTimes(1);
     bus.destroy();
   });
 
@@ -94,10 +115,68 @@ describe('EventBus stream cursors', () => {
   });
 });
 
+describe('EventBus Redis outage recovery', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    redisState.connected = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('queues locally published events for replay while Redis is offline', async () => {
+    const statements: string[] = [];
+    vi.mocked(getDb).mockReturnValue({
+      prepare: (sql: string) => {
+        statements.push(sql);
+        return { run: vi.fn() };
+      },
+    } as never);
+    const bus = new EventBus();
+
+    await bus.publish({ type: 'test:offline', value: 1 });
+
+    expect(statements.some(sql => sql.includes('INSERT OR IGNORE INTO event_queue'))).toBe(true);
+    bus.destroy();
+  });
+
+  it('subscribes automatically when an initially unavailable Redis subscriber reconnects', async () => {
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const subscriber = {
+      subscribe: vi.fn(async () => 1),
+      on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+        handlers.set(event, handler);
+        return subscriber;
+      }),
+      off: vi.fn(() => subscriber),
+    };
+    vi.mocked(getSubscriber)
+      .mockRejectedValueOnce(new Error('Redis unavailable at boot'))
+      .mockResolvedValue(subscriber as never);
+    vi.mocked(getDb).mockReturnValue({
+      prepare: () => ({ run: vi.fn(), all: vi.fn(() => []) }),
+    } as never);
+    const bus = new EventBus();
+
+    await bus.init();
+    expect(subscriber.subscribe).not.toHaveBeenCalled();
+    expect(handlers.has('connect')).toBe(false);
+
+    handlers.get('ready')?.();
+    await vi.waitFor(() => expect(subscriber.subscribe).toHaveBeenCalledWith('nco:events'));
+
+    bus.destroy();
+    expect(subscriber.off).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe('discussion failure-cause persistence', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    redisState.connected = true;
     redis.xadd.mockResolvedValue('1784716000000-0');
     redis.publish.mockResolvedValue(1);
   });
@@ -111,7 +190,6 @@ describe('discussion failure-cause persistence', () => {
     event: Record<string, unknown>,
   ): Promise<unknown[][]> => {
     const rows: unknown[][] = [];
-    const { getDb } = await import('../storage/database.js');
     vi.mocked(getDb).mockReturnValue({
       prepare: () => ({ run: (...args: unknown[]) => rows.push(args) }),
     } as never);

@@ -21,6 +21,7 @@ export type LearningEventType =
   | 'quality_reject'
   | 'escalation'
   | 'orphan_poison'
+  | 'orphan_orchestration'
   | 'duplicate_execution';
 
 export interface LearningEventInput {

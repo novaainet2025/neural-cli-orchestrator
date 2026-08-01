@@ -25,6 +25,8 @@ describe('ProviderCatalog SSOT normalization', () => {
     });
     expect(provider.routing?.departments).toEqual(['information', 'execution']);
     expect(provider.routing?.taskTypes).toContain('general');
+    expect(provider.routing?.discussionEligible).toBe(true);
+    expect(provider.routing?.discussionPriority).toBe(provider.routing?.priority);
   });
 
   it('infers conventional role/adapter but lets every inferred policy be overridden', () => {
@@ -42,14 +44,26 @@ describe('ProviderCatalog SSOT normalization', () => {
       score: 91,
       capabilities: ['review', 'security'],
       runtime: { executor: 'orchestrated-cli', adapter: 'generic' },
-      routing: { tier: 'brain', departments: ['quality'], taskTypes: ['review'] },
+      routing: {
+        tier: 'brain',
+        departments: ['quality'],
+        taskTypes: ['review'],
+        discussionEligible: false,
+        discussionPriority: 901,
+      },
     });
     expect(overridden).toMatchObject({
       role: 'Reviewer',
       score: 91,
       capabilities: ['review', 'security'],
       runtime: { executor: 'orchestrated-cli', adapter: 'generic' },
-      routing: { tier: 'brain', departments: ['quality'], taskTypes: ['review'] },
+      routing: {
+        tier: 'brain',
+        departments: ['quality'],
+        taskTypes: ['review'],
+        discussionEligible: false,
+        discussionPriority: 901,
+      },
     });
   });
 
@@ -95,6 +109,14 @@ describe('ProviderCatalog SSOT normalization', () => {
       }, '.codex adapter requires runtime.promptTransport=argv'],
       [{ id: 'bad-routing-priority', command: 'bad', routing: { priority: 'first' } },
         '.routing.priority must be number'],
+      [{
+        id: 'bad-discussion-eligible', command: 'bad',
+        routing: { discussionEligible: 'yes' },
+      }, '.routing.discussionEligible must be boolean'],
+      [{
+        id: 'bad-discussion-priority', command: 'bad',
+        routing: { discussionPriority: 'first' },
+      }, '.routing.discussionPriority must be number'],
       [{
         id: 'bad-key-rotation', command: 'bad',
         keyRotation: {

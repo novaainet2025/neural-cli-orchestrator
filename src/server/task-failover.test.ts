@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classifyFailure,
+  failoverPreferTeamMembersEnabled,
   isProviderUnavailableFailureText,
   isRetryableFailoverFailure,
   selectFailoverCandidate,
@@ -57,5 +58,43 @@ describe('selectFailoverCandidate', () => {
     });
 
     expect(candidate).toBe('agy');
+  });
+
+  it('prefers an available, unattempted declared team member before the provider chain', () => {
+    expect(selectFailoverCandidate({
+      chain: ['opencode', 'cursor-agent'],
+      preferred: ['cursor-agent', 'codex', 'agy'],
+      attemptedAgents: ['cursor-agent', 'codex'],
+      isAvailable: agentId => agentId !== 'cursor-agent',
+    })).toBe('agy');
+  });
+
+  it('falls back to the provider chain when the preferred roster is exhausted', () => {
+    expect(selectFailoverCandidate({
+      chain: ['opencode', 'hermes'],
+      preferred: ['cursor-agent', 'codex'],
+      attemptedAgents: ['cursor-agent', 'codex'],
+      isAvailable: () => true,
+    })).toBe('opencode');
+  });
+
+  it('returns null when both preferred roster and provider chain are unavailable', () => {
+    expect(selectFailoverCandidate({
+      chain: ['opencode'],
+      preferred: ['agy'],
+      attemptedAgents: ['codex'],
+      isAvailable: () => false,
+    })).toBeNull();
+  });
+});
+
+describe('failoverPreferTeamMembersEnabled', () => {
+  it('defaults on and supports an environment rollback toggle', () => {
+    expect(failoverPreferTeamMembersEnabled(undefined)).toBe(true);
+    expect(failoverPreferTeamMembersEnabled('on')).toBe(true);
+    expect(failoverPreferTeamMembersEnabled('off')).toBe(false);
+    expect(failoverPreferTeamMembersEnabled(' OFF ')).toBe(false);
+    expect(failoverPreferTeamMembersEnabled('0')).toBe(false);
+    expect(failoverPreferTeamMembersEnabled('false')).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ export interface ProcessLifecycleDetails {
   origin?: string;
   errorName?: string;
   errorMessage?: string;
+  errorStack?: string;
 }
 
 export function processLifecycleAuditPath(): string {

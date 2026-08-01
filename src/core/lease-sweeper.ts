@@ -6,6 +6,16 @@ const log = createLogger('lease-sweeper');
 
 export const LEASE_DURATION_MS = 90_000;
 export const LEASE_SWEEP_INTERVAL_MS = 30_000;
+/** assigned 상태인데 worker가 lease를 한 번도 발급하지 않은 채 머물 수 있는 상한. */
+export const UNCLAIMED_TASK_TIMEOUT_MS = 10 * 60_000;
+/** 한 tick의 failover 폭주가 다시 큐를 포화시키지 않도록 제한한다. */
+export const LEASE_SWEEP_BATCH_LIMIT = 8;
+
+export type LeaseSweepReason =
+  | 'lease_expired'
+  | 'claim_timeout'
+  | 'lease_expired_twice'
+  | 'claim_timeout_twice';
 
 type ProgressPayload = {
   step: number;
@@ -28,8 +38,12 @@ type LeaseTouchResult =
 
 type LeaseSweepMarkResult =
   | { kind: 'skip' }
-  | { kind: 'lease_expired'; taskId: string }
-  | { kind: 'failed_twice'; taskId: string };
+  | { kind: 'lease_expired'; taskId: string; reason: 'lease_expired' | 'claim_timeout' }
+  | {
+      kind: 'failed_twice';
+      taskId: string;
+      reason: 'lease_expired_twice' | 'claim_timeout_twice';
+    };
 
 export function getTaskLeaseFields(taskId: string): LeaseTaskRow | undefined {
   return getDb().prepare(`
@@ -107,27 +121,38 @@ export function recordTaskHeartbeat(
 }
 
 export async function sweepExpiredTaskLeasesOnce(
-  onLeaseExpired: (taskId: string) => Promise<void>,
+  onLeaseExpired: (taskId: string, reason: LeaseSweepReason) => Promise<void>,
 ): Promise<void> {
   const expired = getDb().prepare(`
-    SELECT id
+    SELECT id,
+           CASE WHEN lease_expires_at IS NULL THEN 'claim_timeout' ELSE 'lease_expired' END AS reason
     FROM tasks
-    WHERE status = 'assigned'
-      AND lease_expires_at IS NOT NULL
-      AND lease_expires_at <= datetime('now')
-    ORDER BY lease_expires_at ASC, created_at ASC
-  `).all() as Array<{ id: string }>;
+    WHERE (
+        status IN ('assigned', 'running', 'streaming')
+        AND lease_expires_at IS NOT NULL
+        AND lease_expires_at <= datetime('now')
+      )
+      OR (
+        status = 'assigned'
+        AND lease_expires_at IS NULL
+        AND acked_at IS NULL
+        AND COALESCE(last_activity_at, updated_at, created_at)
+          <= datetime('now', '-${Math.floor(UNCLAIMED_TASK_TIMEOUT_MS / 1000)} seconds')
+      )
+    ORDER BY COALESCE(lease_expires_at, last_activity_at, updated_at, created_at) ASC, created_at ASC
+    LIMIT ${LEASE_SWEEP_BATCH_LIMIT}
+  `).all() as Array<{ id: string; reason: 'lease_expired' | 'claim_timeout' }>;
 
   for (const task of expired) {
-    const marked = markTaskLeaseExpired(task.id);
-    if (marked.kind === 'lease_expired') {
-      await onLeaseExpired(marked.taskId);
+    const marked = markTaskLeaseExpired(task.id, task.reason);
+    if (marked.kind === 'lease_expired' || marked.kind === 'failed_twice') {
+      await onLeaseExpired(marked.taskId, marked.reason);
     }
   }
 }
 
 export function startLeaseSweeper(options: {
-  onLeaseExpired: (taskId: string) => Promise<void>;
+  onLeaseExpired: (taskId: string, reason: LeaseSweepReason) => Promise<void>;
 }): () => void {
   let running = false;
   const tick = async () => {
@@ -175,7 +200,10 @@ function appendHeartbeatNote(taskId: string, note?: string): string | undefined 
   return JSON.stringify(metadata);
 }
 
-function markTaskLeaseExpired(taskId: string): LeaseSweepMarkResult {
+function markTaskLeaseExpired(
+  taskId: string,
+  reason: 'lease_expired' | 'claim_timeout',
+): LeaseSweepMarkResult {
   const db = getDb();
   const tx = db.transaction((id: string): LeaseSweepMarkResult => {
     const task = db.prepare(`
@@ -188,37 +216,73 @@ function markTaskLeaseExpired(taskId: string): LeaseSweepMarkResult {
       parent_task_id: string | null;
       assigned_to: string | null;
     } | undefined;
-    if (!task || task.status !== 'assigned') {
+    if (!task || !['assigned', 'running', 'streaming'].includes(task.status)) {
       return { kind: 'skip' };
     }
 
-    const sourceTaskId = task.parent_task_id ?? task.id;
+    // 과거 retry 구현은 직전 attempt를 parent로 저장해 root→child→grandchild 계보를
+    // 만들었다. 한 단계 parent만 보면 그 계보에서 두 번째 lease 만료가 첫 만료처럼
+    // 취급되어 자동 대체 상한을 우회한다. 순환/손상 데이터에도 종료되는 재귀 root를 쓴다.
+    const source = db.prepare(`
+      WITH RECURSIVE ancestors(id, parent_task_id, depth, path) AS (
+        SELECT id, parent_task_id, 0, ',' || id || ','
+        FROM tasks
+        WHERE id = ?
+        UNION ALL
+        SELECT parent.id, parent.parent_task_id, ancestors.depth + 1,
+               ancestors.path || parent.id || ','
+        FROM tasks AS parent
+        JOIN ancestors ON parent.id = ancestors.parent_task_id
+        WHERE ancestors.depth < 63
+          AND instr(ancestors.path, ',' || parent.id || ',') = 0
+      )
+      SELECT id
+      FROM ancestors
+      ORDER BY depth DESC
+      LIMIT 1
+    `).get(task.id) as { id: string } | undefined;
+    const sourceTaskId = source?.id ?? task.id;
     const previousExpirations = db.prepare(`
+      WITH RECURSIVE lineage(id, depth, path) AS (
+        SELECT id, 0, ',' || id || ','
+        FROM tasks
+        WHERE id = ?
+        UNION ALL
+        SELECT child.id, lineage.depth + 1, lineage.path || child.id || ','
+        FROM tasks AS child
+        JOIN lineage ON child.parent_task_id = lineage.id
+        WHERE lineage.depth < 63
+          AND instr(lineage.path, ',' || child.id || ',') = 0
+      )
       SELECT COUNT(*) AS count
-      FROM tasks
-      WHERE (id = ? OR parent_task_id = ?)
-        AND status = 'lease_expired'
-    `).get(sourceTaskId, sourceTaskId) as { count: number };
+      FROM lineage
+      JOIN tasks ON tasks.id = lineage.id
+      WHERE tasks.status = 'lease_expired'
+    `).get(sourceTaskId) as { count: number };
 
     if ((previousExpirations.count ?? 0) >= 1) {
       const moved = transitionTask(db, task.id, 'failed', {
-        error: 'lease_expired_twice',
+        error: reason === 'claim_timeout' ? 'claim_timeout_twice' : 'lease_expired_twice',
         completedAt: true,
       });
       if (!moved.ok) {
         return { kind: 'skip' };
       }
-      return { kind: 'failed_twice', taskId: task.id };
+      return {
+        kind: 'failed_twice',
+        taskId: task.id,
+        reason: reason === 'claim_timeout' ? 'claim_timeout_twice' : 'lease_expired_twice',
+      };
     }
 
     const moved = transitionTask(db, task.id, 'lease_expired', {
-      error: 'lease_expired',
+      error: reason,
       completedAt: true,
     });
     if (!moved.ok) {
       return { kind: 'skip' };
     }
-    return { kind: 'lease_expired', taskId: task.id };
+    return { kind: 'lease_expired', taskId: task.id, reason };
   });
 
   return tx(taskId);

@@ -171,6 +171,41 @@ describe.sequential('task lease routes', () => {
     });
   });
 
+  it('keeps a terminal task authoritative over a late active discussion row', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, progress)
+      VALUES (?, 'discussion', ?, ?, 'cancelled', 0)
+    `).run('route-task-cancelled-discussion', 'cancelled prompt', 'codex');
+    db.prepare(`
+      INSERT INTO discussions (
+        id, topic, mode, status, participants_json, initiator, current_round,
+        max_rounds, task_id
+      ) VALUES (?, ?, 'discussion', 'active', ?, 'codex', 1, 3, ?)
+    `).run(
+      'late-active-discussion',
+      'cancelled prompt',
+      JSON.stringify(['codex', 'agy']),
+      'route-task-cancelled-discussion',
+    );
+
+    const [taskResponse, statusResponse] = await Promise.all([
+      server.inject({ method: 'GET', url: '/api/tasks/route-task-cancelled-discussion' }),
+      server.inject({ method: 'GET', url: '/api/tasks/route-task-cancelled-discussion/status' }),
+    ]);
+
+    expect(taskResponse.json().task).toMatchObject({
+      status: 'cancelled',
+      liveness: 'failed',
+      currentStep: '작업 실패',
+    });
+    expect(statusResponse.json()).toMatchObject({
+      status: 'cancelled',
+      liveness: 'failed',
+      currentStep: '작업 실패',
+    });
+  });
+
   it('records runtime provider reassignment in task metadata and decision log', () => {
     const db = getDb();
     db.prepare(`

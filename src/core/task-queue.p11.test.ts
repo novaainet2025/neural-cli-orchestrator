@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   allowGenericProviderFailover,
+  classifyResult,
   computeCircuitCooldownWaitMs,
   filterEvolutionSkillsEscalationAgents,
   filterRecoveryCheckpointEscalationAgents,
@@ -10,6 +11,32 @@ import {
 } from './task-queue.js';
 import { decideFinalEscalation } from './task-escalation.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+
+describe('classifyResult headless permission denial gate', () => {
+  const observedCommandDenial = 'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied. Add an allow-rule under permissions.allow in settings.json (e.g. command(<target>)). Alternatively, re-run with --dangerously-skip-permissions to auto-approve all tools.';
+  const observedMcpDenial = observedCommandDenial.replace('"command"', '"mcp"').replace('command(<target>)', 'mcp(<target>)');
+
+  it.each([observedCommandDenial, observedMcpDenial])(
+    'rejects the observed Jetski success envelope and enables bounded failover',
+    (output) => {
+      const classified = classifyResult({ success: true, output } as any);
+      expect(classified).toMatchObject({
+        success: false,
+        error: 'silent-failure: headless tool permission auto-denied',
+      });
+      expect(isTransientFailure(classified)).toBe(true);
+    },
+  );
+
+  it('is runtime-reversible and does not reject reports that quote the incident', () => {
+    expect(classifyResult({ success: true, output: observedCommandDenial } as any, 'off'))
+      .toMatchObject({ success: true });
+    expect(classifyResult({
+      success: true,
+      output: `Audit note: ${observedCommandDenial}`,
+    } as any)).toMatchObject({ success: true });
+  });
+});
 
 // P11: 팀 내부 다른 provider로 회복 가능한 실행 실패만 대상. 정상완료·취소·rate-limit 제외.
 describe('isTransientFailure (P11 진리표)', () => {

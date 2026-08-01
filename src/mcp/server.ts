@@ -5,14 +5,10 @@
 
 import { createInterface } from 'readline';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { acquisitionRegistry } from '../core/acquisition-registry.js';
-import { dynamicSkillEngine } from '../core/dynamic-skill-engine.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 
 const NCO_API = process.env.NCO_API_URL || 'http://localhost:6200';
 const FETCH_TIMEOUT_MS = 30_000;
-const DYNAMIC_TASK_POLL_TIMEOUT_MS = 300_000;
-const DYNAMIC_POLL_INTERVAL_MS = 250;
 
 async function ncoFetch(path: string, options?: RequestInit): Promise<any> {
   const url = `${NCO_API}${path}`;
@@ -147,10 +143,19 @@ function toAcquiredMcpTool(tool: { name: string; description: string }): McpTool
   };
 }
 
-export function listToolsWithAcquisitions(): McpTool[] {
+export async function listToolsWithAcquisitions(): Promise<McpTool[]> {
   const staticTools = TOOLS.map(toMcpTool);
   const staticNames = new Set(staticTools.map(tool => tool.name));
-  const acquiredTools = acquisitionRegistry.listAcquiredSkillNames()
+  const response = await ncoFetch('/api/mcp/dynamic-tools');
+  const remoteTools: Array<{ name: string; description: string }> = Array.isArray(response?.tools)
+    ? response.tools.filter((tool: unknown): tool is { name: string; description: string } => (
+      typeof tool === 'object'
+      && tool !== null
+      && typeof (tool as { name?: unknown }).name === 'string'
+      && typeof (tool as { description?: unknown }).description === 'string'
+    ))
+    : [];
+  const acquiredTools = remoteTools
     .filter(tool => !staticNames.has(tool.name))
     .map(toAcquiredMcpTool);
   return [...staticTools, ...acquiredTools];
@@ -191,47 +196,13 @@ function toProviderList(value: unknown): string[] | undefined {
   return arr.length ? arr : undefined;
 }
 
-async function sleep(ms: number): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function executeAgentTask(agentId: string, prompt: string): Promise<string> {
-  const created = await ncoPost('/api/task', withInternalProjectDir({ ai: agentId, prompt }));
-  if (!created?.taskId || typeof created.taskId !== 'string') {
-    throw new Error(typeof created?.error === 'string' ? created.error : 'dynamic skill task creation failed');
-  }
-
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < DYNAMIC_TASK_POLL_TIMEOUT_MS) {
-    const status = await ncoFetch(`/api/tasks/${created.taskId}/status`);
-    if (status?.status === 'completed') {
-      return typeof status.result === 'string' ? status.result : JSON.stringify(status.result ?? '');
-    }
-    if (['failed', 'timed_out', 'cancelled'].includes(status?.status)) {
-      throw new Error(typeof status?.error === 'string' ? status.error : `dynamic skill task ${status.status}`);
-    }
-    await sleep(DYNAMIC_POLL_INTERVAL_MS);
-  }
-
-  throw new Error(`dynamic skill task timeout: ${created.taskId}`);
-}
-
 async function handleDynamicTool(name: string, args: Record<string, unknown>): Promise<string | null> {
-  const skill = acquisitionRegistry.listAcquiredSkillNames().find(entry => entry.name === name);
-  if (!skill) return null;
-
-  const result = await dynamicSkillEngine.executeSkill(
-    skill.id,
-    extractDynamicPrompt(args),
-    executeAgentTask,
-  );
-
-  return JSON.stringify({
-    tool: name,
-    output: result.output,
-    quality: result.quality,
-    steps: result.steps,
+  const result = await ncoPost('/api/mcp/dynamic-tools/execute', {
+    name,
+    prompt: extractDynamicPrompt(args),
   });
+  if (result?.status === 404) return null;
+  return JSON.stringify(result);
 }
 
 // ─── Tool Handler ─────────────────────────────────────
@@ -377,7 +348,7 @@ export function startStdioServer(): void {
         }});
       } else if (req.method === 'tools/list') {
         send({ jsonrpc: '2.0', id: req.id, result: {
-          tools: listToolsWithAcquisitions(),
+          tools: await listToolsWithAcquisitions(),
         }});
       } else if (req.method === 'tools/call') {
         const result = await handleTool(req.params.name, req.params.arguments || {});

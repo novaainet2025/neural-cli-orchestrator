@@ -34,7 +34,11 @@ let server: Awaited<ReturnType<typeof createGateway>>;
 
 function cleanupRows() {
   const db = getDb();
-  db.prepare(`DELETE FROM dynamic_skills WHERE name IN (?, ?)`).run('acquired_safe_auto_package', 'acquired_safe_approval_package');
+  db.prepare(`DELETE FROM dynamic_skills WHERE name IN (?, ?, ?)`).run(
+    'acquired_safe_auto_package',
+    'acquired_safe_approval_package',
+    'acquired_mcp_gateway_test',
+  );
   db.prepare(`DELETE FROM acquisitions WHERE package_name IN (?, ?)`).run(AUTO_PACKAGE, APPROVAL_PACKAGE);
 }
 
@@ -217,5 +221,56 @@ describe('acquisitions gateway routes', () => {
       acquisitions: Array<{ package_name: string; decision: string }>;
     };
     expect(body.acquisitions.some(record => record.package_name === AUTO_PACKAGE && record.decision === 'active')).toBe(true);
+  });
+
+  it('serves and executes dynamic MCP tools through the backend API', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO dynamic_skills
+      (id, name, description, trigger_keywords, pipeline, quality_threshold, is_active, auto_generated)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+    `).run(
+      'skill_mcp_gateway_test',
+      'acquired_mcp_gateway_test',
+      'MCP gateway test tool',
+      JSON.stringify(['gateway']),
+      JSON.stringify([{ step: 1, agentId: 'codex', promptTemplate: '{{prompt}}', qualityThreshold: 55 }]),
+      60,
+    );
+
+    const listResponse = await server.inject({
+      method: 'GET',
+      url: '/api/mcp/dynamic-tools',
+    });
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json()).toMatchObject({
+      tools: [expect.objectContaining({ name: 'acquired_mcp_gateway_test' })],
+    });
+
+    const fetchMock = vi.fn<typeof fetch>(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/task') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ taskId: 'task_dynamic_gateway' }), { status: 200 });
+      }
+      if (url.endsWith('/api/tasks/task_dynamic_gateway/status')) {
+        return new Response(JSON.stringify({ status: 'completed', result: 'gateway-complete' }), { status: 200 });
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const executeResponse = await server.inject({
+      method: 'POST',
+      url: '/api/mcp/dynamic-tools/execute',
+      payload: { name: 'acquired_mcp_gateway_test', prompt: 'run through gateway' },
+    });
+
+    expect(executeResponse.statusCode).toBe(200);
+    expect(executeResponse.json()).toMatchObject({
+      tool: 'acquired_mcp_gateway_test',
+      output: 'gateway-complete',
+      steps: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

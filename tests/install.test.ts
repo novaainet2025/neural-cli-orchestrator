@@ -50,6 +50,7 @@ describe('NCO one-click install', () => {
     const settingsPath = join(fixtureDir, 'settings.json');
     const hooksDir = join(fixtureDir, 'hooks');
     mkdirSync(hooksDir);
+    executable(join(hooksDir, 'mesh-register.sh'), '#!/bin/bash\nexit 0\n');
     writeFileSync(settingsPath, JSON.stringify({
       model: 'user-model',
       permissions: { allow: ['Read'] },

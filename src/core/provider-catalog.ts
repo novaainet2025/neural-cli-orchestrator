@@ -58,6 +58,10 @@ export interface ProviderRoutingConfig {
   taskTypes: CatalogTaskType[];
   /** Adapter reliability order within a tier; inferred unless explicitly overridden. */
   priority: number;
+  /** Whether this provider may participate in multi-provider discussions. */
+  discussionEligible: boolean;
+  /** Higher values are selected first for discussion admission. */
+  discussionPriority: number;
 }
 
 export interface ProviderConfig {
@@ -307,6 +311,21 @@ function validateDeclarationShape(raw: Record<string, unknown>): void {
       && (typeof raw.routing.priority !== 'number' || !Number.isFinite(raw.routing.priority))
     ) {
       throw new Error(`[provider-catalog] ${label}.routing.priority must be number`);
+    }
+    if (
+      raw.routing.discussionEligible !== undefined
+      && typeof raw.routing.discussionEligible !== 'boolean'
+    ) {
+      throw new Error(`[provider-catalog] ${label}.routing.discussionEligible must be boolean`);
+    }
+    if (
+      raw.routing.discussionPriority !== undefined
+      && (
+        typeof raw.routing.discussionPriority !== 'number'
+        || !Number.isFinite(raw.routing.discussionPriority)
+      )
+    ) {
+      throw new Error(`[provider-catalog] ${label}.routing.discussionPriority must be number`);
     }
     for (const field of ['departments', 'taskTypes']) {
       if (raw.routing[field] !== undefined) {
@@ -584,7 +603,19 @@ function normalizeRouting(
   if (!Number.isFinite(priority)) {
     throw new Error(`[provider-catalog] ${provider.id}.routing.priority must be number`);
   }
-  return { tier, departments, taskTypes, priority };
+  const discussionEligible = provider.routing?.discussionEligible ?? true;
+  const discussionPriority = provider.routing?.discussionPriority ?? priority;
+  if (!Number.isFinite(discussionPriority)) {
+    throw new Error(`[provider-catalog] ${provider.id}.routing.discussionPriority must be number`);
+  }
+  return {
+    tier,
+    departments,
+    taskTypes,
+    priority,
+    discussionEligible,
+    discussionPriority,
+  };
 }
 
 export function normalizeProviderDeclaration(provider: ProviderDeclaration): ProviderConfig {
@@ -737,6 +768,8 @@ export function resolveProviderRouting(provider: ProviderDeclaration): ProviderR
     && provider.routing.departments
     && provider.routing.taskTypes
     && provider.routing.priority !== undefined
+    && provider.routing.discussionEligible !== undefined
+    && provider.routing.discussionPriority !== undefined
   ) {
     return provider.routing as ProviderRoutingConfig;
   }

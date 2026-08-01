@@ -56,6 +56,17 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
           throw new Error(`Unsupported all SQL: ${normalized}`);
         },
         get: (value?: string) => {
+          if (normalized.includes('COUNT(*) AS total') && normalized.includes('FROM kanban_tasks kt')) {
+            const cards = [...state.kanbanTasks.values()].filter(task => task.plan_id === value);
+            return {
+              total: cards.length,
+              incomplete: cards.filter((task) => {
+                if (task.column_status !== 'done') return true;
+                if (!task.task_id) return false;
+                return state.tasks.get(task.task_id)?.status !== 'completed';
+              }).length,
+            };
+          }
           if (normalized.includes('SELECT COUNT(*) as cnt FROM kanban_tasks')) {
             return {
               cnt: [...state.kanbanTasks.values()].filter(
@@ -78,9 +89,36 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
           if (normalized === 'SELECT * FROM kanban_tasks WHERE id = ?') {
             return state.kanbanTasks.get(value ?? '');
           }
+          if (normalized === 'SELECT plan_id, task_id FROM kanban_tasks WHERE id=?') {
+            const task = state.kanbanTasks.get(value ?? '');
+            return task ? { plan_id: task.plan_id, task_id: task.task_id ?? null } : undefined;
+          }
+          if (normalized === 'SELECT status FROM tasks WHERE id=?') {
+            const task = state.tasks.get(value ?? '');
+            return task ? { status: task.status } : undefined;
+          }
+          if (normalized === 'SELECT assigned_to FROM tasks WHERE id=?') {
+            const task = state.tasks.get(value ?? '');
+            return task ? { assigned_to: task.assigned_to ?? null } : undefined;
+          }
+          if (normalized.includes('SELECT kt.column_status, kt.task_id, t.status AS task_status')) {
+            const task = state.kanbanTasks.get(value ?? '');
+            return task ? {
+              column_status: task.column_status,
+              task_id: task.task_id ?? null,
+              task_status: task.task_id ? state.tasks.get(task.task_id)?.status ?? null : null,
+            } : undefined;
+          }
           throw new Error(`Unsupported get SQL: ${normalized}`);
         },
         run: (...args: any[]) => {
+          if (normalized.startsWith("UPDATE kanban_tasks SET column_status=?, updated_at=datetime('now') WHERE id=? AND ( task_id=?")) {
+            const [toColumn, kanbanTaskId, canonicalTaskId] = args;
+            const task = state.kanbanTasks.get(kanbanTaskId);
+            if (!task || (task.task_id ?? null) !== canonicalTaskId) return { changes: 0 };
+            task.column_status = toColumn;
+            return { changes: 1 };
+          }
           if (normalized.startsWith('UPDATE kanban_tasks SET column_status = ?')) {
             const [toColumn, taskId] = args;
             const task = state.kanbanTasks.get(taskId);
@@ -88,12 +126,21 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
             task.column_status = toColumn;
             return { changes: 1 };
           }
-          if (normalized.startsWith('UPDATE plans SET status = \'active\'')) {
+          if (normalized.startsWith('UPDATE plans SET status') && normalized.includes("status = 'active'")) {
             const [planId] = args;
             state.plans.set(planId, { status: 'active' });
             return { changes: 1 };
           }
-          if (normalized.startsWith('UPDATE plans SET status = \'completed\'')) {
+          if (normalized.startsWith('UPDATE plans SET status') && normalized.includes("status='active'")) {
+            const [planId] = args;
+            const plan = state.plans.get(planId);
+            if (plan?.status !== 'completed') return { changes: 0 };
+            state.plans.set(planId, { status: 'active' });
+            return { changes: 1 };
+          }
+          if (normalized.startsWith('UPDATE plans SET status') && (
+            normalized.includes("status = 'completed'") || normalized.includes("status='completed'")
+          )) {
             const [planId] = args;
             state.plans.set(planId, { status: 'completed' });
             return { changes: 1 };
@@ -120,11 +167,14 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
             task.task_id = taskId;
             return { changes: 1 };
           }
-          if (normalized === 'UPDATE tasks SET prompt=? WHERE id=?') {
-            const [prompt, taskId] = args;
-            const task = state.tasks.get(taskId);
-            if (!task) return { changes: 0 };
-            task.prompt = prompt;
+          if (normalized.startsWith("UPDATE kanban_tasks SET task_id=?, updated_at=datetime('now') WHERE id=? AND ( task_id=?")) {
+            const [newTaskId, kanbanTaskId, acceptedNewTaskId, expectedTaskId] = args;
+            const task = state.kanbanTasks.get(kanbanTaskId);
+            const currentTaskId = task?.task_id ?? null;
+            if (!task || (currentTaskId !== acceptedNewTaskId && currentTaskId !== expectedTaskId)) {
+              return { changes: 0 };
+            }
+            task.task_id = newTaskId;
             return { changes: 1 };
           }
           if (normalized === 'UPDATE tasks SET metadata_json=? WHERE id=?') {
@@ -134,11 +184,11 @@ function createMockDb(rows: { kanbanTasks: KanbanTaskRow[] }) {
             task.metadata_json = metadataJson;
             return { changes: 1 };
           }
-          if (normalized.startsWith("UPDATE kanban_tasks SET column_status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND column_status NOT IN")) {
+          if (normalized.startsWith("UPDATE kanban_tasks SET column_status = 'in_progress', updated_at = datetime('now') WHERE id = ? AND column_status = 'todo'")) {
             const [kanbanTaskId] = args;
             const task = state.kanbanTasks.get(kanbanTaskId);
             if (!task) return { changes: 0 };
-            if (task.column_status === 'in_progress' || task.column_status === 'done') return { changes: 0 };
+            if (task.column_status !== 'todo') return { changes: 0 };
             task.column_status = 'in_progress';
             return { changes: 1 };
           }
@@ -243,7 +293,44 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
       row.error = update.error ?? row.error;
     });
 
+    // Initial Kanban dispatch is gateway-owned so it receives the same queue,
+    // verifier, lease, and audit contract as /api/task. Mirror that registered
+    // hook in this black-box WS2 fixture instead of relying on the retired
+    // direct AgentManager path.
+    kanbanEngine.createTaskRef = vi.fn(async (input) => {
+      const taskId = mocks.createTaskId();
+      mocks.activeDb?.state.tasks.set(taskId, {
+        id: taskId,
+        status: 'running',
+        prompt: input.prompt,
+        assigned_to: input.agentId,
+        response: '',
+        error: '',
+        verifier_json: input.verifier ? JSON.stringify(input.verifier) : null,
+        verifier_result_json: null,
+        metadata_json: JSON.stringify(input.metadata ?? {}),
+      });
+      const executeResult = await mocks.executeTask(input.agentId, input.prompt, { taskId });
+      const classified = mocks.classifyResult(executeResult);
+      const gated = await mocks.applyVerifierGate({
+        taskId,
+        agentId: input.agentId,
+        prompt: input.prompt,
+        verifier: input.verifier,
+      }, classified, new AbortController().signal);
+      mocks.transitionTask(
+        mocks.activeDb,
+        taskId,
+        gated.success ? 'completed' : 'failed',
+        {
+          response: gated.output || undefined,
+          error: gated.error || undefined,
+        },
+      );
+      return { ok: true, newTaskId: taskId };
+    });
     kanbanEngine.createRetryTaskRef = null;
+    kanbanEngine.replaceActiveTaskRef = null;
   });
 
   it('Rule 1: Gate PASS advances to done / FAIL blocks advancement', async () => {
@@ -317,8 +404,11 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
     });
 
     let capturedRetryPrompt = '';
-    kanbanEngine.createRetryTaskRef = vi.fn(async (taskId: string) => {
-      capturedRetryPrompt = mocks.activeDb?.state.tasks.get(taskId)?.prompt ?? '';
+    kanbanEngine.createRetryTaskRef = vi.fn(async (
+      _taskId: string,
+      options?: { overridePrompt?: string },
+    ) => {
+      capturedRetryPrompt = options?.overridePrompt ?? '';
       mocks.activeDb?.state.tasks.set('task-retry-1', {
         id: 'task-retry-1',
         status: 'completed',
@@ -334,6 +424,8 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
     expect(capturedRetryPrompt).toContain('[Previous Attempt 1/3 Failed]');
     expect(capturedRetryPrompt).toContain('Expected value: 100');
     expect(capturedRetryPrompt).toContain('Received value: 50');
+    expect(mocks.activeDb?.state.tasks.get('task-initial')?.prompt)
+      .toBe('Ship verifier-gated task');
   });
 
   it('Rule 3: Exceeding retry budget triggers human escalation (task:escalated)', async () => {
@@ -353,9 +445,12 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
     });
 
     let retryCount = 0;
-    kanbanEngine.createRetryTaskRef = vi.fn(async (taskId: string) => {
+    kanbanEngine.createRetryTaskRef = vi.fn(async (
+      _taskId: string,
+      options?: { overridePrompt?: string },
+    ) => {
       retryCount += 1;
-      const prompt = mocks.activeDb?.state.tasks.get(taskId)?.prompt ?? '';
+      const prompt = options?.overridePrompt ?? '';
       const newTaskId = `task-retry-${retryCount}`;
       mocks.activeDb?.state.tasks.set(newTaskId, {
         id: newTaskId,
@@ -386,6 +481,13 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
   });
 
   it('Rule 4: Polling timeout triggers human escalation (task:escalated)', async () => {
+    const kanbanTask = mocks.activeDb?.state.kanbanTasks.get('kb-1');
+    if (!kanbanTask) throw new Error('missing kanban task');
+    kanbanTask.description = JSON.stringify({
+      verifier: { type: 'run', command: 'npm test' },
+      maxRetries: 3,
+      timeoutMs: 1_000,
+    });
     mocks.createTaskId.mockReturnValueOnce('task-initial');
     mocks.executeTask.mockResolvedValueOnce({
       success: true,
@@ -401,8 +503,11 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
       return { success: false, output: 'candidate output', error: 'verifier failed' };
     });
 
-    kanbanEngine.createRetryTaskRef = vi.fn(async (taskId: string) => {
-      const prompt = mocks.activeDb?.state.tasks.get(taskId)?.prompt ?? '';
+    kanbanEngine.createRetryTaskRef = vi.fn(async (
+      _taskId: string,
+      options?: { overridePrompt?: string },
+    ) => {
+      const prompt = options?.overridePrompt ?? '';
       const newTaskId = 'task-retry-hanging';
       mocks.activeDb?.state.tasks.set(newTaskId, {
         id: newTaskId,
@@ -416,10 +521,17 @@ describe('KanbanEngine WS2 Unattended Loop rules (tests/kanban-ws2.test.ts)', ()
     });
 
     vi.useFakeTimers();
-    const planPromise = kanbanEngine.executePlan('plan-1', 'sequential');
-    await vi.advanceTimersByTimeAsync(3000 * 100 + 1000);
-    const result = await planPromise;
-    vi.useRealTimers();
+    let result: Awaited<ReturnType<typeof kanbanEngine.executePlan>>;
+    try {
+      const planPromise = kanbanEngine.executePlan('plan-1', 'sequential');
+      // Initial dispatch now awaits the gateway-owned contract before polling.
+      // Drain timers after those microtasks so the timeout+grace polling window
+      // is advanced from its actual start instead of from test setup time.
+      await vi.runAllTimersAsync();
+      result = await planPromise;
+    } finally {
+      vi.useRealTimers();
+    }
 
     expect(result.results[0]).toMatchObject({
       success: false,

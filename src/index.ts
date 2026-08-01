@@ -13,6 +13,7 @@ import { persistRecoveredTaskResult, taskQueue } from './core/task-queue.js';
 import { transitionTask } from './core/task-state.js';
 import { loadCronJobs } from './core/cron-scheduler.js';
 import { startWorkReportScheduler } from './core/work-report-scheduler.js';
+import { discussionEngine } from './core/discussion-engine.js';
 import { loadEnabledProviders } from './utils/config.js';
 import { createGateway } from './server/gateway.js';
 import { wsBridge } from './server/websocket.js';
@@ -29,14 +30,21 @@ import {
   decideOrphanRecovery,
   isExternalInjectionGuardEnabled,
   isExternallyInjectedOrphan,
+  restoreOrphanExecutionContract,
   type RecoverableTaskStatus,
 } from './core/orphan-recovery-policy.js';
 import { runWithConcurrency } from './utils/bounded-concurrency.js';
 import { recordProcessLifecycle } from './utils/process-lifecycle-audit.js';
+import {
+  reapLegacyNcoProviderProcesses,
+  reapOwnedRuntimeProcesses,
+  reapStaleRuntimeProcesses,
+} from './core/runtime-process-registry.js';
 
 const log = createLogger('main');
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 15_000;
 const SHUTDOWN_POLL_INTERVAL_MS = 1_000;
+const SHUTDOWN_INTERRUPT_GRACE_MS = 1_000;
 const SHUTDOWN_HARD_EXIT_MS = Math.max(
   SHUTDOWN_DRAIN_TIMEOUT_MS + 5_000,
   Number(process.env.NCO_SHUTDOWN_HARD_EXIT_MS) || 40_000,
@@ -58,6 +66,7 @@ process.on('uncaughtExceptionMonitor', (error, origin) => {
     origin,
     errorName: error.name,
     errorMessage: error.message.slice(0, 2_000),
+    errorStack: error.stack?.slice(0, 8_000),
   });
 });
 process.on('exit', code => {
@@ -76,7 +85,10 @@ interface OrphanRequeue {
   prompt: string;
   model?: string;
   systemPrompt?: string;
+  timeoutMs?: number;
   verifier?: { type: 'run'; command: string; timeoutMs?: number };
+  priority?: number;
+  metadata?: Record<string, unknown>;
 }
 
 /** poison task(재시작을 유발한 태스크)의 무한 재큐잉을 막는 상한 */
@@ -112,14 +124,21 @@ function pickHealthyProvider(preferredId: string): string | null {
 function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: number } {
   const db = getDb();
   const orphans = db.prepare(`
-    SELECT id, status, assigned_to, prompt, system_prompt, verifier_json, orphan_requeue_count
-           , metadata_json, team_id, spawned_by_cli
-    FROM tasks
-    WHERE status IN ('queued', 'assigned', 'in_progress', 'running', 'streaming')
+    SELECT t.id, t.status, t.assigned_to, t.prompt, t.system_prompt, t.verifier_json,
+           t.orphan_requeue_count, t.metadata_json, t.team_id, t.spawned_by_cli,
+           t.priority,
+           EXISTS (
+             SELECT 1 FROM discussions d
+             WHERE d.task_id=t.id AND d.status='active'
+           ) AS has_active_discussion
+    FROM tasks t
+    WHERE t.status IN ('queued', 'assigned', 'in_progress', 'running', 'streaming')
   `).all() as Array<{
     id: string; status: RecoverableTaskStatus; assigned_to: string | null; prompt: string;
     system_prompt: string | null; verifier_json: string | null; orphan_requeue_count: number;
     metadata_json: string | null; team_id: string | null; spawned_by_cli: string | null;
+    priority: number | null;
+    has_active_discussion: number;
   }>;
 
   // 외부 cron이 raw sqlite3로 직접 넣은 행은 재큐잉하지 않는다(isExternallyInjectedOrphan 주석 참조).
@@ -157,17 +176,33 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
         spawnedByCli: task.spawned_by_cli,
         orphanRequeueCount: task.orphan_requeue_count ?? 0,
       }),
+      orchestrationOwned: task.has_active_discussion === 1,
     });
     if (decision.action === 'dead_letter') {
-      // 세 reason 모두 'orphaned:' 접두사 — team-scorer의 INFRA_EXCLUSION이 이미 커버해
+      // 모든 reason은 'orphaned:' 접두사 — team-scorer의 INFRA_EXCLUSION이 이미 커버해
       // 팀 완료율에 계상되지 않는다.
       const reason = decision.reason === 'no_agent'
         ? 'orphaned: server restart (no agent)'
         : decision.reason === 'external_injection'
           ? 'orphaned: external injection (not created by NCO — never dispatched)'
+          : decision.reason === 'orchestration_restart'
+            ? 'orphaned: multi-agent orchestration interrupted by server restart'
           : `orphaned: server restart (poison — requeued ${task.orphan_requeue_count}x)`;
       const moved = transitionTask(db, task.id, 'failed', { error: reason, completedAt: true });
       if (moved.ok) insertDeadLetter.run(task.id, task.assigned_to, task.prompt, reason);
+      if (moved.ok && decision.reason === 'orchestration_restart') {
+        db.prepare(`
+          UPDATE discussions
+          SET status='failed', report=?, ended_at=datetime('now'), updated_at=datetime('now')
+          WHERE task_id=? AND status='active'
+        `).run(reason, task.id);
+        recordLearningEvent({
+          agentId: task.assigned_to ?? 'system',
+          eventType: 'orphan_orchestration',
+          pattern: reason,
+          context: { taskId: task.id },
+        }, db);
+      }
       if (decision.reason === 'poison') {
         recordLearningEvent({
           agentId: task.assigned_to ?? 'system',
@@ -185,24 +220,17 @@ function recoverOrphanedTasks(): { requeued: OrphanRequeue[]; deadLettered: numb
     // 미실행 queued는 poison budget을 소비하지 않고, 실행 중단 건만 횟수를 올린다.
     if (decision.incrementRecoveryCount) requeueInterruptedStmt.run(task.id);
     else restoreQueuedStmt.run(task.id);
-    let model: string | undefined;
-    if (task.metadata_json) {
-      try {
-        const metadata = JSON.parse(task.metadata_json) as Record<string, unknown>;
-        if (typeof metadata.model === 'string' && metadata.model.trim()) {
-          model = metadata.model;
-        }
-      } catch {
-        // ignore invalid metadata on orphan recovery
-      }
-    }
+    const executionContract = restoreOrphanExecutionContract({
+      metadataJson: task.metadata_json,
+      verifierJson: task.verifier_json,
+      priority: task.priority,
+    });
     return {
       taskId: task.id,
       agentId: task.assigned_to!,
       prompt: task.prompt,
-      model,
       systemPrompt: task.system_prompt ?? undefined,
-      verifier: task.verifier_json ? JSON.parse(task.verifier_json) : undefined,
+      ...executionContract,
     };
   });
 
@@ -288,7 +316,10 @@ async function dispatchRecoveredTasks(requeued: readonly OrphanRequeue[]): Promi
           prompt: o.prompt,
           model: o.model,
           systemPrompt: o.systemPrompt,
+          timeoutMs: o.timeoutMs,
           verifier: o.verifier,
+          priority: o.priority,
+          metadata: o.metadata,
         });
         const moved = persistRecoveredTaskResult(getDb(), o.taskId, result);
         if (!moved.ok) {
@@ -296,6 +327,18 @@ async function dispatchRecoveredTasks(requeued: readonly OrphanRequeue[]): Promi
             { taskId: o.taskId, prev: moved.prev, resultStatus: result.status },
             'Skipped recovered task terminal update',
           );
+        } else if (gateway) {
+          try {
+            await gateway.settlePersistedTaskTerminal(o.taskId);
+          } catch (settleError) {
+            // The execution result is already durable. Audit delivery and other
+            // side effects are retried by their reconcilers and must not rewrite
+            // a successful recovered execution as a provider failure.
+            log.warn({
+              taskId: o.taskId,
+              err: settleError instanceof Error ? settleError.message : String(settleError),
+            }, 'Failed to settle recovered task terminal side effects');
+          }
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -305,6 +348,16 @@ async function dispatchRecoveredTasks(requeued: readonly OrphanRequeue[]): Promi
           error: message,
           status: 'failed',
         });
+        if (moved.ok && gateway) {
+          try {
+            await gateway.settlePersistedTaskTerminal(o.taskId);
+          } catch (settleError) {
+            log.warn({
+              taskId: o.taskId,
+              err: settleError instanceof Error ? settleError.message : String(settleError),
+            }, 'Failed to settle recovered task failure side effects');
+          }
+        }
         log.warn(
           { taskId: o.taskId, err: message, persisted: moved.ok, prev: moved.prev },
           'Orphan re-enqueue failed',
@@ -352,6 +405,13 @@ async function boot(): Promise<void> {
   log.info('Initializing database...');
   const db = getDb();
   runMigrations();
+  try {
+    const processReap = reapStaleRuntimeProcesses(db);
+    const legacyProcessesReaped = reapLegacyNcoProviderProcesses();
+    log.warn({ ...processReap, legacyProcessesReaped }, 'Startup provider process cleanup completed');
+  } catch (error) {
+    log.warn({ err: error }, 'Startup provider process cleanup failed open');
+  }
   const orphanRecovery = recoverOrphanedTasks();
   log.warn({ requeue: orphanRecovery.requeued.length, deadLetter: orphanRecovery.deadLettered }, 'Startup orphan recovery processed');
 
@@ -516,10 +576,6 @@ async function shutdown(signal: string): Promise<void> {
 
     taskQueue.beginShutdown(signal);
     log.info({ signal }, 'Shutting down...');
-    if (gateway) {
-      await gateway.close();
-      log.info('API Gateway closed to new requests');
-    }
     if (stopWorkReportScheduler) {
       stopWorkReportScheduler();
       stopWorkReportScheduler = null;
@@ -528,18 +584,35 @@ async function shutdown(signal: string): Promise<void> {
       stopTeamLifecycleEventMonitor();
       stopTeamLifecycleEventMonitor = null;
     }
+    if (gateway) {
+      await gateway.close();
+      log.info('API Gateway closed to new requests');
+    }
 
     const drainResult = await waitForInFlightDrain(SHUTDOWN_DRAIN_TIMEOUT_MS);
     if (drainResult.drained) {
       log.info('In-flight task drain completed before shutdown timeout');
     } else {
       const orphaned = markInFlightTasksAsOrphaned(drainResult.remaining);
+      const remainingTaskIds = drainResult.remaining.map(task => task.id);
+      const interrupted = taskQueue.interruptActiveTasks(remainingTaskIds);
+      let cancelledDiscussions = 0;
+      for (const taskId of remainingTaskIds) {
+        cancelledDiscussions += discussionEngine.cancelTaskDiscussions(taskId);
+      }
+      // Give AbortSignal-aware CLIs a short cooperative exit window, then use
+      // the runtime registry's PID+PGID+command fingerprint as the force gate.
+      await sleep(SHUTDOWN_INTERRUPT_GRACE_MS);
+      const providerProcesses = reapOwnedRuntimeProcesses(remainingTaskIds);
       log.warn({
         timeoutMs: SHUTDOWN_DRAIN_TIMEOUT_MS,
         remaining: drainResult.remaining.length,
         orphaned,
+        interrupted,
+        cancelledDiscussions,
+        providerProcesses,
         taskIds: drainResult.remaining.map(task => task.id),
-      }, 'Shutdown drain timed out; remaining in-flight tasks marked orphaned');
+      }, 'Shutdown drain timed out; remaining work interrupted and provider processes reaped');
     }
 
     await wsBridge.stop(signal);

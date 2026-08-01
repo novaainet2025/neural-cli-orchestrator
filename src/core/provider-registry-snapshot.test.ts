@@ -38,6 +38,8 @@ function provider(
       departments: ['quality', 'execution'],
       taskTypes: ['verify', 'code'],
       priority: 50,
+      discussionEligible: true,
+      discussionPriority: 75,
     },
     ...overrides,
   };
@@ -69,6 +71,10 @@ describe('ProviderRegistrySnapshotStore', () => {
     expect(manifest.capabilities).toEqual(['code', 'testing']);
     expect(manifest.models[0]?.aliases).toEqual(['a', 'z']);
     expect(manifest.runtime.loaded).toBe(true);
+    expect(manifest.routing).toMatchObject({
+      discussionEligible: true,
+      discussionPriority: 75,
+    });
     expect(serialized).not.toContain('must-not-leak');
     expect(serialized).not.toContain('secret internal prompt');
     expect(serialized).not.toContain('command');

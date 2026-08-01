@@ -1,15 +1,22 @@
 import Database from 'better-sqlite3';
 import { UnrecoverableError } from 'bullmq';
-import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
+import { EventEmitter } from 'node:events';
+import { describe, expect, it, vi } from 'vitest';
 import {
   BULLMQ_JOB_ATTEMPTS,
   BULLMQ_LOCK_DURATION_MS,
+  Semaphore,
   captureVerifierBaseline,
   duplicateExecutionResultFromError,
   isDuplicateExecutionFailure,
   persistVerifierResultToDb,
   reconcileVerifierBaseline,
+  resolveBullMqPrefix,
+  runBestEffortSqliteWrite,
+  shouldPurgeStartupActiveJob,
   shouldPurgeStaleJob,
+  taskQueue,
   terminalDuplicateExecutionError,
 } from './task-queue.js';
 
@@ -27,13 +34,62 @@ describe('task queue P1 reliability guards', () => {
     expect(shouldPurgeStaleJob('queued')).toBe(false);
   });
 
-  it('returns BullMQ UnrecoverableError only for terminal duplicate execution', () => {
+  it('reclaims startup active jobs only after DB orphan recovery', () => {
+    expect(shouldPurgeStartupActiveJob(undefined)).toBe(true);
+    expect(shouldPurgeStartupActiveJob('completed')).toBe(true);
+    expect(shouldPurgeStartupActiveJob('queued')).toBe(true);
+    expect(shouldPurgeStartupActiveJob('running')).toBe(false);
+    expect(shouldPurgeStartupActiveJob('streaming')).toBe(false);
+  });
+
+  it('isolates BullMQ namespaces for every non-production SQLite database', () => {
+    expect(resolveBullMqPrefix(resolve(process.cwd(), 'db/nco.db'))).toBe('bull');
+
+    const first = resolveBullMqPrefix('/tmp/nco-isolated-a/db.sqlite');
+    const second = resolveBullMqPrefix('/tmp/nco-isolated-b/db.sqlite');
+    expect(first).toMatch(/^bull-nco-[a-f0-9]{16}$/);
+    expect(resolveBullMqPrefix('/tmp/nco-isolated-a/db.sqlite')).toBe(first);
+    expect(second).not.toBe(first);
+  });
+
+  it('supports a validated explicit BullMQ namespace override', () => {
+    expect(resolveBullMqPrefix('/tmp/anything.sqlite', 'nco_ci_42')).toBe('nco_ci_42');
+    expect(() => resolveBullMqPrefix('/tmp/anything.sqlite', 'shared:bull')).toThrow(
+      'NCO_BULLMQ_PREFIX may contain only letters, numbers, _ and -',
+    );
+  });
+
+  it('keeps best-effort SQLite activity writes from escaping the stream callback', () => {
+    expect(runBestEffortSqliteWrite(() => {})).toEqual({ ok: true });
+
+    const busy = Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+    const busyResult = runBestEffortSqliteWrite(() => { throw busy; });
+    expect(busyResult).toMatchObject({ ok: false, retryable: true, error: busy });
+
+    const locked = Object.assign(new Error('another writer'), { code: 'SQLITE_LOCKED' });
+    expect(runBestEffortSqliteWrite(() => { throw locked; })).toMatchObject({
+      ok: false,
+      retryable: true,
+    });
+
+    const invalid = new Error('no such table: tasks');
+    expect(runBestEffortSqliteWrite(() => { throw invalid; })).toMatchObject({
+      ok: false,
+      retryable: false,
+      error: invalid,
+    });
+  });
+
+  it('returns BullMQ UnrecoverableError for terminal or missing durable task execution', () => {
     const error = terminalDuplicateExecutionError('task-1', 'completed');
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect(error?.message).toBe(
       'duplicate_execution: task task-1 already terminal (completed)',
     );
     expect(terminalDuplicateExecutionError('task-1', 'running')).toBeNull();
+    expect(terminalDuplicateExecutionError('task-missing', undefined)?.message).toBe(
+      'duplicate_execution: task task-missing has no durable task row',
+    );
     expect(isDuplicateExecutionFailure({
       success: false,
       error: error?.message,
@@ -94,6 +150,94 @@ describe('task queue P1 reliability guards', () => {
     controller.abort(new Error('cancelled'));
 
     await expect(baseline).resolves.toBeNull();
+  });
+
+  it('cancels a semaphore waiter without consuming the next provider slot', async () => {
+    const manager = taskQueue as any;
+    const originalAgents = manager.agents;
+    const semaphore = new Semaphore(1);
+    expect(await semaphore.acquire('active-task')).toBe(true);
+    const waiting = semaphore.acquire('waiting-task');
+    manager.agents = new Map([
+      ['codex', {
+        semaphore,
+        activeControllers: new Map(),
+        mode: 'semaphore',
+        waiting: 1,
+      }],
+    ]);
+
+    try {
+      await expect(manager.abort('waiting-task')).resolves.toBe(true);
+      await expect(waiting).resolves.toBe(false);
+      semaphore.release();
+      await expect(semaphore.acquire('next-task')).resolves.toBe(true);
+      semaphore.release();
+    } finally {
+      manager.agents = originalAgents;
+    }
+  });
+
+  it('settles a removed BullMQ waiter immediately as cancelled exactly once', async () => {
+    const manager = taskQueue as any;
+    const originalAgents = manager.agents;
+    const originalAborters = manager.waitingBullMqAborters;
+    const queueEvents = new EventEmitter();
+    const task = {
+      taskId: 'waiting-bull-task',
+      agentId: 'codex',
+      prompt: 'test',
+      metadata: { queueWaitMaxMs: 30_000 },
+    };
+    const job = {
+      id: task.taskId,
+      data: task,
+      getState: vi.fn().mockResolvedValue('waiting'),
+      remove: vi.fn().mockResolvedValue(undefined),
+      waitUntilFinished: vi.fn(),
+    };
+    const queue = {
+      add: vi.fn().mockResolvedValue(job),
+      getJob: vi.fn().mockResolvedValue(job),
+    };
+    const entry = {
+      queue,
+      queueEvents,
+      semaphore: new Semaphore(1),
+      activeControllers: new Map(),
+      mode: 'bullmq',
+      waiting: 0,
+      active: 0,
+      completed: 0,
+      failed: 0,
+      concurrency: 1,
+      configuredConcurrency: 1,
+    };
+    manager.waitingBullMqAborters = new Map();
+    manager.agents = new Map([['codex', entry]]);
+
+    try {
+      const pending = manager.enqueueBullMQ(task, entry);
+      await vi.waitFor(() => {
+        expect(manager.waitingBullMqAborters.has(task.taskId)).toBe(true);
+      });
+      await expect(manager.abort(task.taskId)).resolves.toBe(true);
+      await expect(pending).resolves.toEqual({
+        success: false,
+        output: '',
+        error: 'cancelled',
+        status: 'cancelled',
+      });
+      expect(job.remove).toHaveBeenCalledOnce();
+      expect(job.waitUntilFinished).not.toHaveBeenCalled();
+      expect(entry.waiting).toBe(0);
+      expect(entry.failed).toBe(0);
+      expect(queueEvents.listenerCount('active')).toBe(0);
+      expect(manager.waitingBullMqAborters.has(task.taskId)).toBe(false);
+    } finally {
+      manager.agents = originalAgents;
+      manager.waitingBullMqAborters = originalAborters;
+    }
   });
 
   it('records why a failed verifier is skipped when clean HEAD also fails', () => {

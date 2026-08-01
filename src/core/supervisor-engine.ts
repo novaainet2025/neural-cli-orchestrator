@@ -41,7 +41,7 @@ export class SupervisorEngine {
 
   /**
    * Detect tasks stuck in 'assigned'/'running' or 'queued' for >10 minutes,
-   * mark them as failed, and trigger auto-retry/requeue.
+   * and replace them through the gateway-owned active retry contract.
    * Also publishes a supervisor event so dashboard can reflect recovery.
    */
   private async recoverStalledTasks(): Promise<void> {
@@ -56,11 +56,11 @@ export class SupervisorEngine {
           AND (julianday('now') - julianday(COALESCE(last_activity_at, updated_at, created_at))) * 86400 > 600
       `).all() as { id: string; assigned_to: string | null }[];
 
-      // 2. Find queued tasks that are stalled (>10min)
+      // 2. Find unclaimed pending/queued tasks that are stalled (>10min)
       const stalledQueuedTasks = db.prepare(`
         SELECT id, assigned_to
         FROM tasks
-        WHERE status = 'queued'
+        WHERE status IN ('pending', 'queued')
           AND (julianday('now') - julianday(created_at)) * 86400 > 600
       `).all() as { id: string; assigned_to: string | null }[];
 
@@ -70,38 +70,38 @@ export class SupervisorEngine {
 
       log.warn({ count: allStalled.length }, 'Supervisor: Stalled tasks detected, initiating recovery');
 
+      let recovered = 0;
+      let failed = 0;
+
       for (const task of allStalled) {
-        const isQueued = stalledQueuedTasks.some(t => t.id === task.id);
-        const errorMsg = isQueued
-          ? 'Supervisor: auto-recovered stalled queued task (>10min)'
-          : 'Supervisor: auto-recovered stalled task (>10min)';
+        if (!kanbanEngine.replaceActiveTaskRef) {
+          failed++;
+          log.warn({ taskId: task.id }, 'Supervisor: Cannot recover active task, replaceActiveTaskRef is not registered');
+          continue;
+        }
 
-        db.prepare(`
-          UPDATE tasks
-          SET status = 'failed',
-              error = ?,
-              updated_at = datetime('now'),
-              completed_at = datetime('now')
-          WHERE id = ?
-        `).run(errorMsg, task.id);
-
-        // Try to retry/requeue the task if the retry ref is registered
-        if (kanbanEngine.createRetryTaskRef) {
-          try {
-            log.info({ taskId: task.id }, 'Supervisor: Triggering auto-retry for stalled task');
-            const retryResult = await kanbanEngine.createRetryTaskRef(task.id);
-            log.info({ taskId: task.id, retryResult }, 'Supervisor: Auto-retry triggered successfully');
-          } catch (retryErr) {
-            log.error({ taskId: task.id, err: (retryErr as Error).message }, 'Supervisor: Auto-retry failed for stalled task');
+        try {
+          log.info({ taskId: task.id }, 'Supervisor: Replacing stalled task through active retry contract');
+          const retryResult = await kanbanEngine.replaceActiveTaskRef(task.id);
+          if (retryResult?.ok !== true) {
+            failed++;
+            log.warn(
+              { taskId: task.id, retryResult },
+              'Supervisor: Active retry contract rejected stalled task recovery',
+            );
+            continue;
           }
-        } else {
-          log.warn({ taskId: task.id }, 'Supervisor: Cannot auto-retry task, createRetryTaskRef is not registered');
+          recovered++;
+          log.info({ taskId: task.id, retryResult }, 'Supervisor: Stalled task replacement created');
+        } catch (retryErr) {
+          failed++;
+          log.error({ taskId: task.id, err: (retryErr as Error).message }, 'Supervisor: Active task replacement failed');
         }
       }
 
       await eventBus.publish({
         type: 'supervisor:stall-recovery',
-        data: { recovered: allStalled.length, timestamp: Date.now() },
+        data: { detected: allStalled.length, recovered, failed, timestamp: Date.now() },
       } as any);
     } catch (err) {
       log.error({ err }, 'Stalled task recovery failed');
