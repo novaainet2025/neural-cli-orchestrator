@@ -150,7 +150,10 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
     if (!id || catalog.has(id)) continue;
     catalog.set(id, {
       id,
-      enabled: model.enabled !== false,
+      // Keep older Registry clients safe: clients deployed before the
+      // `availability` field existed only understand `enabled`. An explicitly
+      // unavailable model therefore has to be non-selectable in both fields.
+      enabled: model.enabled !== false && model.availability !== 'unavailable',
       default: model.default === true,
       aliases: sortedUnique(model.aliases),
       capabilities: sortedUnique(model.capabilities),

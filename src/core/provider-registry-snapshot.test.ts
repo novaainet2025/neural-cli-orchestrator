@@ -138,6 +138,27 @@ describe('ProviderRegistrySnapshotStore', () => {
     ]);
   });
 
+  it('marks unavailable models disabled for pre-availability Registry clients', () => {
+    const manifest = toProviderRegistryManifest(provider('alpha', {
+      model: 'available-model',
+      models: [
+        { id: 'available-model', default: true, availability: 'available' },
+        { id: 'degraded-model', availability: 'degraded' },
+        { id: 'offline-model', availability: 'unavailable' },
+      ],
+    }), new Set(['alpha']));
+
+    expect(manifest.models.map(model => ({
+      id: model.id,
+      enabled: model.enabled,
+      availability: model.availability,
+    }))).toEqual([
+      { id: 'available-model', enabled: true, availability: 'available' },
+      { id: 'degraded-model', enabled: true, availability: 'degraded' },
+      { id: 'offline-model', enabled: false, availability: 'unavailable' },
+    ]);
+  });
+
   it('keeps revision and generatedAt stable for semantically identical refreshes', async () => {
     let providers = [provider('beta'), provider('alpha')];
     const { registry, publish } = store(() => providers);
