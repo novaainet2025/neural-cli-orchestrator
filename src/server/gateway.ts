@@ -811,6 +811,13 @@ export const loadRetryPayload = (
       ]) {
         if (source[key] !== undefined) inherited[key] = source[key];
       }
+      // Self-heal legacy Nova-AX audit retries created before the explicit
+      // control-plane markers were persisted. Their workReportId is a stable
+      // protocol identifier and cannot approve or complete a subject task.
+      if (isAuditControlPlane(source)) {
+        inherited.auditControlPlane = true;
+        inherited.scoreEligible = false;
+      }
       return Object.keys(inherited).length > 0 ? inherited : undefined;
     } catch {
       return undefined;
@@ -1048,9 +1055,18 @@ function parseTaskMetadata(raw: string | null | undefined): Record<string, unkno
     : {};
 }
 
-function isAuditControlPlane(metadata: Record<string, unknown>): boolean {
-  return metadata.auditControlPlane === true
-    || typeof metadata.verificationDirectiveId === 'string';
+export function isAuditControlPlane(metadata: Record<string, unknown>): boolean {
+  if (metadata.auditControlPlane === true
+    || typeof metadata.verificationDirectiveId === 'string') return true;
+
+  // Legacy audit jobs predate durable control-plane metadata, but their work
+  // report identifiers still uniquely identify them. Without this fallback a
+  // retry is treated as ordinary work and recursively creates another audit.
+  const workReportId = typeof metadata.workReportId === 'string'
+    ? metadata.workReportId
+    : '';
+  return workReportId.startsWith('completion_audit_task_')
+    || workReportId.startsWith('remediation_vloop_');
 }
 
 function requiresNovaAxAudit(
@@ -1145,8 +1161,54 @@ function markTaskAuditQueued(taskId: string): void {
   `).run(JSON.stringify(metadata), taskId);
 }
 
+export function quarantineLegacyNestedAuditTasks(
+  limit = 25,
+  db: ReturnType<typeof getDb> = getDb(),
+): number {
+  const boundedLimit = Number.isFinite(limit)
+    ? Math.min(Math.max(Math.trunc(limit), 1), 100)
+    : 25;
+  const rows = db.prepare(`
+    SELECT id, metadata_json
+    FROM tasks
+    WHERE status='reviewing'
+      AND json_valid(COALESCE(metadata_json, ''))
+      AND COALESCE(json_extract(metadata_json, '$.auditControlPlane'), 0) <> 1
+      AND json_extract(metadata_json, '$.verificationDirectiveId') IS NULL
+      AND (
+        json_extract(metadata_json, '$.workReportId') LIKE 'completion_audit_task_%'
+        OR json_extract(metadata_json, '$.workReportId') LIKE 'remediation_vloop_%'
+      )
+    ORDER BY updated_at, id
+    LIMIT ?
+  `).all(boundedLimit) as Array<{ id: string; metadata_json: string }>;
+  let quarantined = 0;
+  for (const row of rows) {
+    const metadata = parseTaskMetadata(row.metadata_json);
+    metadata.auditControlPlane = true;
+    metadata.scoreEligible = false;
+    metadata.legacyNestedAuditQuarantinedAt = new Date().toISOString();
+    const marked = db.prepare(`
+      UPDATE tasks
+      SET metadata_json=?, updated_at=datetime('now')
+      WHERE id=? AND status='reviewing'
+    `).run(JSON.stringify(metadata), row.id);
+    if (marked.changes === 0) continue;
+    const reason = 'legacy nested audit-control task quarantined for safe redispatch';
+    const moved = transitionTask(db, row.id, 'cancelled', { error: reason });
+    if (!moved.ok) continue;
+    syncWorkflowTask(row.id, 'cancelled', { error: reason }, db);
+    quarantined++;
+  }
+  return quarantined;
+}
+
 async function reconcilePendingOrganizationAudits(limit = 25): Promise<number> {
   const db = getDb();
+  const quarantined = quarantineLegacyNestedAuditTasks(limit, db);
+  if (quarantined > 0) {
+    log.warn({ quarantined }, 'Legacy nested audit-control tasks quarantined');
+  }
   const rows = db.prepare(`
     SELECT k.id, k.team_id, k.assigned_to, k.prompt, k.metadata_json,
       t.organization_id
