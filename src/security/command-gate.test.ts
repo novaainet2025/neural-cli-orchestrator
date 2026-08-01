@@ -20,6 +20,42 @@ describe('CommandGate trusted executables', () => {
     expect(result.ok).toBe(false);
     expect(result.reason).toContain('Command path not trusted:');
   });
+
+  it.each([
+    ['npm', '/opt/hostedtoolcache/node/22.17.0/x64/lib/node_modules/npm/bin/npm-cli.js'],
+    ['npx', '/opt/hostedtoolcache/node/20.19.4/arm64/lib/node_modules/npm/bin/npx-cli.js'],
+  ])('allows GitHub-hosted toolcache %s realpaths', (command, resolvedPath) => {
+    const hostedGate = new CommandGate({ allowedCommands: [command], deniedCommands: [] });
+    vi.spyOn(hostedGate as any, 'resolveExecutable').mockReturnValue(resolvedPath);
+
+    expect(hostedGate.validate(command)).toEqual({ ok: true });
+  });
+
+  it.each([
+    '/opt/hostedtoolcache/node/current/x64/lib/node_modules/npm/bin/npm-cli.js',
+    '/opt/hostedtoolcache/node/22.17.0/x64/lib/node_modules/not-npm/bin/npm-cli.js',
+    '/opt/hostedtoolcache/node/22.17.0/x64/lib/node_modules/npm/bin/arbitrary.js',
+    '/opt/hostedtoolcache/node/22.17.0/unknown/lib/node_modules/npm/bin/npm-cli.js',
+    '/tmp/opt/hostedtoolcache/node/22.17.0/x64/lib/node_modules/npm/bin/npm-cli.js',
+  ])('does not broaden trust to arbitrary toolcache-like paths: %s', resolvedPath => {
+    const hostedGate = new CommandGate({ allowedCommands: ['npm'], deniedCommands: [] });
+    vi.spyOn(hostedGate as any, 'resolveExecutable').mockReturnValue(resolvedPath);
+
+    const result = hostedGate.validate('npm');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe(`Command path not trusted: ${resolvedPath}`);
+  });
+
+  it('binds a hosted npm entrypoint to the matching requested command', () => {
+    const hostedGate = new CommandGate({ allowedCommands: ['npm'], deniedCommands: [] });
+    const npxPath = '/opt/hostedtoolcache/node/22.17.0/x64/lib/node_modules/npm/bin/npx-cli.js';
+    vi.spyOn(hostedGate as any, 'resolveExecutable').mockReturnValue(npxPath);
+
+    expect(hostedGate.validate('npm')).toEqual({
+      ok: false,
+      reason: `Command path not trusted: ${npxPath}`,
+    });
+  });
 });
 
 describe('CommandGate process-manager isolation', () => {

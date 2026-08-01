@@ -3,6 +3,7 @@ import type { ProviderConfig } from '../utils/config.js';
 import {
   ProviderRegistrySnapshotStore,
   diffProviderRegistry,
+  toLegacyProviderCatalogProjection,
   toProviderRegistryManifest,
   type ProviderRegistryEvent,
 } from './provider-registry-snapshot.js';
@@ -66,7 +67,7 @@ describe('ProviderRegistrySnapshotStore', () => {
     const manifest = toProviderRegistryManifest(provider('alpha'), new Set(['alpha']));
     const serialized = JSON.stringify(manifest);
 
-    expect(manifest.endpoint).toBe('https://example.test/v1');
+    expect(manifest.endpoint).toBeUndefined();
     expect(manifest.auth).toEqual({ kind: 'environment-reference', ref: 'PROVIDER_API_KEY' });
     expect(manifest.capabilities).toEqual(['code', 'testing']);
     expect(manifest.models[0]?.aliases).toEqual(['a', 'z']);
@@ -87,6 +88,25 @@ describe('ProviderRegistrySnapshotStore', () => {
     expect(serialized).not.toContain('secret internal prompt');
     expect(serialized).not.toContain('command');
     expect(serialized).not.toContain('healthCheck');
+  });
+
+  it('projects a legacy-compatible catalog without internal execution configuration', () => {
+    const manifest = toProviderRegistryManifest(provider('alpha'), new Set(['alpha']));
+    const projected = toLegacyProviderCatalogProjection(manifest);
+    const serialized = JSON.stringify(projected);
+
+    expect(projected).toMatchObject({
+      id: 'alpha',
+      ai: 'alpha',
+      models: ['alpha-model'],
+      runtime: { loaded: true },
+    });
+    expect(serialized).not.toContain('must-not-leak');
+    expect(serialized).not.toContain('command');
+    expect(serialized).not.toContain('args');
+    expect(serialized).not.toContain('persona');
+    expect(serialized).not.toContain('healthCheck');
+    expect(serialized).not.toContain('apiKey');
   });
 
   it('materializes provider.model and de-duplicated freeModels when models is absent', () => {
@@ -160,11 +180,21 @@ describe('ProviderRegistrySnapshotStore', () => {
   });
 
   it('keeps revision and generatedAt stable for semantically identical refreshes', async () => {
-    let providers = [provider('beta'), provider('alpha')];
+    const alpha = provider('alpha', {
+      env: { Z_TOKEN: 'z', A_TOKEN: 'a' },
+      permissions: { canWrite: true, canRead: false },
+      healthCheck: { type: 'api', url: 'https://health.test/v1', timeout: 5_000 },
+    });
+    let providers = [provider('beta'), alpha];
     const { registry, publish } = store(() => providers);
 
     const first = await registry.refresh();
-    providers = [provider('alpha'), provider('beta')];
+    providers = [{
+      ...alpha,
+      healthCheck: { timeout: 5_000, url: 'https://health.test/v1', type: 'api' },
+      permissions: { canRead: false, canWrite: true },
+      env: { A_TOKEN: 'a', Z_TOKEN: 'z' },
+    }, provider('beta')];
     const second = await registry.refresh();
 
     expect(first.snapshot.providers.map(item => item.id)).toEqual(['alpha', 'beta']);
@@ -173,9 +203,87 @@ describe('ProviderRegistrySnapshotStore', () => {
     expect(second.snapshot.generatedAt).toBe(first.snapshot.generatedAt);
     expect(publish).not.toHaveBeenCalled();
 
-    const independent = store(() => [provider('beta'), provider('alpha')]);
+    const independent = store(() => [provider('beta'), {
+      ...alpha,
+      permissions: { canRead: false, canWrite: true },
+      env: { A_TOKEN: 'a', Z_TOKEN: 'z' },
+    }]);
     expect((await independent.registry.refresh()).snapshot.revision).toBe(first.snapshot.revision);
   });
+
+  it('commits execution-only changes as a new revision and emits safe lifecycle events', async () => {
+    let providers = [provider('alpha', { concurrency: 1, env: { TOKEN: 'one' } })];
+    let runtimeIds = ['alpha'];
+    let now = 0;
+    const publish = vi.fn<(event: ProviderRegistryEvent) => Promise<void>>(async () => {});
+    const reconcileRuntime = vi.fn(async (view: { providers: readonly ProviderConfig[] }) => {
+      runtimeIds = view.providers.filter(item => item.enabled).map(item => item.id);
+    });
+    const registry = new ProviderRegistrySnapshotStore({
+      loadProviders: () => providers,
+      listRuntimeProviderIds: () => runtimeIds,
+      reconcileRuntime,
+      publish,
+      now: () => new Date(++now * 1_000),
+    });
+    const first = await registry.refresh();
+    providers = [provider('alpha', { concurrency: 4, env: { TOKEN: 'rotated' } })];
+    const second = await registry.refresh();
+
+    expect(second.changed).toBe(true);
+    expect(second.snapshot.revision).not.toBe(first.snapshot.revision);
+    expect(second.snapshot.generatedAt).not.toBe(first.snapshot.generatedAt);
+    expect(second.changes.map(change => [change.type, change.providerId])).toEqual([
+      ['updated', 'alpha'],
+    ]);
+    expect(reconcileRuntime).toHaveBeenCalledTimes(2);
+    expect(registry.getRuntimeView()?.providers[0]?.concurrency).toBe(4);
+    expect(publish).toHaveBeenCalledWith({
+      type: 'provider.registry.committed',
+      payload: { revision: second.snapshot.revision, changes: second.changes },
+    });
+    expect(publish).toHaveBeenLastCalledWith({
+      type: 'provider.registry.changed',
+      payload: { revision: second.snapshot.revision, changes: second.changes },
+    });
+    const serialized = JSON.stringify({ snapshot: second.snapshot, events: publish.mock.calls });
+    expect(serialized).not.toContain('rotated');
+    expect(serialized).not.toContain('TOKEN');
+    expect(serialized).not.toContain('runtimeFingerprint');
+    expect(serialized).not.toContain('internalRuntimeFingerprint');
+  });
+
+  it.each([
+    ['command', { command: 'rotated-secret-command' }],
+    ['args', { args: ['--token', 'rotated-secret-arg'] }],
+    ['env', { env: { TOKEN: 'rotated-secret-env' } }],
+    ['concurrency', { concurrency: 7 }],
+    ['permissions', { permissions: { canWrite: false, canExecute: true } }],
+    ['persona', { persona: { systemPrompt: 'rotated-secret-prompt', tone: 'calm', style: 'exact' } }],
+    ['healthCheck', { healthCheck: { url: 'https://rotated-secret.test/v1', timeout: 7_000 } }],
+  ] satisfies Array<[string, Partial<ProviderConfig>]>) (
+    'includes runtime-only %s changes in the canonical revision without exposing config',
+    async (_field, overrides) => {
+      let providers = [provider('alpha')];
+      const { registry, publish } = store(() => providers);
+      const first = await registry.refresh();
+      providers = [provider('alpha', overrides)];
+
+      const second = await registry.refresh();
+
+      expect(second.snapshot.revision).not.toBe(first.snapshot.revision);
+      expect(second.changes.map(change => [change.type, change.providerId])).toEqual([
+        ['updated', 'alpha'],
+      ]);
+      const publicContract = JSON.stringify({
+        snapshot: second.snapshot,
+        events: publish.mock.calls.map(([event]) => event),
+      });
+      expect(publicContract).not.toContain('rotated-secret');
+      expect(publicContract).not.toContain('runtimeFingerprint');
+      expect(publicContract).not.toContain('internalRuntimeFingerprint');
+    },
+  );
 
   it('emits exact added, disabled, updated and removed lifecycle diffs', async () => {
     let providers = [provider('alpha')];

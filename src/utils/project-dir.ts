@@ -15,12 +15,7 @@ const ORG_PROJECT_DIR_ROUTING_DISABLED = new Set(['0', 'false', 'off']);
 
 // CLI 독립 검증팀은 NCO 메인 워크스페이스에서 검증해야 한다. nova-ax로 라우팅되면
 // 잘못된 코드베이스에서 검증이 실행된다 (실측 2026-07-30: task_VB6fzKfIhmnp4uEw 등).
-const TEAM_PROJECT_DIR_CANDIDATES: Readonly<Record<string, readonly string[]>> = {
-  'team_cli-assurance-2026': [
-    '/Users/nova-ai/orca/workspaces/nco/main',
-    '/Users/nova-ai/project/nco',
-  ],
-};
+const INTERNAL_PROJECT_DIR_TEAMS = new Set(['team_cli-assurance-2026']);
 
 export function resolveInternalProjectDir(): string {
   const configured = process.env.NCO_PROJECT_DIR?.trim();
@@ -79,10 +74,8 @@ export function resolveTaskProjectDir(input: TaskProjectDirInput = {}): string {
       const resolved = firstExistingDir([envTeamDir]);
       if (resolved) return resolved;
     }
-    const teamCandidates = TEAM_PROJECT_DIR_CANDIDATES[teamId];
-    if (teamCandidates) {
-      const resolved = firstExistingDir(teamCandidates);
-      if (resolved) return resolved;
+    if (INTERNAL_PROJECT_DIR_TEAMS.has(teamId)) {
+      return resolveInternalProjectDir();
     }
   }
 

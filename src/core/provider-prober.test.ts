@@ -16,6 +16,7 @@ const {
 }));
 
 vi.mock('../agent/agent-manager.js', () => ({
+  PROVIDER_PROBE_PROMPT: 'Reply exactly: NCO_PROVIDER_PROBE_OK',
   agentManager: { listEnabledIds, probeProvider, getProvider },
 }));
 
@@ -50,7 +51,7 @@ describe('ProviderProber', () => {
     vi.useRealTimers();
   });
 
-  it('resets an open circuit after a successful probe', async () => {
+  it('delegates the complete circuit outcome to AgentManager after a successful probe', async () => {
     listSnapshots.mockReturnValue([{
       agentId: 'openrouter',
       state: 'open',
@@ -63,8 +64,12 @@ describe('ProviderProber', () => {
     prober.stop();
 
     expect(listSnapshots).toHaveBeenCalledWith(['openrouter']);
-    expect(probeProvider).toHaveBeenCalledWith('openrouter', 'PING', 30_000);
-    expect(reset).toHaveBeenCalledWith('openrouter');
+    expect(probeProvider).toHaveBeenCalledWith(
+      'openrouter',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+      30_000,
+    );
+    expect(reset).not.toHaveBeenCalled();
   });
 
   it('does not probe an open circuit caused by auth', async () => {
@@ -80,7 +85,6 @@ describe('ProviderProber', () => {
     prober.stop();
 
     expect(probeProvider).not.toHaveBeenCalled();
-    expect(reset).not.toHaveBeenCalled();
   });
 
   it('keeps the existing circuit state after a failed probe', async () => {
@@ -97,6 +101,5 @@ describe('ProviderProber', () => {
     prober.stop();
 
     expect(probeProvider).toHaveBeenCalledOnce();
-    expect(reset).not.toHaveBeenCalled();
   });
 });

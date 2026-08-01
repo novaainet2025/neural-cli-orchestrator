@@ -83,6 +83,32 @@ describe('CircuitBreaker configuration', () => {
     expect(breaker.getState()).toBe('closed');
   });
 
+  it('keeps successful inference evidence separate from circuit/health success', () => {
+    const agentId = 'inference-evidence-test';
+    circuitBreakerRegistry.reset(agentId);
+
+    circuitBreakerRegistry.recordSuccess(agentId);
+    expect(circuitBreakerRegistry.getInferenceEvidence(agentId)).toBeNull();
+
+    circuitBreakerRegistry.recordInferenceSuccess(agentId, Date.parse('2026-01-01T00:00:00.000Z'));
+    expect(circuitBreakerRegistry.getInferenceEvidence(agentId)).toEqual({
+      success: true,
+      observedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    circuitBreakerRegistry.recordInferenceFailure(agentId, Date.parse('2026-01-01T00:01:00.000Z'));
+    expect(circuitBreakerRegistry.getInferenceEvidence(agentId)).toEqual({
+      success: false,
+      observedAt: '2026-01-01T00:01:00.000Z',
+    });
+
+    circuitBreakerRegistry.reset(agentId);
+    expect(circuitBreakerRegistry.getInferenceEvidence(agentId)).toBeNull();
+
+    circuitBreakerRegistry.clearInferenceEvidence(agentId);
+    expect(circuitBreakerRegistry.getInferenceEvidence(agentId)).toBeNull();
+  });
+
   it('opens on the second exact learned failure without immediate-opening on the first', () => {
     const signature = 'repeated exact transient failure';
     learnedPattern.signature = signature;

@@ -202,7 +202,7 @@ describe('isEvolutionLearningRecoverableFailure (bounded cycle-2 recovery)', () 
 });
 
 describe('Recovery Checkpoint escalation guard (bounded cycle-1 recovery)', () => {
-  const knownAgents = ['claude-code', 'opencode', 'cursor-agent', 'codex', 'agy'];
+  const knownAgents = ['claude-code', 'opencode', 'cursor-agent', 'codex', 'ollama'];
 
   it('대상 팀의 generic escalation 후보에서 weekly-limit claude-code만 제외', () => {
     const filtered = filterRecoveryCheckpointEscalationAgents(
@@ -210,7 +210,7 @@ describe('Recovery Checkpoint escalation guard (bounded cycle-1 recovery)', () =
       knownAgents,
     );
 
-    expect(filtered).toEqual(['opencode', 'cursor-agent', 'codex', 'agy']);
+    expect(filtered).toEqual(['opencode', 'cursor-agent', 'codex', 'ollama']);
     expect(decideFinalEscalation({
       failedAgentId: 'opencode',
       failureReason: 'queue_wait_timeout: provider opencode busy for 1800000ms',
@@ -218,7 +218,7 @@ describe('Recovery Checkpoint escalation guard (bounded cycle-1 recovery)', () =
       circuitOpenAgents: ['cursor-agent', 'codex'],
       knownAgents: filtered,
       now: () => '2026-07-28T00:00:00.000Z',
-    }).nextAgentId).toBe('agy');
+    }).nextAgentId).toBe('ollama');
   });
 
   it('다른 팀과 runtime rollback에서는 기존 후보 순서를 그대로 보존', () => {

@@ -5,6 +5,8 @@ import { resolve } from 'path';
 import { agentManager } from '../agent/agent-manager.js';
 import { kanbanEngine } from '../core/kanban-engine.js';
 import { discussionEngine } from '../core/discussion-engine.js';
+import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
+import { sharedState } from '../core/shared-state.js';
 import { smartRouter } from '../core/smart-router.js';
 import { taskQueue } from '../core/task-queue.js';
 import { attachWorkflowTask, createWorkflowRun } from '../core/workflow-gate.js';
@@ -32,6 +34,10 @@ describe.sequential('gateway retry contract', () => {
       output: `done: ${'retry contract verified '.repeat(40)}`,
       status: 'completed',
     });
+    // Retry tests isolate persistence/replay semantics. Provider readiness has
+    // its own route contract tests, so keep the independent heartbeat
+    // dimension explicitly healthy here instead of depending on a 30s timer.
+    vi.spyOn(sharedState, 'isAgentAlive').mockResolvedValue(true);
     server = await createGateway();
     expect(kanbanEngine.createTaskRef).toBeTypeOf('function');
     expect(kanbanEngine.createRetryTaskRef).toBeTypeOf('function');
@@ -90,7 +96,7 @@ describe.sequential('gateway retry contract', () => {
       8,
       JSON.stringify(verifier),
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         allowProviderFailover: true,
         readOnly: true,
         localNetworkAccess: true,
@@ -100,10 +106,17 @@ describe.sequential('gateway retry contract', () => {
         organizationId: 'org-retry-contract',
         workReportId: 'work-report-retry-contract',
         model: 'retry-model',
+        correlationId: 'correlation-retry-attempt',
+        turnId: 'turn-retry-attempt',
+        attemptId: 'attempt-source',
+        idempotencyKey: 'idempotency-source',
+        providerRevision: 'sha256:source-revision',
+        deadlineAt: '2000-01-01T00:00:00.000Z',
       }),
       'retry-root',
     );
 
+    const retryStartedAt = Date.now();
     const response = await server.inject({
       method: 'POST',
       url: '/api/tasks/retry-attempt/retry',
@@ -135,8 +148,9 @@ describe.sequential('gateway retry contract', () => {
     expect(child.workspace_id).toBe('retry-workspace');
     expect(child.priority).toBe(8);
     expect(JSON.parse(child.verifier_json ?? 'null')).toEqual(verifier);
-    expect(JSON.parse(child.metadata_json ?? '{}')).toMatchObject({
-      projectDir: '/private/tmp',
+    const childMetadata = JSON.parse(child.metadata_json ?? '{}') as Record<string, unknown>;
+    expect(childMetadata).toMatchObject({
+      projectDir: tmpdir(),
       allowProviderFailover: true,
       readOnly: true,
       localNetworkAccess: true,
@@ -146,7 +160,14 @@ describe.sequential('gateway retry contract', () => {
       organizationId: 'org-retry-contract',
       workReportId: 'work-report-retry-contract',
       model: 'retry-model',
+      correlationId: 'correlation-retry-attempt',
+      turnId: 'turn-retry-attempt',
+      providerRevision: providerRuntimeCoordinator.getSnapshot()?.revision,
     });
+    expect(childMetadata.attemptId).toMatch(/^attempt_[0-9a-f]{24}$/);
+    expect(childMetadata.attemptId).not.toBe('attempt-source');
+    expect(childMetadata).not.toHaveProperty('idempotencyKey');
+    expect(Date.parse(String(childMetadata.deadlineAt))).toBeGreaterThan(retryStartedAt);
   });
 
   it('uses the internal project directory when the source has none', async () => {
@@ -494,7 +515,7 @@ describe.sequential('gateway retry contract', () => {
       verifier: { type: 'run', command: 'true', timeoutMs: 12_000 },
       requiredEvidence: ['tests'],
       metadata: {
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         readOnly: true,
       },
     });
@@ -527,7 +548,7 @@ describe.sequential('gateway retry contract', () => {
       timeoutMs: 12_000,
     });
     expect(JSON.parse(row.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       readOnly: true,
       kanbanTaskId: 'kanban-intake-task',
       kanbanPlanId: 'kanban-intake-plan',
@@ -665,7 +686,7 @@ describe.sequential('gateway retry contract', () => {
       JSON.stringify({
         kanbanTaskId: 'kanban-rebind-card',
         kanbanPlanId: 'kanban-rebind-plan',
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
       }),
     );
     db.prepare(`
@@ -1185,7 +1206,7 @@ describe.sequential('gateway retry contract', () => {
         priority: 8,
         timeout: 240_000,
         metadata: {
-          projectDir: '/private/tmp',
+          projectDir: tmpdir(),
           readOnly: true,
           localNetworkAccess: false,
           queuePriority: 2,
@@ -1204,7 +1225,7 @@ describe.sequential('gateway retry contract', () => {
       priority: 8,
       timeoutMs: 240_000,
       metadata: {
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         readOnly: true,
         localNetworkAccess: false,
         queuePriority: 2,
@@ -1219,7 +1240,7 @@ describe.sequential('gateway retry contract', () => {
       .get(taskId) as { priority: number; metadata_json: string };
     expect(row.priority).toBe(8);
     expect(JSON.parse(row.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       taskTimeoutMs: 240_000,
       model: 'recovery-contract-model',
       requestedProvider: 'codex',
@@ -1260,7 +1281,7 @@ describe.sequential('gateway retry contract', () => {
       'retry-metadata-contract',
       'metadata contract prompt',
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         workflowRunId: 'workflow-retry-contract',
         workflowStage: 'implementation',
         workflowRequired: true,
@@ -1272,6 +1293,12 @@ describe.sequential('gateway retry contract', () => {
         kanbanTaskId: 'kanban-retry-card',
         kanbanPlanId: 'kanban-retry-plan',
         taskTimeoutMs: 240_000,
+        correlationId: 'correlation-retry-contract',
+        turnId: 'turn-retry-contract',
+        attemptId: 'attempt-old',
+        idempotencyKey: 'idempotency-old',
+        providerRevision: 'sha256:old-provider-revision',
+        deadlineAt: '2000-01-01T00:00:00.000Z',
         qualityRejected: true,
         qualityHeuristics: ['old-result'],
         verificationStatus: 'approved',
@@ -1282,7 +1309,7 @@ describe.sequential('gateway retry contract', () => {
 
     const payload = loadRetryPayload(db, 'retry-metadata-contract');
     expect(payload?.metadata).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workflowRunId: 'workflow-retry-contract',
       workflowStage: 'implementation',
       workflowRequired: true,
@@ -1294,7 +1321,13 @@ describe.sequential('gateway retry contract', () => {
       kanbanTaskId: 'kanban-retry-card',
       kanbanPlanId: 'kanban-retry-plan',
       taskTimeoutMs: 240_000,
+      correlationId: 'correlation-retry-contract',
+      turnId: 'turn-retry-contract',
     });
+    expect(payload?.metadata).not.toHaveProperty('attemptId');
+    expect(payload?.metadata).not.toHaveProperty('idempotencyKey');
+    expect(payload?.metadata).not.toHaveProperty('providerRevision');
+    expect(payload?.metadata).not.toHaveProperty('deadlineAt');
     expect(payload?.metadata).not.toHaveProperty('qualityRejected');
     expect(payload?.metadata).not.toHaveProperty('qualityHeuristics');
     expect(payload?.metadata).not.toHaveProperty('verificationStatus');
@@ -1361,7 +1394,7 @@ describe.sequential('gateway retry contract', () => {
   it('returns an active work-report sibling without consuming retry budget', async () => {
     const db = getDb();
     const metadata = JSON.stringify({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workReportId: 'work-report-dedup-contract',
     });
     db.prepare(`
@@ -1418,7 +1451,7 @@ describe.sequential('gateway retry contract', () => {
       9,
       JSON.stringify(verifier),
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         workflowRunId,
         workflowStage: 'implementation',
         workflowRequired: false,
@@ -1472,7 +1505,7 @@ describe.sequential('gateway retry contract', () => {
     });
     expect(JSON.parse(child.verifier_json)).toEqual(verifier);
     expect(JSON.parse(child.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workflowRunId,
       workflowStage: 'implementation',
       workflowRequired: false,

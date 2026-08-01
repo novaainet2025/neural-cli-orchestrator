@@ -57,6 +57,23 @@ const TRUSTED_EXEC_DIRS_STATIC = [
   // Project node_modules/.bin is intentionally omitted; invoke local tools via trusted npm/npx.
 ];
 
+const GITHUB_HOSTED_TOOLCACHE_NPM_EXECUTABLE =
+  /^\/opt\/hostedtoolcache\/node\/\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z.-]+)?\/(?:x64|arm64)\/lib\/node_modules\/npm\/bin\/(npm|npx)-cli\.js$/;
+
+/**
+ * GitHub-hosted Linux runners put node on PATH from /opt/hostedtoolcache. npm
+ * and npx are symlinks whose realpath is the package's *-cli.js entrypoint.
+ * Trust only that exact version/architecture/package layout and bind the
+ * resolved entrypoint back to the requested npm/npx command name.
+ */
+function isTrustedGithubHostedNpmExecutable(
+  executablePath: string,
+  requestedBaseCommand: string,
+): boolean {
+  const match = GITHUB_HOSTED_TOOLCACHE_NPM_EXECUTABLE.exec(executablePath);
+  return !!match && match[1] === requestedBaseCommand;
+}
+
 /**
  * 사용자 홈 아래의 도구 설치 경로.
  *
@@ -162,10 +179,14 @@ export class CommandGate {
       if (!resolvedCommand) {
         return { ok: false, reason: `Command executable not found: ${command}` };
       }
-      if (!this.isTrustedExecutablePath(resolvedCommand)) {
+      if (!this.isTrustedExecutablePath(resolvedCommand, baseCmd)) {
         return { ok: false, reason: `Command path not trusted: ${resolvedCommand}` };
       }
-    } else if ((command.includes('/') || isAbsolute(command)) && resolvedCommand && !this.isTrustedExecutablePath(resolvedCommand)) {
+    } else if (
+      (command.includes('/') || isAbsolute(command))
+      && resolvedCommand
+      && !this.isTrustedExecutablePath(resolvedCommand, baseCmd)
+    ) {
       return { ok: false, reason: `Command path not trusted: ${resolvedCommand}` };
     }
 
@@ -208,13 +229,13 @@ export class CommandGate {
     return null;
   }
 
-  private isTrustedExecutablePath(executablePath: string): boolean {
+  private isTrustedExecutablePath(executablePath: string, requestedBaseCommand: string): boolean {
     // 비교 대상(executablePath)은 resolveExecutable 에서 realpathSync 로 풀린 값이다.
     // 신뢰 경로 쪽을 풀지 않으면, 경로 중간에 심링크가 하나라도 있을 때
     // (예: macOS 의 /var → /private/var, 홈이 심링크인 구성) 접두사 비교가
     // 조용히 어긋나 정상 실행 파일이 차단된다. 양쪽 모두 realpath 로 맞춘다.
     return trustedExecDirsResolved().some(
       dir => executablePath === dir || executablePath.startsWith(`${dir}/`),
-    );
+    ) || isTrustedGithubHostedNpmExecutable(executablePath, requestedBaseCommand);
   }
 }
