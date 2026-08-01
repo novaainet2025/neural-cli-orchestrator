@@ -6,6 +6,7 @@ import { closeDb, getDb, runMigrations } from '../src/storage/database.js';
 import {
   isCompanyOrchestratorQualityRetryOwner,
   loadRetryPayload,
+  quarantineLegacyNestedAuditTasks,
 } from '../src/server/gateway.js';
 import {
   checkResponseQuality,
@@ -230,6 +231,63 @@ describe('response quality gate', () => {
       teamId: 'team_tech-port-01-source-discovery',
       organizationId: 'org_technology-porting',
       companyRunId: 'corun-1',
+    });
+  });
+
+  it('restores the control-plane marker for legacy Nova-AX audit retries', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'cursor-agent', 'failed', ?)
+    `).run(
+      'legacy-audit-retry-contract',
+      'legacy audit prompt',
+      JSON.stringify({
+        projectDir: '/private/tmp',
+        workReportId: 'completion_audit_task_subject-1',
+        workflowStage: 'implementation',
+      }),
+    );
+
+    const payload = loadRetryPayload(db, 'legacy-audit-retry-contract');
+    expect(payload?.metadata).toMatchObject({
+      workReportId: 'completion_audit_task_subject-1',
+      auditControlPlane: true,
+      scoreEligible: false,
+    });
+  });
+
+  it('quarantines a legacy recursively-gated audit task without completing it', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'cursor-agent', 'reviewing', ?)
+    `).run(
+      'legacy-nested-audit-reviewing',
+      'legacy nested audit prompt',
+      JSON.stringify({
+        workReportId: 'remediation_vloop_subject-1_1',
+        verificationStatus: 'pending',
+      }),
+    );
+
+    expect(quarantineLegacyNestedAuditTasks(10, db)).toBe(1);
+    const task = db.prepare(`
+      SELECT status, completed_at, error, metadata_json
+      FROM tasks WHERE id=?
+    `).get('legacy-nested-audit-reviewing') as {
+      status: string;
+      completed_at: string | null;
+      error: string | null;
+      metadata_json: string;
+    };
+    expect(task.status).toBe('cancelled');
+    expect(task.completed_at).toBeNull();
+    expect(task.error).toMatch(/legacy nested audit-control task quarantined/);
+    expect(JSON.parse(task.metadata_json)).toMatchObject({
+      auditControlPlane: true,
+      scoreEligible: false,
+      verificationStatus: 'pending',
     });
   });
 });
