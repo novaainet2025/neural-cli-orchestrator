@@ -4,9 +4,11 @@ import { getDb } from '../storage/database.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { createLogger } from '../utils/logger.js';
 import type { TaskType } from './quality-gate.js';
-import { classifyTier, orderByTier, LAYER_TIER_AGENTS, type Tier } from './tier-policy.js';
+import { classifyTier, layerTierAgents, orderByTier, type Tier } from './tier-policy.js';
 import { adaptiveScorer } from './adaptive-scorer.js';
 import { isAgentActivelyRateLimited } from './rate-limit-state.js';
+import { registeredProviders } from './provider-registry.js';
+import { resolveProviderRouting, type ProviderDepartment } from './provider-catalog.js';
 
 const log = createLogger('smart-router');
 
@@ -47,33 +49,25 @@ const KEYWORD_TRIGGERS: Array<{ pattern: RegExp; mode: DiscussionMode; minAI: nu
   { pattern: /토론|debate|discuss/i, mode: 'discussion', minAI: 3 },
 ];
 
-// Role → preferred agents map (tier-policy.ts 단일 소스 참조).
-// Brain(유료)=management/quality, Worker(무료 로컬)=execution.
-const ROLE_MAP = {
-  management: LAYER_TIER_AGENTS.management,
-  information: LAYER_TIER_AGENTS.information,
-  execution: LAYER_TIER_AGENTS.execution,
-  quality: LAYER_TIER_AGENTS.quality,
-};
-
-/** Prefer local Ollama first, then vLLM, then other free tiers. */
-export const PROVIDER_COST_ORDER = [
-  'ollama', 'vllm', 'openrouter', 'aider', 'codex', 'agy', 'cursor-agent', 'opencode', 'claude-code',
-];
-
+/** Sort using the committed catalog only: free/local first, then routing priority. */
 export function sortProvidersByCostOrder(ids: string[]): string[] {
+  const providers = new Map(registeredProviders().map(provider => [provider.id, provider]));
   return [...ids].sort((a, b) => {
-    const ia = PROVIDER_COST_ORDER.indexOf(a);
-    const ib = PROVIDER_COST_ORDER.indexOf(b);
-    const sa = ia === -1 ? 999 : ia;
-    const sb = ib === -1 ? 999 : ib;
-    return sa - sb;
+    const left = providers.get(a);
+    const right = providers.get(b);
+    if (!left || !right) return left ? -1 : right ? 1 : 0;
+    const byCost = Number(left.cost !== 'free') - Number(right.cost !== 'free');
+    if (byCost !== 0) return byCost;
+    const byLocal = Number(left.type !== 'local') - Number(right.type !== 'local');
+    if (byLocal !== 0) return byLocal;
+    const byPriority = resolveProviderRouting(left).priority - resolveProviderRouting(right).priority;
+    return byPriority || right.score - left.score || left.id.localeCompare(right.id);
   });
 }
 
 export function isTaskCompatibleProvider(agentId: string, taskType: TaskType): boolean {
-  if (taskType === 'media') return agentId === 'agy';
-  return true;
+  const provider = registeredProviders().find(entry => entry.id === agentId);
+  return Boolean(provider && resolveProviderRouting(provider).taskTypes.includes(taskType));
 }
 
 class SmartRouter {
@@ -260,8 +254,8 @@ class SmartRouter {
   /**
    * Get role-based providers for Commander mode.
    */
-  getRoleProviders(layer: keyof typeof ROLE_MAP): string[] {
-    return ROLE_MAP[layer] || [];
+  getRoleProviders(layer: ProviderDepartment): string[] {
+    return layerTierAgents(layer);
   }
 }
 

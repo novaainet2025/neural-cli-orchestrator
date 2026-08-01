@@ -45,6 +45,15 @@ export interface ProviderAssignmentRuntimeDependencies {
   createAssignmentId?: () => string;
 }
 
+let defaultRegistryView: () => ProviderAssignmentRegistryView = legacyProviderAssignmentRegistryView;
+
+/** Bind every company/team assignment runtime to the committed Registry v2 view. */
+export function setDefaultProviderAssignmentRegistryView(
+  registryView: () => ProviderAssignmentRegistryView,
+): void {
+  defaultRegistryView = registryView;
+}
+
 export class ProviderAssignmentRuntime {
   private readonly database: Database.Database;
   private readonly store: ProviderAssignmentStore;
@@ -58,7 +67,7 @@ export class ProviderAssignmentRuntime {
   constructor(dependencies: ProviderAssignmentRuntimeDependencies = {}) {
     this.database = dependencies.database ?? getDb();
     this.store = new ProviderAssignmentStore(this.database);
-    this.registryView = dependencies.registryView ?? legacyProviderAssignmentRegistryView;
+    this.registryView = dependencies.registryView ?? (() => defaultRegistryView());
     this.circuitAvailability = dependencies.circuitAvailability
       ?? ((providerId) => circuitBreakerRegistry.getAvailability(providerId));
     this.now = dependencies.now ?? (() => new Date());

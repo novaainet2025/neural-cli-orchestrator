@@ -16,7 +16,7 @@ import { mkdtempSync, existsSync, symlinkSync, rmSync } from 'node:fs';
 import { tmpdir, availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { isRedisConnected, getRedis } from '../storage/redis.js';
-import { loadEnabledProviders, env, type ProviderConfig } from '../utils/config.js';
+import { env, type ProviderConfig } from '../utils/config.js';
 import { getDb } from '../storage/database.js';
 import { createLogger } from '../utils/logger.js';
 import { invocationTracker } from './invocation-tracker.js';
@@ -89,9 +89,6 @@ export function getVerifierBuildStats(): VerifierBuildStats {
   return { ...verifierBuildStats };
 }
 
-// hermes는 2026-07-18 codex CLI로 전환 — 로컬 OOM 동시성 하향 대상 아님(정적 동시성 사용).
-const DYNAMIC_LOCAL_CONCURRENCY_IDS = new Set(['ollama']);
-
 // ─── Types ────────────────────────────────────────────
 export interface QueuedTask {
   taskId: string;
@@ -155,6 +152,26 @@ export type TaskExecutionResult = {
   };
 };
 type TaskExecutor = (task: QueuedTask, signal: AbortSignal) => Promise<TaskExecutionResult>;
+
+export function selectFailoverProvider(
+  providers: readonly Pick<ProviderConfig, 'id' | 'cost'>[],
+  limitedProviderIds: ReadonlySet<string>,
+  currentAgentId: string,
+  originalAgentId: string,
+): string | null {
+  const candidates = providers
+    .filter(provider => (
+      provider.id !== currentAgentId
+      && provider.id !== originalAgentId
+      && !limitedProviderIds.has(provider.id)
+    ))
+    .sort((left, right) => {
+      if (left.cost === 'free' && right.cost !== 'free') return -1;
+      if (right.cost === 'free' && left.cost !== 'free') return 1;
+      return 0;
+    });
+  return candidates[0]?.id ?? null;
+}
 
 export const GRACEFUL_SHUTDOWN_INTERRUPTION = 'orphaned: graceful shutdown signal';
 const PROCESS_INTERRUPT_PATTERN = /SIGINT|exit(?: code)?=130|exit 130|aborting operation/i;
@@ -1142,6 +1159,10 @@ interface AgentQueueEntry {
   active: number;
   completed: number;
   failed: number;
+  /** False after the provider leaves the committed registry snapshot. */
+  accepting: boolean;
+  /** Local runtimes shrink concurrency while their circuit is not closed. */
+  providerType: ProviderConfig['type'];
 }
 
 type LivenessState = 'working' | 'stalled' | 'dead';
@@ -1172,8 +1193,10 @@ interface TaskRuntimeEntry {
 }
 
 // ─── TaskQueueManager ─────────────────────────────────
-class TaskQueueManager {
+export class TaskQueueManager {
   private agents = new Map<string, AgentQueueEntry>();
+  /** The last successfully reconciled, enabled provider snapshot. */
+  private providerConfigs = new Map<string, ProviderConfig>();
   private executor: TaskExecutor | null = null;
   private initialized = false;
   private shutdownSignal: string | null = null;
@@ -1181,6 +1204,8 @@ class TaskQueueManager {
   private verifierBaselines = new Map<string, Promise<VerifierProcessResult | null>>();
   private enqueueScopes = new Map<string, number>();
   private monitorTimer: ReturnType<typeof setInterval> | null = null;
+  private priorityTimer: ReturnType<typeof setInterval> | null = null;
+  private reconcileSerial: Promise<void> = Promise.resolve();
 
   private getOrCaptureVerifierBaseline(
     task: QueuedTask,
@@ -1193,9 +1218,13 @@ class TaskQueueManager {
     return baseline;
   }
 
-  private getEffectiveConcurrency(agentId: string, configuredConcurrency: number): number {
+  private getEffectiveConcurrency(
+    agentId: string,
+    configuredConcurrency: number,
+    providerType: ProviderConfig['type'],
+  ): number {
     const configured = Math.max(1, configuredConcurrency);
-    if (configured <= 1 || !DYNAMIC_LOCAL_CONCURRENCY_IDS.has(agentId)) {
+    if (configured <= 1 || providerType !== 'local') {
       return configured;
     }
 
@@ -1204,10 +1233,24 @@ class TaskQueueManager {
   }
 
   private refreshEntryConcurrency(agentId: string, entry: AgentQueueEntry): number {
-    const effective = this.getEffectiveConcurrency(agentId, entry.configuredConcurrency);
+    const effective = this.getEffectiveConcurrency(
+      agentId,
+      entry.configuredConcurrency,
+      entry.providerType,
+    );
     entry.concurrency = effective;
     entry.semaphore.setLimit(effective);
+    if (entry.worker) entry.worker.concurrency = effective;
     return effective;
+  }
+
+  private providerUnavailable(agentId: string): TaskExecutionResult {
+    return {
+      success: false,
+      output: '',
+      error: `provider_unavailable: ${agentId} is not registered in the current provider snapshot`,
+      status: 'failed',
+    };
   }
 
   /**
@@ -1229,61 +1272,126 @@ class TaskQueueManager {
    * Initialize queues for all enabled providers.
    * Safe to call even if Redis is offline — falls back to semaphore mode.
    */
-  async init(providers: ProviderConfig[]): Promise<void> {
-    if (this.initialized) return;
-    this.initialized = true;
+  async init(providers: readonly ProviderConfig[]): Promise<void> {
+    if (!this.initialized) {
+      this.initialized = true;
 
-    setInterval(async () => {
-      for (const [, entry] of this.agents) {
-        if (entry.mode !== "bullmq" || !entry.queue) continue;
-        try {
-          const waiting = await entry.queue.getWaiting();
-          for (const job of waiting) {
-            const waitMs = Date.now() - job.timestamp;
-            if (waitMs > 300_000) {
-              const cur = job.opts.priority ?? 5;
-              await job.changePriority({ priority: Math.max(0, cur - 1) });
+      this.priorityTimer = setInterval(async () => {
+        for (const [, entry] of this.agents) {
+          if (entry.mode !== 'bullmq' || !entry.queue) continue;
+          try {
+            const waiting = await entry.queue.getWaiting();
+            for (const job of waiting) {
+              const waitMs = Date.now() - job.timestamp;
+              if (waitMs > 300_000) {
+                const cur = job.opts.priority ?? 5;
+                await job.changePriority({ priority: Math.max(0, cur - 1) });
+              }
             }
-          }
-        } catch { }
-      }
-    }, 60_000);
-
-    this.monitorTimer = setInterval(() => {
-      for (const runtime of this.runtimes.values()) {
-        this.monitorRuntime(runtime);
-      }
-    }, TASK_MONITOR_INTERVAL_MS);
-
-    const redisAvailable = isRedisConnected();
-
-    for (const p of providers) {
-      const concurrency = Math.max(1, p.concurrency ?? 1);
-      const effectiveConcurrency = this.getEffectiveConcurrency(p.id, concurrency);
-      const entry: AgentQueueEntry = {
-        semaphore: new Semaphore(effectiveConcurrency),
-        configuredConcurrency: concurrency,
-        concurrency: effectiveConcurrency,
-        activeControllers: new Map(),
-        mode: 'semaphore',
-        waiting: 0,
-        active: 0,
-        completed: 0,
-        failed: 0,
-      };
-
-      if (redisAvailable) {
-        try {
-          await this.setupBullMQ(p.id, concurrency, entry);
-          entry.mode = 'bullmq';
-        } catch (err: any) {
-          log.warn({ agentId: p.id, err: err.message }, 'BullMQ init failed — falling back to semaphore');
+          } catch { }
         }
+      }, 60_000);
+
+      this.monitorTimer = setInterval(() => {
+        for (const runtime of this.runtimes.values()) {
+          this.monitorRuntime(runtime);
+        }
+      }, TASK_MONITOR_INTERVAL_MS);
+    }
+
+    await this.reconcileProviders(providers);
+  }
+
+  /**
+   * Atomically apply the enabled provider snapshot to queue admission.
+   *
+   * Removed entries remain allocated so active executions can drain without an
+   * AbortSignal. Their admission flag is closed at commit and they can be reused
+   * if the same provider is added again later.
+   */
+  async reconcileProviders(providers: readonly ProviderConfig[]): Promise<void> {
+    const enabled = providers.filter(provider => provider.enabled !== false);
+    const ids = new Set<string>();
+    for (const provider of enabled) {
+      if (ids.has(provider.id)) {
+        throw new Error(`provider_snapshot_invalid: duplicate provider id ${provider.id}`);
+      }
+      ids.add(provider.id);
+    }
+
+    const operation = this.reconcileSerial.then(async () => {
+      const nextConfigs = new Map(enabled.map(provider => [provider.id, provider]));
+      const added = new Map<string, AgentQueueEntry>();
+      const redisAvailable = isRedisConnected();
+
+      // Prepare additions before the synchronous admission commit. A staged
+      // BullMQ worker rejects any persisted job until accepting flips to true.
+      for (const provider of enabled) {
+        if (this.agents.has(provider.id)) continue;
+        const concurrency = Math.max(1, provider.concurrency ?? 1);
+        const effectiveConcurrency = this.getEffectiveConcurrency(
+          provider.id,
+          concurrency,
+          provider.type,
+        );
+        const entry: AgentQueueEntry = {
+          semaphore: new Semaphore(effectiveConcurrency),
+          configuredConcurrency: concurrency,
+          concurrency: effectiveConcurrency,
+          activeControllers: new Map(),
+          mode: 'semaphore',
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          accepting: false,
+          providerType: provider.type,
+        };
+
+        if (redisAvailable) {
+          try {
+            await this.setupBullMQ(provider.id, effectiveConcurrency, entry);
+            entry.mode = 'bullmq';
+          } catch (err: any) {
+            log.warn(
+              { agentId: provider.id, err: err.message },
+              'BullMQ init failed — falling back to semaphore',
+            );
+          }
+        }
+        added.set(provider.id, entry);
       }
 
-      this.agents.set(p.id, entry);
-      log.info({ agentId: p.id, concurrency, mode: entry.mode }, 'Agent queue ready');
-    }
+      // No await below this point: queue admission and its authoritative
+      // provider snapshot change as one event-loop transaction.
+      for (const [agentId, entry] of this.agents) {
+        const provider = nextConfigs.get(agentId);
+        if (!provider) {
+          entry.accepting = false;
+          continue;
+        }
+        entry.providerType = provider.type;
+        entry.configuredConcurrency = Math.max(1, provider.concurrency ?? 1);
+        entry.accepting = true;
+        this.refreshEntryConcurrency(agentId, entry);
+      }
+      for (const [agentId, entry] of added) {
+        entry.accepting = true;
+        this.agents.set(agentId, entry);
+      }
+      this.providerConfigs = nextConfigs;
+
+      log.info({
+        providers: [...nextConfigs.keys()],
+        added: [...added.keys()],
+        removed: [...this.agents.entries()]
+          .filter(([, entry]) => !entry.accepting)
+          .map(([agentId]) => agentId),
+      }, 'Task queue provider snapshot reconciled');
+    });
+
+    this.reconcileSerial = operation.catch(() => {});
+    return operation;
   }
 
   private async setupBullMQ(agentId: string, concurrency: number, entry: AgentQueueEntry): Promise<void> {
@@ -1323,6 +1431,10 @@ class TaskQueueManager {
 
     this.refreshEntryConcurrency(task.agentId, entry);
     await entry.semaphore.acquire();
+    if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
+      entry.semaphore.release();
+      return this.providerUnavailable(task.agentId);
+    }
 
     const controller = new AbortController();
     try {
@@ -1502,7 +1614,7 @@ class TaskQueueManager {
           || isEvolutionLearningTaskRecoverableFailure(task.taskId, result)
         )
       ) {
-        const known = new Set(this.agents.keys());
+        const known = new Set(this.providerConfigs.keys());
         const next = await nextTeamExecutor(task.taskId, known, attemptedAgents);
         if (next && next !== currentAgentId) {
           teamRetried = true;
@@ -1562,7 +1674,7 @@ class TaskQueueManager {
       const teamId = loadTaskTeamId(task.taskId) ?? currentMetadata.teamId;
       const knownAgents = filterEvolutionSkillsEscalationAgents(
         teamId,
-        filterRecoveryCheckpointEscalationAgents(teamId, [...this.agents.keys()]),
+        filterRecoveryCheckpointEscalationAgents(teamId, [...this.providerConfigs.keys()]),
       );
       const escalation = decideFinalEscalation({
         failedAgentId,
@@ -1635,22 +1747,16 @@ class TaskQueueManager {
 
   /** Find an available agent to failover to */
   private findFailoverAgent(currentAgentId: string, originalAgentId: string): string | null {
-    const providers = loadEnabledProviders();
     // Prefer free/local agents, exclude rate-limited ones
     try {
       const db = getDb();
       const limited = listActivelyRateLimited(db);
-
-      const candidates = providers
-        .filter(p => p.id !== currentAgentId && p.id !== originalAgentId && !limited.has(p.id))
-        .sort((a, b) => {
-          // Free agents first
-          if (a.cost === 'free' && b.cost !== 'free') return -1;
-          if (b.cost === 'free' && a.cost !== 'free') return 1;
-          return 0;
-        });
-
-      return candidates[0]?.id ?? null;
+      return selectFailoverProvider(
+        [...this.providerConfigs.values()],
+        limited,
+        currentAgentId,
+        originalAgentId,
+      );
     } catch {
       return null;
     }
@@ -1660,23 +1766,10 @@ class TaskQueueManager {
    * Internal: actually enqueue to BullMQ or semaphore (no retry logic).
    */
   private async runEnqueue(task: QueuedTask): Promise<TaskExecutionResult> {
-    // Auto-init unknown agents (e.g. dynamic providers)
-    if (!this.agents.has(task.agentId)) {
-      const providers = loadEnabledProviders();
-      const p = providers.find(x => x.id === task.agentId);
-      const concurrency = p?.concurrency ?? 1;
-      const effectiveConcurrency = this.getEffectiveConcurrency(task.agentId, concurrency);
-      this.agents.set(task.agentId, {
-        semaphore: new Semaphore(effectiveConcurrency),
-        configuredConcurrency: concurrency,
-        concurrency: effectiveConcurrency,
-        activeControllers: new Map(),
-        mode: 'semaphore',
-        waiting: 0, active: 0, completed: 0, failed: 0,
-      });
+    const entry = this.agents.get(task.agentId);
+    if (!entry || !entry.accepting || !this.providerConfigs.has(task.agentId)) {
+      return this.providerUnavailable(task.agentId);
     }
-
-    const entry = this.agents.get(task.agentId)!;
 
     if (entry.mode === 'bullmq' && entry.queue) {
       return this.enqueueBullMQ(task, entry);
@@ -1685,6 +1778,9 @@ class TaskQueueManager {
   }
 
   private async enqueueBullMQ(task: QueuedTask, entry: AgentQueueEntry): Promise<TaskExecutionResult> {
+    if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
+      return this.providerUnavailable(task.agentId);
+    }
     const requestedQueuePriority = Number(task.metadata?.queuePriority);
     const queuePriority = Number.isInteger(requestedQueuePriority)
       && requestedQueuePriority >= 0
@@ -1833,6 +1929,10 @@ class TaskQueueManager {
     this.refreshEntryConcurrency(task.agentId, entry);
     await entry.semaphore.acquire();
     entry.waiting = Math.max(0, entry.waiting - 1);
+    if (!entry.accepting || !this.providerConfigs.has(task.agentId)) {
+      entry.semaphore.release();
+      return this.providerUnavailable(task.agentId);
+    }
 
     const controller = new AbortController();
     try {
@@ -1963,6 +2063,10 @@ class TaskQueueManager {
   }
 
   async close(options: { forceWorkers?: boolean } = {}): Promise<void> {
+    if (this.priorityTimer) {
+      clearInterval(this.priorityTimer);
+      this.priorityTimer = null;
+    }
     if (this.monitorTimer) {
       clearInterval(this.monitorTimer);
       this.monitorTimer = null;
@@ -1976,6 +2080,9 @@ class TaskQueueManager {
       if (entry.queueEvents) await entry.queueEvents.close();
     }
     this.agents.clear();
+    this.providerConfigs.clear();
+    this.initialized = false;
+    this.reconcileSerial = Promise.resolve();
   }
 
   recordActivity(taskId: string, chunk?: string): void {

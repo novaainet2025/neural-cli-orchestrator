@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { loadJSON, validateProvidersFile, validateTopology } from './config.js';
+import {
+  applyLocalProviderConfig,
+  loadJSON,
+  validateProvidersFile,
+  validateTopology,
+} from './config.js';
 
 describe('config JSON validation', () => {
   it('keeps loadJSON backward compatible when no validator is supplied', () => {
@@ -22,12 +27,16 @@ describe('config JSON validation', () => {
     );
   });
 
-  it('rejects a provider missing a required field', () => {
+  it('allows inferred metadata but rejects an unknown executor', () => {
     expect(() => validateProvidersFile({
       version: 1,
       updated: '2026-07-22',
-      providers: [{ id: 'test' }],
-    })).toThrow('[config] ai-providers.json providers[0].name is required');
+      providers: [{
+        id: 'test',
+        command: 'test',
+        runtime: { executor: 'mystery', adapter: 'generic' },
+      }],
+    })).toThrow('[provider-catalog] test.runtime.executor is unknown: mystery');
   });
 
   it('keeps the registered visual provider model distinct from its provider id', () => {
@@ -39,5 +48,48 @@ describe('config JSON validation', () => {
     expect(visualProvider).toBeDefined();
     expect(visualProvider?.model).toBe('agy-internal');
     expect(visualProvider?.model).not.toBe(visualProvider?.id);
+  });
+
+  it('supports PC-local provider additions, overrides, allowlists and denylists', () => {
+    const shared = validateProvidersFile({
+      version: 1,
+      updated: '2026-08-01',
+      providers: [
+        { id: 'shared-a', command: 'shared-a' },
+        { id: 'shared-b', command: 'shared-b' },
+      ],
+    }).providers;
+
+    const effective = applyLocalProviderConfig(shared, {
+      providers: [{
+        id: 'pc-only-provider',
+        command: 'pc-provider',
+        runtime: { executor: 'orchestrated-cli', adapter: 'generic' },
+      }],
+      overrides: { 'shared-a': { score: 99 } },
+      allowedProviderIds: ['shared-a', 'pc-only-provider'],
+      deniedProviderIds: ['shared-a'],
+    });
+
+    expect(effective.map(provider => [provider.id, provider.enabled, provider.score])).toEqual([
+      ['shared-a', false, 99],
+      ['shared-b', false, 70],
+      ['pc-only-provider', true, 70],
+    ]);
+  });
+
+  it('rejects malformed local additions atomically', () => {
+    const shared = validateProvidersFile({
+      version: 1,
+      updated: '2026-08-01',
+      providers: [{ id: 'shared', command: 'shared' }],
+    }).providers;
+
+    expect(() => applyLocalProviderConfig(shared, {
+      providers: [{ id: 'shared', command: 'duplicate' }],
+    })).toThrow(/duplicate local provider id/);
+    expect(() => applyLocalProviderConfig(shared, {
+      overrides: { missing: { enabled: false } },
+    })).toThrow(/unregistered provider/);
   });
 });

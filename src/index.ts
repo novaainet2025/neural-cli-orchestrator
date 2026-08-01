@@ -19,6 +19,7 @@ import { wsBridge } from './server/websocket.js';
 import { getMonitorHTML } from './server/monitor.js';
 import { getTopologyHTML } from './server/topology.js';
 import { providerProber } from './core/provider-prober.js';
+import { providerRuntimeCoordinator } from './core/provider-runtime-coordinator.js';
 import { startTeamLifecycleEventMonitor } from './core/team-lifecycle.js';
 import { runHourlyRoleAudit } from './core/hourly-role-oversight.js';
 import { resumeCompanyRuns } from './core/company-orchestrator.js';
@@ -398,6 +399,10 @@ async function boot(): Promise<void> {
   });
   await taskQueue.init(loadEnabledProviders());
 
+  // 7b-1. Commit the PC-effective NCO provider registry across execution,
+  // queue admission, shared state, routing and company/team assignment.
+  await providerRuntimeCoordinator.init();
+
   // 7c. Internal cron jobs
   loadCronJobs();
 
@@ -540,6 +545,7 @@ async function shutdown(signal: string): Promise<void> {
     await wsBridge.stop(signal);
     sessionManager.destroy();
     agentManager.destroy();
+    providerRuntimeCoordinator.stop();
     await taskQueue.close({ forceWorkers: true });
     syncEngine.stop();
     eventBus.destroy();

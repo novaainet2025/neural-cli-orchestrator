@@ -1430,7 +1430,7 @@ class DiscussionEngine {
     const all = sortProvidersByCostOrder(agentManager.listEnabledIds());
 
     switch (mode) {
-      case 'task': return [all[0] || 'claude-code'];
+      case 'task': return all.length > 0 ? [all[0]] : [];
       case 'parallel': return all.slice(0, 3);
       case 'discussion': return all.slice(0, 3);
       case 'realtime': return all.slice(0, 4);

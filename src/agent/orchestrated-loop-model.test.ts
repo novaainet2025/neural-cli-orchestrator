@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   buildOrchestratedCliArgs,
+  buildOrchestratedCliInvocation,
   clearCursorFallbackPreference,
   executeWithCursorModelFallback,
   resolveCursorFallbackModel,
@@ -8,14 +9,14 @@ import {
 
 describe('task model override CLI propagation', () => {
   it.each([
-    ['codex', 'gpt-5.6-sol', '-m'],
-    ['opencode', 'openrouter/~anthropic/claude-sonnet-latest', '-m'],
-    ['cursor-agent', 'gpt-5.6-sol-high', '--model'],
-    ['agy', 'gemini-3.6-flash-high', '--model'],
-    ['hermes', 'gpt-5.6-terra', '-m']
-  ])('%s forwards %s through %s', (id, model, flag) => {
+    ['codex', 'codex', 'default', 'gpt-5.6-sol', '-m'],
+    ['opencode', 'opencode', 'default', 'openrouter/~anthropic/claude-sonnet-latest', '-m'],
+    ['cursor-agent', 'cursor', 'default', 'gpt-5.6-sol-high', '--model'],
+    ['agy', 'agy', 'default', 'gemini-3.6-flash-high', '--model'],
+    ['hermes', 'codex', 'readonly-tool-worker', 'gpt-5.6-terra', '-m']
+  ] as const)('%s/%s (%s) forwards %s through %s', (id, adapter, profile, model, flag) => {
     const args = buildOrchestratedCliArgs(
-      { id, model: id },
+      { id, model: id, runtime: { executor: 'orchestrated-cli', adapter, profile } },
       [],
       'Reply OK',
       null,
@@ -61,14 +62,30 @@ describe('task model override CLI propagation', () => {
     '%s enables local network only for an explicitly scoped task',
     (id) => {
       const defaultArgs = buildOrchestratedCliArgs(
-        { id, model: id },
+        {
+          id,
+          model: id,
+          runtime: {
+            executor: 'orchestrated-cli',
+            adapter: 'codex',
+            profile: id === 'hermes' ? 'readonly-tool-worker' : 'default',
+          },
+        },
         [],
         'Reply OK',
       );
       expect(defaultArgs).not.toContain('sandbox_workspace_write.network_access=true');
 
       const networkArgs = buildOrchestratedCliArgs(
-        { id, model: id },
+        {
+          id,
+          model: id,
+          runtime: {
+            executor: 'orchestrated-cli',
+            adapter: 'codex',
+            profile: id === 'hermes' ? 'readonly-tool-worker' : 'default',
+          },
+        },
         [],
         'Reply OK',
         null,
@@ -79,6 +96,59 @@ describe('task model override CLI propagation', () => {
       expect(networkArgs[networkArgs.indexOf('--sandbox') + 1]).toBe('workspace-write');
     },
   );
+
+  it('routes an arbitrary provider id only through its declared adapter', () => {
+    const args = buildOrchestratedCliArgs(
+      {
+        id: 'team-code-reviewer',
+        model: 'gpt-5.6-sol',
+        command: 'codex',
+        runtime: { executor: 'orchestrated-cli', adapter: 'codex' },
+      },
+      [],
+      'Reply OK',
+      '/tmp/last-message',
+    );
+    expect(args).toContain('exec');
+    expect(args).toContain('--output-last-message');
+  });
+
+  it('uses exactly one declared prompt transport for a generic adapter', () => {
+    const stdinInvocation = buildOrchestratedCliInvocation(
+      {
+        id: 'local-team-provider',
+        model: 'local-model',
+        command: 'local-provider',
+        runtime: {
+          executor: 'orchestrated-cli',
+          adapter: 'generic',
+          promptTransport: 'stdin',
+        },
+      },
+      ['--quiet'],
+      'Reply OK',
+    );
+    expect(stdinInvocation).toEqual({ args: ['--quiet'], input: 'Reply OK' });
+
+    const argvInvocation = buildOrchestratedCliInvocation(
+      {
+        id: 'local-team-provider',
+        model: 'local-model',
+        command: 'local-provider',
+        runtime: {
+          executor: 'orchestrated-cli',
+          adapter: 'generic',
+          promptTransport: 'argv',
+        },
+      },
+      ['--quiet'],
+      'Reply OK',
+    );
+    expect(argvInvocation).toEqual({
+      args: ['--quiet', 'Reply OK'],
+      stdin: 'ignore',
+    });
+  });
 });
 
 describe('Cursor transient model-provider fallback', () => {
@@ -93,6 +163,24 @@ describe('Cursor transient model-provider fallback', () => {
 
   beforeEach(() => {
     clearCursorFallbackPreference();
+  });
+
+  it('uses the cursor adapter contract for an arbitrary provider id', async () => {
+    const attempts: Array<string | undefined> = [];
+    const result = await executeWithCursorModelFallback({
+      providerId: 'pc-reviewer',
+      providerAdapter: 'cursor',
+      providerModel: 'cursor',
+      fallbackModel: 'composer-2.5',
+      execute: async model => {
+        attempts.push(model);
+        if (attempts.length === 1) throw providerError;
+        return 'ok';
+      },
+    });
+
+    expect(result).toBe('ok');
+    expect(attempts).toEqual([undefined, 'composer-2.5']);
   });
 
   it('retries the default Cursor route exactly once with the configured fallback', async () => {

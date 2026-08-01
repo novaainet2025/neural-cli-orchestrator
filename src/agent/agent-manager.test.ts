@@ -160,6 +160,7 @@ vi.mock('../utils/logger.js', () => ({
 
 import {
   agentManager,
+  classifyAgent,
   classifyIncompleteAnswer,
   formatProviderUnavailableError,
   isNonCircuitCancellation,
@@ -174,6 +175,18 @@ describe('AgentManager', () => {
     circuitBreakerRegistry.reset('claude-code');
     circuitBreakerRegistry.reset('api-tools');
     circuitBreakerRegistry.reset('cursor-agent');
+  });
+
+  it('classifies arbitrary provider ids from runtime descriptors', () => {
+    const provider = (id: string, executor: string) => ({
+      id,
+      command: executor === 'openai-api' ? null : 'provider-cli',
+      endpoint: executor === 'openai-api' ? 'http://localhost:9999/v1' : undefined,
+      runtime: { executor, adapter: 'generic' },
+    }) as any;
+
+    expect(classifyAgent(provider('added-after-deploy', 'orchestrated-cli'))).toBe('orchestrated-cli');
+    expect(classifyAgent(provider('pc-local-api', 'openai-api'))).toBe('openai-api');
   });
 
   afterEach(() => {
@@ -368,6 +381,33 @@ describe('AgentManager', () => {
       NO_COLOR: '1',
       TERM: 'dumb',
     });
+  });
+
+  it('builds adapter-specific probes for an arbitrary provider id', async () => {
+    const cursor = mockProviders.find(provider => provider.id === 'cursor-agent')!;
+    const dynamic = {
+      ...cursor,
+      id: 'pc-reviewer',
+      runtime: { executor: 'orchestrated-cli', adapter: 'cursor' },
+    } as any;
+    await agentManager.reloadProviders([dynamic]);
+    mockExeca.mockResolvedValueOnce({
+      stdout: 'NCO_PROVIDER_PROBE_OK',
+      stderr: '',
+      exitCode: 0,
+    });
+
+    const recovered = await agentManager.probeProvider(
+      'pc-reviewer',
+      'Reply exactly: NCO_PROVIDER_PROBE_OK',
+      30_000,
+      'auto',
+    );
+
+    expect(recovered).toBe(true);
+    const [, args] = mockExeca.mock.calls[0];
+    expect(args).toContain('--print');
+    expect(args).toContain('--model');
   });
 
   it('uses one explicit fallback-model probe before closing a recovered Cursor circuit', async () => {

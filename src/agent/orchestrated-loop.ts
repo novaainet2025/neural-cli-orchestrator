@@ -10,6 +10,7 @@ import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
+import { resolveProviderRuntime } from '../core/provider-catalog.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
@@ -66,11 +67,6 @@ function extractOpenCodeText(stdout: string): string | undefined {
   return parsedAnyLine ? textParts.join('') : undefined;
 }
 
-// Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'hermes', 'cursor-agent', 'agy']);
-// hermes는 codex CLI 백엔드로 실행되므로 codex와 동일한 stdin/output-last-message 규칙을 따른다.
-const CODEX_FAMILY = new Set(['codex', 'hermes']);
-
 interface LoopResult {
   output: string;
   iterations: number;
@@ -86,20 +82,27 @@ interface LoopResult {
  * 이어지는지 독립적으로 검증할 수 있게 순수 함수로 유지한다.
  */
 export function buildOrchestratedCliArgs(
-  provider: Pick<ProviderConfig, 'id' | 'model'>,
+  provider: Pick<ProviderConfig, 'id' | 'model'>
+    & Partial<Pick<ProviderConfig, 'command' | 'runtime'>>,
   baseArgs: string[],
   prompt: string,
   lastMessageFile?: string | null,
   model?: string,
   localNetworkAccess = false,
 ): string[] {
+  const runtime = resolveProviderRuntime(provider);
   const configuredModel = model || provider.model;
   const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
     ? configuredModel
     : undefined;
 
-  switch (provider.id) {
-    case 'hermes': {
+  switch (runtime.adapter) {
+    case 'codex': {
+      if (runtime.profile !== 'readonly-tool-worker') {
+        return lastMessageFile
+          ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
+          : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
+      }
       const hFlags = [
         'exec',
         '--skip-git-repo-check',
@@ -112,10 +115,6 @@ export function buildOrchestratedCliArgs(
         ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
         : [...hFlags, prompt];
     }
-    case 'codex':
-      return lastMessageFile
-        ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
-        : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
     case 'agy':
       // provider.model은 NCO 라우팅 별칭(`agy-internal`)일 수 있으며 AGY CLI의
       // 실제 모델 ID가 아니다. AGY는 태스크가 명시한 override만 --model로 전달하고,
@@ -139,7 +138,7 @@ export function buildOrchestratedCliArgs(
         ? [baseArgs[0], ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
         : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
     }
-    case 'cursor-agent':
+    case 'cursor':
       // Headless default는 안전한 명령도 승인 대화상자를 열 수 없어 거부한다.
       // Smart Auto가 안전 호출만 자동 승인하고 나머지는 거부하도록 sandbox와 함께 고정한다.
       return [
@@ -154,8 +153,39 @@ export function buildOrchestratedCliArgs(
         prompt,
       ];
     default:
-      return [...baseArgs, prompt];
+      return runtime.promptTransport === 'argv' ? [...baseArgs, prompt] : [...baseArgs];
   }
+}
+
+export interface OrchestratedCliInvocation {
+  args: string[];
+  input?: string;
+  stdin?: 'ignore';
+}
+
+/** Keep prompt delivery data-driven and exclusive: argv or stdin, never both. */
+export function buildOrchestratedCliInvocation(
+  provider: Pick<ProviderConfig, 'id' | 'model'>
+    & Partial<Pick<ProviderConfig, 'command' | 'runtime'>>,
+  baseArgs: string[],
+  prompt: string,
+  lastMessageFile?: string | null,
+  model?: string,
+  localNetworkAccess = false,
+): OrchestratedCliInvocation {
+  const runtime = resolveProviderRuntime(provider);
+  const args = buildOrchestratedCliArgs(
+    provider,
+    baseArgs,
+    prompt,
+    lastMessageFile,
+    model,
+    localNetworkAccess,
+  );
+  if (runtime.adapter === 'codex') return { args, input: '' };
+  return runtime.promptTransport === 'stdin'
+    ? { args, input: prompt }
+    : { args, stdin: 'ignore' };
 }
 
 function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
@@ -228,12 +258,14 @@ function preferredCursorFallbackModel(
 
 export function shouldFallbackCursorModel(input: {
   providerId: string;
+  providerAdapter?: string;
   providerModel?: string | null;
   requestedModel?: string;
   error: unknown;
   fallbackModel: string | null;
 }): boolean {
-  if (input.providerId !== 'cursor-agent' || !input.fallbackModel) return false;
+  if (input.providerAdapter !== 'cursor' && input.providerId !== 'cursor-agent') return false;
+  if (!input.fallbackModel) return false;
   if (input.requestedModel?.trim()) return false;
 
   const providerModel = input.providerModel?.trim().toLowerCase();
@@ -255,6 +287,7 @@ export function shouldFallbackCursorModel(input: {
 
 export async function executeWithCursorModelFallback<T>(input: {
   providerId: string;
+  providerAdapter?: string;
   providerModel?: string | null;
   requestedModel?: string;
   fallbackModel?: string | null;
@@ -269,7 +302,7 @@ export async function executeWithCursorModelFallback<T>(input: {
     ? resolveCursorFallbackModel()
     : input.fallbackModel;
   const providerModel = input.providerModel?.trim().toLowerCase();
-  const defaultCursorRoute = input.providerId === 'cursor-agent'
+  const defaultCursorRoute = (input.providerAdapter === 'cursor' || input.providerId === 'cursor-agent')
     && !input.requestedModel?.trim()
     && (!providerModel || providerModel === 'cursor' || providerModel === 'auto');
   const preferredFallback = defaultCursorRoute
@@ -285,6 +318,7 @@ export async function executeWithCursorModelFallback<T>(input: {
     if (preferredFallback) throw error;
     if (!shouldFallbackCursorModel({
       providerId: input.providerId,
+      providerAdapter: input.providerAdapter,
       providerModel: input.providerModel,
       requestedModel: input.requestedModel,
       error,
@@ -520,6 +554,7 @@ export class OrchestratedLoop {
   ): Promise<string> {
     return executeWithCursorModelFallback({
       providerId: this.provider.id,
+      providerAdapter: resolveProviderRuntime(this.provider).adapter,
       providerModel: this.provider.model,
       requestedModel: model,
       execute: selectedModel => this.callCLIOnce(
@@ -566,6 +601,7 @@ export class OrchestratedLoop {
   ): Promise<string> {
     const command = this.provider.command!;
     const args = [...(this.provider.args || [])];
+    const runtime = resolveProviderRuntime(this.provider);
 
     // Build combined prompt (system + history)
     const currentPrompt = [...history].reverse().find(h => h.role === 'user')?.content ?? '';
@@ -581,36 +617,44 @@ export class OrchestratedLoop {
 
     // codex: --output-last-message writes ONLY the final assistant message to a file,
     // avoiding banner/echo pollution in stdout (T1-verified flag support)
-    const lastMessageFile = CODEX_FAMILY.has(this.provider.id)
+    const lastMessageFile = runtime.adapter === 'codex'
       ? joinPath(tmpdir(), `nco-codex-last-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
       : null;
 
     // Most CLI AIs accept prompt via stdin or -p flag
     // Adapt per provider
-    const finalArgs = this.buildArgs(args, combined, lastMessageFile, model);
+    const invocation = buildOrchestratedCliInvocation(
+      this.provider,
+      args,
+      combined,
+      lastMessageFile,
+      model,
+      this.localNetworkAccess,
+    );
     this.assertTaskProjectDir();
-    const subagentTracker = this.provider.id === 'codex'
+    const subagentTracker = runtime.adapter === 'codex'
       ? new CodexSubagentTracker(taskId, this.provider.id)
       : null;
     let subagentTrackerStopped = false;
 
     try {
-      const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
-      // [W18/stdin 2026-07-07] codex는 stdin:'ignore'면 "Reading additional input from stdin"에서
-      // 멈춰 timeout된다(codex 0.142.5). 빈 input('')을 주면 EOF를 받아 정상 진행한다.
-      // (T1: execa stdin:'ignore' → 멈춤 / input:'' → prompt 실행+정상 에러표시 재현)
-      const stdinOpt: Record<string, unknown> = CODEX_FAMILY.has(this.provider.id)
-        ? { input: '' }
-        : (useStdin ? { input: combined } : { stdin: 'ignore' });
-      const subprocess = execa(command, finalArgs, {
-        ...stdinOpt,
+      const subprocess = execa(command, invocation.args, {
+        ...(invocation.input !== undefined
+          ? { input: invocation.input }
+          : { stdin: invocation.stdin ?? 'ignore' }),
         cwd: this.taskProjectDir || undefined,
         ...(this.abortSignal ? { cancelSignal: this.abortSignal } : { timeout: this.sandbox.getTimeout() }),
         forceKillAfterDelay: 3000,
         detached: process.platform !== 'win32',
         maxBuffer: 10 * 1024 * 1024,
         env: {
-          ...buildProviderProcessEnv(this.provider.id, this.provider.env),
+          ...buildProviderProcessEnv(
+            this.provider.id,
+            this.provider.env,
+            process.env,
+            undefined,
+            runtime.adapter,
+          ),
           NO_COLOR: '1', 
           TERM: 'dumb',
           ...(this.taskProjectDir ? { PROJECT_DIR: this.taskProjectDir } : {})
@@ -684,7 +728,7 @@ export class OrchestratedLoop {
           stderr: stderrSummary,
         }, 'CLI call returned non-zero exit');
 
-        const opencodeOutput = this.provider.id === 'opencode'
+        const opencodeOutput = runtime.adapter === 'opencode'
           ? extractOpenCodeText(result.stdout || '')
           : undefined;
         const stderrTail = _stderrNoEcho.trim().slice(-300);
@@ -724,7 +768,7 @@ export class OrchestratedLoop {
 
       if (lastMsg) return lastMsg;
 
-      if (this.provider.id === 'opencode') {
+      if (runtime.adapter === 'opencode') {
         const output = extractOpenCodeText(result.stdout || '');
         if (output !== undefined) return output;
       }
@@ -738,7 +782,7 @@ export class OrchestratedLoop {
   }
 
   private assertTaskProjectDir(): void {
-    if (this.provider.id !== 'codex') return;
+    if (resolveProviderRuntime(this.provider).adapter !== 'codex') return;
 
     const projectDir = this.taskProjectDir?.trim();
     if (!projectDir) {

@@ -214,8 +214,17 @@ export class SharedState {
 
   // ─── Config Seeding (JSON → DB) ───────────────────
   async seedProviders(): Promise<void> {
+    await this.reconcileProviders(loadEnabledProviders());
+  }
+
+  /** Persist one committed provider roster without re-reading mutable config. */
+  async reconcileProviders(providers: readonly ProviderConfig[]): Promise<void> {
     const db = getDb();
-    const providers = loadEnabledProviders();
+    const enabledProviders = providers.filter(provider => provider.enabled !== false);
+    const previousIds = new Set(
+      (db.prepare('SELECT id FROM agents WHERE enabled=1').all() as Array<{ id: string }>)
+        .map(row => row.id),
+    );
 
     const upsert = db.prepare(`
       INSERT INTO agents (id, name, type, role, score, model, command, args_json, endpoint, api_key_ref,
@@ -231,7 +240,7 @@ export class SharedState {
         updated_at=datetime('now')
     `);
 
-    const seedTx = db.transaction((provs: ProviderConfig[]) => {
+    const seedTx = db.transaction((provs: readonly ProviderConfig[]) => {
       for (const p of provs) {
         upsert.run(
           p.id, p.name, p.type, p.role, p.score, p.model, p.command,
@@ -246,27 +255,36 @@ export class SharedState {
       // 단일 진실원으로: 시드 목록에 없는 행은 enabled=0으로 내린다(행 삭제는
       // FK/이력 보존 위해 하지 않음).
       const ids = provs.map(p => p.id);
-      const ph = ids.map(() => '?').join(',');
-      db.prepare(
-        `UPDATE agents SET enabled=0, updated_at=datetime('now')
-         WHERE enabled=1 AND id NOT IN (${ph})`
-      ).run(...ids);
+      if (ids.length === 0) {
+        db.prepare(
+          "UPDATE agents SET enabled=0, updated_at=datetime('now') WHERE enabled=1",
+        ).run();
+      } else {
+        const ph = ids.map(() => '?').join(',');
+        db.prepare(
+          `UPDATE agents SET enabled=0, updated_at=datetime('now')
+           WHERE enabled=1 AND id NOT IN (${ph})`,
+        ).run(...ids);
+      }
     });
 
-    seedTx(providers);
-    log.info({ count: providers.length }, 'Providers seeded to DB');
+    seedTx(enabledProviders);
+    log.info({ count: enabledProviders.length }, 'Provider roster reconciled to DB');
 
-    // Also set initial Redis state
-    for (const p of providers) {
-      await this.setAgentState(p.id, {
-        id: p.id,
-        status: 'idle',
+    // Preserve live task state. Only newly admitted providers receive an idle
+    // record; removed idle providers become offline while active work drains.
+    for (const p of enabledProviders) {
+      if (previousIds.has(p.id) && await this.getAgentState(p.id)) continue;
+      await this.setAgentState(p.id, { id: p.id, status: 'idle' });
+    }
+    const currentIds = new Set(enabledProviders.map(provider => provider.id));
+    for (const removedId of previousIds) {
+      if (currentIds.has(removedId)) continue;
+      const state = await this.getAgentState(removedId);
+      if (state?.status === 'working' || state?.status === 'thinking') continue;
+      await this.setAgentState(removedId, {
+        status: 'offline',
         currentTask: null,
-        currentFiles: [],
-        lastAction: null,
-        lastActionAt: null,
-        messageCount: 0,
-        health: { consecutiveFailures: 0, circuitState: 'closed', lastError: null },
       });
     }
   }

@@ -30,6 +30,7 @@ export function buildProviderProcessEnv(
   providerEnv: Record<string, string> | undefined,
   baseEnv: NodeJS.ProcessEnv = process.env,
   userHome = homedir(),
+  providerAdapter?: string,
 ): NodeJS.ProcessEnv {
   const merged: NodeJS.ProcessEnv = {
     ...baseEnv,
@@ -43,7 +44,7 @@ export function buildProviderProcessEnv(
   }
 
   if (
-    providerId !== 'cursor-agent'
+    providerAdapter !== 'cursor' && providerId !== 'cursor-agent'
     || !isCursorPathFallbackEnabled(merged.NCO_CURSOR_AGENT_PATH_FALLBACK)
   ) {
     return merged;
