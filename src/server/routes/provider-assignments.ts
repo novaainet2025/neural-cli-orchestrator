@@ -71,6 +71,9 @@ export interface ProviderAssignmentRouteDependencies {
   resolveAssignment(
     request: ResolveAssignmentRequest,
   ): ProviderAssignmentSnapshot | Promise<ProviderAssignmentSnapshot>;
+  previewAssignment?(
+    request: ResolveAssignmentRequest,
+  ): ProviderAssignmentSnapshot | Promise<ProviderAssignmentSnapshot>;
   getSnapshot(
     assignmentId: string,
   ): ProviderAssignmentSnapshot | null | Promise<ProviderAssignmentSnapshot | null>;
@@ -163,12 +166,18 @@ export async function registerProviderAssignmentRoutes(
       if (!await requireScope(reply, dependencies, scopeType, scopeId)) return;
       const parsed = AssignmentQuerySchema.safeParse(request.query);
       if (!parsed.success) return invalid(reply, 'invalid_provider_assignment_query', parsed.error.issues);
-      const snapshot = await dependencies.resolveAssignment({
+      const assignmentRequest: ResolveAssignmentRequest = {
         scopeType,
         scopeId,
         refresh: parsed.data.refresh === '1',
         taskRequiredCapabilities: taskCapabilities(parsed.data.taskCapability),
-      });
+      };
+      // GET is observational. A compatibility fallback preserves custom route
+      // dependencies that predate previewAssignment, while the production runtime
+      // never appends snapshots/events from a read request.
+      const snapshot = dependencies.previewAssignment
+        ? await dependencies.previewAssignment(assignmentRequest)
+        : await dependencies.resolveAssignment(assignmentRequest);
       return sendAssignment(reply, snapshot);
     });
   };

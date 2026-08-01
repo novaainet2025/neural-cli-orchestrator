@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { listEnabledIds, getAgentState, dbGet } = vi.hoisted(() => ({
-  listEnabledIds: vi.fn(() => ['openrouter', 'ollama', 'vllm', 'claude-code', 'unknown-provider']),
+  listEnabledIds: vi.fn(() => ['opencode', 'ollama', 'codex', 'claude-code', 'agy']),
   getAgentState: vi.fn(async (id: string) => {
-    if (id === 'vllm') {
+    if (id === 'codex') {
       return { health: { circuitState: 'open' } };
     }
     return { health: { circuitState: 'closed' } };
   }),
   dbGet: vi.fn((agentId: string) => {
     // Active rate limit: SQL filters is_limited=1 AND reset_at > datetime('now')
-    if (agentId === 'openrouter') {
+    if (agentId === 'opencode') {
       return { active: 1 };
     }
     return null;
@@ -56,7 +56,7 @@ describe('SmartRouter', () => {
     getAgentState.mockClear();
     dbGet.mockReset();
     dbGet.mockImplementation((agentId: string) => {
-      if (agentId === 'openrouter') {
+      if (agentId === 'opencode') {
         return { active: 1 };
       }
       return null;
@@ -65,18 +65,17 @@ describe('SmartRouter', () => {
 
   describe('sortProvidersByCostOrder', () => {
     it('sorts providers based on cost order', () => {
-      const input = ['openrouter', 'ollama', 'claude-code', 'aider'];
-      const expected = ['ollama', 'openrouter', 'aider', 'claude-code'];
+      const input = ['opencode', 'ollama', 'claude-code', 'agy'];
+      const expected = ['ollama', 'agy', 'opencode', 'claude-code'];
       expect(sortProvidersByCostOrder(input)).toEqual(expected);
     });
 
     it('places unknown providers at the end', () => {
-      const input = ['unknown1', 'ollama', 'unknown2', 'vllm'];
+      const input = ['unknown1', 'ollama', 'unknown2', 'codex'];
       const sorted = sortProvidersByCostOrder(input);
       expect(sorted[0]).toBe('ollama');
-      expect(sorted[1]).toBe('vllm');
-      expect(sorted.slice(2)).toContain('unknown1');
-      expect(sorted.slice(2)).toContain('unknown2');
+      expect(sorted[1]).toBe('codex');
+      expect(sorted.slice(2)).toEqual(['unknown1', 'unknown2']);
     });
 
     it('handles empty arrays', () => {
@@ -115,14 +114,10 @@ describe('SmartRouter', () => {
 
   describe('selectProviders', () => {
     it('filters out rate-limited or circuit-broken providers and sorts by cost', async () => {
-      // Available providers from mock: ['openrouter', 'ollama', 'vllm', 'claude-code', 'unknown-provider']
-      // openrouter: actively rate-limited (reset_at still in the future → SQL match)
-      // vllm: circuit-broken (sharedState returning circuitState: 'open')
-      // Available for routing should be: ['ollama', 'claude-code', 'unknown-provider']
-      // Sorted by cost order: ['ollama', 'claude-code', 'unknown-provider']
+      // opencode is rate-limited and codex is circuit-broken.
       
       const providers = await smartRouter.selectProviders('task', 3);
-      expect(providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
+      expect(providers).toEqual(['ollama', 'agy', 'claude-code']);
     });
 
     it('does not exclude providers when rate_limit_state row has expired', async () => {
@@ -130,11 +125,11 @@ describe('SmartRouter', () => {
       dbGet.mockImplementation(() => null);
 
       const providers = await smartRouter.selectProviders('task', 5);
-      expect(providers).toContain('openrouter');
+      expect(providers).toContain('opencode');
       expect(providers[0]).toBe('ollama');
       expect(providers).toContain('claude-code');
-      // vllm still circuit-open
-      expect(providers).not.toContain('vllm');
+      // codex remains circuit-open
+      expect(providers).not.toContain('codex');
     });
 
     it('does not exclude providers when rate_limit_state row has no reset_at (null)', async () => {
@@ -142,13 +137,13 @@ describe('SmartRouter', () => {
       dbGet.mockImplementation(() => null);
 
       const providers = await smartRouter.selectProviders('task', 5);
-      expect(providers).toContain('openrouter');
+      expect(providers).toContain('opencode');
       expect(providers[0]).toBe('ollama');
     });
 
     it('fails explicitly when available providers do not meet the mode minimum', async () => {
-      // openrouter is rate-limited, vllm is circuit-open → only ollama remains (1 < discussion minimum 3)
-      listEnabledIds.mockReturnValueOnce(['openrouter', 'vllm', 'ollama']);
+      // opencode is rate-limited, codex is circuit-open → only ollama remains.
+      listEnabledIds.mockReturnValueOnce(['opencode', 'codex', 'ollama']);
       await expect(smartRouter.selectProviders('discussion', 3)).rejects.toBeInstanceOf(ProviderSelectionError);
     });
   });
@@ -165,9 +160,9 @@ describe('SmartRouter', () => {
     it('dispatches simple prompt to optimal provider', async () => {
       const decision = await smartRouter.dispatch('간단한 테스트');
       // '테스트' keyword triggers 'parallel' mode, which requests 3 providers.
-      // Available: 'ollama', 'claude-code', 'unknown-provider'
+      // Available: ollama, agy, claude-code.
       expect(decision.mode).toBe('parallel');
-      expect(decision.providers).toEqual(['ollama', 'claude-code', 'unknown-provider']);
+      expect(decision.providers).toEqual(['ollama', 'claude-code', 'agy']);
     });
   });
 

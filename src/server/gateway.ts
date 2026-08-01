@@ -48,6 +48,11 @@ import { CreateTaskInput, CreateDiscussionInput } from '../utils/validation.js';
 import { parseIntent } from '../utils/intent-parser.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
 import { taskQueue } from '../core/task-queue.js';
+import { providerRuntimeCoordinator } from '../core/provider-runtime-coordinator.js';
+import {
+  ProviderResolutionError,
+  resolveExecutionProvider,
+} from '../core/provider-registry.js';
 import { TERMINAL_STATES, transitionTask } from '../core/task-state.js';
 import { checkResponseQuality } from '../verification/response-quality.js';
 import { vetAcquisitionCandidate } from '../security/acquisition-vetting.js';
@@ -1345,6 +1350,9 @@ async function getSessionManager() {
 
 export async function createGateway() {
   const app = Fastify({ logger: false });
+  if (!providerRuntimeCoordinator.getSnapshot()) {
+    await providerRuntimeCoordinator.init();
+  }
   const organizationAuditTimer = setInterval(() => {
     void reconcilePendingOrganizationAudits().catch(error => {
       log.warn({
@@ -1355,6 +1363,7 @@ export async function createGateway() {
   organizationAuditTimer.unref();
   app.addHook('onClose', async () => {
     clearInterval(organizationAuditTimer);
+    providerRuntimeCoordinator.stop();
   });
   void reconcilePendingOrganizationAudits().catch(error => {
     log.warn({
@@ -2051,6 +2060,25 @@ export async function createGateway() {
   });
 
   // ═══ AI Providers ═════════════════════════════════
+  app.get('/api/ai-providers/registry', async (request, reply) => {
+    const snapshot = providerRuntimeCoordinator.getSnapshot();
+    if (!snapshot) {
+      reply.code(503);
+      return { error: 'provider_registry_unavailable' };
+    }
+    const etag = `"${snapshot.revision}"`;
+    reply.header('ETag', etag);
+    reply.header('Cache-Control', 'no-cache');
+    const ifNoneMatch = request.headers['if-none-match'];
+    const requestedEtags = (Array.isArray(ifNoneMatch) ? ifNoneMatch : [ifNoneMatch])
+      .filter((value): value is string => typeof value === 'string')
+      .flatMap((value: string) => value.split(',').map((item: string) => item.trim()));
+    if (requestedEtags.includes(etag) || requestedEtags.includes('*')) {
+      return reply.code(304).send();
+    }
+    return snapshot;
+  });
+
   app.get('/api/ai-providers', async () => {
     const states = await sharedState.getAllAgentStates();
     const providers = agentManager.listProviders().map(p => ({
@@ -2174,7 +2202,17 @@ export async function createGateway() {
     if (typeof input.prompt === 'string' && input.prompt.length > MAX_PLAN_CHARS) {
       input.prompt = compressPlan(input.prompt);
     }
-    const requestedProvider = input.ai ?? 'claude-code';
+    let requestedProvider: string;
+    try {
+      const taskType = (await getSmartRouter()).inferTaskType(input.prompt);
+      requestedProvider = resolveExecutionProvider(input.ai, taskType);
+    } catch (error) {
+      if (error instanceof ProviderResolutionError) {
+        reply.code(error.statusCode);
+        return error.toResponse();
+      }
+      throw error;
+    }
     const allowProviderFailover = input.metadata?.allowProviderFailover === true;
     const projectDirError = validateProjectDirMetadata(input.metadata);
     if (projectDirError) {
@@ -3016,7 +3054,16 @@ export async function createGateway() {
     const body = req.body as any;
     const prompt = (body.message || body.prompt || '').trim();
     if (!prompt) { reply.code(400); return { error: 'prompt is required' }; }
-    const agentId = body.ai ?? 'claude-code';
+    let agentId: string;
+    try {
+      agentId = resolveExecutionProvider(body.ai, 'general');
+    } catch (error) {
+      if (error instanceof ProviderResolutionError) {
+        reply.code(error.statusCode);
+        return error.toResponse();
+      }
+      throw error;
+    }
 
     const taskId = createTaskId();
     reply.code(202);
@@ -4622,7 +4669,16 @@ export async function createGateway() {
       reply.code(400);
       return { error: 'prompt is required' };
     }
-    const agentId = provider || 'codex';
+    let agentId: string;
+    try {
+      agentId = resolveExecutionProvider(provider, 'general');
+    } catch (error) {
+      if (error instanceof ProviderResolutionError) {
+        reply.code(error.statusCode);
+        return error.toResponse();
+      }
+      throw error;
+    }
     const sessionId = await sessionManager.startSession(prompt, agentId, { systemPrompt, autoApprove });
     return { sessionId, status: 'running', agentId };
   });

@@ -11,6 +11,7 @@ function snapshot(status: 'assigned' | 'unassigned' = 'assigned'): ProviderAssig
     assignmentId: 'assignment-1',
     scopeType: 'team',
     scopeId: 'team-1',
+    registryRevision: 'registry-1',
     status,
     primaryProviderId: status === 'assigned' ? 'codex' : null,
     providerIds: status === 'assigned' ? ['codex'] : [],
@@ -158,6 +159,28 @@ describe('provider assignment routes', () => {
       assignment: { assignmentId: 'assignment-1', primaryProviderId: 'codex' },
       events: [{ id: 'event-1', toProviderId: 'codex' }],
     });
+    await app.close();
+  });
+
+  it('uses a non-mutating preview for GET when the runtime provides one', async () => {
+    const app = Fastify();
+    const previewAssignment = vi.fn(() => snapshot());
+    const deps = dependencies({ previewAssignment });
+    await registerProviderAssignmentRoutes(app, deps);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/teams/team-1/provider-assignment?refresh=1&taskCapability=testing',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(previewAssignment).toHaveBeenCalledWith({
+      scopeType: 'team',
+      scopeId: 'team-1',
+      refresh: true,
+      taskRequiredCapabilities: ['testing'],
+    });
+    expect(deps.resolveAssignment).not.toHaveBeenCalled();
     await app.close();
   });
 

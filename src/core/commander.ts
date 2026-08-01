@@ -3,7 +3,7 @@ import { planManager } from './plan-manager.js';
 import { kanbanEngine } from './kanban-engine.js';
 import { eventBus } from './event-bus.js';
 import { createLogger } from '../utils/logger.js';
-import { LAYER_TIER_AGENTS, tierOf } from './tier-policy.js';
+import { layerTierAgents, tierOf } from './tier-policy.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 
 const log = createLogger('commander');
@@ -17,30 +17,30 @@ const log = createLogger('commander');
  * Quality Layer (두뇌/유료): 리뷰·검증 (cursor-agent → ollama QA)
  */
 
-// 계층별 에이전트는 tier-policy.ts(LAYER_TIER_AGENTS)가 단일 소스.
+// 계층별 에이전트는 committed provider catalog에서 호출 시점에 계산한다.
 // Brain(유료)=management/quality, Worker(무료 로컬)=execution.
 const LAYERS = {
   management: {
     name: 'Management',
-    agents: LAYER_TIER_AGENTS.management,
+    agents: () => layerTierAgents('management'),
     role: 'Strategic planning, architecture decisions, final synthesis',
     canDelegateTo: ['information', 'execution', 'quality'],
   },
   information: {
     name: 'Information',
-    agents: LAYER_TIER_AGENTS.information,
+    agents: () => layerTierAgents('information'),
     role: 'Research, data gathering, analysis',
     canDelegateTo: ['execution'],
   },
   execution: {
     name: 'Execution',
-    agents: LAYER_TIER_AGENTS.execution,
+    agents: () => layerTierAgents('execution'),
     role: 'Code implementation, design, engineering',
     canDelegateTo: [],
   },
   quality: {
     name: 'Quality',
-    agents: LAYER_TIER_AGENTS.quality,
+    agents: () => layerTierAgents('quality'),
     role: 'Code review, validation, testing',
     canDelegateTo: ['execution'], // Can send back to execution for fixes
   },
@@ -237,7 +237,7 @@ class Commander {
    * Pick an available agent from a layer. Falls back to another usable agent.
    */
   private pickAvailableAgent(layer: LayerName): string {
-    const layerAgents = LAYERS[layer].agents;
+    const layerAgents = LAYERS[layer].agents();
     const enabledAgentIds = agentManager.listEnabledIds();
     const enabledIds = new Set(enabledAgentIds);
     // 사용가능 = enabled + availability 허용. probe는 복구 확인용으로 허용하되,
@@ -293,7 +293,7 @@ class Commander {
     return Object.entries(LAYERS).map(([key, value]) => ({
       id: key,
       name: value.name,
-      agents: value.agents,
+      agents: value.agents(),
       role: value.role,
       canDelegateTo: value.canDelegateTo,
     }));

@@ -20,8 +20,15 @@ import {
   capabilityRank,
   derivedTier,
   isRegistered,
+  __setRegistryForTest,
 } from '../src/core/provider-registry.js';
-import { BRAIN_TIER, WORKER_TIER, LAYER_TIER_AGENTS, tierOf } from '../src/core/tier-policy.js';
+import { normalizeProviderDeclaration } from '../src/core/provider-catalog.js';
+import {
+  allLayerTierAgents,
+  brainTier,
+  tierOf,
+  workerTier,
+} from '../src/core/tier-policy.js';
 
 const SRC = resolve(import.meta.dirname, '../src');
 
@@ -96,13 +103,13 @@ function walk(dir: string): string[] {
 describe('provider registry — 라우팅 결과에 미등록 프로바이더가 없다', () => {
   it('tier 순서표는 등록된 프로바이더만 남긴다', () => {
     const known = registeredProviderIds();
-    for (const id of filterRegistered(BRAIN_TIER)) expect(known.has(id)).toBe(true);
-    for (const id of filterRegistered(WORKER_TIER)) expect(known.has(id)).toBe(true);
+    for (const id of filterRegistered(brainTier())) expect(known.has(id)).toBe(true);
+    for (const id of filterRegistered(workerTier())) expect(known.has(id)).toBe(true);
   });
 
   it('Commander 4-Layer 배정은 전부 등록된 프로바이더다', () => {
     const known = registeredProviderIds();
-    for (const [layer, agents] of Object.entries(LAYER_TIER_AGENTS)) {
+    for (const [layer, agents] of Object.entries(allLayerTierAgents())) {
       for (const id of agents) {
         expect(known.has(id), `${layer} 계층의 '${id}' 가 config 에 없다`).toBe(true);
       }
@@ -114,6 +121,20 @@ describe('provider registry — 라우팅 결과에 미등록 프로바이더가
     const known = registeredProviderIds();
     for (const taskType of ['design', 'code', 'review', 'verify', 'research', 'ui', 'media', 'general'] as const) {
       for (const id of capabilityRank(taskType)) expect(known.has(id)).toBe(true);
+    }
+  });
+
+  it('explicit research capability alone is enough for automatic research routing', () => {
+    const provider = normalizeProviderDeclaration({
+      id: 'research-only',
+      command: 'research-only',
+      capabilities: ['research'],
+    });
+    __setRegistryForTest([provider]);
+    try {
+      expect(capabilityRank('research')).toEqual(['research-only']);
+    } finally {
+      __setRegistryForTest(null);
     }
   });
 

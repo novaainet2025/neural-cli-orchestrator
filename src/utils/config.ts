@@ -2,6 +2,20 @@ import { config as dotenvConfig } from 'dotenv';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import {
+  buildProviderCatalog,
+  normalizeProviderDeclaration,
+  type ProviderConfig,
+  type ProviderDeclaration,
+} from '../core/provider-catalog.js';
+
+export type {
+  ProviderConfig,
+  ProviderDeclaration,
+  ProviderModelConfig,
+  ProviderRuntimeConfig,
+  ProviderRoutingConfig,
+} from '../core/provider-catalog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '../..');
@@ -64,66 +78,10 @@ export function validateTopology(data: unknown): Topology {
 export const topology = loadJSON<Topology>('topology.json', validateTopology);
 
 // ─── Provider Config ──────────────────────────────────
-export interface ProviderConfig {
-  id: string;
-  name: string;
-  enabled: boolean;
-  type: 'cli' | 'api' | 'local';
-  role: string;
-  score: number;
-  model: string | null;
-  command: string | null;
-  args: string[];
-  endpoint?: string;
-  apiKeyRef?: string;
-  keyRotation?: {
-    enabled: boolean;
-    envVar: string;
-    delimiter: string;
-    maxKeys: number;
-    cooldownMs: number;
-  };
-  freeModels?: string[];
-  apiConfig?: {
-    primary: { provider: string; baseUrl: string; apiKeyRef: string; model: string };
-    fallback: { provider: string; baseUrl: string; apiKeyRef: string | null; model: string };
-  };
-  env: Record<string, string>;
-  concurrency: number;
-  rateLimitRpm: number;
-  cost: 'free' | 'paid';
-  capabilities: string[];
-  permissions: Record<string, boolean>;
-  persona: { systemPrompt: string; tone: string; style: string };
-  healthCheck: Record<string, unknown>;
-  note?: string;
-}
-
-interface ProvidersFile {
+export interface ProvidersFile {
   version: number;
   updated: string;
   providers: ProviderConfig[];
-}
-
-const REQUIRED_PROVIDER_FIELDS: Array<keyof ProviderConfig> = [
-  'id', 'name', 'enabled', 'type', 'role', 'score', 'model', 'command', 'args',
-  'env', 'concurrency', 'rateLimitRpm', 'cost', 'capabilities', 'permissions',
-  'persona', 'healthCheck',
-];
-
-// Fault-injection (missing key / wrong type) showed presence-only checks let
-// type mismatches (e.g. score:"high", enabled:"true", concurrency:-5) reach
-// the seeder silently. Scalar fields get an explicit type check; nested
-// object/array shapes stay presence-only to avoid over-constraining.
-const PROVIDER_FIELD_TYPES: Partial<Record<keyof ProviderConfig, 'string' | 'boolean' | 'number' | 'array'>> = {
-  id: 'string', name: 'string', enabled: 'boolean', type: 'string', role: 'string',
-  score: 'number', concurrency: 'number', rateLimitRpm: 'number', cost: 'string',
-  args: 'array', capabilities: 'array',
-};
-
-function matchesType(value: unknown, type: 'string' | 'boolean' | 'number' | 'array'): boolean {
-  if (type === 'array') return Array.isArray(value);
-  return typeof value === type;
 }
 
 export function validateProvidersFile(data: unknown): ProvidersFile {
@@ -136,24 +94,22 @@ export function validateProvidersFile(data: unknown): ProvidersFile {
     throw new Error('[config] ai-providers.json must contain version, updated, and providers');
   }
 
-  data.providers.forEach((provider, index) => {
+  for (const [index, provider] of data.providers.entries()) {
     if (!isRecord(provider)) {
       throw new Error(`[config] ai-providers.json providers[${index}] must be an object`);
     }
-    for (const field of REQUIRED_PROVIDER_FIELDS) {
-      if (!(field in provider)) {
-        throw new Error(`[config] ai-providers.json providers[${index}].${field} is required`);
-      }
-      const expectedType = PROVIDER_FIELD_TYPES[field];
-      if (expectedType && !matchesType(provider[field], expectedType)) {
-        throw new Error(
-          `[config] ai-providers.json providers[${index}].${field} must be a ${expectedType}, got ${typeof provider[field]}`
-        );
-      }
+    if (typeof provider.id !== 'string') {
+      throw new Error(`[config] ai-providers.json providers[${index}].id must be a string`);
     }
-  });
+  }
 
-  return data as unknown as ProvidersFile;
+  // ProviderCatalog performs complete schema validation, duplicate detection,
+  // deterministic defaults and unknown executor/adapter rejection in one place.
+  return {
+    version: data.version,
+    updated: data.updated,
+    providers: buildProviderCatalog(data.providers as ProviderDeclaration[]),
+  };
 }
 
 /** 현재 플랫폼: darwin | wsl | linux (WSL은 /proc/version의 microsoft 마커로 판별) */
@@ -184,8 +140,70 @@ function parsePort(envVar: 'PORT' | 'WS_PORT', fallback: number): number {
   return port;
 }
 
-interface LocalOverrides {
-  overrides?: Record<string, Partial<ProviderConfig>>;
+export interface LocalProviderConfig {
+  /** PC-only providers that are not part of the shared catalog. */
+  providers?: ProviderDeclaration[];
+  /** Per-provider PC overrides (endpoint, model, enabled, etc.). */
+  overrides?: Record<string, Partial<ProviderDeclaration>>;
+  /** Optional allowlist; providers outside it stay visible but disabled. */
+  allowedProviderIds?: string[];
+  /** Explicit denylist applied after additions and overrides. */
+  deniedProviderIds?: string[];
+}
+
+function stringIdSet(value: unknown, label: string): Set<string> | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item.trim())) {
+    throw new Error(`[config] ${label} must be an array of non-empty provider ids`);
+  }
+  return new Set(value.map(item => item.trim()));
+}
+
+/** Apply a validated PC-local catalog overlay without mutating the shared snapshot. */
+export function applyLocalProviderConfig(
+  sharedProviders: readonly ProviderConfig[],
+  local: LocalProviderConfig,
+): ProviderConfig[] {
+  if (!isRecord(local)) throw new Error('[config] local provider config must be an object');
+  if (local.providers !== undefined && !Array.isArray(local.providers)) {
+    throw new Error('[config] local providers must be an array');
+  }
+  if (local.overrides !== undefined && !isRecord(local.overrides)) {
+    throw new Error('[config] local overrides must be an object');
+  }
+
+  const additions = buildProviderCatalog(local.providers ?? []);
+  const ids = new Set(sharedProviders.map(provider => provider.id));
+  for (const provider of additions) {
+    if (ids.has(provider.id)) {
+      throw new Error(`[config] duplicate local provider id: ${provider.id}; use overrides instead`);
+    }
+    ids.add(provider.id);
+  }
+
+  let providers = [...sharedProviders, ...additions];
+  const overrides = local.overrides ?? {};
+  const unknownOverrides = Object.keys(overrides).filter(id => !ids.has(id));
+  if (unknownOverrides.length > 0) {
+    throw new Error(
+      `[config] local override references unregistered provider(s): ${unknownOverrides.join(', ')}`,
+    );
+  }
+  providers = providers.map(provider => {
+    const localOverride = overrides[provider.id];
+    return localOverride
+      ? normalizeProviderDeclaration({ ...provider, ...localOverride, id: provider.id })
+      : provider;
+  });
+
+  const allowed = stringIdSet(local.allowedProviderIds, 'allowedProviderIds');
+  const denied = stringIdSet(local.deniedProviderIds, 'deniedProviderIds') ?? new Set<string>();
+  return providers.map(provider => normalizeProviderDeclaration({
+    ...provider,
+    enabled: provider.enabled
+      && (allowed === null || allowed.has(provider.id))
+      && !denied.has(provider.id),
+  }));
 }
 
 /**
@@ -201,12 +219,13 @@ export function loadProviders(): ProviderConfig[] {
   const localPath = resolve(ROOT, 'config', 'ai-providers.local.json');
   if (existsSync(localPath)) {
     try {
-      const local = JSON.parse(readFileSync(localPath, 'utf-8')) as LocalOverrides;
-      const ov = local.overrides ?? {};
-      providers = providers.map(p => (ov[p.id] ? { ...p, ...ov[p.id], id: p.id } : p));
+      const local = JSON.parse(readFileSync(localPath, 'utf-8')) as LocalProviderConfig;
+      providers = applyLocalProviderConfig(providers, local);
     } catch (err) {
-      // 오버레이 파손 시 기본값으로 계속 (부팅 실패보다 낫다) — 단, 로그로 알림
-      console.error(`[config] ai-providers.local.json parse failed — ignored: ${String(err)}`);
+      // A stale/invalid override can silently revive or mis-route a retired
+      // provider, so provider-catalog violations are boot-fatal rather than a
+      // permissive fallback to a different roster.
+      throw new Error(`[config] ai-providers.local.json is invalid: ${String(err)}`);
     }
   }
 
@@ -215,10 +234,7 @@ export function loadProviders(): ProviderConfig[] {
   providers = providers.map(p => {
     const platforms = (p as { platforms?: string[] }).platforms;
     const provider = platforms && !platforms.includes(plat) ? { ...p, enabled: false } : p;
-    return {
-      ...provider,
-      model: provider.model ?? null,
-    };
+    return normalizeProviderDeclaration({ ...provider, model: provider.model ?? null });
   });
 
   return providers;

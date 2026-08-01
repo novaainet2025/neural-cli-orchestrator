@@ -17,6 +17,11 @@ import { createTaskId } from '../utils/id.js';
 import { OLLAMA_KEEP_ALIVE } from '../utils/ollama.js';
 import { buildProviderProcessEnv } from './provider-process-env.js';
 import { mergeMemoryContextEntries, resolveTeamMemoryScope } from '../core/task-memory-scope.js';
+import {
+  resolveProviderModel,
+  resolveProviderRuntime,
+  type ProviderExecutor,
+} from '../core/provider-catalog.js';
 
 const log = createLogger('agent-manager');
 
@@ -141,17 +146,9 @@ function killProcessGroup(pid: number | undefined): void {
   }
 }
 
-// ─── Agent Type Classification ────────────────────────
-// Type A: Native agent (claude-code) — has its own agent loop
-// Type B: Orchestrated (codex, aider, opencode, cursor-agent, copilot) — NCO external loop
-// Type C: API (ollama, openrouter) — OpenAI-compatible API
-
-type AgentType = 'A' | 'B' | 'C';
-
-function classifyAgent(provider: ProviderConfig): AgentType {
-  if (provider.id === 'claude-code') return 'A';
-  if (provider.type === 'api') return 'C';
-  return 'B';
+/** Execution behavior comes from the catalog descriptor, never provider IDs. */
+export function classifyAgent(provider: ProviderConfig): ProviderExecutor {
+  return resolveProviderRuntime(provider).executor;
 }
 
 interface TaskResult {
@@ -183,28 +180,65 @@ class AgentManager {
   private healthTimer: ReturnType<typeof setInterval> | null = null;
 
   async init(): Promise<void> {
-    const providers = loadEnabledProviders();
-    const projectDir = env.PROJECT_DIR;
+    const result = await this.reloadProviders();
 
-    for (const p of providers) {
-      this.providers.set(p.id, p);
-      this.sandboxes.set(p.id, createSandbox(p.id, p.role, projectDir));
+    if (!this.healthTimer) this.healthTimer = setInterval(() => this.healthCheck(), 30_000);
+
+    log.info({ count: result.current.length }, 'Agent Manager initialized');
+  }
+
+  /**
+   * Stage a complete enabled roster and atomically swap admission maps.
+   * Existing executions already captured their provider and sandbox references,
+   * so removal blocks only new admission while in-flight work drains naturally.
+   */
+  async reloadProviders(next: readonly ProviderConfig[] = loadEnabledProviders()): Promise<{
+    added: string[];
+    updated: string[];
+    removed: string[];
+    draining: string[];
+    current: string[];
+  }> {
+    const providers = next.filter(provider => provider.enabled !== false);
+    const nextProviders = new Map<string, ProviderConfig>();
+    const nextSandboxes = new Map<string, SandboxManager>();
+    for (const provider of providers) {
+      if (nextProviders.has(provider.id)) throw new Error(`duplicate provider id: ${provider.id}`);
+      nextProviders.set(provider.id, provider);
+      nextSandboxes.set(provider.id, createSandbox(provider.id, provider.role, env.PROJECT_DIR));
     }
 
-    this.injectDerivedKeys();
-    await circuitBreakerRegistry.restore(providers.map(provider => provider.id));
+    this.injectDerivedKeys(nextProviders);
+    await circuitBreakerRegistry.restore([...nextProviders.keys()]);
 
-    // Start health monitor (30s)
-    this.healthTimer = setInterval(() => this.healthCheck(), 30_000);
+    const previous = this.providers;
+    const added = [...nextProviders.keys()].filter(id => !previous.has(id));
+    const removed = [...previous.keys()].filter(id => !nextProviders.has(id));
+    const updated = [...nextProviders.keys()].filter(id => {
+      const before = previous.get(id);
+      return !!before && JSON.stringify(before) !== JSON.stringify(nextProviders.get(id));
+    });
 
-    log.info({ count: providers.length }, 'Agent Manager initialized');
+    this.providers = nextProviders;
+    this.sandboxes = nextSandboxes;
+    for (const id of removed) {
+      this.latencyHistory.delete(id);
+      this.lastQuotaProbeAt.delete(id);
+      this.cliRecoveryProbes.delete(id);
+      for (const key of this.healthApiKeyCallCounts.keys()) {
+        if (key.startsWith(`${id}:`)) this.healthApiKeyCallCounts.delete(key);
+      }
+    }
+    log.info({ added, updated, removed, count: nextProviders.size }, 'Agent Manager roster swapped');
+    return { added, updated, removed, draining: removed, current: [...nextProviders.keys()] };
   }
 
   // Inject derived API keys for CLIs whose native env var naming differs from
   // NCO's rotation convention. Aider reads OPENROUTER_API_KEY (singular); we
   // store OPENROUTER_API_KEYS (plural, comma-separated). Pick the first key.
-  private injectDerivedKeys(): void {
-    const aider = this.providers.get('aider');
+  private injectDerivedKeys(providers = this.providers): void {
+    const aider = [...providers.values()]
+      .find(provider => resolveProviderRuntime(provider).adapter === 'aider');
     if (aider && !aider.env?.OPENROUTER_API_KEY) {
       const keys = process.env.OPENROUTER_API_KEYS;
       if (keys) {
@@ -227,6 +261,7 @@ class AgentManager {
     if (!provider) throw new Error(`Unknown agent: ${agentId}`);
 
     const taskId = options?.taskId || createTaskId();
+    const effectiveModel = resolveProviderModel(provider, options?.model);
     const originalPrompt = prompt;
     const teamMemoryScope = resolveTaskTeamMemoryScope(taskId);
     const startTime = Date.now();
@@ -325,12 +360,12 @@ class AgentManager {
       }
 
       switch (agentType) {
-        case 'A': {
+        case 'native-cli': {
           // Type A: Claude Code native — delegate to subprocess, monitor only
           const { execa } = await import('execa');
           const subprocess = execa(provider.command!, [
             ...(provider.args ?? []),
-            ...(options?.model ? ['--model', options.model] : []),
+            ...(effectiveModel ? ['--model', effectiveModel] : []),
             '-p', prompt,
             '--output-format', 'text',
           ], {
@@ -367,13 +402,13 @@ class AgentManager {
           break;
         }
 
-        case 'B': {
+        case 'orchestrated-cli': {
           // Type B: NCO orchestrated loop
           const loop = new OrchestratedLoop(provider, executionSandbox, signal);
           const result = await loop.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
-            model: options?.model,
+            model: effectiveModel ?? undefined,
             projectDir: effectiveProjectDir,
             localNetworkAccess: options?.localNetworkAccess,
           });
@@ -388,13 +423,13 @@ class AgentManager {
           break;
         }
 
-        case 'C': {
+        case 'openai-api': {
           // Type C: API executor
           const executor = new ApiExecutor(provider, executionSandbox);
           const result = await executor.run(taskId, prompt, {
             systemPrompt: options?.systemPrompt,
             compact: options?.compact,
-            model: options?.model,
+            model: effectiveModel ?? undefined,
             projectDir: effectiveProjectDir,
             signal,
             timeoutMs,
@@ -605,7 +640,13 @@ class AgentManager {
       const result = await execa(provider.command, this.buildProbeArgs(provider, prompt, model), {
         cwd: (await import('node:os')).tmpdir(),
         env: {
-          ...buildProviderProcessEnv(provider.id, provider.env),
+          ...buildProviderProcessEnv(
+            provider.id,
+            provider.env,
+            process.env,
+            undefined,
+            resolveProviderRuntime(provider).adapter,
+          ),
           NCO_HOOK_DISABLED: '1',
           NO_COLOR: '1',
           TERM: 'dumb',
@@ -620,7 +661,7 @@ class AgentManager {
         && !result.isCanceled;
       if (
         processSucceeded
-        && provider.id === 'cursor-agent'
+        && resolveProviderRuntime(provider).adapter === 'cursor'
         && prompt === 'Reply exactly: NCO_PROVIDER_PROBE_OK'
       ) {
         return normalizeCliProbeOutput(result.stdout) === 'NCO_PROVIDER_PROBE_OK';
@@ -632,15 +673,15 @@ class AgentManager {
   }
 
   private buildProbeArgs(provider: ProviderConfig, prompt: string, model?: string): string[] {
-    switch (provider.id) {
-      case 'claude-code':
+    const runtime = resolveProviderRuntime(provider);
+    switch (runtime.adapter) {
+      case 'claude':
         return [...provider.args, '-p', prompt, '--output-format', 'text'];
       case 'codex':
-        return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', prompt];
-      case 'hermes':
-        // hermes = codex CLI 백엔드(gpt-5.6-terra). read-only 프로브 + 모델 강제.
-        return [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', ...(provider.model ? ['-m', provider.model] : []), prompt];
-      case 'cursor-agent':
+        return runtime.profile === 'readonly-tool-worker'
+          ? [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only', ...(provider.model ? ['-m', provider.model] : []), prompt]
+          : [...provider.args, 'exec', '--ephemeral', '--skip-git-repo-check', prompt];
+      case 'cursor':
         return [
           ...provider.args,
           '--print',
@@ -708,7 +749,8 @@ class AgentManager {
    * 담당한다(quota·rate-limit 한정 — completions 실증만 신뢰).
    */
   private supportsCliRecoveryProbe(id: string, provider: ProviderConfig): boolean {
-    return provider.type === 'cli' && id !== 'claude-code';
+    void id;
+    return resolveProviderRuntime(provider).executor === 'orchestrated-cli';
   }
 
   private async probeGatedCliProvider(id: string): Promise<void> {
@@ -726,7 +768,7 @@ class AgentManager {
     }
     this.cliRecoveryProbes.add(id);
     try {
-      const fallbackModel = id === 'cursor-agent'
+      const fallbackModel = resolveProviderRuntime(this.providers.get(id)!).adapter === 'cursor'
         ? resolveCursorFallbackModel()
         : null;
       const recovered = await this.probeProvider(
@@ -871,7 +913,7 @@ class AgentManager {
         body: JSON.stringify({
           model: provider.model || provider.apiConfig?.primary.model || 'default',
           messages: [{ role: 'user', content: 'ping' }],
-          ...(id === 'ollama' ? { keep_alive: OLLAMA_KEEP_ALIVE } : {}),
+          ...(provider.type === 'local' ? { keep_alive: OLLAMA_KEEP_ALIVE } : {}),
           max_tokens: 1,
         }),
         signal: AbortSignal.timeout(AgentManager.QUOTA_PROBE_TIMEOUT_MS),

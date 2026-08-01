@@ -16,6 +16,13 @@
  * 이 계층을 우회하는 새 하드코딩은 tests/provider-drift.test.ts 가 잡는다.
  */
 import { loadEnabledProviders, loadProviders, type ProviderConfig } from '../utils/config.js';
+import {
+  providersForDepartment,
+  providersForTaskType,
+  PROVIDER_TASK_CAPABILITIES,
+  resolveProviderRouting,
+  type ProviderDepartment,
+} from './provider-catalog.js';
 import { createLogger } from '../utils/logger.js';
 
 const log = createLogger('provider-registry');
@@ -25,10 +32,14 @@ export class ProviderRegistry {
 
   async init(): Promise<void> {
     const providers = loadEnabledProviders();
-    for (const p of providers) {
-      this.providers.set(p.id, p);
-    }
+    this.replace(providers);
     log.info({ count: providers.length }, 'Provider Registry initialized');
+  }
+
+  replace(providers: readonly ProviderConfig[]): void {
+    this.providers = new Map(
+      providers.filter(provider => provider.enabled !== false).map(provider => [provider.id, provider]),
+    );
   }
 
   get(id: string): ProviderConfig | undefined {
@@ -59,22 +70,6 @@ export const providerRegistry = new ProviderRegistry();
 export type ProviderTaskType =
   | 'design' | 'code' | 'review' | 'verify' | 'research' | 'ui' | 'media' | 'general';
 
-/**
- * 작업 유형 → 그 유형에 유효한 capability 토큰.
- * config 의 capabilities 와 대조해 신규 프로바이더의 자동 편입 순위를 만든다.
- * id 가 아니라 capability 로 매칭하므로 프로바이더가 늘어도 이 표는 그대로다.
- */
-const TASK_CAPABILITIES: Record<ProviderTaskType, string[]> = {
-  design:   ['design', 'architecture', 'patterns', 'multi-model'],
-  code:     ['code', 'code-generation', 'generation', 'algorithms'],
-  review:   ['review', 'code-review', 'bug-detection', 'security'],
-  verify:   ['verification', 'validation', 'testing'],
-  research: ['reasoning', 'analysis', 'tool-use', 'function-calling'],
-  ui:       ['ui-ux', 'visual', 'patterns'],
-  media:    ['media', 'image-generation', 'video-generation', 'visual-ai'],
-  general:  ['code', 'analysis', 'reasoning', 'writing', 'reporting'],
-};
-
 let registryCache: ProviderConfig[] | null = null;
 
 /** 등록된 프로바이더 전체(비활성 포함). config 변경 뒤에는 reloadRegistry(). */
@@ -88,6 +83,12 @@ export function reloadRegistry(): void {
   registryCache = null;
 }
 
+/** Commit the same validated snapshot used by runtime admission and assignment. */
+export function commitRegistryView(providers: readonly ProviderConfig[]): void {
+  registryCache = [...providers];
+  providerRegistry.replace(providers);
+}
+
 /** 테스트 전용 주입. null 을 주면 파일 기반으로 되돌아간다. */
 export function __setRegistryForTest(providers: ProviderConfig[] | null): void {
   registryCache = providers;
@@ -96,6 +97,11 @@ export function __setRegistryForTest(providers: ProviderConfig[] | null): void {
 /** 등록된 프로바이더 id 집합. */
 export function registeredProviderIds(): Set<string> {
   return new Set(registeredProviders().map((provider) => provider.id));
+}
+
+/** 현재 머신에서 enabled=true인 실제 라우팅 후보 id 집합. */
+export function routableProviderIds(): Set<string> {
+  return new Set(registeredProviders().filter(provider => provider.enabled).map(provider => provider.id));
 }
 
 /** id 가 현재 config 에 등록돼 있는가. */
@@ -117,14 +123,29 @@ export function filterRegistered(ids: readonly string[]): string[] {
   });
 }
 
+/** 등록돼 있어도 disabled인 프로바이더는 실행 후보에서 제거한다. */
+export function filterRoutable(ids: readonly string[]): string[] {
+  const known = routableProviderIds();
+  const seen = new Set<string>();
+  return ids.filter(id => {
+    if (!known.has(id) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 /**
  * 작업 유형에 대한 capability 기반 순위.
  * 가중치 = 매칭 capability 수 * 1000 + provider.score → 역량 우선, 동률은 score.
  * 매칭이 0 이면 그 유형의 후보가 아니므로 제외한다.
  */
 export function capabilityRank(taskType: ProviderTaskType): string[] {
-  const wanted = TASK_CAPABILITIES[taskType] ?? TASK_CAPABILITIES.general;
+  const wanted = PROVIDER_TASK_CAPABILITIES[taskType] ?? PROVIDER_TASK_CAPABILITIES.general;
+  const catalogOrder = providersForTaskType(registeredProviders(), taskType)
+    .map(provider => provider.id);
+  const catalogRank = new Map(catalogOrder.map((id, index) => [id, index]));
   return registeredProviders()
+    .filter(provider => provider.enabled)
     .map((provider) => {
       // capabilities/score 는 스키마상 필수지만, 부분 정의된 fake provider 로
       // 라우팅을 테스트하는 경로가 있어 방어적으로 읽는다. 역량 선언이 없으면
@@ -134,7 +155,12 @@ export function capabilityRank(taskType: ProviderTaskType): string[] {
       return { id: provider.id, weight: hits * 1000 + (provider.score ?? 0), hits };
     })
     .filter((entry) => entry.hits > 0)
-    .sort((a, b) => b.weight - a.weight)
+    .sort((a, b) => {
+      const byWeight = b.weight - a.weight;
+      if (byWeight !== 0) return byWeight;
+      return (catalogRank.get(a.id) ?? Number.MAX_SAFE_INTEGER)
+        - (catalogRank.get(b.id) ?? Number.MAX_SAFE_INTEGER);
+    })
     .map((entry) => entry.id);
 }
 
@@ -150,7 +176,7 @@ export function resolvePreference(
   declared: readonly string[],
   taskType?: ProviderTaskType,
 ): string[] {
-  const curated = filterRegistered(declared);
+  const curated = filterRoutable(declared);
   if (!taskType) return curated;
   const curatedSet = new Set(curated);
   return [...curated, ...capabilityRank(taskType).filter((id) => !curatedSet.has(id))];
@@ -163,14 +189,105 @@ export function resolvePreference(
 export function derivedTier(id: string): 'brain' | 'worker' | 'unknown' {
   const provider = registeredProviders().find((entry) => entry.id === id);
   if (!provider) return 'unknown';
-  if (provider.type === 'local') return 'worker';
-  return provider.cost === 'paid' ? 'brain' : 'worker';
+  return resolveProviderRouting(provider).tier;
 }
 
 /** 특정 capability 를 선언한 등록 프로바이더(점수 내림차순). */
 export function providersWithCapability(capability: string): string[] {
   return registeredProviders()
-    .filter((provider) => provider.capabilities.includes(capability))
+    .filter((provider) => provider.enabled && provider.capabilities.includes(capability))
     .sort((a, b) => b.score - a.score)
     .map((provider) => provider.id);
+}
+
+/** Commander/department rosters are catalog-derived and never name providers. */
+export function departmentRank(department: ProviderDepartment): string[] {
+  return providersForDepartment(registeredProviders(), department).map(provider => provider.id);
+}
+
+/** Brain/worker rosters are inferred from catalog routing metadata. */
+export function tierRank(tier: 'brain' | 'worker'): string[] {
+  return registeredProviders()
+    .filter(provider => provider.enabled && resolveProviderRouting(provider).tier === tier)
+    .sort((left, right) => {
+      const byPriority = resolveProviderRouting(right).priority
+        - resolveProviderRouting(left).priority;
+      return byPriority || right.score - left.score || left.id.localeCompare(right.id);
+    })
+    .map(provider => provider.id);
+}
+
+// ── 실행 경계 provider 해석 ──────────────────────────────────────────────
+
+export type ProviderResolutionErrorCode =
+  | 'provider_not_registered'
+  | 'provider_disabled'
+  | 'provider_unavailable';
+
+/**
+ * 실행 직전 provider 해석 실패. 호출자는 이 코드를 HTTP/작업 상태에 그대로
+ * 보존해야 하며, 명시적으로 요청된 provider를 다른 provider로 대체하면 안 된다.
+ */
+export class ProviderResolutionError extends Error {
+  readonly statusCode: 400 | 409;
+
+  constructor(
+    readonly code: ProviderResolutionErrorCode,
+    readonly providerId: string | null,
+    readonly taskType: ProviderTaskType,
+  ) {
+    const detail = providerId ? `: ${providerId}` : '';
+    super(`${code}${detail}`);
+    this.name = 'ProviderResolutionError';
+    this.statusCode = code === 'provider_not_registered' ? 400 : 409;
+  }
+
+  toResponse(): {
+    error: ProviderResolutionErrorCode;
+    providerId: string | null;
+    taskType: ProviderTaskType;
+  } {
+    return { error: this.code, providerId: this.providerId, taskType: this.taskType };
+  }
+}
+
+/**
+ * 실행 provider를 config SSOT에서 해석한다.
+ *
+ * - 명시 id: 등록+enabled 여부만 검증하고 그대로 반환한다(무음 대체 금지).
+ * - 생략: 작업 capability 순위, 그 다음 enabled catalog score 순으로 선택한다.
+ */
+export function resolveExecutionProvider(
+  requestedProvider?: string | null,
+  taskType: ProviderTaskType = 'general',
+): string {
+  const requested = requestedProvider?.trim();
+  if (requested) {
+    const provider = registeredProviders().find(entry => entry.id === requested);
+    if (!provider) {
+      throw new ProviderResolutionError('provider_not_registered', requested, taskType);
+    }
+    if (!provider.enabled) {
+      throw new ProviderResolutionError('provider_disabled', requested, taskType);
+    }
+    return provider.id;
+  }
+
+  const ranked = capabilityRank(taskType);
+  const selected = ranked[0] ?? registeredProviders()
+    .filter(provider => provider.enabled)
+    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))[0]?.id;
+  if (!selected) {
+    throw new ProviderResolutionError('provider_unavailable', null, taskType);
+  }
+  return selected;
+}
+
+/** Explicit participant lists keep intent but can never carry a stale id to I/O. */
+export function reconcileExecutionProviders(
+  requestedProviders: readonly string[],
+  taskType: ProviderTaskType = 'general',
+): string[] {
+  const unique = [...new Set(requestedProviders.map(provider => provider.trim()).filter(Boolean))];
+  return unique.map(provider => resolveExecutionProvider(provider, taskType));
 }

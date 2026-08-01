@@ -13,7 +13,8 @@
  *   3) 두뇌가 통합·리뷰·검증                              → 품질 보증
  */
 
-import { filterRegistered, resolvePreference, derivedTier } from './provider-registry.js';
+import { departmentRank, derivedTier, tierRank } from './provider-registry.js';
+import type { ProviderDepartment } from './provider-catalog.js';
 
 export type Tier = 'brain' | 'worker';
 
@@ -21,13 +22,9 @@ export type Tier = 'brain' | 'worker';
  * 두뇌(BRAIN) — 유료·최고 지능. 계획/아키텍처/리뷰/검증판단/종합/전략.
  * 능력 우선순위 내림차순 (claude-code=Opus 최상위).
  */
-export const BRAIN_TIER: readonly string[] = [
-  'claude-code',  // Opus — Commander/최종 종합
-  'codex',        // Engineer(paid) — 어려운 구현 escalation
-  'cursor-agent', // Reviewer — 코드 리뷰·보안
-  'opencode',     // Architect — 설계·구조 (가용 모델별 편차가 커 후순위 fallback)
-  'agy',          // Designer — UI·패턴
-];
+export function brainTier(): string[] {
+  return tierRank('brain');
+}
 
 /**
  * 워커(WORKER) — 무료·로컬 우선. 대량 구현/기계적/병렬 작업.
@@ -36,21 +33,12 @@ export const BRAIN_TIER: readonly string[] = [
  *   직접 위임(nco_task ai=hermes)·failover 타깃으로는 계속 사용 가능.
  * ※ 로컬 워커는 Ollama 단일화.
  */
-export const WORKER_TIER: readonly string[] = [
-  'ollama',       // 로컬 Ollama (qwen3:30b-a3b)
-  'aider',        // 무료 (aider CLI)
-];
-
-// 순서표는 큐레이션이고 등록 여부는 config 가 정한다. 퇴출 프로바이더는
-// 여기서 사라지고, 표에 없는 신규 프로바이더는 derivedTier() 로 분류된다.
-const BRAIN_SET = new Set(filterRegistered(BRAIN_TIER));
-const WORKER_SET = new Set(filterRegistered(WORKER_TIER));
+export function workerTier(): string[] {
+  return tierRank('worker');
+}
 
 /** 프로바이더 id의 계층 판별. */
 export function tierOf(id: string): Tier | 'unknown' {
-  if (BRAIN_SET.has(id)) return 'brain';
-  if (WORKER_SET.has(id)) return 'worker';
-  // 순서표에 아직 이름이 없는 신규 프로바이더 → config 의 cost/type 으로 분류
   return derivedTier(id);
 }
 
@@ -76,8 +64,8 @@ export function classifyTier(prompt: string, complexity: number): Tier {
  * primary tier 를 앞으로, 반대 tier 를 fallback 으로, 미지의 것은 맨 뒤로.
  */
 export function orderByTier(ids: string[], tier: Tier): string[] {
-  const primary = tier === 'brain' ? BRAIN_TIER : WORKER_TIER;
-  const secondary = tier === 'brain' ? WORKER_TIER : BRAIN_TIER;
+  const primary = tier === 'brain' ? brainTier() : workerTier();
+  const secondary = tier === 'brain' ? workerTier() : brainTier();
   const rank = (id: string): number => {
     const pi = primary.indexOf(id);
     if (pi !== -1) return pi; // 0..
@@ -92,19 +80,15 @@ export function orderByTier(ids: string[], tier: Tier): string[] {
  * Commander 4-Layer 계층별 에이전트 배정 (tier 정책 반영).
  * pickAvailableAgent 가 앞에서부터 사용가능한 것을 고르므로 순서 = 우선순위 + fallback.
  */
-export const LAYER_TIER_AGENTS: Record<string, string[]> = {
-  // 각 계층은 provider-registry 를 경유한다: config 에서 빠진 프로바이더는
-  // 자동으로 사라지고, 새로 들어온 프로바이더는 역량 순으로 뒤에 편입된다.
-  // 두뇌: 계획·최종 종합 (유료 스마트)
-  management: resolvePreference(['claude-code', 'opencode']),
-  // 두뇌 리서치 + 무료 fallback
-  information: resolvePreference(['opencode', 'hermes'], 'research'),
-  // 워커: 무료 전체를 로컬우선 순으로 나열(WORKER_TIER 그대로 재사용).
-  // 머신에 로컬 LLM이 없으면(저사양 원격: subnote/kangnote 등) ollama가
-  // enabled 안 돼 자동으로 무료 CLI(aider)로 폴백, 무료가 전무하면
-  // codex(유료)로 escalation. pickAvailableAgent가 enabled+circuit로 필터하므로
-  // 머신별 자동 적응 — 하드코딩 없이 사양별 유연 배정 ([[feedback_ollama_lowspec_exclude]]).
-  execution: resolvePreference([...WORKER_TIER, 'codex']),
-  // 두뇌 리뷰 + 무료 QA fallback
-  quality: resolvePreference(['cursor-agent', 'ollama'], 'review'),
-};
+export function layerTierAgents(layer: ProviderDepartment): string[] {
+  return departmentRank(layer);
+}
+
+export function allLayerTierAgents(): Record<ProviderDepartment, string[]> {
+  return {
+    management: layerTierAgents('management'),
+    information: layerTierAgents('information'),
+    execution: layerTierAgents('execution'),
+    quality: layerTierAgents('quality'),
+  };
+}

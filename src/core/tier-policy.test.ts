@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { BRAIN_TIER, classifyTier, orderByTier } from './tier-policy.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { normalizeProviderDeclaration } from './provider-catalog.js';
+import { __setRegistryForTest } from './provider-registry.js';
+import { brainTier, classifyTier, orderByTier } from './tier-policy.js';
+
+afterEach(() => __setRegistryForTest(null));
 
 describe('tier policy analysis intent', () => {
   it.each([
@@ -14,15 +18,24 @@ describe('tier policy analysis intent', () => {
     expect(classifyTier('동일한 파일 100개를 일괄 포맷 적용해', 3)).toBe('worker');
   });
 
-  it('prioritizes the independently verified brain providers before unstable fallbacks', () => {
-    expect(BRAIN_TIER.slice(0, 4)).toEqual([
-      'claude-code',
-      'codex',
-      'cursor-agent',
-      'opencode',
+  it('recomputes brain order from a changed registry without provider id tables', () => {
+    __setRegistryForTest([
+      normalizeProviderDeclaration({
+        id: 'brain-low', command: 'brain-low', cost: 'paid', score: 60,
+        routing: { tier: 'brain', departments: ['management'], taskTypes: ['general'], priority: 10 },
+      }),
+      normalizeProviderDeclaration({
+        id: 'brain-high', command: 'brain-high', cost: 'paid', score: 90,
+        routing: { tier: 'brain', departments: ['management'], taskTypes: ['general'], priority: 90 },
+      }),
+      normalizeProviderDeclaration({
+        id: 'worker-local', command: 'worker-local', cost: 'free', score: 80,
+        routing: { tier: 'worker', departments: ['execution'], taskTypes: ['code'], priority: 50 },
+      }),
     ]);
+    expect(brainTier()).toEqual(['brain-high', 'brain-low']);
     expect(
-      orderByTier(['opencode', 'cursor-agent', 'codex', 'claude-code'], 'brain'),
-    ).toEqual(['claude-code', 'codex', 'cursor-agent', 'opencode']);
+      orderByTier(['worker-local', 'brain-low', 'brain-high'], 'brain'),
+    ).toEqual(['brain-high', 'brain-low', 'worker-local']);
   });
 });

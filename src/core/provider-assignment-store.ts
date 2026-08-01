@@ -55,6 +55,7 @@ interface SnapshotRow {
   id: string;
   scope_type: ProviderAssignmentScope;
   scope_id: string;
+  registry_revision: string;
   status: 'assigned' | 'unassigned';
   primary_provider_id: string | null;
   provider_ids_json: string;
@@ -116,6 +117,7 @@ function snapshotFromRow(row: SnapshotRow): ProviderAssignmentSnapshot {
     assignmentId: row.id,
     scopeType: row.scope_type,
     scopeId: row.scope_id,
+    registryRevision: row.registry_revision,
     status: row.status,
     primaryProviderId: row.primary_provider_id,
     providerIds: parseJson<string[]>(row.provider_ids_json, 'provider_ids', (value) => (
@@ -201,8 +203,19 @@ export class ProviderAssignmentStore {
     }
     const team = this.database.prepare('SELECT organization_id FROM teams WHERE id=?')
       .get(scopeId) as { organization_id: string | null } | undefined;
-    const companyPolicy = team?.organization_id
+    const organizationPolicy = team?.organization_id
       ? this.getPolicy('organization', team.organization_id)?.policy ?? null
+      : null;
+    // Organization requiredCapabilities select the company decomposer. Carrying
+    // them into every team would require one provider to satisfy unrelated gates
+    // such as architecture + testing. All other organization fields remain team
+    // defaults for backward compatibility; teams and tasks keep their own hard
+    // capability requirements.
+    const companyPolicy = organizationPolicy
+      ? Object.fromEntries(
+        Object.entries(organizationPolicy)
+          .filter(([key]) => key !== 'requiredCapabilities'),
+      ) as ProviderAssignmentPolicyOverride
       : null;
     return mergeProviderAssignmentPolicy(
       systemPolicy,
@@ -215,14 +228,15 @@ export class ProviderAssignmentStore {
   appendSnapshot(snapshot: ProviderAssignmentSnapshot): ProviderAssignmentSnapshot {
     this.database.prepare(`
       INSERT INTO provider_assignment_snapshots (
-        id, scope_type, scope_id, status, primary_provider_id, provider_ids_json,
+        id, scope_type, scope_id, registry_revision, status, primary_provider_id, provider_ids_json,
         policy_fingerprint, provider_config_fingerprint, availability_fingerprint,
         reason, candidates_json, created_at, valid_until
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       snapshot.assignmentId,
       snapshot.scopeType,
       snapshot.scopeId,
+      snapshot.registryRevision,
       snapshot.status,
       snapshot.primaryProviderId,
       JSON.stringify(snapshot.providerIds),

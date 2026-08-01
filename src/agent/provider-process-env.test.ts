@@ -48,6 +48,18 @@ describe('buildProviderProcessEnv', () => {
     expect(env.CURSOR_SETTING).toBe('enabled');
   });
 
+  it('applies adapter-specific PATH behavior to an arbitrary registry id', () => {
+    const env = buildProviderProcessEnv(
+      'pc-reviewer',
+      undefined,
+      { PATH: ['/usr/bin', '/bin'].join(delimiter) },
+      '/srv/nco',
+      'cursor',
+    );
+
+    expect(env.PATH).toBe(['/srv/nco/.local/bin', '/usr/bin', '/bin'].join(delimiter));
+  });
+
   it('does not alter PATH for another provider', () => {
     const env = buildProviderProcessEnv(
       'codex',

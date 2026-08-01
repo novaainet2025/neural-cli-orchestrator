@@ -3,7 +3,7 @@
 // It is a pure function with no external side effects.
 
 // Import tier definitions. They are exported from '../core/tier-policy.js'.
-import { BRAIN_TIER, WORKER_TIER } from "../core/tier-policy.js";
+import { brainTier, workerTier } from '../core/tier-policy.js';
 
 /**
  * Input describing the failure that occurred.
@@ -55,6 +55,8 @@ export type EscalationResult = {
  */
 export function decideEscalation(input: EscalationInput): EscalationResult {
   const { failedAgentId, failureCount, failureReason, attemptedAgents, circuitOpenAgents, knownAgents } = input;
+  const workers = workerTier();
+  const brains = brainTier();
 
   // Helper to check transient reasons
   const isTransient = (reason: string) => {
@@ -77,8 +79,8 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
   }
 
   // Determine tier of failed agent
-  const isWorker = WORKER_TIER.includes(failedAgentId);
-  const isBrain = BRAIN_TIER.includes(failedAgentId);
+  const isWorker = workers.includes(failedAgentId);
+  const isBrain = brains.includes(failedAgentId);
 
   // Candidate selection helpers
   const filterCandidates = (candidates: readonly string[]) =>
@@ -91,7 +93,7 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
 
   // 2a. Same tier escalation for workers
   if (isWorker) {
-    const sameTierCandidates = filterCandidates(WORKER_TIER);
+    const sameTierCandidates = filterCandidates(workers);
     if (sameTierCandidates.length > 0) {
       return {
         action: "escalate",
@@ -100,7 +102,7 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
       };
     }
     // fallback to brain tier with reverse order (lower intelligence first)
-    const brainCandidates = filterCandidates([...BRAIN_TIER].reverse());
+    const brainCandidates = filterCandidates([...brains].reverse());
     if (brainCandidates.length > 0) {
       return {
         action: "escalate",
@@ -114,8 +116,8 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
   // 2b. Brain tier escalation – try higher rank within brain tier
   if (isBrain) {
     // Assume BRAIN_TIER is ordered from highest to lowest intelligence.
-    const index = BRAIN_TIER.indexOf(failedAgentId);
-    const higher = BRAIN_TIER.slice(0, index); // agents with higher rank
+    const index = brains.indexOf(failedAgentId);
+    const higher = brains.slice(0, index); // agents with higher rank
     const higherCandidates = filterCandidates(higher);
     if (higherCandidates.length > 0) {
       return {
@@ -125,7 +127,7 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
       };
     }
     // If none higher, try lower rank within brain tier
-    const lower = BRAIN_TIER.slice(index + 1);
+    const lower = brains.slice(index + 1);
     const lowerCandidates = filterCandidates(lower);
     if (lowerCandidates.length > 0) {
       return {
@@ -135,7 +137,7 @@ export function decideEscalation(input: EscalationInput): EscalationResult {
       };
     }
     // Finally fall back to workers (higher intelligence than brain?)
-    const workerCandidates = filterCandidates(WORKER_TIER);
+    const workerCandidates = filterCandidates(workers);
     if (workerCandidates.length > 0) {
       return {
         action: "escalate",
