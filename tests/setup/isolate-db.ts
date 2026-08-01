@@ -12,7 +12,8 @@
 // Fix: force DATABASE_PATH to a dedicated, migrated, per-file test database.
 // Tests that explicitly override it after setup keep managing their own path.
 import { randomUUID } from 'node:crypto';
-import { rmSync } from 'node:fs';
+import { readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll } from 'vitest';
 
@@ -29,12 +30,27 @@ import { afterAll } from 'vitest';
 //
 // A unique file per setup invocation also prevents concurrently executing test
 // files from contaminating each other's fixed fixture ids and migration state.
+const projectRoot = resolve(import.meta.dirname, '../..');
+const topology = JSON.parse(
+  readFileSync(resolve(projectRoot, 'config/topology.json'), 'utf8'),
+) as { paths: { database: string } };
+const inheritedDatabasePath = resolve(
+  projectRoot,
+  process.env.DATABASE_PATH || topology.paths.database,
+);
 const isolatedDbPath = process.env.NCO_TEST_DATABASE_PATH
   ? resolve(process.env.NCO_TEST_DATABASE_PATH)
   : resolve(
-      import.meta.dirname,
-      `../../db/.vitest-${process.pid}-${randomUUID()}.db`,
+      tmpdir(),
+      'nco-vitest-databases',
+      `${process.pid}-${randomUUID()}.db`,
     );
+
+if (isolatedDbPath === inheritedDatabasePath) {
+  throw new Error(
+    `[vitest] NCO_TEST_DATABASE_PATH must not target the production database: ${inheritedDatabasePath}`,
+  );
+}
 process.env.DATABASE_PATH = isolatedDbPath;
 
 const { runMigrations, closeDb } = await import('../../src/storage/database.js');

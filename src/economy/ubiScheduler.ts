@@ -7,11 +7,10 @@
  * TREASURY-POLICY.md 8회차: 하드캡 10억 NVC, 반감기 10,000명/50%
  */
 
-import { randomUUID } from 'crypto';
-import { createHash } from 'crypto';
 import { getDb } from '../storage/database.js';
 import { type DID } from '../identity/keyManager.js';
-import { GOVT_ADDRESS, _updateBalance } from './walletService.js';
+import { appendAudit } from '../audit/merkleLog.js';
+import { _updateBalance } from './walletService.js';
 
 // ── 상수 (TREASURY-POLICY.md 확정값) ──────────────────────────────────────
 const HARD_CAP = 1_000_000_000;
@@ -86,10 +85,6 @@ export async function runUbiPayment(): Promise<void> {
 
   if (eligibleCitizens.length === 0) return;
 
-  // Merkle 이전 해시 조회
-  const lastEntry = db.prepare('SELECT hash FROM nova_audit_log ORDER BY timestamp DESC LIMIT 1').get() as { hash: string } | undefined;
-  let prevHash = lastEntry?.hash ?? '0'.repeat(64);
-
   // 트랜잭션으로 일괄 지급
   const pay = db.transaction(() => {
     for (const citizen of eligibleCitizens) {
@@ -115,18 +110,18 @@ export async function runUbiPayment(): Promise<void> {
       // 잔액 지급 (GOVT_ADDRESS가 없으면 신규 발행)
       _updateBalance(citizen.did as DID, finalAmount, db);
 
-      // nova_audit_log 기록
-      const entryId = randomUUID();
-      const metadata = JSON.stringify({ amount: finalAmount, ubi_status: newUbiStatus, base_amount: baseAmount, grade_v2: citizen.grade_v2 });
-      const entryData = `${entryId}${nowSec}SYSTEM:ubi_scheduler:ubi_payment:${citizen.did}:${metadata}:${prevHash}`;
-      const hash = createHash('sha256').update(entryData).digest('hex');
-
-      db.prepare(`
-        INSERT INTO nova_audit_log (id, timestamp, actor, action, target, metadata, severity, hash, prev_hash)
-        VALUES (?, ?, 'SYSTEM', 'ubi_payment', ?, ?, 'info', ?, ?)
-      `).run(entryId, nowSec, citizen.did, metadata, hash, prevHash);
-
-      prevHash = hash;
+      appendAudit({
+        actor: 'SYSTEM',
+        action: 'ubi_payment',
+        target: citizen.did,
+        metadata: {
+          amount: finalAmount,
+          ubi_status: newUbiStatus,
+          base_amount: baseAmount,
+          grade_v2: citizen.grade_v2,
+        },
+        severity: 'info',
+      });
     }
   });
 

@@ -13,7 +13,7 @@ export type AuditAction =
   // Credentials
   | 'vc_issued' | 'vc_revoked'
   // Economy
-  | 'wallet_created' | 'large_transfer' | 'escrow_created' | 'escrow_disputed'
+  | 'wallet_created' | 'large_transfer' | 'escrow_created' | 'escrow_disputed' | 'ubi_payment'
   // Governance
   | 'proposal_created' | 'vote_cast' | 'proposal_executed'
   | 'emergency_stop_triggered' | 'emergency_stop_lifted'
@@ -25,6 +25,9 @@ export type AuditAction =
   | 'did_spoof_attempt' | 'double_spend_attempt' | 'blacklist_added' | 'blacklist_removed'
   // Diplomacy
   | 'create_nation' | 'create_treaty' | 'send_message' | 'ack_message'
+  | 'diplomacy_nation_register' | 'diplomacy_treaty_signed' | 'diplomacy_message_sent'
+  // Security policy evaluation
+  | 'policy_violation'
   // Memory (TEMPORAL-POLICY)
   | 'memory_create' | 'memory_delete' | 'memory_share'
   // Identity — Grade
