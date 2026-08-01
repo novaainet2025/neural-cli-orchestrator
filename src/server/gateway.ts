@@ -645,6 +645,7 @@ const GATEWAY_AUTH_EXEMPT_PATHS = new Set([
 ]);
 const GATEWAY_AUTH_LOCALHOSTS = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const PROVIDER_DISCOVERY_PATHS = new Set([
+  '/api/provider-registry',
   '/api/ai-providers/registry',
   '/api/ai-providers/readiness',
   '/api/ai-providers',
@@ -2930,7 +2931,7 @@ export async function createGateway(): Promise<NcoGateway> {
   });
 
   // ═══ AI Providers ═════════════════════════════════
-  app.get('/api/ai-providers/registry', async (request, reply) => {
+  const providerRegistryHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     const snapshot = providerRuntimeCoordinator.getSnapshot();
     if (!snapshot) {
       reply.code(503);
@@ -2947,7 +2948,9 @@ export async function createGateway(): Promise<NcoGateway> {
       return reply.code(304).send();
     }
     return snapshot;
-  });
+  };
+  app.get('/api/provider-registry', providerRegistryHandler);
+  app.get('/api/ai-providers/registry', providerRegistryHandler);
 
   app.get('/api/ai-providers/readiness', async (_request, reply) => {
     const snapshot = providerRuntimeCoordinator.getSnapshot();
