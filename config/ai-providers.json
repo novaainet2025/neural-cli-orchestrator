@@ -1,6 +1,6 @@
 {
-  "version": 10,
-  "updated": "2026-08-01",
+  "version": 11,
+  "updated": "2026-08-02",
   "providers": [
     {
       "id": "claude-code",
@@ -153,15 +153,33 @@
       "routing": { "discussionEligible": true, "discussionPriority": 600 },
       "role": "Engineer",
       "score": 83,
-      "model": "codex",
+      "model": "gpt-5.6-terra",
       "models": [
         {
-          "id": "codex",
+          "id": "gpt-5.6-luna",
+          "tier": "light",
+          "reasoningStrength": 1,
+          "costClass": "minimal",
+          "latencyClass": "fast",
+          "contextWindow": null,
+          "availability": "available"
+        },
+        {
+          "id": "gpt-5.6-terra",
           "default": true,
           "tier": "balanced",
           "reasoningStrength": 3,
           "costClass": "standard",
           "latencyClass": "standard",
+          "contextWindow": null,
+          "availability": "available"
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "tier": "heavy",
+          "reasoningStrength": 4,
+          "costClass": "premium",
+          "latencyClass": "slow",
           "contextWindow": null,
           "availability": "available"
         }

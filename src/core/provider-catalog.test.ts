@@ -196,6 +196,21 @@ describe('ProviderCatalog SSOT normalization', () => {
     })).toThrow('duplicate bad-models model id/alias');
   });
 
+  it.each([
+    [{ id: 'codex', command: 'codex', model: 'codex' }, 'codex.model'],
+    [{ id: 'codex', command: 'codex', models: [{ id: 'codex' }] }, 'codex.models[0].id'],
+    [{
+      id: 'codex',
+      command: 'codex',
+      models: [{ id: 'gpt-5.6-terra', aliases: ['codex'] }],
+    }, 'codex.models[0].aliases[0]'],
+    [{ id: 'codex', command: 'codex', freeModels: ['codex'] }, 'codex.freeModels[0]'],
+  ] as const)('rejects provider/model namespace collisions: %s', (declaration, path) => {
+    expect(() => normalizeProviderDeclaration(declaration as never)).toThrow(
+      `${path} must not reuse provider id as a model token`,
+    );
+  });
+
   it('does not regenerate a provider removed from the declaration list', () => {
     const catalog = buildProviderCatalog([
       { id: 'active-one', command: 'one' },

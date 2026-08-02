@@ -158,6 +158,15 @@ describe('ProviderRegistrySnapshotStore', () => {
     ]);
   });
 
+  it('refuses to publish a provider id as a concrete model token', () => {
+    expect(() => toProviderRegistryManifest(provider('codex', {
+      model: 'codex',
+      models: [{ id: 'codex', default: true }],
+    }), new Set(['codex']))).toThrow(
+      'codex.models[].id must not reuse provider id as a model token',
+    );
+  });
+
   it('marks unavailable models disabled for pre-availability Registry clients', () => {
     const manifest = toProviderRegistryManifest(provider('alpha', {
       model: 'available-model',

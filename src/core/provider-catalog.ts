@@ -218,6 +218,19 @@ function uniqueStrings(values: readonly string[], label: string): string[] {
   return normalized;
 }
 
+function assertModelTokenDoesNotReuseProviderId(
+  providerId: string,
+  token: string | null | undefined,
+  path: string,
+): void {
+  const normalized = token?.trim().toLowerCase();
+  if (normalized && normalized === providerId.trim().toLowerCase()) {
+    throw new Error(
+      `[provider-catalog] ${path} must not reuse provider id as a model token: ${normalized}`,
+    );
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -598,6 +611,14 @@ function normalizeModels(
     }
     const id = model.id.trim();
     const aliases = uniqueStrings(model.aliases ?? [], `${provider.id}.model alias`);
+    assertModelTokenDoesNotReuseProviderId(provider.id, id, `${provider.id}.models[${index}].id`);
+    for (const [aliasIndex, alias] of aliases.entries()) {
+      assertModelTokenDoesNotReuseProviderId(
+        provider.id,
+        alias,
+        `${provider.id}.models[${index}].aliases[${aliasIndex}]`,
+      );
+    }
     const tokens = [id.toLowerCase(), ...aliases];
     for (const token of tokens) {
       if (seenTokens.has(token)) {
@@ -735,6 +756,10 @@ export function normalizeProviderDeclaration(provider: ProviderDeclaration): Pro
   const id = provider.id?.trim();
   if (!id || !ID_PATTERN.test(id)) {
     throw new Error(`[provider-catalog] invalid provider id: ${String(provider.id)}`);
+  }
+  assertModelTokenDoesNotReuseProviderId(id, provider.model, `${id}.model`);
+  for (const [index, freeModel] of (provider.freeModels ?? []).entries()) {
+    assertModelTokenDoesNotReuseProviderId(id, freeModel, `${id}.freeModels[${index}]`);
   }
   const type = provider.type ?? (provider.endpoint ? 'api' : 'cli');
   if (!['cli', 'api', 'local'].includes(type)) {

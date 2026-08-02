@@ -162,6 +162,14 @@ function sortedUnique(values: readonly string[] | undefined): string[] {
   return [...new Set((values ?? []).map(value => value.trim()).filter(Boolean))].sort();
 }
 
+function assertConcretePublicModelToken(providerId: string, token: string, path: string): void {
+  if (token.trim().toLowerCase() === providerId.trim().toLowerCase()) {
+    throw new Error(
+      `[provider-registry] ${path} must not reuse provider id as a model token: ${token.trim()}`,
+    );
+  }
+}
+
 function publicEndpoint(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   try {
@@ -189,6 +197,11 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
   for (const model of provider.models ?? []) {
     const id = model.id.trim();
     if (!id || catalog.has(id)) continue;
+    assertConcretePublicModelToken(provider.id, id, `${provider.id}.models[].id`);
+    const aliases = sortedUnique(model.aliases);
+    for (const alias of aliases) {
+      assertConcretePublicModelToken(provider.id, alias, `${provider.id}.${id}.aliases[]`);
+    }
     catalog.set(id, {
       id,
       // Keep older Registry clients safe: clients deployed before the
@@ -196,7 +209,7 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
       // unavailable model therefore has to be non-selectable in both fields.
       enabled: model.enabled !== false && model.availability !== 'unavailable',
       default: model.default === true,
-      aliases: sortedUnique(model.aliases),
+      aliases,
       capabilities: sortedUnique(model.capabilities),
       tier: model.tier ?? 'balanced',
       reasoningStrength: model.reasoningStrength ?? 3,
@@ -212,6 +225,7 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
   // default catalog entry so a dynamic client never receives an empty picker.
   const configuredModel = provider.model?.trim();
   if (catalog.size === 0 && configuredModel) {
+    assertConcretePublicModelToken(provider.id, configuredModel, `${provider.id}.model`);
     catalog.set(configuredModel, {
       id: configuredModel,
       enabled: true,
@@ -233,6 +247,7 @@ function publicModelCatalog(provider: ProviderConfig): ProviderRegistryManifest[
   for (const rawId of provider.freeModels ?? []) {
     const id = rawId.trim();
     if (!id || catalog.has(id)) continue;
+    assertConcretePublicModelToken(provider.id, id, `${provider.id}.freeModels[]`);
     catalog.set(id, {
       id,
       enabled: true,

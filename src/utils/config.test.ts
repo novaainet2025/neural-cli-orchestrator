@@ -50,6 +50,25 @@ describe('config JSON validation', () => {
     expect(visualProvider?.model).not.toBe(visualProvider?.id);
   });
 
+  it('publishes the three classified Codex models with Terra as the default', () => {
+    const loaded = loadJSON<{
+      providers: Array<{
+        id: string;
+        model: string | null;
+        models?: Array<{ id: string; tier?: string; default?: boolean }>;
+      }>;
+    }>('ai-providers.json');
+    const codex = loaded.providers.find(provider => provider.id === 'codex');
+
+    expect(codex).toMatchObject({ model: 'gpt-5.6-terra' });
+    expect(codex?.models).toEqual([
+      expect.objectContaining({ id: 'gpt-5.6-luna', tier: 'light' }),
+      expect.objectContaining({ id: 'gpt-5.6-terra', tier: 'balanced', default: true }),
+      expect.objectContaining({ id: 'gpt-5.6-sol', tier: 'heavy' }),
+    ]);
+    expect(codex?.models?.some(model => model.id === codex.id)).toBe(false);
+  });
+
   it('supports PC-local provider additions, overrides, allowlists and denylists', () => {
     const shared = validateProvidersFile({
       version: 1,

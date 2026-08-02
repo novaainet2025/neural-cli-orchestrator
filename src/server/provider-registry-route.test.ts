@@ -62,6 +62,24 @@ describe('Provider Registry v2 HTTP contract', () => {
     }
   });
 
+  it('publishes the classified Codex catalog without a provider-id placeholder', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/ai-providers/registry' });
+    expect(response.statusCode).toBe(200);
+    const codex = response.json().providers.find((provider: { id: string }) => provider.id === 'codex');
+
+    expect(codex).toMatchObject({ model: 'gpt-5.6-terra' });
+    expect(codex.models.map((model: { id: string; tier: string; default: boolean }) => ({
+      id: model.id,
+      tier: model.tier,
+      default: model.default,
+    }))).toEqual([
+      { id: 'gpt-5.6-luna', tier: 'light', default: false },
+      { id: 'gpt-5.6-sol', tier: 'heavy', default: false },
+      { id: 'gpt-5.6-terra', tier: 'balanced', default: true },
+    ]);
+    expect(codex.models.some((model: { id: string }) => model.id === codex.id)).toBe(false);
+  });
+
   it('serves secret-free compatibility catalogs without internal commands', async () => {
     for (const url of ['/api/ai-providers', '/api/ai-providers/enabled']) {
       const response = await app.inject({ method: 'GET', url });
