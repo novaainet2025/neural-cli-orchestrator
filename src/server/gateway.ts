@@ -83,6 +83,7 @@ import {
 } from '../core/workflow-gate.js';
 import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
 import { summarizeProviderAvailability } from './provider-health.js';
+import { ACTIVE_RATE_LIMIT_PREDICATE } from '../core/rate-limit-state.js';
 import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
 import { refreshWorkReportPromptSnapshot } from '../core/work-report-scheduler.js';
@@ -4734,7 +4735,19 @@ export async function createGateway(): Promise<NcoGateway> {
   // ═══ Rate Limits ══════════════════════════════════
   app.get('/api/rate-limits', async () => {
     const db = getDb();
-    return { providers: db.prepare('SELECT * FROM rate_limit_state').all() };
+    const rows = db.prepare('SELECT * FROM rate_limit_state').all() as any[];
+    const activeIds = new Set((db.prepare(
+      `SELECT agent_id FROM rate_limit_state WHERE ${ACTIVE_RATE_LIMIT_PREDICATE}`,
+    ).all() as Array<{ agent_id: string }>).map(row => row.agent_id));
+    return {
+      providers: rows.map(row => ({
+        ...row,
+        currently_limited: activeIds.has(row.agent_id),
+        stale: Number(row.is_limited) === 1 && !activeIds.has(row.agent_id),
+      })),
+      basis: 'active-reset-time',
+      observedAt: new Date().toISOString(),
+    };
   });
 
   // ═══ Queue Metrics ════════════════════════════════

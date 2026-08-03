@@ -1,5 +1,5 @@
 export const ACTIVE_RATE_LIMIT_PREDICATE =
-  `is_limited=1 AND reset_at IS NOT NULL AND reset_at > datetime('now')`;
+  `is_limited=1 AND reset_at IS NOT NULL AND datetime(reset_at) > datetime('now')`;
 
 interface RateLimitDb {
   prepare(sql: string): {

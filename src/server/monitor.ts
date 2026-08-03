@@ -811,8 +811,17 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg-
 </div>
 
 <script>
-const API='http://localhost:${apiPort}';
-const WS_URL='ws://localhost:${wsPort}';
+// Use the host that served the monitor so localhost, 127.0.0.1, WSL and
+// private-network hostnames all address the same NCO instance. Only the
+// WebSocket port differs from the HTTP origin.
+const API=window.location.origin;
+const WS_LOCATION=new URL(window.location.href);
+WS_LOCATION.protocol=window.location.protocol==='https:'?'wss:':'ws:';
+WS_LOCATION.port='${wsPort}';
+WS_LOCATION.pathname='/';
+WS_LOCATION.search='';
+WS_LOCATION.hash='';
+const WS_URL=WS_LOCATION.toString();
 let ws;
 let agents={};
 /** Fixed-size ring (500): logical index 0 = newest (same as former array after unshift). */
@@ -1963,20 +1972,30 @@ function renderAgents(){
   // Determine icon color by status
   const dotColor=(st)=>st==='working'||st==='coding'||st==='thinking'?'#3fb950':
     st==='discussing'?'#a5b4fc':st==='offline'||!st?'#21262d':
-    st==='error'||st==='isolated'?'#f85149':'#d29922';
+    st==='error'||st==='isolated'||st==='blocked'||st==='limited'?'#f85149':'#d29922';
   list.innerHTML=sorted.map(a=>{
     const st=a.status||'offline';
+    const workState=a.work&&a.work.status?a.work.status:st;
+    const limitState=a.limit&&a.limit.status?a.limit.status:(a.gate&&a.gate.status)||'unknown';
+    const displayState=workState==='working'?'working':workState==='unknown'?'unknown':
+      limitState==='limited'?'limited':limitState==='probing'?'probing':
+      limitState==='blocked'||limitState==='inconsistent'?'blocked':st;
     const shortEvent=a.lastEvent?(a.lastEvent.replace('action:','').replace('task:','').replace('agent:','').replace('discussion:','').replace('system:','')):'';
     const agType=a.type||'cli'; // 'cli' = NCO-loop driven, 'api' = API call only
-    return '<div class="ag" id="ag-'+a.id+'">'+
+    const guidance=a.guidance||'상태 근거를 확인할 수 없습니다.';
+    const staleLimitRecord=a.limit&&a.limit.staleRecord===true;
+    const limitTag=limitState==='limited'?'LIMIT':limitState==='probing'?'PROBE':
+      limitState==='blocked'?'BLOCK':limitState==='inconsistent'||staleLimitRecord?'STALE':'';
+    return '<div class="ag" id="ag-'+a.id+'" title="'+escHtml(guidance)+'">'+
       '<div class="ag-left">'+
-        '<span class="ag-icon" style="background:'+dotColor(st)+'"></span>'+
+        '<span class="ag-icon" style="background:'+dotColor(displayState)+'"></span>'+
         '<span class="ag-name" style="color:'+agentColor(a.id)+'">'+a.id+'</span>'+
         '<span class="ag-type '+agType+'">'+agType.toUpperCase()+'</span>'+
+        (limitTag?'<span class="ag-sub">'+limitTag+'</span>':'')+
         (shortEvent?'<span class="ag-sub">'+escHtml(shortEvent.slice(0,16))+'</span>':'')+
         (a.currentTask?'<span class="ag-task">'+escHtml(a.currentTask.slice(0,12))+'</span>':'')+
       '</div>'+
-      '<span class="st '+st+'">'+st+'</span>'+
+      '<span class="st '+st+'">'+displayState+'</span>'+
     '</div>';
   }).join('');
   sorted.forEach(a=>{
@@ -1985,6 +2004,28 @@ function renderAgents(){
       if(n){n.classList.add('flash');setTimeout(()=>n.classList.remove('flash'),2000);}
     }
   });
+}
+
+let providerTargetsInitialized=false;
+async function pollProviderStatus(initializeTargets=false){
+  try{
+    const response=await fetch(API+'/api/agents');
+    if(!response.ok)throw new Error('provider status HTTP '+response.status);
+    const data=await response.json();
+    (data.agents||[]).forEach(a=>{
+      const previous=agents[a.id]||{};
+      agents[a.id]={...previous,...a};
+    });
+    if(initializeTargets&&!providerTargetsInitialized){
+      const sel=el('sendTarget');
+      (data.agents||[]).forEach(a=>{
+        const o=document.createElement('option');o.value=a.id;o.textContent=a.id+' ('+a.role+')';sel.appendChild(o);
+      });
+      providerTargetsInitialized=true;
+    }
+    renderAgents();
+    if(activeTab==='overview')renderTab();
+  }catch(err){console.warn('[NCO Monitor] provider status refresh failed',err);}
 }
 
 // ── Event type category ───────────────────────────────
@@ -2665,15 +2706,22 @@ function renderOverviewTab(){
     const hasAnomaly=ANOMALY_ALERTS.some(a=>a.agentId===id&&a.sev==='critical');
     const successRate=st.total>0?Math.round(st.completed/st.total*100):null;
     const barColor=successRate===null?'#484f58':successRate>=80?'#3fb950':successRate>=50?'#d29922':'#f85149';
+    const workState=ag.work&&ag.work.status?ag.work.status:(ag.status==='working'?'working':'idle');
+    const limitState=ag.limit&&ag.limit.status?ag.limit.status:'available';
     let stClass='st-idle';
     if(isZombie)stClass='st-zombie';
-    else if(ag.status==='working'||st.running>0)stClass='st-working';
-    else if(ag.status==='error')stClass='st-error';
+    else if(workState==='working')stClass='st-working';
+    else if(limitState!=='available')stClass='st-error';
+    else if(workState==='unknown')stClass='st-queued';
     const queuedCnt=allTasks.filter(t=>(t.assigned_to===id||t.provider===id)&&t.status==='queued').length;
     if(queuedCnt>0&&stClass==='st-idle')stClass='st-queued';
     const color=topoAgentColor(id)||agentColor(id)||'#8b949e';
-    const stateLabel=isZombie?'💀 zombie':st.running>0?'● working':queuedCnt>0?'◆ Q:'+queuedCnt:'○ idle';
-    const stateColor=isZombie?'#f85149':st.running>0?'#58a6ff':queuedCnt>0?'#d29922':'#30363d';
+    const stateLabel=isZombie?'💀 zombie':workState==='working'?'● working':
+      limitState==='limited'?'⏳ limited':limitState==='probing'?'◇ probing':
+      limitState==='blocked'||limitState==='inconsistent'?'✕ blocked':
+      workState==='unknown'?'? unknown':queuedCnt>0?'◆ Q:'+queuedCnt:'○ idle';
+    const stateColor=isZombie?'#f85149':workState==='working'?'#58a6ff':
+      limitState==='available'?(workState==='unknown'||queuedCnt>0?'#d29922':'#30363d'):'#f85149';
     agGridHtml+='<div class="ag-card '+stClass+'">'+
       '<div class="ag-name" style="color:'+color+'">'+escHtml(id)+(hasAnomaly?' <span style="color:#f85149">⚠</span>':'')+'</div>'+
       (successRate!==null?'<div class="ag-bar-wrap"><div class="ag-bar-fill" style="width:'+successRate+'%;background:'+barColor+'"></div></div>':'<div style="height:4px;margin-bottom:3px"></div>')+
@@ -3479,7 +3527,7 @@ function agentColor(id){
     'system':'#f85149','user':'#d29922','mesh':'#58a6ff','monitor':'#58a6ff'};
   return c[id]||'#8b949e';
 }
-function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function el(id){return document.getElementById(id);}
 
 // ── Tasks polling ─────────────────────────────────────
@@ -3733,16 +3781,7 @@ async function init(){
     b.classList.toggle('active',b.dataset.ef===evtFilter);
   });
 
-  try{
-    const d=await(await fetch(API+'/api/daemons')).json();
-    (d.daemons||[]).forEach(a=>{
-      agents[a.id]={id:a.id,status:a.status,role:a.role,score:a.score,type:a.type||'cli',currentTask:a.currentTask,health:a.health};
-    });
-    const sel=el('sendTarget');
-    (d.daemons||[]).forEach(a=>{
-      const o=document.createElement('option'); o.value=a.id; o.textContent=a.id+' ('+a.role+')'; sel.appendChild(o);
-    });
-  }catch{}
+  await pollProviderStatus(true);
 
   try{
     const d=await(await fetch(API+'/api/agent-actions?limit=80')).json();
@@ -3783,6 +3822,7 @@ async function init(){
   }
   // Store interval handles so they can be cleared on WS close / page unload
   const _healthTimer=setInterval(checkHealth,10000);
+  const _providerTimer=setInterval(pollProviderStatus,10000);
   const _meshTimer=setInterval(pollMesh,15000);
   const _taskTimer=setInterval(pollTasks,10000);
   const _heartbeatTimer=setInterval(()=>{ renderMeshNodes(); if(activeTab==='mesh'||activeTab==='sessions'||activeTab==='overview')renderTab(); }, 10000);
@@ -3812,7 +3852,7 @@ async function init(){
 
   // Pause polling when tab is hidden, resume on visibility
   document.addEventListener('visibilitychange',()=>{
-    if(!document.hidden){ pollMesh(); pollTasks(); checkHealth(); }
+    if(!document.hidden){ pollProviderStatus(); pollMesh(); pollTasks(); checkHealth(); }
   });
 
   // ── Keyboard Shortcuts ────────────────────────────────

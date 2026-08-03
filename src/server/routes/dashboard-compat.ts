@@ -4,7 +4,10 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { getDb } from '../../storage/database.js';
-import { listActivelyRateLimited } from '../../core/rate-limit-state.js';
+import {
+  ACTIVE_RATE_LIMIT_PREDICATE,
+  listActivelyRateLimited,
+} from '../../core/rate-limit-state.js';
 import { getFailureDigest } from '../../core/failure-learning.js';
 import { getRedis } from '../../storage/redis.js';
 import { sharedState } from '../../core/shared-state.js';
@@ -29,9 +32,17 @@ import { listAllSubagents } from '../../core/subagent-service.js';
 import { createLogger } from '../../utils/logger.js';
 import { resolveInternalProjectDir } from '../../utils/project-dir.js';
 import { z } from 'zod/v4';
+import {
+  providerOperationalGuidance,
+  resolveProviderLimitStatus,
+  resolveProviderWorkStatus,
+  type DurableRateLimitEvidence,
+  type ProviderPushEvidence,
+} from '../provider-operational-status.js';
 
 const log = createLogger('dashboard-compat');
 const execFileAsync = promisify(execFile);
+const DASHBOARD_LIVE_ACTIVITY_SECONDS = 120;
 
 const IS_CLIENTS_DIR = join(process.env.HOME ?? '/Users/nova-ai', '.claude', 'data', 'inter-session', 'clients');
 
@@ -645,14 +656,54 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     const db = getDb();
     const rows = db.prepare('SELECT * FROM rate_limit_state').all() as any[];
     const providers: Record<string, any> = {};
-    for (const r of rows) providers[r.agent_id] = r;
-
-    // Align with smart-router / task-queue: only reset_at > now counts as limited.
     const activelyLimited = listActivelyRateLimited(db);
+    const activeRows = db.prepare(
+      `SELECT agent_id, reason, reset_at, updated_at
+       FROM rate_limit_state WHERE ${ACTIVE_RATE_LIMIT_PREDICATE}`,
+    ).all() as Array<{
+      agent_id: string;
+      reason: string | null;
+      reset_at: string;
+      updated_at: string | null;
+    }>;
+    const activeById = new Map(activeRows.map(row => [row.agent_id, row]));
+    for (const row of rows) {
+      const currentlyLimited = activelyLimited.has(row.agent_id);
+      providers[row.agent_id] = {
+        ...row,
+        currentlyLimited,
+        stale: Number(row.is_limited) === 1 && !currentlyLimited,
+      };
+    }
 
     const allIds = agentManager.listEnabledIds();
-    const available = allIds.filter(id => !activelyLimited.has(id));
-    const limited = allIds.filter(id => activelyLimited.has(id));
+    const providerStatus = Object.fromEntries(allIds.map((id) => {
+      const active = activeById.get(id);
+      const durableRateLimit: DurableRateLimitEvidence | null = active
+        ? { resetAt: active.reset_at, reason: active.reason, updatedAt: active.updated_at }
+        : null;
+      const raw = providers[id];
+      const circuitAvailability = circuitBreakerRegistry.getAvailability(id);
+      const availability = durableRateLimit
+        ? {
+            ...circuitAvailability,
+            status: 'gated:rate-limit' as const,
+            available: false,
+            reason: 'rate-limit' as const,
+            cooldownUntil: durableRateLimit.resetAt,
+          }
+        : circuitAvailability;
+      return [id, resolveProviderLimitStatus({
+        availability,
+        durableRateLimit,
+        staleRecord: Number(raw?.is_limited) === 1 && !durableRateLimit,
+      })];
+    }));
+    const available = allIds.filter(id => providerStatus[id].availableForNewWork);
+    const limited = allIds.filter(id => providerStatus[id].limited === true);
+    const probing = allIds.filter(id => providerStatus[id].status === 'probing');
+    const blocked = allIds.filter(id =>
+      providerStatus[id].status === 'blocked' || providerStatus[id].status === 'inconsistent');
 
     return {
       success: true,
@@ -660,8 +711,13 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         providers,
         availableProviders: available,
         limitedProviders: limited,
+        probingProviders: probing,
+        blockedProviders: blocked,
+        unavailableProviders: allIds.filter(id => !providerStatus[id].availableForNewWork),
+        providerStatus,
+        admissionBasis: 'circuit-breaker-and-active-durable-rate-limit',
         lastUpdated: Date.now(),
-        systemStatus: limited.length > allIds.length / 2 ? 'degraded' : 'healthy',
+        systemStatus: available.length < allIds.length / 2 ? 'degraded' : 'healthy',
       },
     };
   });
@@ -922,11 +978,18 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
 
     const states = await sharedState.getAllAgentStates();
     const sessionActivity = await analyzeSessionActivity();
-    const pushedAgentMap = new Map<string, { status: string; currentTask: string | null }>();
+    const pushedAgentMap = new Map<string, ProviderPushEvidence>();
     for (const pr of getPushReports()) {
       for (const a of pr.agents) {
-        if (!pushedAgentMap.has(a.id)) {
-          pushedAgentMap.set(a.id, { status: a.status ?? 'idle', currentTask: a.currentTask ?? null });
+        const existing = pushedAgentMap.get(a.id);
+        if (!existing || Date.parse(pr.ts) > Date.parse(existing.reportedAt)) {
+          pushedAgentMap.set(a.id, {
+            status: a.status ?? 'idle',
+            currentTask: a.currentTask ?? null,
+            taskId: a.taskId,
+            since: a.since,
+            reportedAt: pr.ts,
+          });
         }
       }
     }
@@ -978,16 +1041,68 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     ).all() as any[];
     const fail24hMap = new Map(fail24hRows.map((r: any) => [r.assigned_to, r.cnt as number]));
 
-    // 실제 실행 중인 태스크 조회 (running, streaming, assigned)
+    // 실행 상태는 status 문자열만으로 신뢰하지 않는다. 실행 lease와 최근 heartbeat/activity가
+    // 모두 살아 있는 running/streaming 행만 provider가 실제 작업 중이라는 T1 근거다.
+    // assigned는 큐 소유권, reviewing은 후속 품질 단계이므로 실행 중으로 표시하지 않는다.
     const activeTasks = db.prepare(
-      "SELECT assigned_to, id, prompt, status FROM tasks WHERE status IN ('running','streaming','assigned') ORDER BY created_at DESC"
+      `WITH ranked_live AS (
+         SELECT assigned_to, id, prompt, status, created_at,
+                ROW_NUMBER() OVER (
+                  PARTITION BY assigned_to
+                  ORDER BY MAX(
+                             COALESCE(julianday(last_activity_at), 0),
+                             COALESCE(julianday(last_heartbeat_at), 0),
+                             COALESCE(julianday(updated_at), 0),
+                             COALESCE(julianday(created_at), 0)
+                           ) DESC,
+                           rowid DESC
+                ) AS live_rank
+         FROM tasks
+         WHERE assigned_to IS NOT NULL
+           AND status IN ('running','streaming')
+           AND lease_expires_at IS NOT NULL
+           AND datetime(lease_expires_at) > datetime('now')
+           AND MAX(
+                 COALESCE(julianday(last_activity_at), 0),
+                 COALESCE(julianday(last_heartbeat_at), 0),
+                 COALESCE(julianday(updated_at), 0),
+                 COALESCE(julianday(created_at), 0)
+               ) > julianday('now', '-${DASHBOARD_LIVE_ACTIVITY_SECONDS} seconds')
+       )
+       SELECT assigned_to, id, prompt, status, created_at
+       FROM ranked_live
+       WHERE live_rank=1`
     ).all() as any[];
-    const activeMap = new Map<string, { id: string; prompt: string; status: string }>();
+    const activeMap = new Map<string, {
+      id: string;
+      prompt: string | null;
+      status: string;
+      created_at: string | null;
+    }>();
     for (const t of activeTasks) {
       if (t.assigned_to && !activeMap.has(t.assigned_to)) {
-        activeMap.set(t.assigned_to, { id: t.id, prompt: t.prompt, status: t.status });
+        activeMap.set(t.assigned_to, {
+          id: t.id,
+          prompt: t.prompt,
+          status: t.status,
+          created_at: t.created_at ?? null,
+        });
       }
     }
+
+    const rawRateRows = db.prepare('SELECT * FROM rate_limit_state').all() as any[];
+    const rawRateMap = new Map(rawRateRows.map(row => [row.agent_id, row]));
+    const activeRateRows = db.prepare(
+      `SELECT agent_id, reason, reset_at, updated_at
+       FROM rate_limit_state WHERE ${ACTIVE_RATE_LIMIT_PREDICATE}`,
+    ).all() as Array<{
+      agent_id: string;
+      reason: string | null;
+      reset_at: string;
+      updated_at: string | null;
+    }>;
+    const activeRateMap = new Map(activeRateRows.map(row => [row.agent_id, row]));
+    const observedAt = new Date().toISOString();
 
     const agents = providers.map(p => {
       const state = states[p.id] as any || {};
@@ -995,25 +1110,33 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const pushed = pushedAgentMap.get(p.id);
       const sessionAct = sessionActivity.get(p.id) ?? sessionActivity.get(`${p.id}-triad`);
 
-      // 우선순위: DB 실행중 태스크 > pushed 상태 > sessionActivity > sharedState > 기본값
-      let agentStatus: string;
-      let currentTask: string | null = null;
-      if (activeTask) {
-        agentStatus = 'working';
-        currentTask = activeTask.prompt?.slice(0, 80) ?? null;
-      } else if (pushed && pushed.status === 'working') {
-        agentStatus = 'working';
-        currentTask = pushed.currentTask;
-      } else if (sessionAct && sessionAct.status === 'working') {
-        agentStatus = 'working';
-        currentTask = sessionAct.lastMsgText?.slice(0, 80) ?? null;
-      } else {
-        const rawStatus = state.status as string | undefined;
-        agentStatus = rawStatus === 'working' ? 'working'
-          : rawStatus === 'idle' ? 'idle'
-          : 'online'; // enabled 에이전트는 online
-        currentTask = state.currentTask ?? null;
-      }
+      const work = resolveProviderWorkStatus({
+        liveTask: activeTask
+          ? {
+              id: activeTask.id,
+              prompt: activeTask.prompt,
+              status: activeTask.status,
+              observedAt: activeTask.created_at,
+            }
+          : null,
+        pushed,
+        session: sessionAct
+          ? {
+              status: sessionAct.status,
+              currentTask: sessionAct.lastMsgText?.slice(0, 80) ?? null,
+              observedAt: sessionAct.lastMsgTs || null,
+              ageMs: sessionAct.lastMsgAge,
+              source: sessionAct.statusSource,
+            }
+          : null,
+        sharedStatus: state.status,
+      });
+      let agentStatus: string = work.status === 'working'
+        ? 'working'
+        : work.status === 'idle'
+          ? 'idle'
+          : 'online';
+      const currentTask = work.currentTask;
 
       const stats = taskMap.get(p.id) as any;
       const taskCount = stats?.total || 0;
@@ -1022,7 +1145,30 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       const avgDurationMs = stats?.avg_ms ? Math.round(stats.avg_ms) : 0;
       // CircuitBreaker 상태 수집 — registry가 단일 진실원 (구 sandbox breaker는 registry와 불일치, kangnote 2026-07-02 보고)
       const cb = circuitBreakerRegistry.getSnapshot(p.id);
-      const availability = circuitBreakerRegistry.getAvailability(p.id);
+      const circuitAvailability = circuitBreakerRegistry.getAvailability(p.id);
+      const activeRate = activeRateMap.get(p.id);
+      const durableRateLimit: DurableRateLimitEvidence | null = activeRate
+        ? {
+            resetAt: activeRate.reset_at,
+            reason: activeRate.reason,
+            updatedAt: activeRate.updated_at,
+          }
+        : null;
+      const availability = durableRateLimit
+        ? {
+            ...circuitAvailability,
+            status: 'gated:rate-limit' as const,
+            available: false,
+            reason: 'rate-limit' as const,
+            cooldownUntil: durableRateLimit.resetAt,
+          }
+        : circuitAvailability;
+      const rawRate = rawRateMap.get(p.id);
+      const limit = resolveProviderLimitStatus({
+        availability,
+        durableRateLimit,
+        staleRecord: Number(rawRate?.is_limited) === 1 && !durableRateLimit,
+      });
       // 마지막 실패 이유: DB 태스크 response에서 추출
       const rawLastError = lastFailMap.get(p.id) ?? null;
       const lastError = rawLastError
@@ -1037,7 +1183,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       };
 
       // CB=OPEN 시 status를 'error'로 오버라이드 (kangnote-claude-1 버그 보고 반영)
-      if (circuitState === 'open' && agentStatus !== 'working') {
+      if (
+        (limit.status === 'limited' || limit.status === 'blocked' || limit.status === 'inconsistent')
+        && work.status !== 'working'
+      ) {
         agentStatus = 'error';
       }
 
@@ -1048,6 +1197,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         name: p.name || p.id,
         role: p.role || 'Agent',
         score: (p as any).score ?? 80,
+        type: (p as any).type || 'cli',
         running: true,
         currentTask,
         enabled: true,
@@ -1057,6 +1207,10 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         p95LatencyMs,
         failedLast24h: fail24hMap.get(p.id) ?? 0,
         status: agentStatus,
+        observedAt,
+        work,
+        limit,
+        guidance: providerOperationalGuidance(work, limit),
         health,
         gate: {
           status: availability.status,
@@ -1067,7 +1221,15 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
       };
     });
 
-    return { agents };
+    return {
+      agents,
+      meta: {
+        observedAt,
+        workFreshnessMs: 3 * 60_000,
+        workEvidence: 'lease-backed-task-or-fresh-push',
+        limitEvidence: 'circuit-breaker-and-active-durable-rate-limit',
+      },
+    };
   });
 
   // ── 24h 실패 히트맵 (nova-macstudio-claude-2 제안) ─────────────

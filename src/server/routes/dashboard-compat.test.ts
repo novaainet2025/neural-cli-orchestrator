@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import fastify from 'fastify';
+import Database from 'better-sqlite3';
 
 // Mock setInterval to prevent background timer from hanging the test process
 vi.spyOn(global, 'setInterval').mockImplementation(() => {
   return {} as any;
 });
 
-const { dbAll, dbGet, dbPrepare, getDb, readdirSync, readFileSync, statSync, execFileAsyncMock, listProviders, getP95Latency, getAvailability } = vi.hoisted(() => {
-  const dbAll = vi.fn(() => []);
+const { dbAll, dbGet, dbPrepare, getDb, readdirSync, readFileSync, statSync, execFileAsyncMock, listProviders, listEnabledIds, getP95Latency, getAvailability, getAllAgentStates } = vi.hoisted(() => {
+  const dbAll = vi.fn<() => any[]>(() => []);
   const dbGet = vi.fn(() => ({ c: 0 }));
-  const dbPrepare = vi.fn(() => ({
+  const dbPrepare = vi.fn((_sql: string) => ({
     all: dbAll,
     get: dbGet,
     run: vi.fn(),
@@ -48,7 +49,9 @@ const { dbAll, dbGet, dbPrepare, getDb, readdirSync, readFileSync, statSync, exe
       return { stdout: 'ok', stderr: '' };
     }),
     listProviders: vi.fn(() => [{ id: 'codex', name: 'Codex', role: 'Engineer', enabled: true }]),
+    listEnabledIds: vi.fn(() => ['codex']),
     getP95Latency: vi.fn(() => 100),
+    getAllAgentStates: vi.fn(async () => ({})),
     getAvailability: vi.fn(() => ({
       status: 'gated:rate-limit',
       reason: 'rate-limit',
@@ -66,7 +69,7 @@ vi.mock('../../storage/database.js', () => ({
 // Mock sharedState
 vi.mock('../../core/shared-state.js', () => ({
   sharedState: {
-    getAllAgentStates: vi.fn(async () => ({})),
+    getAllAgentStates,
     setAgentState: vi.fn(),
   },
 }));
@@ -75,7 +78,7 @@ vi.mock('../../core/shared-state.js', () => ({
 vi.mock('../../agent/agent-manager.js', () => ({
   agentManager: {
     listProviders,
-    listEnabledIds: vi.fn(() => []),
+    listEnabledIds,
     getP95Latency,
   },
 }));
@@ -134,6 +137,16 @@ describe('dashboard-compat routes', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    dbAll.mockReturnValue([]);
+    dbGet.mockReturnValue({ c: 0 });
+    dbPrepare.mockImplementation((_sql: string) => ({
+      all: dbAll,
+      get: dbGet,
+      run: vi.fn(),
+    }));
+    listProviders.mockReturnValue([{ id: 'codex', name: 'Codex', role: 'Engineer', enabled: true }]);
+    listEnabledIds.mockReturnValue(['codex']);
+    getAllAgentStates.mockResolvedValue({});
     app = fastify({ logger: false });
     await registerDashboardRoutes(app);
   });
@@ -217,6 +230,140 @@ describe('dashboard-compat routes', () => {
         reason: 'rate-limit',
         available: false,
         cooldownUntil: '2026-07-03T00:00:00.000Z',
+      });
+      expect(data.agents[0].limit).toMatchObject({
+        status: 'inconsistent',
+        limited: null,
+        availableForNewWork: false,
+      });
+      expect(data.agents[0].guidance).toContain('만료 시각과 모순');
+      expect(data.meta.workFreshnessMs).toBe(180000);
+    });
+
+    it('does not trust stale shared working state as active execution', async () => {
+      getAllAgentStates.mockResolvedValueOnce({
+        codex: { status: 'working', currentTask: 'task-stale' },
+      } as any);
+
+      const response = await app.inject({ method: 'GET', url: '/api/agents' });
+      const [codex] = JSON.parse(response.payload).agents;
+
+      expect(codex.work).toMatchObject({
+        status: 'unknown',
+        active: null,
+        freshness: 'stale',
+        evidence: 'stale-working-signal',
+      });
+      expect(codex.currentTask).toBeNull();
+    });
+
+    it('reports only lease-backed fresh execution as working', async () => {
+      dbPrepare.mockImplementation((sql: string) => ({
+        all: vi.fn(() => sql.includes('WITH ranked_live AS')
+          ? [{
+              assigned_to: 'codex',
+              id: 'task-live',
+              prompt: 'verified live work',
+              status: 'running',
+              created_at: '2026-08-03T02:59:00.000Z',
+            }]
+          : []),
+        get: dbGet,
+        run: vi.fn(),
+      }));
+
+      const response = await app.inject({ method: 'GET', url: '/api/agents' });
+      const [codex] = JSON.parse(response.payload).agents;
+
+      expect(codex.status).toBe('working');
+      expect(codex.currentTask).toBe('verified live work');
+      expect(codex.work).toMatchObject({
+        status: 'working',
+        active: true,
+        evidence: 'lease-backed-task',
+        taskId: 'task-live',
+      });
+      expect(codex.guidance).toContain('기존 작업은 진행 중');
+    });
+
+    it('filters assigned, reviewing, expired-lease, and stale running rows in SQLite', async () => {
+      await app.inject({ method: 'GET', url: '/api/agents' });
+      const liveSql = dbPrepare.mock.calls
+        .map(([sql]) => String(sql))
+        .find(sql => sql.includes('WITH ranked_live AS'))!;
+      const sqlite = new Database(':memory:');
+      try {
+        sqlite.exec(`
+          CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            assigned_to TEXT,
+            prompt TEXT,
+            status TEXT,
+            last_activity_at TEXT,
+            last_heartbeat_at TEXT,
+            updated_at TEXT,
+            created_at TEXT,
+            lease_expires_at TEXT
+          );
+          INSERT INTO tasks VALUES
+            ('assigned', 'codex', 'queued only', 'assigned', datetime('now'), datetime('now'), datetime('now'), datetime('now'), datetime('now', '+90 seconds')),
+            ('reviewing', 'codex', 'quality stage', 'reviewing', datetime('now'), datetime('now'), datetime('now'), datetime('now'), datetime('now', '+90 seconds')),
+            ('expired', 'codex', 'expired lease', 'running', datetime('now'), datetime('now'), datetime('now'), datetime('now'), datetime('now', '-1 second')),
+            ('stale', 'codex', 'stale heartbeat', 'running', datetime('now', '-10 minutes'), datetime('now', '-10 minutes'), datetime('now', '-10 minutes'), datetime('now', '-10 minutes'), datetime('now', '+90 seconds')),
+            ('live', 'ollama', 'live runtime', 'running', datetime('now'), datetime('now'), datetime('now'), datetime('now'), datetime('now', '+90 seconds'));
+        `);
+
+        const rows = sqlite.prepare(liveSql).all() as Array<Record<string, unknown>>;
+        expect(rows).toHaveLength(1);
+        expect(rows[0]).toMatchObject({
+          assigned_to: 'ollama',
+          id: 'live',
+          prompt: 'live runtime',
+          status: 'running',
+        });
+      } finally {
+        sqlite.close();
+      }
+    });
+  });
+
+  describe('GET /api/rate-limits/state', () => {
+    it('marks expired raw rows stale without reporting a current limit', async () => {
+      dbPrepare.mockImplementation((sql: string) => ({
+        all: vi.fn(() => {
+          if (sql === 'SELECT * FROM rate_limit_state') {
+            return [{
+              agent_id: 'codex',
+              is_limited: 1,
+              reason: 'quota',
+              reset_at: '2026-07-01 00:00:00',
+              updated_at: '2026-07-01 00:00:00',
+            }];
+          }
+          return [];
+        }),
+        get: dbGet,
+        run: vi.fn(),
+      }));
+      getAvailability.mockReturnValueOnce({
+        agentId: 'codex',
+        status: 'available',
+        reason: null,
+        available: true,
+        cooldownUntil: null,
+        circuitState: 'closed',
+      } as any);
+
+      const response = await app.inject({ method: 'GET', url: '/api/rate-limits/state' });
+      const state = JSON.parse(response.payload).state;
+
+      expect(state.providers.codex).toMatchObject({ currentlyLimited: false, stale: true });
+      expect(state.limitedProviders).toEqual([]);
+      expect(state.availableProviders).toEqual(['codex']);
+      expect(state.providerStatus.codex).toMatchObject({
+        status: 'available',
+        limited: false,
+        staleRecord: true,
       });
     });
   });
