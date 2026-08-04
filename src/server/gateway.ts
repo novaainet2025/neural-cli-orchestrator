@@ -88,6 +88,7 @@ import { stripEchoLines } from '../utils/echo-filter.js';
 import { recordTeamDiagnosticOutcome } from '../core/team-scorer.js';
 import { refreshWorkReportPromptSnapshot } from '../core/work-report-scheduler.js';
 import { registerTriadRoutes } from './routes/triad.js';
+import { registerExternalPtyRoutes } from './routes/external-pty.js';
 import { markTaskQualityRejected } from './task-quality-state.js';
 import { readRetryCount, reserveRetry, rollbackRetryReservation } from './retry-budget.js';
 import { buildConductorDiscussionOptions } from './conductor-dispatch.js';
@@ -6177,6 +6178,7 @@ export async function createGateway(): Promise<NcoGateway> {
   await registerCliQaRoutes(app);
 
   await registerTriadRoutes(app);
+  await registerExternalPtyRoutes(app);
   registerGoalsRoutes(app);
   registerPerformanceRoutes(app);
   registerPerformanceFlowRoutes(app);

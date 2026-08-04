@@ -1,6 +1,6 @@
 {
   "name": "neural-cli-orchestrator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "description": "NCO Backend — 9 AI agents working as one team",
