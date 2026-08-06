@@ -3166,6 +3166,8 @@ interface TaskRuntimeEntry {
   shutdownSignal?: string;
   abortReason?: 'cancelled' | 'timeout(idle)' | 'timeout(hardcap)' | 'timeout(first-activity)';
   abortedAt?: number;
+  /** 사망 분기가 처음 관측된 시각. 진단 로그를 한 번만 남기기 위한 것. */
+  deadChildObservedAt?: number;
 }
 
 // ─── TaskQueueManager ─────────────────────────────────
@@ -5331,6 +5333,25 @@ export class TaskQueueManager {
     }
 
     if (runtime.childPid && !alive) {
+      // 이 분기가 실제로 얼마나 발화하는지 남긴다. **표적 귀속을 사후에 확인할 수단이
+      // 없었기 때문이다** — 2026-08-07 실측에서 `hb<=2` lease_expired 658건(96.3%)을
+      // 이 경로로 귀속했는데, 그 시점의 `childPid`·`liveness` 를 아무 데도 기록하지 않아
+      // **정황 일치로만** 판단해야 했다(산출물 0건 · ack→종료 104초 · 같은 창의 쿼터 실패
+      // 95초와 동일 대역). 이제 로그가 남으므로 다음부터는 직접 셀 수 있다.
+      //
+      // 태스크당 한 번만 남긴다. tick 이 15초마다 도는데 매번 찍으면 후처리가 긴 태스크
+      // 하나가 로그를 가득 채운다.
+      if (runtime.deadChildObservedAt == null) {
+        runtime.deadChildObservedAt = now;
+        log.info({
+          taskId: runtime.taskId,
+          agentId: runtime.agentId,
+          childPid: runtime.childPid,
+          sinceStartMs: now - runtime.startedAt,
+          firstOutputObserved: runtime.firstOutputObserved,
+          hadAbort: runtime.abortReason != null,
+        }, '자식 프로세스 사망 관측 — 리스 갱신을 계속한다');
+      }
       runtime.liveness = 'dead';
       // **abort 하면 안 된다.** 프로세스 사망과 태스크 실패는 같지 않다.
       // finalizeRuntime 이 runtimes.delete 를 할 때까지 childPid 가 남으므로,

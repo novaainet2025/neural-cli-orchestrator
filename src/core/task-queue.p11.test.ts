@@ -498,6 +498,15 @@ describe('abort 되감기 구간 리스 갱신 (V)', () => {
     expect(ABORT_UNWIND_GRACE_MS).toBeGreaterThan(LEASE_DURATION_MS);
   });
 
+  it('사망 관측은 태스크당 한 번만 기록한다 — tick 마다 찍으면 로그가 넘친다', () => {
+    // 후처리가 긴 태스크는 15초마다 이 분기를 다시 탄다. 매번 남기면 한 태스크가
+    // 로그를 가득 채워 정작 다른 태스크의 사망을 못 본다.
+    const runtime = makeRuntime({ childPid: 4242, deadChildObservedAt: 1 }) as Record<string, unknown>;
+    expect(runtime['deadChildObservedAt']).toBe(1);
+    const fresh = makeRuntime({ childPid: 4242 }) as Record<string, unknown>;
+    expect(fresh['deadChildObservedAt']).toBeUndefined();
+  });
+
   it('abort 가 없으면 기존 경로 그대로 — 회귀 방지', () => {
     expect(runMonitor(makeRuntime())).toBe(1);
   });
