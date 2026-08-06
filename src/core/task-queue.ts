@@ -5039,10 +5039,18 @@ export class TaskQueueManager {
    * 90초 뒤 sweeper 에게 `lease_expired` 로 죽는다. 큐 대기 상한은 30분
    * (`DEFAULT_QUEUE_WAIT_MAX_MS`)인데 리스가 90초라 상한이 무력화돼 있었다.
    *
-   * kangnote 실측(2026-08-06)이 이 형태와 맞는다 — lease_expired 104건 중 67건이
-   * `heartbeat_seq <= 2` 이고 그중 61건은 하트비트 지속 시간이 **0초**다. 한 번 찍히고
-   * 그 뒤 갱신이 전혀 없다. 수명 중앙값 97초로 리스 90초 직후에 몰린다. 그 무리에
-   * ollama·claude-code 가 많은 것도 맞는다 — 느리거나 concurrency=1 이라 줄이 길다.
+   * **[2026-08-07 정정] 이 수정의 표적은 처음 생각보다 훨씬 작다.**
+   * `hb <= 2` 무리를 이 구간 탓으로 봤는데 실측이 반박했다. 내 라이브 24시간 683건 중
+   * **658건(96.3%)이 `acked_at` 을 갖고 있고** 그중 94.2%가 ack 후 80~120초에 죽는다.
+   * ack 는 `markTaskExecutionStarted` 안에서 일어나고 그 직후 `runtimes.set` 과 첫 flush 가
+   * 이어지므로, **ack 시점에 이미 갱신자가 있다.** 즉 그 658건은 큐 대기가 아니라
+   * **시작 직후 갱신 정지**이고, `monitorRuntime` 의 조기 return(프로세스 사망 분기·abort
+   * 되감기)이 표적이다. 라이브 확인: 현재 `assigned` 5건은 `acked_at`·`lease_expires_at`
+   * 이 **모두 NULL** 이고 `running` 7건은 둘 다 있다 — 대기 중에는 리스가 아예 없다.
+   *
+   * **이 함수가 실제로 덮는 것은 `acked_at` 없이 죽은 25건(3.7%)이다.** 작지만 실재하고,
+   * ack 전 구간에도 리스가 걸린 경로(수동 ack API 등)가 생기면 그때 값을 한다.
+   * 데이터는 맞았고 결론이 틀렸던 사례로 남긴다(kangnote 가 지적).
    *
    * 대기 중에도 owner 는 살아 있으므로 갱신이 옳다. 무한 갱신을 막는 것은 큐 대기 상한이
    * 이미 담당한다 — 그 상한을 넘기면 갱신을 멈춰 sweeper 가 거두게 둔다.
