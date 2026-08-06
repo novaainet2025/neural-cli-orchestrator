@@ -8,9 +8,14 @@ import { discussionEngine } from '../core/discussion-engine.js';
 import { smartRouter } from '../core/smart-router.js';
 import { taskQueue } from '../core/task-queue.js';
 import { attachWorkflowTask, createWorkflowRun } from '../core/workflow-gate.js';
+import { recordWorkEvent } from '../core/work-event-ledger.js';
 import { closeDb, getDb, runMigrations } from '../storage/database.js';
 import { resolveInternalProjectDir } from '../utils/project-dir.js';
-import { createGateway, loadRetryPayload } from './gateway.js';
+import {
+  createGateway,
+  loadRetryPayload,
+  quarantineLegacyNestedAuditTasks,
+} from './gateway.js';
 
 describe.sequential('gateway retry contract', () => {
   const originalDatabasePath = process.env.DATABASE_PATH;
@@ -27,6 +32,17 @@ describe.sequential('gateway retry contract', () => {
     process.env.AX_NCO_SECRET = 'gateway-retry-contract-secret';
     runMigrations();
     await agentManager.init();
+    vi.spyOn(taskQueue, 'getAdmissionMetrics').mockImplementation(async () => (
+      agentManager.listEnabledIds().map(agentId => ({
+        agentId,
+        waiting: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
+        concurrency: 1,
+        mode: 'semaphore' as const,
+      }))
+    ));
     vi.spyOn(taskQueue, 'enqueue').mockResolvedValue({
       success: true,
       output: `done: ${'retry contract verified '.repeat(40)}`,
@@ -90,7 +106,7 @@ describe.sequential('gateway retry contract', () => {
       8,
       JSON.stringify(verifier),
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         allowProviderFailover: true,
         readOnly: true,
         localNetworkAccess: true,
@@ -99,7 +115,6 @@ describe.sequential('gateway retry contract', () => {
         requiredEvidence: ['diff', 'tests'],
         organizationId: 'org-retry-contract',
         workReportId: 'work-report-retry-contract',
-        model: 'retry-model',
       }),
       'retry-root',
     );
@@ -136,7 +151,7 @@ describe.sequential('gateway retry contract', () => {
     expect(child.priority).toBe(8);
     expect(JSON.parse(child.verifier_json ?? 'null')).toEqual(verifier);
     expect(JSON.parse(child.metadata_json ?? '{}')).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       allowProviderFailover: true,
       readOnly: true,
       localNetworkAccess: true,
@@ -145,9 +160,200 @@ describe.sequential('gateway retry contract', () => {
       requiredEvidence: ['diff', 'tests'],
       organizationId: 'org-retry-contract',
       workReportId: 'work-report-retry-contract',
-      model: 'retry-model',
     });
   });
+
+  it('re-resolves an automatic task-type model when retrying on another provider', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'codex', 'failed', ?)
+    `).run(
+      'retry-cross-provider-model',
+      'Retry this code task on the selected provider model.',
+      JSON.stringify({
+        projectDir: resolveInternalProjectDir(),
+        modelSelection: 'task-type',
+        modelTaskType: 'code',
+        model: 'codex',
+        modelResolvedProvider: 'codex',
+      }),
+    );
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/tasks/retry-cross-provider-model/retry',
+      payload: { ai: 'ollama' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const { newTaskId } = response.json() as { newTaskId: string };
+    const child = db.prepare(`
+      SELECT assigned_to, metadata_json
+      FROM tasks
+      WHERE id = ?
+    `).get(newTaskId) as { assigned_to: string; metadata_json: string };
+    const metadata = JSON.parse(child.metadata_json) as Record<string, unknown>;
+
+    expect(child.assigned_to).toBe('ollama');
+    expect(metadata).toMatchObject({
+      modelSelection: 'task-type',
+      modelTaskType: 'code',
+      // ollama 는 2026-08-06 사용자 지시로 최상위 모델 하나에 고정된다(qwen3:30b-a3b 비활성).
+      // 로컬 추론은 모델 전환 재적재 비용이 크고 통합메모리 OOM 위험이 있어, 난이도가
+      // 낮아도 qwen3:30b-a3b 를 쓴다. 다른 프로바이더는 난이도별 자동 선택을 유지한다.
+      model: 'qwen3:30b-a3b',
+      modelResolvedProvider: 'ollama',
+    });
+    expect(metadata).not.toHaveProperty('requestedModel');
+    const queued = vi.mocked(taskQueue.enqueue).mock.calls
+      .find(([task]) => task.taskId === newTaskId)?.[0];
+    expect(queued).toMatchObject({
+      agentId: 'ollama',
+      model: 'qwen3:30b-a3b',
+    });
+  });
+
+  it('preserves a research model task type when a retry re-enters the task gateway', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'codex', 'failed', ?)
+    `).run(
+      'retry-preserves-research-model-task-type',
+      'Research distributed recovery tradeoffs and provide source-backed findings.',
+      JSON.stringify({
+        projectDir: resolveInternalProjectDir(),
+        modelSelection: 'task-type',
+        modelTaskType: 'research',
+        modelWorkload: 'heavy',
+        modelComplexity: 7,
+        modelDifficulty: 8,
+        modelDepth: 7,
+        modelDemandScore: 7,
+        model: 'gpt-5.6-sol',
+        modelResolvedProvider: 'codex',
+      }),
+    );
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/tasks/retry-preserves-research-model-task-type/retry',
+      payload: { ai: 'ollama' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const { newTaskId } = response.json() as { newTaskId: string };
+    const child = db.prepare(`
+      SELECT assigned_to, metadata_json
+      FROM tasks
+      WHERE id = ?
+    `).get(newTaskId) as { assigned_to: string; metadata_json: string };
+    const metadata = JSON.parse(child.metadata_json) as Record<string, unknown>;
+
+    expect(child.assigned_to).toBe('ollama');
+    expect(metadata).toMatchObject({
+      modelSelection: 'task-type',
+      modelTaskType: 'research',
+      modelWorkload: 'heavy',
+      modelComplexity: 7,
+      modelDifficulty: 8,
+      modelDepth: 7,
+      modelDemandScore: 7,
+      model: 'qwen3:30b-a3b',
+      modelResolvedProvider: 'ollama',
+    });
+    const queued = vi.mocked(taskQueue.enqueue).mock.calls
+      .find(([task]) => task.taskId === newTaskId)?.[0];
+    expect(queued).toMatchObject({
+      agentId: 'ollama',
+      model: 'qwen3:30b-a3b',
+      metadata: expect.objectContaining({
+        modelTaskType: 'research',
+        modelWorkload: 'heavy',
+      }),
+    });
+  });
+
+  it('restores the requested explicit model when retrying a dead-letter task', async () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'codex', 'failed', ?)
+    `).run(
+      'retry-dead-letter-explicit-model',
+      'original prompt replaced by the dead-letter payload',
+      JSON.stringify({
+        projectDir: resolveInternalProjectDir(),
+        modelSelection: 'explicit',
+        requestedModel: 'gpt-5.6-sol',
+        model: 'gpt-5.6-sol',
+        modelResolvedProvider: 'codex',
+      }),
+    );
+    db.prepare(`
+      INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
+      VALUES (?, 'codex', ?, 'retry contract')
+    `).run(
+      'retry-dead-letter-explicit-model',
+      'Retry the dead-letter task with its requested model.',
+    );
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/tasks/retry-dead-letter-explicit-model/retry',
+      payload: { ai: 'codex' },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const { newTaskId } = response.json() as { newTaskId: string };
+    const child = db.prepare(`
+      SELECT assigned_to, metadata_json FROM tasks WHERE id=?
+    `).get(newTaskId) as { assigned_to: string; metadata_json: string };
+    expect(child.assigned_to).toBe('codex');
+    expect(JSON.parse(child.metadata_json)).toMatchObject({
+      modelSelection: 'explicit',
+      requestedModel: 'gpt-5.6-sol',
+      model: 'gpt-5.6-sol',
+      modelResolvedProvider: 'codex',
+    });
+  });
+
+  it.each(['task-type', 'provider-default'] as const)(
+    'keeps dead-letter %s model provenance out of the explicit override channel',
+    modelSelection => {
+      const db = getDb();
+      const taskId = `retry-dead-letter-${modelSelection}`;
+      db.prepare(`
+        INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+        VALUES (?, 'task', ?, 'codex', 'failed', ?)
+      `).run(
+        taskId,
+        'original automatic-model prompt',
+        JSON.stringify({
+          projectDir: resolveInternalProjectDir(),
+          modelSelection,
+          modelTaskType: 'code',
+          model: 'codex',
+          modelResolvedProvider: 'codex',
+        }),
+      );
+      db.prepare(`
+        INSERT INTO dead_letter_tasks (task_id, ai, prompt, reason)
+        VALUES (?, 'codex', ?, 'retry contract')
+      `).run(taskId, 'Retry the automatic-model dead-letter task.');
+
+      const payload = loadRetryPayload(db, taskId);
+
+      expect(payload?.model).toBeUndefined();
+      expect(payload?.metadata).toMatchObject({
+        modelSelection,
+        modelTaskType: 'code',
+        modelResolvedProvider: 'codex',
+      });
+      expect(payload?.metadata).not.toHaveProperty('requestedModel');
+    },
+  );
 
   it('uses the internal project directory when the source has none', async () => {
     const db = getDb();
@@ -219,6 +425,209 @@ describe.sequential('gateway retry contract', () => {
 
     const children = getDb().prepare('SELECT id FROM tasks WHERE parent_task_id=?').all(taskId);
     expect(children).toEqual([]);
+  });
+
+  it('keeps a rejected duplicate queue loser non-terminal at the gateway caller', async () => {
+    vi.mocked(taskQueue.enqueue).mockRejectedValueOnce(new Error(
+      'duplicate_execution: task owned elsewhere attempt 0 rejected (duplicate_attempt)',
+    ));
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/task',
+      payload: {
+        ai: 'codex',
+        prompt: 'Exercise the duplicate queue loser contract.',
+        metadata: { projectDir: resolveInternalProjectDir() },
+      },
+    });
+    expect(response.statusCode).toBe(202);
+    const { taskId } = response.json() as { taskId: string };
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(getDb().prepare(`
+      SELECT status, error, completed_at FROM tasks WHERE id=?
+    `).get(taskId)).toEqual({
+      status: 'assigned',
+      error: null,
+      completed_at: null,
+    });
+    expect(getDb().prepare(
+      'SELECT COUNT(*) AS count FROM tasks WHERE parent_task_id=?',
+    ).get(taskId)).toEqual({ count: 0 });
+  });
+
+  it('keeps a duplicate queue loser non-terminal at the conductor caller', async () => {
+    vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
+      mode: 'task',
+      providers: ['codex'],
+      complexity: 1,
+      reasoning: 'duplicate caller contract',
+      tier: 'worker',
+    });
+    vi.mocked(taskQueue.enqueue).mockResolvedValueOnce({
+      success: false,
+      output: '',
+      error: 'duplicate_execution: task owned elsewhere attempt 0 rejected (route_mismatch)',
+      queueOutcome: 'deduplicated',
+    });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/conductor',
+      payload: { prompt: 'Exercise the conductor duplicate loser contract.' },
+    });
+    expect(response.statusCode).toBe(200);
+    const { taskId } = response.json() as { taskId: string };
+    await new Promise(resolve => setImmediate(resolve));
+
+    expect(getDb().prepare(`
+      SELECT status, error, completed_at FROM tasks WHERE id=?
+    `).get(taskId)).toEqual({
+      status: 'assigned',
+      error: null,
+      completed_at: null,
+    });
+  });
+
+  it('fails a Conductor code task that reports completion without a durable workspace mutation', async () => {
+    vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
+      mode: 'task',
+      providers: ['codex'],
+      complexity: 3,
+      reasoning: 'mutation evidence contract',
+      tier: 'brain',
+    });
+    vi.mocked(taskQueue.enqueue).mockResolvedValueOnce({
+      success: true,
+      output: `done: ${'proposed code change without executor mutation '.repeat(40)}`,
+      status: 'completed',
+    });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/conductor',
+      payload: {
+        prompt: 'Implement the Conductor workspace mutation contract.',
+        metadata: { projectDir: resolveInternalProjectDir() },
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const { taskId } = response.json() as { taskId: string };
+
+    await vi.waitFor(() => {
+      expect(getDb().prepare(`
+        SELECT status, error FROM tasks WHERE id=?
+      `).get(taskId)).toEqual({
+        status: 'failed',
+        error: 'workspace_mutation_required',
+      });
+    });
+    const row = getDb().prepare(`
+      SELECT prompt, verifier_json, metadata_json FROM tasks WHERE id=?
+    `).get(taskId) as {
+      prompt: string;
+      verifier_json: string;
+      metadata_json: string;
+    };
+    expect(row.prompt).toContain('[검증기준] (자동 보강)');
+    expect(JSON.parse(row.verifier_json)).toMatchObject({
+      type: 'run',
+      command: 'npm run build',
+    });
+    expect(JSON.parse(row.metadata_json)).toMatchObject({
+      workspaceMutationRequired: true,
+      projectDir: resolveInternalProjectDir(),
+      promptGate: { enriched: true },
+    });
+    const queued = vi.mocked(taskQueue.enqueue).mock.calls
+      .find(([task]) => task.taskId === taskId)?.[0];
+    expect(queued?.prompt).toBe(row.prompt);
+    expect(queued?.verifier).toEqual(JSON.parse(row.verifier_json));
+  });
+
+  it('completes a Conductor code task with task-scoped durable write evidence', async () => {
+    vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
+      mode: 'task',
+      providers: ['codex'],
+      complexity: 3,
+      reasoning: 'durable mutation evidence contract',
+      tier: 'brain',
+    });
+    vi.mocked(taskQueue.enqueue).mockImplementationOnce(async queued => {
+      recordWorkEvent({
+        source: 'event-bus',
+        sourceEventId: `mutation-${queued.taskId}`,
+        eventType: 'action:writeFile',
+        eventKey: `mutation:${queued.taskId}`,
+        title: 'AgentToolExecutor writeFile',
+        taskId: queued.taskId,
+        detail: {
+          type: 'action:writeFile',
+          success: true,
+          args: { path: 'src/conductor-mutation.ts' },
+        },
+      });
+      return {
+        success: true,
+        output: `done: ${'durable Conductor mutation and verifier passed '.repeat(40)}`,
+        status: 'completed',
+      };
+    });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/conductor',
+      payload: {
+        prompt: 'Implement the durable Conductor workspace mutation contract.',
+        metadata: { projectDir: resolveInternalProjectDir() },
+      },
+    });
+    const { taskId } = response.json() as { taskId: string };
+
+    await vi.waitFor(() => {
+      expect(getDb().prepare('SELECT status, error FROM tasks WHERE id=?').get(taskId))
+        .toEqual({ status: 'completed', error: null });
+    });
+  });
+
+  it('keeps an explicit read-only Conductor task completion mutation-free', async () => {
+    vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
+      mode: 'task',
+      providers: ['codex'],
+      complexity: 3,
+      reasoning: 'read-only conductor contract',
+      tier: 'brain',
+    });
+    vi.mocked(taskQueue.enqueue).mockResolvedValueOnce({
+      success: true,
+      output: `done: ${'read-only Conductor inspection verified '.repeat(40)}`,
+      status: 'completed',
+    });
+
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/conductor',
+      payload: {
+        prompt: 'Inspect the Conductor code path and report its current behavior.',
+        metadata: {
+          projectDir: resolveInternalProjectDir(),
+          readOnly: true,
+        },
+      },
+    });
+    const { taskId } = response.json() as { taskId: string };
+
+    await vi.waitFor(() => {
+      expect(getDb().prepare('SELECT status, error FROM tasks WHERE id=?').get(taskId))
+        .toEqual({ status: 'completed', error: null });
+    });
+    const row = getDb().prepare(`
+      SELECT verifier_json, metadata_json FROM tasks WHERE id=?
+    `).get(taskId) as { verifier_json: string | null; metadata_json: string };
+    expect(row.verifier_json).toBeNull();
+    expect(JSON.parse(row.metadata_json)).toMatchObject({ readOnly: true });
+    expect(JSON.parse(row.metadata_json)).not.toHaveProperty('workspaceMutationRequired');
   });
 
   it('applies workflow and quality gates to a task completed by startup recovery', async () => {
@@ -384,6 +793,68 @@ describe.sequential('gateway retry contract', () => {
     }
   });
 
+  it.each([4, 5])(
+    'preserves the router task decision and workflow stages at complexity %i',
+    async complexity => {
+      const discussionStart = vi.spyOn(discussionEngine, 'startDiscussion');
+      discussionStart.mockClear();
+      vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
+        mode: 'task',
+        providers: ['codex'],
+        complexity,
+        reasoning: `single-provider complexity ${complexity}`,
+        tier: 'brain',
+      });
+      vi.mocked(taskQueue.enqueue).mockResolvedValueOnce({
+        success: true,
+        output: `done: ${'single-provider router decision preserved '.repeat(40)}`,
+        status: 'completed',
+      });
+
+      const response = await server.inject({
+        method: 'POST',
+        url: '/api/conductor',
+        payload: {
+          prompt: `Summarize the routed item at complexity ${complexity}.`,
+          metadata: { readOnly: true },
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as {
+        taskId: string;
+        mode: string;
+        workflowRunId: string;
+        workflowStage: string;
+        requiredStages: string[];
+      };
+      expect(body).toMatchObject({
+        mode: 'task',
+        workflowStage: 'implementation',
+        requiredStages: [],
+      });
+      expect(discussionStart).not.toHaveBeenCalled();
+      expect(taskQueue.enqueue).toHaveBeenCalledWith(expect.objectContaining({
+        taskId: body.taskId,
+        agentId: 'codex',
+      }));
+
+      await vi.waitFor(() => {
+        expect(getDb().prepare('SELECT status FROM tasks WHERE id=?').get(body.taskId))
+          .toEqual({ status: 'completed' });
+      });
+      expect(getDb().prepare(`
+        SELECT stage, status, required FROM workflow_stages
+        WHERE workflow_run_id=? AND stage IN ('discussion', 'design', 'implementation')
+        ORDER BY ordinal
+      `).all(body.workflowRunId)).toEqual([
+        { stage: 'discussion', status: 'skipped', required: 0 },
+        { stage: 'design', status: 'skipped', required: 0 },
+        { stage: 'implementation', status: 'completed', required: 1 },
+      ]);
+    },
+  );
+
   it('gates a Conductor discussion synthesis as the audited design artifact', async () => {
     vi.spyOn(smartRouter, 'dispatch').mockResolvedValueOnce({
       mode: 'discussion',
@@ -407,6 +878,7 @@ describe.sequential('gateway retry contract', () => {
       rationale: 'Cross-evaluated synthesis selected by consensus.',
       dissentingOpinions: [],
       totalDurationMs: 1_200,
+      evaluatorCount: 0,
     });
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(new Response('{}', { status: 409 }))
@@ -487,14 +959,14 @@ describe.sequential('gateway retry contract', () => {
       planId: 'kanban-intake-plan',
       agentId: 'codex',
       prompt: 'Implement and verify the Kanban canonical intake contract.',
-      model: 'kanban-intake-model',
+      model: 'gpt-5.6-sol',
       systemPrompt: 'Use the persisted Kanban execution contract.',
       timeoutMs: 240_000,
       priority: 7,
       verifier: { type: 'run', command: 'true', timeoutMs: 12_000 },
       requiredEvidence: ['tests'],
       metadata: {
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         readOnly: true,
       },
     });
@@ -527,12 +999,12 @@ describe.sequential('gateway retry contract', () => {
       timeoutMs: 12_000,
     });
     expect(JSON.parse(row.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       readOnly: true,
       kanbanTaskId: 'kanban-intake-task',
       kanbanPlanId: 'kanban-intake-plan',
       allowProviderFailover: true,
-      model: 'kanban-intake-model',
+      model: 'gpt-5.6-sol',
       taskTimeoutMs: 240_000,
       requiredEvidence: ['tests'],
     });
@@ -541,7 +1013,7 @@ describe.sequential('gateway retry contract', () => {
     expect(enqueueCall).toMatchObject({
       taskId,
       agentId: 'codex',
-      model: 'kanban-intake-model',
+      model: 'gpt-5.6-sol',
       timeoutMs: 240_000,
       priority: 7,
       verifier: { type: 'run', command: 'true', timeoutMs: 12_000 },
@@ -665,7 +1137,7 @@ describe.sequential('gateway retry contract', () => {
       JSON.stringify({
         kanbanTaskId: 'kanban-rebind-card',
         kanbanPlanId: 'kanban-rebind-plan',
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
       }),
     );
     db.prepare(`
@@ -1180,12 +1652,12 @@ describe.sequential('gateway retry contract', () => {
       url: '/api/task',
       payload: {
         ai: 'codex',
-        model: 'recovery-contract-model',
+        model: 'gpt-5.6-sol',
         prompt: 'persist canonical restart recovery execution contract',
         priority: 8,
         timeout: 240_000,
         metadata: {
-          projectDir: '/private/tmp',
+          projectDir: tmpdir(),
           readOnly: true,
           localNetworkAccess: false,
           queuePriority: 2,
@@ -1200,16 +1672,16 @@ describe.sequential('gateway retry contract', () => {
     expect(enqueueCall).toMatchObject({
       taskId,
       agentId: 'codex',
-      model: 'recovery-contract-model',
+      model: 'gpt-5.6-sol',
       priority: 8,
       timeoutMs: 240_000,
       metadata: {
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         readOnly: true,
         localNetworkAccess: false,
         queuePriority: 2,
         taskTimeoutMs: 240_000,
-        model: 'recovery-contract-model',
+        model: 'gpt-5.6-sol',
         requestedProvider: 'codex',
       },
     });
@@ -1219,9 +1691,9 @@ describe.sequential('gateway retry contract', () => {
       .get(taskId) as { priority: number; metadata_json: string };
     expect(row.priority).toBe(8);
     expect(JSON.parse(row.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       taskTimeoutMs: 240_000,
-      model: 'recovery-contract-model',
+      model: 'gpt-5.6-sol',
       requestedProvider: 'codex',
       invocationId: enqueueCall?.metadata?.invocationId,
     });
@@ -1260,7 +1732,7 @@ describe.sequential('gateway retry contract', () => {
       'retry-metadata-contract',
       'metadata contract prompt',
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         workflowRunId: 'workflow-retry-contract',
         workflowStage: 'implementation',
         workflowRequired: true,
@@ -1282,7 +1754,7 @@ describe.sequential('gateway retry contract', () => {
 
     const payload = loadRetryPayload(db, 'retry-metadata-contract');
     expect(payload?.metadata).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workflowRunId: 'workflow-retry-contract',
       workflowStage: 'implementation',
       workflowRequired: true,
@@ -1301,6 +1773,65 @@ describe.sequential('gateway retry contract', () => {
     expect(payload?.metadata).not.toHaveProperty('verificationReceiptId');
     expect(payload?.metadata).not.toHaveProperty('attemptedAgents');
     expect(payload?.timeout).toBe(240_000);
+  });
+
+  it('restores the control-plane marker for legacy Nova-AX audit retries', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'cursor-agent', 'failed', ?)
+    `).run(
+      'legacy-audit-retry-contract',
+      'legacy audit prompt',
+      JSON.stringify({
+        projectDir: tmpdir(),
+        workReportId: 'completion_audit_task_subject-1',
+        workflowStage: 'implementation',
+      }),
+    );
+
+    const payload = loadRetryPayload(db, 'legacy-audit-retry-contract');
+    expect(payload?.metadata).toMatchObject({
+      workReportId: 'completion_audit_task_subject-1',
+      auditControlPlane: true,
+      scoreEligible: false,
+    });
+  });
+
+  it('quarantines a legacy recursively-gated audit task without approving it', () => {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO tasks (id, mode, prompt, assigned_to, status, metadata_json)
+      VALUES (?, 'task', ?, 'cursor-agent', 'reviewing', ?)
+    `).run(
+      'legacy-nested-audit-reviewing',
+      'legacy nested audit prompt',
+      JSON.stringify({
+        workReportId: 'remediation_vloop_subject-1_1',
+        verificationStatus: 'pending',
+      }),
+    );
+
+    expect(quarantineLegacyNestedAuditTasks(10, db)).toBe(1);
+    const task = db.prepare(`
+      SELECT status, completed_at, error, metadata_json
+      FROM tasks WHERE id=?
+    `).get('legacy-nested-audit-reviewing') as {
+      status: string;
+      completed_at: string | null;
+      error: string | null;
+      metadata_json: string;
+    };
+    expect(task.status).toBe('cancelled');
+    // cancelled is terminal and therefore receives a terminal timestamp; the
+    // safety invariant is that quarantine never reports the task as completed.
+    expect(task.completed_at).not.toBeNull();
+    expect(task.error).toMatch(/legacy nested audit-control task quarantined/);
+    expect(JSON.parse(task.metadata_json)).toMatchObject({
+      auditControlPlane: true,
+      scoreEligible: false,
+      verificationStatus: 'pending',
+    });
   });
 
   it('collapses a legacy nested retry chain onto the oldest existing root', async () => {
@@ -1361,7 +1892,7 @@ describe.sequential('gateway retry contract', () => {
   it('returns an active work-report sibling without consuming retry budget', async () => {
     const db = getDb();
     const metadata = JSON.stringify({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workReportId: 'work-report-dedup-contract',
     });
     db.prepare(`
@@ -1418,7 +1949,7 @@ describe.sequential('gateway retry contract', () => {
       9,
       JSON.stringify(verifier),
       JSON.stringify({
-        projectDir: '/private/tmp',
+        projectDir: tmpdir(),
         workflowRunId,
         workflowStage: 'implementation',
         workflowRequired: false,
@@ -1472,7 +2003,7 @@ describe.sequential('gateway retry contract', () => {
     });
     expect(JSON.parse(child.verifier_json)).toEqual(verifier);
     expect(JSON.parse(child.metadata_json)).toMatchObject({
-      projectDir: '/private/tmp',
+      projectDir: tmpdir(),
       workflowRunId,
       workflowStage: 'implementation',
       workflowRequired: false,

@@ -12,7 +12,11 @@ describe.sequential('gateway API token auth', () => {
   });
 
   afterAll(async () => {
-    await server.close();
+    // beforeAll 이 죽으면 이 변수가 undefined 인데 close 를 부르면
+    // `Cannot read properties of undefined (reading 'close')` 가 나서
+    // **원인 실패가 연쇄 실패에 가려진다**(kangnote 실측 2026-08-07: 훅 타임아웃
+    // 15건에 딸린 afterAll 오류 4건). 가드를 두면 진짜 원인만 남는다.
+    if (server) await server.close();
     if (previousToken === undefined) delete process.env.NCO_API_TOKEN;
     else process.env.NCO_API_TOKEN = previousToken;
   });

@@ -1,0 +1,23 @@
+{
+  // 배포용 빌드. 테스트를 dist 에 넣지 않는다.
+  //
+  // 왜. 초판 배포물은 테스트 218개(dist JS 491개 중 44%)를 실으면서 그것을 올바르게
+  // 실행하는 데 필요한 것(vitest.config·tests/setup·소스 .ts)은 하나도 안 실었다.
+  // 그래서 배포본으로 테스트를 돌린 외부 검증자가 **반드시 오진한다** — kangnote 실측
+  // 2026-08-07: 27건 실패 중 20건이 하네스 부재로 인한 가짜 실패였다(hookTimeout 15,
+  // afterAll 연쇄 4, 프로젝트 디렉터리 1). 하네스를 동봉해도 못 고친다:
+  // `tests/setup/isolate-db.ts` 가 `../../src/storage/database.js` 를 동적 import 하는데
+  // 배포본에 `src/` 가 없다.
+  //
+  // 테스트는 저장소에서 `npm test` 로 돌린다(vitest 가 src/**/*.test.ts 를 직접 읽는다).
+  // 이 파일은 배포물만 좁힌다.
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "src/client",
+    "src/server/middleware",
+    "src/**/*.test.ts"
+  ]
+}

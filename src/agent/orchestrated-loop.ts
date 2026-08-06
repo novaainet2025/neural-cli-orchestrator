@@ -1,5 +1,5 @@
 import { execa } from 'execa';
-import { existsSync, readFileSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
 import { AgentToolExecutor } from './agent-tools.js';
@@ -10,12 +10,28 @@ import { sharedState } from '../core/shared-state.js';
 import { taskQueue } from '../core/task-queue.js';
 import { createLogger } from '../utils/logger.js';
 import type { ProviderConfig } from '../utils/config.js';
+import {
+  resolveProviderRuntime,
+  type ModelSelectionSource,
+} from '../core/provider-catalog.js';
 import { buildOrchestrationSystemPrompt, buildCompactSystemPrompt } from './nco-orchestration-prompt.js';
+import { forbidsTools } from './tool-policy.js';
 import { trajectoryGuard } from '../security/trajectory-guard.js';
-import { circuitBreakerRegistry } from '../security/circuit-breaker-registry.js';
+import { circuitBreakerRegistry, classifyCircuitError } from '../security/circuit-breaker-registry.js';
 import { ECHO_LINE_RE } from '../utils/echo-filter.js';
-import { buildProviderProcessEnv } from './provider-process-env.js';
+import { applyOpenCodeOrchestrationIsolation, buildProviderProcessEnv } from './provider-process-env.js';
 import { CodexSubagentTracker } from '../core/subagent-service.js';
+import {
+  chooseOrchestrationOutput,
+  decideToolFreeOrchestrationResponse,
+  MAX_ORCHESTRATION_ITERATIONS,
+} from './orchestration-completion.js';
+import { formatToolOutput } from './orchestration-tool-output.js';
+import { SchemaAdvisor } from './schema-advisor.js';
+import {
+  requireProviderRateLimitAdmission,
+  resolveProviderRateLimitAdmission,
+} from '../core/rate-limit-state.js';
 
 const log = createLogger('orchestrated-loop');
 
@@ -31,9 +47,49 @@ const QUOTA_ECHO_EXTRA_RE = /^\s*[+-]{1,3}\s|["'`][^"'`]*(?:usage limit|quota|ra
 // 동일 기준). 근거: 오탐 3세대 실측 — fleet에코(1784110597975) → 분류기 소스에코(1784111153688)
 // → 수정 정규식 자기참조(1784112187354).
 
-const MAX_ITERATIONS = 10;
 const MAX_HISTORY_TURNS = 10;
-const MAX_OUTPUT_LEN = 2500;
+// 2.5KB pages forced 9-10 model round trips for an ordinary 20-25KB source file.
+// 8KB keeps the 10-turn history bounded while bringing Type B agents closer to
+// the 16KB native API-tool path and materially reducing CLI latency/cost.
+const MAX_OUTPUT_LEN = 8000;
+// Keep one full capped tool page per retained turn, plus room for the original
+// task and assistant XML/final responses. The former 40KB bound dropped early
+// required evidence after five or six reads once tool pages grew to 8KB.
+export const MAX_ORCHESTRATED_HISTORY_CHARS = MAX_OUTPUT_LEN * MAX_HISTORY_TURNS + 16_000;
+
+export function trimOrchestratedConversationHistory(
+  history: Array<{ role: string; content: string }>,
+  maxTurns = MAX_HISTORY_TURNS,
+  maxContextChars = MAX_ORCHESTRATED_HISTORY_CHARS,
+): void {
+  const maxLen = 1 + maxTurns * 2;
+  const contextChars = () => history.reduce(
+    (total, message) => total + message.role.length + message.content.length + 8,
+    0,
+  );
+
+  // Preserve the first user message and remove complete assistant/result pairs
+  // so a tool call is never separated from its result.
+  while (
+    (history.length > maxLen || contextChars() > maxContextChars)
+    && history.length > 3
+  ) {
+    history.splice(1, 2);
+  }
+
+  const latest = history.at(-1);
+  if (latest?.role === 'user' && contextChars() > maxContextChars) {
+    const charsWithoutLatest = contextChars() - latest.content.length;
+    const available = Math.max(0, maxContextChars - charsWithoutLatest);
+    if (latest.content.length > available) {
+      const omitted = latest.content.length - available;
+      const marker = `\n\n... (history truncated ${omitted} chars)\nContinue your work.`;
+      latest.content = available > marker.length
+        ? latest.content.slice(0, available - marker.length) + marker
+        : marker.slice(0, available);
+    }
+  }
+}
 
 // Strip ANSI escape codes from CLI output (opencode, etc. emit color codes)
 // eslint-disable-next-line no-control-regex
@@ -66,10 +122,59 @@ function extractOpenCodeText(stdout: string): string | undefined {
   return parsedAnyLine ? textParts.join('') : undefined;
 }
 
-// Providers that handle prompt as CLI args — do NOT send via stdin
-const NO_STDIN_PROVIDERS = new Set(['codex', 'hermes', 'cursor-agent', 'agy']);
-// hermes는 codex CLI 백엔드로 실행되므로 codex와 동일한 stdin/output-last-message 규칙을 따른다.
-const CODEX_FAMILY = new Set(['codex', 'hermes']);
+/**
+ * Recover the model-visible assistant text from `codex exec --json` output.
+ *
+ * Codex can emit a non-empty agent_message containing an NCO XML tool call and
+ * then finish with an empty agent_message. In that case --output-last-message
+ * is empty, while parsing the raw JSONL as plain text leaves XML quotes escaped
+ * and makes the tool call invisible to parseToolCalls().
+ */
+export function extractCodexJsonlAgentText(stdout: string): string | undefined {
+  let lastNonEmpty: string | undefined;
+
+  for (const line of stripAnsi(stdout).split(/\r?\n/)) {
+    if (!line.trim()) continue;
+
+    try {
+      const event = JSON.parse(line);
+      const text = event?.type === 'item.completed'
+        && event.item?.type === 'agent_message'
+        && typeof event.item.text === 'string'
+        ? event.item.text.trim()
+        : '';
+      if (text) lastNonEmpty = text;
+    } catch {
+      // Formatted/non-JSON stdout keeps using the existing raw fallback.
+    }
+  }
+
+  return lastNonEmpty;
+}
+
+// Codex-family providers are Type B: NCO, not the nested CLI, owns tool execution.
+// Ignore personal/project MCP state and remove native shell/subagent/web tools so the
+// model emits NCO XML calls for AgentToolExecutor. Read-only is defense in depth for
+// native file tools that the CLI may still expose. Auth remains available with
+// --ignore-user-config (Codex CLI contract; verified against 0.146.0).
+const CODEX_ORCHESTRATED_ISOLATION_ARGS = [
+  '--ignore-user-config',
+  '--ignore-rules',
+  '--ephemeral',
+  '-c', 'mcp_servers={}',
+  '-c', 'features.shell_tool=false',
+  '-c', 'features.unified_exec=false',
+  '-c', 'agents.enabled=false',
+  '-c', 'web_search="disabled"',
+  '--sandbox', 'read-only',
+] as const;
+
+let openCodeIsolatedConfigHome: string | undefined;
+
+function getOpenCodeIsolatedConfigHome(): string {
+  openCodeIsolatedConfigHome ??= mkdtempSync(joinPath(tmpdir(), 'nco-opencode-config-'));
+  return openCodeIsolatedConfigHome;
+}
 
 interface LoopResult {
   output: string;
@@ -86,60 +191,71 @@ interface LoopResult {
  * 이어지는지 독립적으로 검증할 수 있게 순수 함수로 유지한다.
  */
 export function buildOrchestratedCliArgs(
-  provider: Pick<ProviderConfig, 'id' | 'model'>,
+  provider: Pick<ProviderConfig, 'id' | 'model'>
+    & Partial<Pick<ProviderConfig, 'command' | 'runtime'>>,
   baseArgs: string[],
   prompt: string,
   lastMessageFile?: string | null,
   model?: string,
   localNetworkAccess = false,
 ): string[] {
-  const configuredModel = model || provider.model;
-  const selectedModel = configuredModel && !['codex', 'cursor', 'multi-llm'].includes(configuredModel)
-    ? configuredModel
-    : undefined;
+  const runtime = resolveProviderRuntime(provider);
+  const explicitModel = model?.trim() || undefined;
+  const selectedModel = explicitModel
+    ?? (runtime.modelTransport === 'override-only' ? undefined : provider.model?.trim() || undefined);
 
-  switch (provider.id) {
-    case 'hermes': {
+  switch (runtime.adapter) {
+    case 'codex': {
       const hFlags = [
         'exec',
         '--skip-git-repo-check',
-        '--sandbox',
-        localNetworkAccess ? 'workspace-write' : 'read-only',
-        ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []),
+        ...CODEX_ORCHESTRATED_ISOLATION_ARGS,
+        ...(selectedModel ? ['-m', selectedModel] : []),
+      ];
+      if (runtime.profile === 'readonly-tool-worker') {
+        return lastMessageFile
+          ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
+          : [...hFlags, prompt];
+      }
+      const codexFlags = [
+        'exec',
+        '--skip-git-repo-check',
+        ...CODEX_ORCHESTRATED_ISOLATION_ARGS,
+        '--json',
         ...(selectedModel ? ['-m', selectedModel] : []),
       ];
       return lastMessageFile
-        ? [...hFlags, '--output-last-message', lastMessageFile, prompt]
-        : [...hFlags, prompt];
+        ? [...codexFlags, '--output-last-message', lastMessageFile, prompt]
+        : [...codexFlags, prompt];
     }
-    case 'codex':
-      return lastMessageFile
-        ? ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), '--output-last-message', lastMessageFile, prompt]
-        : ['exec', '--skip-git-repo-check', '--sandbox', 'workspace-write', ...(localNetworkAccess ? ['-c', 'sandbox_workspace_write.network_access=true'] : []), '--json', ...(selectedModel ? ['-m', selectedModel] : []), prompt];
     case 'agy':
-      // provider.model은 NCO 라우팅 별칭(`agy-internal`)일 수 있으며 AGY CLI의
-      // 실제 모델 ID가 아니다. AGY는 태스크가 명시한 override만 --model로 전달하고,
-      // 기본 실행은 AGY 자체 기본 모델 선택에 맡긴다.
       return [
         '--mode',
         'accept-edits',
         '--sandbox',
         ...baseArgs,
-        ...(model?.trim() ? ['--model', model.trim()] : []),
+        ...(selectedModel ? ['--model', selectedModel] : []),
         '--print',
         prompt,
       ];
     case 'aider':
       return ['--message', prompt, ...baseArgs];
     case 'opencode': {
-      const formatArgs = baseArgs.some(arg => arg === '--format' || arg.startsWith('--format='))
-        ? []
-        : ['--format', 'json'];
-      return baseArgs[0] && !baseArgs[0].startsWith('-')
-        ? [baseArgs[0], ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs.slice(1), ...formatArgs, prompt]
-        : ['run', ...(selectedModel ? ['-m', selectedModel] : []), ...baseArgs, ...formatArgs, prompt];
+      // Do not inherit session/attach/auto flags from ambient provider config.
+      // Each NCO iteration is a clean text generation; any requested
+      // tools must be emitted as XML and executed by AgentToolExecutor.
+      return [
+        'run',
+        '--pure',
+        '--agent',
+        'nco-orchestrated',
+        ...(selectedModel ? ['-m', selectedModel] : []),
+        '--format',
+        'json',
+        prompt,
+      ];
     }
-    case 'cursor-agent':
+    case 'cursor':
       // Headless default는 안전한 명령도 승인 대화상자를 열 수 없어 거부한다.
       // Smart Auto가 안전 호출만 자동 승인하고 나머지는 거부하도록 sandbox와 함께 고정한다.
       return [
@@ -154,8 +270,69 @@ export function buildOrchestratedCliArgs(
         prompt,
       ];
     default:
-      return [...baseArgs, prompt];
+      return runtime.promptTransport === 'argv' ? [...baseArgs, prompt] : [...baseArgs];
   }
+}
+
+export interface OrchestratedCliInvocation {
+  args: string[];
+  input?: string;
+  stdin?: 'ignore';
+}
+
+/** Build argv and stdio together so the prompt can never use both transports. */
+export function buildOrchestratedCliInvocation(
+  provider: Pick<ProviderConfig, 'id' | 'model'>
+    & Partial<Pick<ProviderConfig, 'command' | 'runtime'>>,
+  baseArgs: string[],
+  prompt: string,
+  lastMessageFile?: string | null,
+  model?: string,
+  localNetworkAccess = false,
+): OrchestratedCliInvocation {
+  const runtime = resolveProviderRuntime(provider);
+  const args = buildOrchestratedCliArgs(
+    provider,
+    baseArgs,
+    prompt,
+    lastMessageFile,
+    model,
+    localNetworkAccess,
+  );
+  if (runtime.adapter === 'codex') return { args, input: '' };
+  return runtime.promptTransport === 'stdin'
+    ? { args, input: prompt }
+    : { args, stdin: 'ignore' };
+}
+
+/**
+ * 실패 요약에 **진짜 사유**가 담기도록 고른다.
+ *
+ * `fallbackSummary` 는 stderr 요약이나 execa `shortMessage` 인데, 프로바이더가 배너를
+ * stderr 로 내고 구조화된 오류를 stdout 으로 내면 **배너가 사유를 가린다.**
+ *
+ * 실측(2026-08-07): codex 태스크 116건의 error 가 전부
+ * `codex: CLI failed exit=1 — Reading additional input from stdin...` 이었다. 그 문구만
+ * 보면 stdin 처리 결함으로 읽히지만, 같은 실행의 stdout 에는
+ * `{"type":"error","message":"You've hit your usage limit …"}` 가 있었다. **쿼터 소진이다.**
+ *
+ * 배너가 error 에 박히면 두 가지가 망가진다.
+ *   ① 운영자가 원인을 못 본다 — 116건이 전부 같은 무의미한 문구로 남는다
+ *   ② `classifyCircuitError` 가 error 에서 아무것도 못 찾아 **서킷이 안 열린다**
+ *      (실측: 이 문구만 넣으면 null, stdout 을 함께 넣으면 quota 로 잡힌다)
+ *
+ * 이미 `combinedOutput` 은 stderr 우선으로 합쳐 두었으므로(W18), 거기서 분류 가능한
+ * 줄을 찾아 요약으로 승격한다. 이미 사유가 담긴 요약은 건드리지 않는다.
+ */
+export function preferDiagnosticSummary(fallbackSummary: string, combinedOutput: string): string {
+  if (!combinedOutput) return fallbackSummary;
+  if (classifyCircuitError(fallbackSummary)) return fallbackSummary;
+  const classified = classifyCircuitError(combinedOutput);
+  if (!classified) return fallbackSummary;
+  const line = combinedOutput
+    .split('\n')
+    .find(candidate => candidate.includes(classified.matchedText));
+  return (line ?? classified.matchedText).trim().slice(0, 500) || fallbackSummary;
 }
 
 function isSuccessfulResult(result: { failed?: boolean; exitCode?: number | null; timedOut?: boolean; isCanceled?: boolean }): boolean {
@@ -228,16 +405,26 @@ function preferredCursorFallbackModel(
 
 export function shouldFallbackCursorModel(input: {
   providerId: string;
+  providerAdapter?: string;
   providerModel?: string | null;
   requestedModel?: string;
+  modelSelection?: ModelSelectionSource;
   error: unknown;
   fallbackModel: string | null;
 }): boolean {
-  if (input.providerId !== 'cursor-agent' || !input.fallbackModel) return false;
-  if (input.requestedModel?.trim()) return false;
+  if (input.providerAdapter !== 'cursor' && input.providerId !== 'cursor-agent') return false;
+  if (!input.fallbackModel) return false;
+  const selection = input.modelSelection
+    ?? (input.requestedModel?.trim() ? 'explicit' : 'provider-default');
+  if (selection === 'explicit') return false;
 
   const providerModel = input.providerModel?.trim().toLowerCase();
-  if (providerModel && providerModel !== 'cursor' && providerModel !== 'auto') return false;
+  if (
+    selection === 'provider-default'
+    && providerModel
+    && providerModel !== 'cursor'
+    && providerModel !== 'auto'
+  ) return false;
 
   const candidate = input.error as {
     message?: unknown;
@@ -255,8 +442,10 @@ export function shouldFallbackCursorModel(input: {
 
 export async function executeWithCursorModelFallback<T>(input: {
   providerId: string;
+  providerAdapter?: string;
   providerModel?: string | null;
   requestedModel?: string;
+  modelSelection?: ModelSelectionSource;
   fallbackModel?: string | null;
   execute: (model?: string) => Promise<T>;
   onFallback?: (context: {
@@ -269,7 +458,10 @@ export async function executeWithCursorModelFallback<T>(input: {
     ? resolveCursorFallbackModel()
     : input.fallbackModel;
   const providerModel = input.providerModel?.trim().toLowerCase();
-  const defaultCursorRoute = input.providerId === 'cursor-agent'
+  const selection = input.modelSelection
+    ?? (input.requestedModel?.trim() ? 'explicit' : 'provider-default');
+  const defaultCursorRoute = selection === 'provider-default'
+    && (input.providerAdapter === 'cursor' || input.providerId === 'cursor-agent')
     && !input.requestedModel?.trim()
     && (!providerModel || providerModel === 'cursor' || providerModel === 'auto');
   const preferredFallback = defaultCursorRoute
@@ -285,8 +477,10 @@ export async function executeWithCursorModelFallback<T>(input: {
     if (preferredFallback) throw error;
     if (!shouldFallbackCursorModel({
       providerId: input.providerId,
+      providerAdapter: input.providerAdapter,
       providerModel: input.providerModel,
       requestedModel: input.requestedModel,
+      modelSelection: selection,
       error,
       fallbackModel,
     })) {
@@ -294,7 +488,7 @@ export async function executeWithCursorModelFallback<T>(input: {
     }
 
     await input.onFallback?.({
-      failedModel: input.providerModel?.trim() || 'auto',
+      failedModel: input.requestedModel?.trim() || input.providerModel?.trim() || 'auto',
       fallbackModel: fallbackModel!,
       error,
     });
@@ -332,7 +526,7 @@ export class OrchestratedLoop {
     private sandbox: SandboxManager,
     private abortSignal?: AbortSignal,
   ) {
-    this.toolExecutor = new AgentToolExecutor(provider.id, sandbox);
+    this.toolExecutor = new AgentToolExecutor(provider.id, sandbox, undefined, undefined, abortSignal);
   }
 
   async run(
@@ -342,6 +536,7 @@ export class OrchestratedLoop {
       systemPrompt?: string;
       compact?: boolean;
       model?: string;
+      modelSelection?: ModelSelectionSource;
       projectDir?: string;
       disableHistory?: boolean;
       localNetworkAccess?: boolean;
@@ -349,13 +544,24 @@ export class OrchestratedLoop {
   ): Promise<LoopResult> {
     this.taskProjectDir = options?.projectDir;
     this.localNetworkAccess = options?.localNetworkAccess === true;
-    this.toolExecutor = new AgentToolExecutor(this.provider.id, this.sandbox, taskId, options?.projectDir);
+    this.toolExecutor = new AgentToolExecutor(
+      this.provider.id,
+      this.sandbox,
+      taskId,
+      options?.projectDir,
+      this.abortSignal,
+    );
     const agentId = this.provider.id;
     let iterations = 0;
     let totalToolCalls = 0;
     let exitReason: 'completed' | 'max-iterations' | 'circuit-breaker' = 'max-iterations';
+    let prematureToolFailureRetries = 0;
+    let terminalResponse = '';
     const artifacts: string[] = [];
     const history: Array<{ role: string; content: string }> = [];
+    // Schema 하네스: 도구 호출을 관측해 규칙을 세우고, 무익함이 확정된 재호출을 막는다.
+    // 태스크마다 새로 만든다 — 규칙은 이 작업의 맥락에서만 유효하다.
+    const schema = new SchemaAdvisor(undefined, undefined, 'orchestrated-loop', taskId, agentId);
 
     // Update agent state
     await sharedState.setAgentState(agentId, {
@@ -367,14 +573,21 @@ export class OrchestratedLoop {
     const teamState = await this.buildTeamContext();
     const systemBase = options?.systemPrompt || this.provider.persona.systemPrompt;
     
-    const fullSystem = options?.compact
-      ? buildCompactSystemPrompt(systemBase)
-      : buildOrchestrationSystemPrompt(systemBase, teamState);
+    // 호출부가 도구 금지를 지시했으면 XML 도구 프로토콜을 아예 붙이지 않는다. 붙이면
+    // "Do not use tools." 와 "Do not claim workspace tools are unavailable until you have
+    // tried this protocol." 이 같은 시스템 프롬프트에 공존해 지시가 충돌한다(2026-08-06
+    // kangnote 정적 분석 → 실패 로그의 opencode 프롬프트에 `## Tools (XML)` 실재 확인).
+    // 도구 없이 온 응답은 decideToolFreeOrchestrationResponse 가 이미 정상 처리한다.
+    const fullSystem = forbidsTools(systemBase, prompt)
+      ? systemBase
+      : options?.compact
+        ? buildCompactSystemPrompt(systemBase)
+        : buildOrchestrationSystemPrompt(systemBase, teamState);
 
     history.push({ role: 'user', content: prompt });
 
     try {
-      while (iterations < MAX_ITERATIONS) {
+      while (iterations < MAX_ORCHESTRATION_ITERATIONS) {
       iterations++;
       taskQueue.recordActivity(taskId);
 
@@ -396,10 +609,23 @@ export class OrchestratedLoop {
       // canExecute() again here would try to acquire a second slot and reject
       // the probe that is already in flight. Internal checks must only observe
       // whether another failure has opened the circuit during this task.
-      if (circuitBreakerRegistry.getSnapshot(agentId).state === 'open') {
-        log.warn({ agentId, iterations }, 'Agent isolated by Circuit Breaker');
-        exitReason = 'circuit-breaker';
-        break;
+      //
+      // 이 루프 자신의 호출이 실패하면 callCLI()가 throw 해 while 밖으로 나간다. 따라서 여기
+      // 도달한 open 상태는 **항상 같은 프로바이더의 다른 태스크가 연 것**이고, 예전에는 멀쩡히
+      // 진행 중인 태스크까지 연좌로 죽였다(젠탑 실측 2026-08-05, 토론 만장일치로 수정 채택).
+      // 프로바이더 전체가 못 쓰게 되는 사유(quota·rate-limit·auth)일 때만 중단하고, 다른
+      // 태스크의 일시적 generic 실패로는 중단하지 않는다.
+      const circuit = circuitBreakerRegistry.getSnapshot(agentId);
+      if (circuit.state === 'open') {
+        if (circuit.reason === 'quota' || circuit.reason === 'rate-limit' || circuit.reason === 'auth') {
+          log.warn({ agentId, iterations, reason: circuit.reason }, 'Agent isolated by Circuit Breaker');
+          exitReason = 'circuit-breaker';
+          break;
+        }
+        log.info(
+          { agentId, iterations, reason: circuit.reason },
+          'Circuit open from another task; continuing this in-flight task',
+        );
       }
 
       // Call AI (single shot)
@@ -408,7 +634,14 @@ export class OrchestratedLoop {
         status: iterations === 1 ? 'thinking' : 'working',
       });
 
-      const aiResponse = await this.callCLI(taskId, fullSystem, history, options?.disableHistory === true, options?.model);
+      const aiResponse = await this.callCLI(
+        taskId,
+        fullSystem,
+        history,
+        options?.disableHistory === true,
+        options?.model,
+        options?.modelSelection,
+      );
       taskQueue.recordActivity(taskId, aiResponse);
 
       // Stream the response
@@ -422,9 +655,46 @@ export class OrchestratedLoop {
       const toolCalls = parseToolCalls(aiResponse);
 
       if (toolCalls.length === 0) {
-        // No tool calls = AI is done
         history.push({ role: 'assistant', content: aiResponse });
         this.trimConversationHistory(history);
+        const visibleResponse = extractThinking(aiResponse) || aiResponse;
+        const decision = decideToolFreeOrchestrationResponse(
+          visibleResponse,
+          totalToolCalls,
+          prematureToolFailureRetries,
+        );
+        if (decision.action === 'continue') {
+          prematureToolFailureRetries = decision.recoveryAttempts;
+          history.push({ role: 'user', content: decision.prompt });
+          this.trimConversationHistory(history);
+          const detail = decision.reason === 'status'
+            ? 'provider reported intermediate status'
+            : decision.reason === 'contradictory-completion'
+              ? 'provider reported unresolved completion evidence'
+              : decision.reason === 'premature-incomplete-work'
+                ? 'recovering from admitted incomplete repository work'
+                : 'recovering from premature workspace-tool failure';
+          await eventBus.publish({
+            type: 'task:progress', taskId, agentId,
+            progress: Math.min(iterations / MAX_ORCHESTRATION_ITERATIONS, 0.95),
+            detail: `Iteration ${iterations}: ${detail}`,
+          });
+          const context = {
+            agentId,
+            iterations,
+            totalToolCalls,
+            reason: decision.reason,
+            recoveryAttempt: prematureToolFailureRetries,
+          };
+          if (decision.reason === 'status') {
+            log.info(context, 'Continuing after intermediate status response');
+          } else {
+            log.warn(context, 'Continuing after non-terminal tool-free response');
+          }
+          continue;
+        }
+        // A non-status response with no tool calls is a final answer.
+        terminalResponse = visibleResponse;
         log.info({ agentId, iterations, totalToolCalls }, 'Loop completed (no more tools)');
         exitReason = 'completed';
         break;
@@ -439,10 +709,19 @@ export class OrchestratedLoop {
 
         const decision = await trajectoryGuard.beforeTool(
           { taskId, agentId, sandbox: this.sandbox },
-          { tool: call.tool, toAgent: call.tool === 'sendMessage' ? call.args.to : null },
+          { tool: call.tool, args: call.args, toAgent: call.tool === 'sendMessage' ? call.args.to : null },
         );
         if (!decision.allowed) {
           results.push(`[Tool: ${call.tool}] ERROR: ${decision.reason}`);
+          continue;
+        }
+
+        // 실행 전 스키마 판정 — 같은 인자로 일관되게 무익했던 호출은 실행하지 않고
+        // 그 사실을 결과로 돌려준다. 프로바이더 호출 1회와 이터레이션 1회를 아낀다.
+        const suppression = schema.beforeTool({ tool: call.tool, args: call.args });
+        if (suppression.suppress) {
+          log.info({ agentId, tool: call.tool }, 'Tool call suppressed by schema harness');
+          results.push(`[Tool: ${call.tool}] SKIPPED: ${suppression.reason}`);
           continue;
         }
 
@@ -451,11 +730,12 @@ export class OrchestratedLoop {
           { taskId, agentId, sandbox: this.sandbox },
           { tool: call.tool, ok: result.ok, error: result.error ?? null },
         );
-        const outRaw = result.output || result.error || '';
-        const truncated = outRaw.length > MAX_OUTPUT_LEN 
-          ? outRaw.slice(0, MAX_OUTPUT_LEN) + `\n\n... (truncated ${outRaw.length - MAX_OUTPUT_LEN} chars)`
-          : outRaw;
-        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${truncated}`);
+        const formattedOutput = formatToolOutput(call, result, MAX_OUTPUT_LEN);
+        schema.afterTool(
+          { tool: call.tool, args: call.args },
+          { ok: result.ok, output: formattedOutput },
+        );
+        results.push(`[Tool: ${call.tool}] ${result.ok ? 'OK' : 'ERROR'}: ${formattedOutput}`);
 
         if (call.tool === 'writeFile' || call.tool === 'createFile') {
           artifacts.push(call.args.path);
@@ -464,34 +744,39 @@ export class OrchestratedLoop {
 
       // Add AI response + tool results to history
       history.push({ role: 'assistant', content: aiResponse });
-      history.push({ role: 'user', content: `Tool results:\n${results.join('\n')}\n\nContinue your work.` });
+      history.push({
+        role: 'user',
+        content: `Tool results:\n${results.join('\n')}${schema.hint()}\n\nContinue your work.`,
+      });
       this.trimConversationHistory(history);
 
       await eventBus.publish({
         type: 'task:progress', taskId, agentId,
-        progress: Math.min(iterations / MAX_ITERATIONS, 0.95),
+        progress: Math.min(iterations / MAX_ORCHESTRATION_ITERATIONS, 0.95),
         detail: `Iteration ${iterations}: ${toolCalls.length} tools executed`,
       });
       }
 
-      const finalOutput = history
+      const assistantOutputs = history
         .filter(h => h.role === 'assistant')
         .map(h => extractThinking(h.content))
-        .filter(Boolean)
-        .join('\n\n');
+        .filter(Boolean);
 
-      // finalOutput이 비어있으면 마지막 assistant 원본 메시지를 사용
-      const output = finalOutput || history
+      const fallbackOutputs = assistantOutputs.length > 0 ? assistantOutputs : history
         .filter(h => h.role === 'assistant')
         .map(h => h.content)
-        .filter(Boolean)
-        .pop() || '';
+        .filter(Boolean);
+      const output = chooseOrchestrationOutput(terminalResponse, fallbackOutputs);
 
       const error = exitReason === 'max-iterations'
-        ? `Loop reached maximum iterations (${MAX_ITERATIONS}) before completion`
+        ? `Loop reached maximum iterations (${MAX_ORCHESTRATION_ITERATIONS}) before completion`
         : exitReason === 'circuit-breaker'
           ? 'Loop stopped because the Circuit Breaker denied execution'
           : undefined;
+
+      // 스키마 하네스가 실제로 무엇을 배웠고 몇 회를 아꼈는지 남긴다 —
+      // 이 수치가 없으면 하네스가 켜져 있는지조차 사후에 확인할 수 없다.
+      log.info({ agentId, taskId, ...schema.stats }, 'Schema harness summary');
 
       return {
         output,
@@ -517,11 +802,14 @@ export class OrchestratedLoop {
     history: Array<{ role: string; content: string }>,
     disableHistory = false,
     model?: string,
+    modelSelection?: ModelSelectionSource,
   ): Promise<string> {
     return executeWithCursorModelFallback({
       providerId: this.provider.id,
+      providerAdapter: resolveProviderRuntime(this.provider).adapter,
       providerModel: this.provider.model,
       requestedModel: model,
+      modelSelection,
       execute: selectedModel => this.callCLIOnce(
         taskId,
         system,
@@ -566,6 +854,8 @@ export class OrchestratedLoop {
   ): Promise<string> {
     const command = this.provider.command!;
     const args = [...(this.provider.args || [])];
+    const runtime = resolveProviderRuntime(this.provider);
+    const isCodexAdapter = runtime.adapter === 'codex';
 
     // Build combined prompt (system + history)
     const currentPrompt = [...history].reverse().find(h => h.role === 'user')?.content ?? '';
@@ -581,27 +871,51 @@ export class OrchestratedLoop {
 
     // codex: --output-last-message writes ONLY the final assistant message to a file,
     // avoiding banner/echo pollution in stdout (T1-verified flag support)
-    const lastMessageFile = CODEX_FAMILY.has(this.provider.id)
+    const lastMessageFile = isCodexAdapter
       ? joinPath(tmpdir(), `nco-codex-last-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`)
       : null;
 
     // Most CLI AIs accept prompt via stdin or -p flag
     // Adapt per provider
-    const finalArgs = this.buildArgs(args, combined, lastMessageFile, model);
+    const invocation = buildOrchestratedCliInvocation(
+      this.provider,
+      args,
+      combined,
+      lastMessageFile,
+      model,
+      this.localNetworkAccess,
+    );
+    const finalArgs = invocation.args;
     this.assertTaskProjectDir();
-    const subagentTracker = this.provider.id === 'codex'
+    const subagentTracker = isCodexAdapter && runtime.profile !== 'readonly-tool-worker'
       ? new CodexSubagentTracker(taskId, this.provider.id)
       : null;
     let subagentTrackerStopped = false;
 
     try {
-      const useStdin = !NO_STDIN_PROVIDERS.has(this.provider.id);
       // [W18/stdin 2026-07-07] codex는 stdin:'ignore'면 "Reading additional input from stdin"에서
       // 멈춰 timeout된다(codex 0.142.5). 빈 input('')을 주면 EOF를 받아 정상 진행한다.
       // (T1: execa stdin:'ignore' → 멈춤 / input:'' → prompt 실행+정상 에러표시 재현)
-      const stdinOpt: Record<string, unknown> = CODEX_FAMILY.has(this.provider.id)
-        ? { input: '' }
-        : (useStdin ? { input: combined } : { stdin: 'ignore' });
+      const stdinOpt: Record<string, unknown> = invocation.input !== undefined
+        ? { input: invocation.input }
+        : { stdin: invocation.stdin ?? 'ignore' };
+      const providerProcessEnv = buildProviderProcessEnv(
+        this.provider.id,
+        this.provider.env,
+        process.env,
+        undefined,
+        runtime.adapter,
+      );
+      const subprocessEnv = runtime.adapter === 'opencode'
+        ? applyOpenCodeOrchestrationIsolation(providerProcessEnv, getOpenCodeIsolatedConfigHome())
+        : providerProcessEnv;
+      // AgentManager's final gate runs before Type B context/event preparation.
+      // Recheck at the irreversible boundary as every loop iteration and Cursor
+      // model-fallback attempt reaches this method independently.
+      requireProviderRateLimitAdmission(
+        this.provider.id,
+        resolveProviderRateLimitAdmission(this.provider.id),
+      );
       const subprocess = execa(command, finalArgs, {
         ...stdinOpt,
         cwd: this.taskProjectDir || undefined,
@@ -609,8 +923,14 @@ export class OrchestratedLoop {
         forceKillAfterDelay: 3000,
         detached: process.platform !== 'win32',
         maxBuffer: 10 * 1024 * 1024,
+        // execa merges process.env back into `env` by default. That would
+        // resurrect OpenCode path-based config variables intentionally deleted
+        // by applyOpenCodeOrchestrationIsolation(). subprocessEnv already
+        // contains the complete inherited environment, so disable the second
+        // merge for every provider process.
+        extendEnv: false,
         env: {
-          ...buildProviderProcessEnv(this.provider.id, this.provider.env),
+          ...subprocessEnv,
           NO_COLOR: '1', 
           TERM: 'dumb',
           ...(this.taskProjectDir ? { PROJECT_DIR: this.taskProjectDir } : {})
@@ -684,7 +1004,7 @@ export class OrchestratedLoop {
           stderr: stderrSummary,
         }, 'CLI call returned non-zero exit');
 
-        const opencodeOutput = this.provider.id === 'opencode'
+        const opencodeOutput = runtime.adapter === 'opencode'
           ? extractOpenCodeText(result.stdout || '')
           : undefined;
         const stderrTail = _stderrNoEcho.trim().slice(-300);
@@ -696,9 +1016,10 @@ export class OrchestratedLoop {
         const reason = isCanceled
           ? timedOut ? 'CLI timed out' : 'CLI cancelled'
           : `CLI failed exit=${result.exitCode ?? 'unknown'}`;
+        const diagnosticSummary = preferDiagnosticSummary(fallbackSummary, combinedOutput);
         throw new CliExecutionError(
-          `${this.provider.id}: ${reason} — ${fallbackSummary}`,
-          combinedOutput || `[${this.provider.id}: ${reason} — ${fallbackSummary}]`,
+          `${this.provider.id}: ${reason} — ${diagnosticSummary}`,
+          combinedOutput || `[${this.provider.id}: ${reason} — ${diagnosticSummary}]`,
           isCanceled || timedOut,
         );
       }
@@ -724,7 +1045,12 @@ export class OrchestratedLoop {
 
       if (lastMsg) return lastMsg;
 
-      if (this.provider.id === 'opencode') {
+      if (runtime.adapter === 'codex') {
+        const output = extractCodexJsonlAgentText(result.stdout || '');
+        if (output !== undefined) return output;
+      }
+
+      if (runtime.adapter === 'opencode') {
         const output = extractOpenCodeText(result.stdout || '');
         if (output !== undefined) return output;
       }
@@ -738,7 +1064,8 @@ export class OrchestratedLoop {
   }
 
   private assertTaskProjectDir(): void {
-    if (this.provider.id !== 'codex') return;
+    const runtime = resolveProviderRuntime(this.provider);
+    if (runtime.adapter !== 'codex' || runtime.profile === 'readonly-tool-worker') return;
 
     const projectDir = this.taskProjectDir?.trim();
     if (!projectDir) {
@@ -749,48 +1076,9 @@ export class OrchestratedLoop {
     }
   }
 
-  private buildArgs(baseArgs: string[], prompt: string, lastMessageFile?: string | null, model?: string): string[] {
-    return buildOrchestratedCliArgs(
-      this.provider,
-      baseArgs,
-      prompt,
-      lastMessageFile,
-      model,
-      this.localNetworkAccess,
-    );
-  }
-
   /** Preserve first user message; drop oldest assistant/user pairs beyond MAX_HISTORY_TURNS. */
   private trimConversationHistory(history: Array<{ role: string; content: string }>): void {
-    const maxLen = 1 + MAX_HISTORY_TURNS * 2;
-    const maxContextChars = 40_000;
-    const contextChars = () => history.reduce(
-      (total, message) => total + message.role.length + message.content.length + 8,
-      0,
-    );
-
-    // Tool output is already capped per call, but one turn can contain many
-    // calls. Bound the serialized CLI prompt as well as the turn count while
-    // preserving the initial request and the most recent tool-result pair.
-    while (
-      (history.length > maxLen || contextChars() > maxContextChars)
-      && history.length > 3
-    ) {
-      history.splice(1, 2);
-    }
-
-    const latest = history.at(-1);
-    if (latest?.role === 'user' && contextChars() > maxContextChars) {
-      const charsWithoutLatest = contextChars() - latest.content.length;
-      const available = Math.max(0, maxContextChars - charsWithoutLatest);
-      if (latest.content.length > available) {
-        const omitted = latest.content.length - available;
-        const marker = `\n\n... (history truncated ${omitted} chars)\nContinue your work.`;
-        latest.content = available > marker.length
-          ? latest.content.slice(0, available - marker.length) + marker
-          : marker.slice(0, available);
-      }
-    }
+    trimOrchestratedConversationHistory(history);
   }
 
   private async buildTeamContext(): Promise<string> {

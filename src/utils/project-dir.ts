@@ -15,12 +15,22 @@ const ORG_PROJECT_DIR_ROUTING_DISABLED = new Set(['0', 'false', 'off']);
 
 // CLI 독립 검증팀은 NCO 메인 워크스페이스에서 검증해야 한다. nova-ax로 라우팅되면
 // 잘못된 코드베이스에서 검증이 실행된다 (실측 2026-07-30: task_VB6fzKfIhmnp4uEw 등).
-const TEAM_PROJECT_DIR_CANDIDATES: Readonly<Record<string, readonly string[]>> = {
-  'team_cli-assurance-2026': [
-    '/Users/nova-ai/orca/workspaces/nco/main',
+//
+// **기기마다 경로가 다르다.** 초판은 작성자 기기의 절대경로 하나만 두었는데, 그 경로가
+// 없는 기기(Linux·WSL2)에서는 `firstExistingDir` 가 undefined 를 내 **이 보호가 조용히
+// 꺼졌다.** 오류도 로그도 없이 nova-ax 로 라우팅된다 — 정확히 막으려던 상황이다.
+// (kangnote 보고 2026-08-07: 그 기기에서 하드코딩 경로 탓에 테스트가 무조건 실패.)
+//
+// 그래서 `NCO_PROJECT_DIR` 를 첫 후보로 둔다. 기기별 설정은 이 변수 하나로 끝나고,
+// 팀별로 다른 경로가 필요하면 기존 `NCO_ORG_PROJECT_DIRS` 가 이보다 우선한다.
+function teamProjectDirCandidates(teamId: string): readonly string[] {
+  if (teamId !== 'team_cli-assurance-2026') return [];
+  const configured = process.env.NCO_PROJECT_DIR?.trim();
+  return [
+    ...(configured ? [configured] : []),
     '/Users/nova-ai/project/nco',
-  ],
-};
+  ];
+}
 
 export function resolveInternalProjectDir(): string {
   const configured = process.env.NCO_PROJECT_DIR?.trim();
@@ -79,8 +89,8 @@ export function resolveTaskProjectDir(input: TaskProjectDirInput = {}): string {
       const resolved = firstExistingDir([envTeamDir]);
       if (resolved) return resolved;
     }
-    const teamCandidates = TEAM_PROJECT_DIR_CANDIDATES[teamId];
-    if (teamCandidates) {
+    const teamCandidates = teamProjectDirCandidates(teamId);
+    if (teamCandidates.length > 0) {
       const resolved = firstExistingDir(teamCandidates);
       if (resolved) return resolved;
     }
