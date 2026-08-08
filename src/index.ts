@@ -1,3 +1,4 @@
+import net from 'node:net';
 import { env } from './utils/config.js';
 import { createLogger } from './utils/logger.js';
 import { initTelemetry } from './core/telemetry.js';
@@ -392,10 +393,48 @@ async function waitForInFlightDrain(timeoutMs: number): Promise<{ drained: boole
   return { drained: remaining.length === 0, remaining };
 }
 
+/**
+ * Resolves true only on a confirmed EADDRINUSE. Any other bind error (e.g.
+ * EACCES) resolves false so the real gateway.listen() in boot() stage 8
+ * surfaces it as before — this probe only short-circuits the one failure
+ * mode it was built to catch.
+ */
+function probePortInUse(port: number, host: string): Promise<boolean> {
+  return new Promise(resolve => {
+    const probe = net.createServer();
+    let settled = false;
+    const finish = (inUse: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(inUse);
+    };
+    probe.once('error', (err: NodeJS.ErrnoException) => {
+      finish(err.code === 'EADDRINUSE');
+    });
+    probe.once('listening', () => {
+      probe.close(() => finish(false));
+    });
+    probe.listen(port, host);
+  });
+}
+
 async function boot(): Promise<void> {
   log.info('═══════════════════════════════════════');
   log.info('  NCO Backend — Neural CLI Orchestrator');
   log.info('═══════════════════════════════════════');
+
+  // -1. Fast-fail port probe (2026-08-08, gentopui/kangnote joint diagnosis via
+  // inter-session): concurrent starts were burning up to ~15.75s in SQLite
+  // busy-retry (stage 1: withSqliteBusyRetry, busy_timeout=5000 × 3 attempts +
+  // 250/500ms backoff) before ever reaching gateway.listen() (stage 8) — only
+  // to die on EADDRINUSE anyway. Probe the port first so a losing instance
+  // exits in tens of ms instead of after full DB/Redis/agent-manager init.
+  const bootPort = env.PORT;
+  const bootHost = process.env.HOST ?? '0.0.0.0';
+  if (await probePortInUse(bootPort, bootHost)) {
+    log.fatal({ port: bootPort, host: bootHost }, 'Port already in use — exiting before SQLite/Redis init');
+    process.exit(1);
+  }
 
   // 0. Telemetry (noop if OTEL_EXPORTER_OTLP_ENDPOINT not set)
   await initTelemetry();
